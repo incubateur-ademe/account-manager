@@ -1,0 +1,23 @@
+{
+  "extends": ["@tsconfig/strictest/tsconfig.json", "@tsconfig/next/tsconfig.json"],
+  "compilerOptions": {
+    "target": "ES2023",
+    "allowJs": false,
+    "verbatimModuleSyntax": true,
+    "useUnknownInCatchVariables": true,
+    // Prisma et NextAuth ne la respectent pas dans leurs propres types : la garder
+    // impose un contournement à chaque intégration sans rien apporter.
+    "exactOptionalPropertyTypes": false,
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": ["node_modules"]
+}

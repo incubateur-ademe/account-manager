@@ -1,0 +1,246 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Règles du gestionnaire de comptes",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "number",
+      "const": 1,
+      "description": "Version du format, non du contenu. Elle existe pour qu'un fichier écrit pour une autre version du code soit refusé net plutôt que lu de travers, ce qui compte dès lors que ce fichier ne vit pas dans le même dépôt que le code.",
+      "examples": [
+        1
+      ]
+    },
+    "startups": {
+      "description": "Ce que l'incubateur tient pour une startup finie.",
+      "type": "object",
+      "properties": {
+        "terminalPhases": {
+          "default": [
+            "abandon",
+            "abandon-investigation",
+            "transfere",
+            "alumni"
+          ],
+          "description": "Phases dans lesquelles une startup ne justifie plus aucun accès. Cette liste est de la configuration et non du code : le vocabulaire de beta.gouv évolue, et décider qu'une phase est terminale est un choix métier.",
+          "examples": [
+            [
+              "abandon",
+              "abandon-investigation",
+              "transfere",
+              "alumni"
+            ]
+          ],
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "terminalPhases"
+      ],
+      "additionalProperties": false
+    },
+    "thresholds": {
+      "description": "Les délais et les proportions qui gouvernent les décisions.",
+      "type": "object",
+      "properties": {
+        "graceDays": {
+          "default": 7,
+          "description": "Report accordé après une échéance avant de conclure qu'il y a à faire. Un renouvellement signé en retard est la règle plutôt que l'exception, et couper le jour même produirait surtout des remises en service.",
+          "examples": [
+            7
+          ],
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "soonDays": {
+          "default": 30,
+          "description": "En deçà, une échéance est annoncée comme proche. Ce nombre est celui que l'interface écrit en toutes lettres.",
+          "examples": [
+            30
+          ],
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "staleDays": {
+          "default": 180,
+          "description": "Au-delà, une mission terminée relève de l'historique et non d'une action.",
+          "examples": [
+            180
+          ],
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "maxScopeDrop": {
+          "default": 0.2,
+          "description": "Part du périmètre qu'une collecte peut perdre d'un coup avant de refuser d'en tirer la moindre disparition. Une réponse tronquée mais valide ne se distingue d'un départ collectif que par son ampleur.",
+          "examples": [
+            0.2
+          ],
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "collectStaleHours": {
+          "default": 48,
+          "description": "Âge au-delà duquel les écrans préviennent que la collecte ne tourne plus, plutôt que d'afficher un périmètre gelé avec l'assurance d'un périmètre frais.",
+          "examples": [
+            48
+          ],
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "graceDays",
+        "soonDays",
+        "staleDays",
+        "maxScopeDrop",
+        "collectStaleHours"
+      ],
+      "additionalProperties": false
+    },
+    "systems": {
+      "default": [],
+      "description": "Réservé : catalogue des systèmes couverts. Aucun code ne le lit encore, le catalogue vit pour l'instant dans la documentation d'architecture.",
+      "examples": [
+        [
+          {
+            "key": "mon-systeme",
+            "label": "Mon système",
+            "criticality": "medium",
+            "runbook": "https://exemple.org/procedures/mon-systeme"
+          }
+        ]
+      ],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Clé du système, telle que la déclare son connecteur.",
+            "examples": [
+              "mon-systeme"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Nom lisible du système.",
+            "examples": [
+              "Mon système"
+            ]
+          },
+          "criticality": {
+            "default": "medium",
+            "description": "Ce que coûte un accès oublié sur ce système.",
+            "examples": [
+              "high"
+            ],
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "runbook": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Ce qu'il faut faire à la main quand aucune voie automatique n'existe, ou quand celle-ci tombe.",
+            "examples": [
+              "https://exemple.org/procedures/mon-systeme"
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "criticality",
+          "runbook"
+        ],
+        "additionalProperties": false,
+        "description": "Un système couvert par le catalogue."
+      }
+    },
+    "permanentDerogations": {
+      "default": [],
+      "description": "Réservé : écarts admis pour de bon, qu'aucune collecte ne doit plus signaler. Aucun code ne le lit encore.",
+      "examples": [
+        [
+          {
+            "targetType": "identite",
+            "targetId": "github:compte-partage",
+            "reason": "Compte de démonstration conservé à la demande de la direction",
+            "owner": "claire.durand"
+          }
+        ]
+      ],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "targetType": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Nature de ce qui est toléré.",
+            "examples": [
+              "identite"
+            ]
+          },
+          "targetId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Ce que la dérogation vise, désigné comme la collecte le nomme.",
+            "examples": [
+              "github:compte-partage"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Pourquoi cet écart est admis. Obligatoire : un écart toléré sans trace redevient un écart oublié.",
+            "examples": [
+              "Compte de démonstration conservé à la demande de la direction"
+            ]
+          },
+          "owner": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z0-9.-]+$",
+            "description": "Qui répond de cette tolérance.",
+            "examples": [
+              "claire.durand"
+            ]
+          }
+        },
+        "required": [
+          "targetType",
+          "targetId",
+          "reason",
+          "owner"
+        ],
+        "additionalProperties": false,
+        "description": "Un écart admis pour de bon, qu'aucune collecte ne doit plus signaler."
+      }
+    }
+  },
+  "required": [
+    "version",
+    "startups",
+    "thresholds",
+    "systems",
+    "permanentDerogations"
+  ],
+  "additionalProperties": false,
+  "description": "Règles du produit : seuils, vocabulaire, catalogues. Rien n'y désigne personne et tout y a un défaut raisonnable."
+}

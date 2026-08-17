@@ -1,0 +1,67 @@
+# yaml-language-server: $schema=./config.schema.json
+
+# Modele du fichier qui regle : seuils, vocabulaire, catalogues.
+#
+# Rien ici ne designe personne, et tout y a un defaut raisonnable : une instance qui
+# ne fournirait pas ce fichier fonctionnerait quand meme, avec les valeurs ci-dessous.
+# Il n'est donc pas sensible, mais il vit avec son jumeau pour que la politique reste
+# d'un seul tenant.
+#
+# Toutes les entrees possibles y figurent, y compris celles qu'aucun code ne lit
+# encore : un modele qui ne montre que le strict minimum n'apprend rien.
+
+# Version du format, non du contenu. Elle existe pour qu'un fichier ecrit pour une
+# autre version du code soit refuse net plutot que lu de travers.
+version: 1
+
+# Phases dans lesquelles une startup ne justifie plus aucun acces. La liste est ici et
+# non dans le code : le vocabulaire de beta.gouv evolue, et decider qu'une phase est
+# terminale est un choix metier. Une personne dont toutes les startups sont dans ces
+# phases fait l'objet d'un constat, meme si sa mission court encore.
+startups:
+  terminalPhases:
+    - abandon
+    - abandon-investigation
+    - transfere
+    - alumni
+
+thresholds:
+  # Jours de report apres une echeance avant de considerer qu'il y a quelque chose a
+  # faire. Un renouvellement signe en retard est la regle plutot que l'exception, et
+  # couper le jour meme produirait surtout des remises en service.
+  graceDays: 7
+
+  # En deca, une echeance est annoncee comme proche, sur le tableau de bord comme sur
+  # la fiche. Ce nombre est celui que l'interface ecrit en toutes lettres.
+  soonDays: 30
+
+  # Au-dela, une mission terminee releve de l'historique et non d'une action.
+  staleDays: 180
+
+  # Part du perimetre qu'une collecte peut perdre d'un coup avant de refuser d'en
+  # tirer la moindre disparition et de se declarer partielle. Le perimetre arrive en
+  # un seul appel : une reponse tronquee mais valide ferait sortir tout le monde a la
+  # fois sans qu'aucune erreur ne soit levee, et l'offboarding suivrait.
+  maxScopeDrop: 0.2
+
+  # Age au-dela duquel les ecrans cessent d'affirmer et previennent que la collecte ne
+  # tourne plus. Deux fois la periode du traitement quotidien : une nuit sautee arrive,
+  # deux de suite est une panne.
+  collectStaleHours: 48
+
+# Reserve : catalogue des systemes couverts, avec leur criticite et le lien vers leur
+# procedure. Aucun code ne le lit encore.
+systems:
+  - key: mon-systeme
+    label: Mon systeme
+    criticality: medium
+    runbook: https://exemple.org/procedures/mon-systeme
+
+# Reserve : ecarts admis pour de bon, qu'aucune collecte ne doit plus signaler. Un
+# ecart tolere sans trace redevient un ecart oublie, d'ou la raison et le proprietaire
+# obligatoires. Aucun code ne le lit encore.
+permanentDerogations:
+  - targetType: identite
+    targetId: github:compte-partage
+    reason: Compte de demonstration conserve a la demande de la direction
+    owner: claire.durand

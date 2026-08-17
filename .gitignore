@@ -1,0 +1,25 @@
+node_modules/
+.pnpm-store/
+
+.next/
+out/
+build/
+dist/
+next-env.d.ts
+
+src/generated/
+
+.env
+.env.*
+!.env.example
+
+coverage/
+*.tsbuildinfo
+
+.DS_Store
+*.log
+
+# La politique nomme des personnes et dessine la carte des acces techniques : elle
+# vit hors de ce depot. Seuls les modeles et les schemas sont versionnes ici.
+config/*.yaml
+!config/*.exemple.yaml

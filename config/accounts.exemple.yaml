@@ -1,0 +1,67 @@
+# yaml-language-server: $schema=./accounts.schema.json
+
+# Modele du fichier qui nomme : personnes suivies et comptes machine.
+#
+# Rien ici n'est reel. Le fichier de l'instance porte le meme nom sans « exemple »,
+# et il n'est pas versionne dans ce depot : il designe des personnes et dessine la
+# carte des acces techniques, ce qui n'a pas a etre publie avec le code.
+#
+# Toutes les entrees possibles y figurent, y compris celles dont une instance n'a pas
+# l'usage : un modele qui ne montre que le strict minimum n'apprend rien.
+
+# Version du format, non du contenu. Elle existe pour qu'un fichier ecrit pour une
+# autre version du code soit refuse net plutot que lu de travers.
+version: 1
+
+scope:
+  # Identifiant beta.gouv de l'incubateur, tel qu'il apparait dans les adresses de
+  # l'espace-membre. Toute la collecte est scopee dessus : c'est lui qui definit
+  # « nous ». Le changer revient a suivre un autre incubateur.
+  incubator: mon-incubateur
+
+  # Fait autorite sur l'appartenance au perimetre. Une equipe transverse n'apparait
+  # dans aucune startup d'Etat : sans cette liste, elle serait invisible. Qui y figure
+  # reste suivi meme si l'espace-membre ne le rattache a aucune equipe, sa fiche ne
+  # servant alors qu'a dater sa fin de mission. L'en retirer est le geste qui l'en
+  # sort. Un nom sans fiche est signale a chaque collecte plutot qu'ignore : c'est une
+  # faute de frappe, ou une fiche a creer.
+  transverse:
+    - claire.durand
+    - samir.benali
+    - alex.nguyen
+
+  # Personnes qui ont des acces sans avoir de fiche espace-membre. Faute de source
+  # amont, leur date de fin est saisie ici et n'est rafraichie par personne : elle
+  # vieillit donc en silence, ce qui rend cette liste bonne a garder courte.
+  local:
+    - username: prestataire.exemple
+      until: 2027-06-30
+
+# Comptes non humains : bots, jetons d'integration continue, cles d'API. Ils n'ont
+# pas de fin de mission, d'ou la revue periodique. Le proprietaire est obligatoire :
+# un compte machine sans responsable est ce que cet outil cherche a eviter.
+# Faute de revue enregistree, la periodicite court depuis la declaration, sinon tout
+# compte naitrait en retard le jour de son ajout.
+#
+# `identities` dit quels comptes ce compte de service detient sur les systemes
+# cibles. Sans cette declaration, chaque collecte les rendrait comme des comptes que
+# personne ne reclame : un bruit permanent dans un ecran dont la valeur tient a ce que
+# tout ce qu'il montre appelle une action. Les identifiants ne se devinent pas, ils se
+# relevent a la premiere collecte du systeme concerne.
+serviceAccounts:
+  - key: bot-de-deploiement
+    label: Bot de deploiement
+    purpose: Declenche les mises en service des applications de l'incubateur
+    ownerUsername: claire.durand
+    reviewEveryDays: 180
+    identities: []
+
+  - key: jeton-integration-continue
+    label: Jeton d'integration continue
+    purpose: Jeton d'organisation utilise par les chaines de construction
+    ownerUsername: claire.durand
+    # Un acces critique se revoit deux fois plus souvent que les autres.
+    reviewEveryDays: 90
+    identities:
+      - provider: github
+        externalId: "123456789"

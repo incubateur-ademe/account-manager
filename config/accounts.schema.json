@@ -1,0 +1,219 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Personnes suivies et comptes de service",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "number",
+      "const": 1,
+      "description": "Version du format, non du contenu. Elle existe pour qu'un fichier écrit pour une autre version du code soit refusé net plutôt que lu de travers, ce qui compte dès lors que ce fichier ne vit pas dans le même dépôt que le code.",
+      "examples": [
+        1
+      ]
+    },
+    "scope": {
+      "type": "object",
+      "properties": {
+        "incubator": {
+          "default": "ademe",
+          "description": "Identifiant beta.gouv de l'incubateur, tel qu'il apparaît dans les adresses de l'espace-membre. Toute la collecte est scopée dessus : c'est lui qui définit « nous ».",
+          "examples": [
+            "ademe"
+          ],
+          "type": "string",
+          "minLength": 1
+        },
+        "transverse": {
+          "default": [],
+          "description": "Fait autorité sur l'appartenance au périmètre. Une équipe transverse n'apparaît dans aucune startup d'État : sans cette liste, elle serait invisible. L'en retirer est le geste qui l'en sort.",
+          "examples": [
+            [
+              "claire.durand",
+              "samir.benali"
+            ]
+          ],
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z0-9.-]+$",
+            "description": "Username beta.gouv, pivot d'identité de tout le système. Minuscules, chiffres, points et tirets.",
+            "examples": [
+              "claire.durand"
+            ]
+          }
+        },
+        "local": {
+          "default": [],
+          "description": "Personnes qui ont des accès sans avoir de fiche espace-membre. Faute de source amont, leur date de fin est saisie ici et n'est rafraîchie par personne : elle vieillit en silence, ce qui rend cette liste bonne à garder courte.",
+          "examples": [
+            [
+              {
+                "username": "prestataire.exemple",
+                "until": "2027-06-30"
+              }
+            ]
+          ],
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "username": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[a-z0-9.-]+$",
+                "description": "Username beta.gouv, pivot d'identité de tout le système. Minuscules, chiffres, points et tirets.",
+                "examples": [
+                  "claire.durand"
+                ]
+              },
+              "until": {
+                "type": "string",
+                "format": "date",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                "description": "Dernier jour travaillé, inclusif, au format AAAA-MM-JJ.",
+                "examples": [
+                  "2027-06-30"
+                ]
+              }
+            },
+            "required": [
+              "username",
+              "until"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "incubator",
+        "transverse",
+        "local"
+      ],
+      "additionalProperties": false,
+      "description": "Qui l'incubateur suit, et sous quelle autorité."
+    },
+    "serviceAccounts": {
+      "default": [],
+      "description": "Comptes non humains. Ils n'ont pas de fin de mission, d'où la revue périodique, et leur propriétaire est obligatoire.",
+      "examples": [
+        [
+          {
+            "key": "bot-de-deploiement",
+            "label": "Bot de déploiement",
+            "purpose": "Déclenche les mises en service des applications de l'incubateur",
+            "ownerUsername": "claire.durand",
+            "reviewEveryDays": 180,
+            "identities": []
+          }
+        ]
+      ],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Identifiant stable du compte, qui lui sert d'identité en base. Le changer crée un nouveau compte plutôt que de renommer l'ancien.",
+            "examples": [
+              "bot-de-deploiement"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Nom lisible, tel qu'il apparaît à l'écran.",
+            "examples": [
+              "Bot de déploiement"
+            ]
+          },
+          "purpose": {
+            "type": "string",
+            "minLength": 1,
+            "description": "À quoi sert ce compte. Sert à décider, lors d'une revue, s'il a encore lieu d'être.",
+            "examples": [
+              "Déclenche les mises en service des applications de l'incubateur"
+            ]
+          },
+          "ownerUsername": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z0-9.-]+$",
+            "description": "Qui répond de ce compte. Obligatoire : un compte machine sans responsable est précisément ce que cet outil cherche à éviter.",
+            "examples": [
+              "claire.durand"
+            ]
+          },
+          "reviewEveryDays": {
+            "default": 180,
+            "description": "Périodicité de revue en jours. Un compte machine n'a pas de fin de mission : c'est le seul signal qu'il puisse émettre. Faute de revue enregistrée, le compte à rebours court depuis sa déclaration.",
+            "examples": [
+              180,
+              90
+            ],
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "identities": {
+            "default": [],
+            "description": "Comptes que ce compte de service détient sur les systèmes cibles. Sans cette déclaration, chaque collecte les rendrait comme des comptes que personne ne réclame, à chaque passage.",
+            "examples": [
+              [
+                {
+                  "provider": "github",
+                  "externalId": "123456789"
+                }
+              ]
+            ],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Clé du système cible, telle que la déclare son connecteur.",
+                  "examples": [
+                    "github"
+                  ]
+                },
+                "externalId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Identifiant du compte sur ce système, tel que la collecte le rend. Il ne se devine pas : il se relève à la première collecte.",
+                  "examples": [
+                    "123456789"
+                  ]
+                }
+              },
+              "required": [
+                "provider",
+                "externalId"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "purpose",
+          "ownerUsername",
+          "reviewEveryDays",
+          "identities"
+        ],
+        "additionalProperties": false,
+        "description": "Un compte non humain : bot, jeton d'intégration continue, clé d'API."
+      }
+    }
+  },
+  "required": [
+    "version",
+    "scope",
+    "serviceAccounts"
+  ],
+  "additionalProperties": false,
+  "description": "Personnes suivies et comptes de service. Ce fichier nomme, il ne vit donc pas nécessairement dans le dépôt du code."
+}

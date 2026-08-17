@@ -1,0 +1,31 @@
+# Reinstalle depuis le lockfile dans l'image, jamais copie depuis l'hote
+node_modules/
+.pnpm-store/
+
+# Rebuild dans l'image : la sortie locale porte les binaires de l'hote
+.next/
+out/
+build/
+dist/
+
+# Regenere par "prisma generate" au prebuild
+src/generated/
+
+.git/
+.github/
+.claude/
+
+.env
+.env.*
+
+docs/
+coverage/
+*.tsbuildinfo
+*.log
+.DS_Store
+
+Dockerfile
+.dockerignore
+docker-compose.yml
+README.md
+CLAUDE.md

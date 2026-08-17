@@ -1,0 +1,66 @@
+{
+  "name": "incubateur-ademe-account-manager",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "prebuild": "react-dsfr update-icons && prisma generate",
+    "build": "next build",
+    "db:deploy": "prisma migrate deploy",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "predev": "react-dsfr update-icons",
+    "dev": "next dev",
+    "format": "biome format --write .",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "policy:schema": "node --import tsx src/cli/schema-politique.ts",
+    "start": "next start",
+    "sync": "node --import tsx src/cli/sync.ts",
+    "test": "vitest run",
+    "typecheck": "next typegen && tsc --noEmit",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test"
+  },
+  "dependencies": {
+    "@auth/prisma-adapter": "^2.11.2",
+    "@codegouvfr/react-dsfr": "^1.32.4",
+    "@incubateur-ademe/next-auth-espace-membre-provider": "^0.3.4",
+    "@prisma/adapter-pg": "^7.9.1",
+    "@prisma/client": "^7.9.1",
+    "next": "16.3.0",
+    "next-auth": "5.0.0-beta.32",
+    "nodemailer": "^8.0.11",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "yaml": "^2.8.1",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.7",
+    "@next/env": "16.3.0",
+    "@tsconfig/next": "^2.0.6",
+    "@tsconfig/strictest": "^2.0.8",
+    "@types/node": "^24.3.0",
+    "@types/nodemailer": "^8.0.1",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "prisma": "^7.9.1",
+    "sass": "^1.102.0",
+    "server-only": "^0.0.1",
+    "tsx": "^4.20.5",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  },
+  "packageManager": "pnpm@10.34.5+sha512.a4ee05f2f73658255bd6a89859c065a45c28a57daefae2c893a168ee2b73168c37b91e83e57ea67654ad03f03031746430e8bce38e362e042605fb8abc80192e",
+  "engines": {
+    "node": ">=24"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/engines",
+      "esbuild",
+      "prisma"
+    ]
+  }
+}

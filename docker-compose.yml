@@ -1,0 +1,49 @@
+# Developpement local uniquement. Ce fichier ne sert PAS au deploiement :
+# sur Coolify, l'application est une ressource "Application" construite depuis le
+# Dockerfile, et PostgreSQL une base standalone. Voir docs/deploiement.md.
+
+name: account-manager
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: account-manager-postgres
+    environment:
+      POSTGRES_USER: account_manager
+      POSTGRES_PASSWORD: account_manager
+      POSTGRES_DB: account_manager
+    ports:
+      # Port hote parametrable : d'autres projets du parc exposent aussi PostgreSQL
+      # sur 5432, et deux stacks ne peuvent pas le partager. POSTGRES_PORT=5433
+      # suffit a cohabiter, a condition de reporter le port dans DATABASE_URL.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U account_manager -d account_manager"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # Serveur SMTP jetable : recoit les liens de connexion NextAuth sans jamais
+  # rien router vers l'exterieur. Interface web sur http://localhost:8025.
+  mailpit:
+    image: axllent/mailpit:v1.30
+    container_name: account-manager-mailpit
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+      MP_MAX_MESSAGES: "500"
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

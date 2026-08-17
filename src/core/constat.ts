@@ -1,0 +1,198 @@
+export type ConstatKind = "SCOPE_EXIT" | "INACTIVE_STARTUP" | "ORPHAN" | "UNREGISTERED";
+
+export interface Constat {
+  kind: ConstatKind;
+  dedupKey: string;
+  severity: "LOW" | "MEDIUM" | "HIGH";
+  detail: string;
+  /** Renseigné quand le constat porte sur quelqu'un du périmètre. */
+  username?: string;
+  /** Renseigné quand il porte sur un compte observé sur un système cible. */
+  identiteId?: string;
+}
+
+export interface PersonneConstatable {
+  username: string;
+  fullname: string;
+  attachment: "STARTUPS" | "DECLARED" | "BOTH" | "LOCAL";
+  startups: readonly string[];
+  missionEnd: Date | null;
+  vanishedAt: Date | null;
+}
+
+/**
+ * Une personne peut quitter le référentiel amont sans que ses accès aient été
+ * coupés : le cron de beta.gouv retire des équipes ceux dont la mission est finie.
+ * C'est le constat le plus important du système, parce qu'il porte sur quelqu'un
+ * que plus aucune source ne réclame et que rien d'autre ne signalerait.
+ */
+function sortieDuPerimetre(personne: PersonneConstatable): Constat | null {
+  if (personne.vanishedAt === null) {
+    return null;
+  }
+  return {
+    kind: "SCOPE_EXIT",
+    username: personne.username,
+    dedupKey: `SCOPE_EXIT:${personne.username}`,
+    severity: "HIGH",
+    detail: `${personne.fullname} a quitté le référentiel de l'incubateur sans traitement`,
+  };
+}
+
+/**
+ * Une startup abandonnée ou transférée ne justifie plus aucun accès. Quelqu'un dont
+ * toutes les startups sont dans cet état n'a plus de raison d'en avoir, même si sa
+ * mission beta.gouv court encore : il travaille désormais ailleurs.
+ */
+function startupsToutesTerminees(
+  personne: PersonneConstatable,
+  phaseParStartup: ReadonlyMap<string, string | null>,
+  phasesTerminales: readonly string[],
+  today: Date,
+): Constat | null {
+  // Une personne rattachée par équipe n'est pas concernée : son rattachement ne
+  // dépend d'aucune startup.
+  if (personne.attachment !== "STARTUPS" || personne.startups.length === 0) {
+    return null;
+  }
+
+  // Sur une mission déjà terminée, l'échéance dit la même chose et le dit mieux.
+  // Lever le constat quand même noierait le seul cas qui compte, celui d'une
+  // personne toujours en mission dont plus aucune startup ne vit.
+  if (personne.missionEnd !== null && personne.missionEnd < today) {
+    return null;
+  }
+
+  const terminales = new Set(phasesTerminales);
+  const phases = personne.startups.map((ghid) => phaseParStartup.get(ghid) ?? null);
+
+  // Une phase inconnue interdit de conclure : on ne signale que sur du constaté.
+  if (phases.some((phase) => phase === null || !terminales.has(phase))) {
+    return null;
+  }
+
+  return {
+    kind: "INACTIVE_STARTUP",
+    username: personne.username,
+    dedupKey: `INACTIVE_STARTUP:${personne.username}`,
+    severity: "MEDIUM",
+    detail: `${personne.fullname} n'est rattaché qu'à des startups terminées : ${personne.startups.join(", ")}`,
+  };
+}
+
+export function constatsDe(
+  personnes: readonly PersonneConstatable[],
+  phaseParStartup: ReadonlyMap<string, string | null>,
+  phasesTerminales: readonly string[],
+  today: Date,
+): Constat[] {
+  const constats: Constat[] = [];
+
+  for (const personne of personnes) {
+    const sortie = sortieDuPerimetre(personne);
+    if (sortie) {
+      constats.push(sortie);
+      // Une personne déjà sortie n'a pas besoin d'un second constat sur ses
+      // startups : le premier couvre le cas et appelle la même action.
+      continue;
+    }
+
+    const terminees = startupsToutesTerminees(personne, phaseParStartup, phasesTerminales, today);
+    if (terminees) {
+      constats.push(terminees);
+    }
+  }
+
+  return constats.sort((a, b) => a.dedupKey.localeCompare(b.dedupKey));
+}
+
+/**
+ * Départage les constats qu'un opérateur a clos, selon que la situation qu'il a
+ * jugée dure encore ou non.
+ *
+ * Ceux dont la situation persiste restent clos : les rouvrir chaque nuit
+ * reviendrait à lui resservir un travail qu'il a déjà fait, et c'est ainsi qu'une
+ * file cesse d'être lue. Ceux dont la situation a cessé perdent leur verrou, sans
+ * quoi un épisode ultérieur ne serait plus jamais signalé, et le silence
+ * ressemblerait alors à une absence d'écart.
+ */
+export function verrousDeCloture<T extends { dedupKey: string }>(
+  closParUnHumain: readonly T[],
+  constatesMaintenant: ReadonlySet<string>,
+): { verrouilles: Set<string>; aRearmer: T[] } {
+  const verrouilles = new Set<string>();
+  const aRearmer: T[] = [];
+
+  for (const constat of closParUnHumain) {
+    if (constatesMaintenant.has(constat.dedupKey)) {
+      verrouilles.add(constat.dedupKey);
+    } else {
+      aRearmer.push(constat);
+    }
+  }
+
+  return { verrouilles, aRearmer };
+}
+
+export interface IdentiteConstatable {
+  id: string;
+  provider: string;
+  handle: string;
+  /** Vrai quand le rattachement repose sur une preuve, non sur une ressemblance. */
+  rattachementSur: boolean;
+  personneUsername: string | null;
+  /** La personne rattachée a quitté le référentiel de l'incubateur. */
+  personneSortie: boolean;
+  /** Rattachée à un compte de service déclaré dans la politique. */
+  compteDeService: boolean;
+}
+
+/**
+ * Les deux constats que la lecture d'un système cible peut lever appellent des
+ * gestes opposés, et les confondre coûterait cher dans les deux sens.
+ *
+ * `ORPHAN` porte sur un compte dont le détenteur a quitté le référentiel : celui-là
+ * se coupe. `UNREGISTERED` porte sur un compte que personne ne réclame, et le plus
+ * souvent il manque une fiche plutôt qu'il ne faut retirer un accès : le traiter
+ * comme un départ reviendrait à couper quelqu'un en poste, précisément parce qu'on
+ * ne le connaît pas.
+ */
+export function constatsDIdentites(identites: readonly IdentiteConstatable[]): Constat[] {
+  const constats: Constat[] = [];
+
+  for (const identite of identites) {
+    // Un compte machine déclaré est à sa place : c'est même à cela que sert la
+    // déclaration, ne pas le voir revenir chaque nuit.
+    if (identite.compteDeService) {
+      continue;
+    }
+
+    const ou = `${identite.handle} sur ${identite.provider}`;
+
+    // Une ressemblance ne suffit pas à affirmer qu'une personne partie détient ce
+    // compte : ce serait proposer une coupure sur une supposition.
+    if (identite.personneUsername !== null) {
+      if (identite.personneSortie && identite.rattachementSur) {
+        constats.push({
+          kind: "ORPHAN",
+          dedupKey: `ORPHAN:${identite.provider}:${identite.handle}`,
+          severity: "HIGH",
+          detail: `${ou} appartient à ${identite.personneUsername}, sortie du référentiel`,
+          username: identite.personneUsername,
+          identiteId: identite.id,
+        });
+      }
+      continue;
+    }
+
+    constats.push({
+      kind: "UNREGISTERED",
+      dedupKey: `UNREGISTERED:${identite.provider}:${identite.handle}`,
+      severity: "MEDIUM",
+      detail: `${ou} n'est réclamé par aucune personne suivie ni aucun compte de service`,
+      identiteId: identite.id,
+    });
+  }
+
+  return constats;
+}

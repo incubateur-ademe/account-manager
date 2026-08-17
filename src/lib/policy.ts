@@ -1,0 +1,54 @@
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+import { parse } from "yaml";
+import type { z } from "zod";
+
+import { accountsSchema, configSchema, type Policy } from "@/core/policy";
+
+/**
+ * Répertoire des fichiers de politique. Configurable parce qu'ils ne vivent pas
+ * nécessairement dans le dépôt du code : ils nomment des personnes et des comptes
+ * machine, et une instance peut vouloir les tenir ailleurs.
+ */
+const DOSSIER = resolve(process.cwd(), process.env["POLICY_DIR"] ?? "config");
+
+let cached: Policy | undefined;
+
+function lire<T>(fichier: string, schema: z.ZodType<T>): T {
+  const chemin = resolve(DOSSIER, fichier);
+
+  // Un fichier absent n'est pas lu comme un fichier vide : le schéma décide, et il
+  // n'acceptera que celui dont tout a un défaut. Les comptes, eux, seront refusés,
+  // ce qui vaut mieux qu'un périmètre silencieusement réduit à personne.
+  const brut = existsSync(chemin) ? parse(readFileSync(chemin, "utf8")) : { version: 1 };
+  const lu = schema.safeParse(brut);
+
+  if (!lu.success) {
+    const details = lu.error.issues
+      .map((issue) => `  ${issue.path.join(".") || "(racine)"} : ${issue.message}`)
+      .join("\n");
+
+    // Une version qui ne correspond pas ne dit pas qu'un champ est faux, mais que ce
+    // fichier et ce code n'avancent plus ensemble.
+    const explication = lu.error.issues.some((issue) => issue.path[0] === "version")
+      ? "\n\nLa version du format ne correspond pas à celle qu'attend ce code. Le fichier a été écrit pour une autre version : mettez-le à jour, ou déployez la version du code qui va avec."
+      : "";
+
+    throw new Error(`Fichier de politique invalide (${chemin}) :\n${details}${explication}`);
+  }
+
+  return lu.data;
+}
+
+export function loadPolicy(): Policy {
+  const { version: _versionComptes, ...comptes } = lire("accounts.yaml", accountsSchema);
+  const { version: _versionReglages, ...reglages } = lire("config.yaml", configSchema);
+
+  return { ...reglages, ...comptes };
+}
+
+export function policy(): Policy {
+  cached ??= loadPolicy();
+  return cached;
+}

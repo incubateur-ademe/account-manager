@@ -1,0 +1,35 @@
+name: Vérification
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Une exécution par référence : pousser deux fois de suite annule la première,
+# qui n'apprendrait plus rien sur l'état courant.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verifier:
+    name: Lint, types et tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Le client Prisma est gitignoré : sans lui, le typecheck échoue sur des
+      # modules absents plutôt que sur une vraie faute.
+      - run: pnpm db:generate
+
+      - run: pnpm verify

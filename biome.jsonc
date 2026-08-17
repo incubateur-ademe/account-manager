@@ -1,0 +1,80 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.7/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    // Inclusion positive : le build standalone embarque un node_modules complet
+    // que les négations n'écartent pas de façon fiable.
+    // Un dossier s'ignore sans suffixe glob, "!src/generated/**" est refusé.
+    "includes": ["src/**", "!src/generated", "*.ts", "*.json", "*.jsonc", "*.md", "docs/**"]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+  "linter": {
+    "enabled": true,
+    // Domaines natifs de Biome : ils portent les règles Next et React qu'on avait
+    // perdues en quittant eslint-config-next, sans dépendre d'un preset tiers.
+    "domains": {
+      "next": "recommended",
+      "react": "recommended",
+      "test": "recommended"
+    },
+    "rules": {
+      "preset": "recommended",
+      "correctness": {
+        "noUnusedVariables": "error",
+        "noUnusedImports": "error"
+      },
+      "suspicious": {
+        "noExplicitAny": "error",
+        "noConsole": { "level": "error", "options": { "allow": ["warn", "error"] } }
+      },
+      "style": {
+        "useConst": "error",
+        "noNonNullAssertion": "error",
+        "useImportType": "error",
+        "useConsistentMethodSignatures": "error"
+      },
+      "complexity": {
+        "noForEach": "off",
+        // Contredit noPropertyAccessFromIndexSignature côté TypeScript.
+        "useLiteralKeys": "off"
+      }
+    }
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "always",
+      "trailingCommas": "all"
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["**/next.config.*", "**/page.tsx", "**/layout.tsx"],
+      "linter": { "rules": { "suspicious": { "useAwait": "off" } } }
+    },
+    {
+      "includes": ["src/cli/**"],
+      "linter": { "rules": { "suspicious": { "noConsole": "off" } } }
+    },
+    {
+      "includes": ["src/lib/audit.ts"],
+      "linter": { "rules": { "complexity": { "noVoid": "off" } } }
+    }
+  ]
+}

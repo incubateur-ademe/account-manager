@@ -1,0 +1,479 @@
+generator client {
+  provider      = "prisma-client"
+  output        = "../src/generated/prisma"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Authentification (NextAuth v5 + @auth/prisma-adapter)
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+
+  // Exigés par @incubateur-ademe/next-auth-espace-membre-provider.
+  username         String? @unique
+  isBetaGouvMember Boolean @default(false)
+
+  accounts Account[]
+  sessions Session[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ---------------------------------------------------------------------------
+// Périmètre
+// ---------------------------------------------------------------------------
+
+enum PersonSource {
+  BETA
+  LOCAL
+  SERVICE
+}
+
+enum Attachment {
+  STARTUPS
+  DECLARED
+  BOTH
+  LOCAL
+}
+
+model Person {
+  id String @id @default(cuid())
+
+  username String @unique
+
+  // Conserve a titre informatif, pour croiser avec une autre source le jour ou
+  // ce sera utile. Ce n'est ni le pivot ni une cle de rapprochement : le username
+  // est immuable cote espace-membre, et aucun endpoint ne resout un uuid.
+  betaUuid String? @unique
+
+  fullname           String
+  primaryEmail       String?
+  communicationEmail String?
+  githubLogin        String?
+  missionEnd         DateTime?    @db.Date
+  source             PersonSource @default(BETA)
+  attachment         Attachment   @default(STARTUPS)
+  startups           String[]     @default([])
+
+  firstSeenAt DateTime  @default(now())
+  lastSeenAt  DateTime  @default(now())
+  vanishedAt  DateTime?
+
+  identities     ExternalIdentity[]
+  references     Reference[]
+  departureCases DepartureCase[]
+  findings       Finding[]
+
+  @@index([missionEnd])
+  @@index([vanishedAt])
+}
+
+model ServiceAccount {
+  id String @id @default(cuid())
+
+  key           String @unique
+  label         String
+  purpose       String
+  ownerUsername String
+
+  reviewEveryDays Int       @default(180)
+  lastReviewedAt  DateTime?
+
+  identities ExternalIdentity[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerUsername])
+  @@index([lastReviewedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Constaté
+// ---------------------------------------------------------------------------
+
+enum IdKind {
+  OPAQUE
+  EMAIL
+  UPN
+}
+
+enum MatchMethod {
+  DECLARED
+  GITHUB_LOGIN
+  EMAIL_EXACT
+  HEURISTIC
+  NONE
+}
+
+model ExternalIdentity {
+  id String @id @default(cuid())
+
+  provider   String
+  externalId String
+  idKind     IdKind @default(OPAQUE)
+  handle     String
+
+  // Nul signifie « compte isolé » : aucune identité du périmètre ne le réclame.
+  // C'est un résultat du système, jamais une anomalie à corriger avant écriture.
+  personId         String?
+  serviceAccountId String?
+  matchMethod      MatchMethod @default(NONE)
+
+  firstSeenAt DateTime  @default(now())
+  lastSeenAt  DateTime  @default(now())
+  vanishedAt  DateTime?
+
+  person         Person?         @relation(fields: [personId], references: [id], onDelete: SetNull)
+  serviceAccount ServiceAccount? @relation(fields: [serviceAccountId], references: [id], onDelete: SetNull)
+
+  grants   AccessGrant[]
+  findings Finding[]
+
+  @@unique([provider, externalId])
+  @@index([personId])
+  @@index([serviceAccountId])
+  @@index([provider, vanishedAt])
+}
+
+model Resource {
+  id String @id @default(cuid())
+
+  provider   String
+  externalId String
+  label      String
+  url        String?
+
+  grants     AccessGrant[]
+  references Reference[]
+
+  @@unique([provider, externalId])
+}
+
+model AccessGrant {
+  id String @id @default(cuid())
+
+  externalIdentityId String
+  resourceId         String
+  role               String
+
+  lastActivityAt DateTime?
+  firstSeenAt    DateTime  @default(now())
+  lastSeenAt     DateTime  @default(now())
+  vanishedAt     DateTime?
+
+  externalIdentity ExternalIdentity @relation(fields: [externalIdentityId], references: [id], onDelete: Cascade)
+  resource         Resource         @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@unique([externalIdentityId, resourceId, role])
+  @@index([vanishedAt])
+  @@index([lastActivityAt])
+}
+
+enum OnOffboard {
+  ARCHIVE
+  TRANSFER
+  KEEP
+}
+
+model Reference {
+  id String @id @default(cuid())
+
+  personId   String
+  provider   String
+  resourceId String
+  onOffboard OnOffboard @default(ARCHIVE)
+
+  person   Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@unique([personId, resourceId])
+  @@index([provider])
+}
+
+model Startup {
+  id String @id @default(cuid())
+
+  ghid          String  @unique
+  name          String
+  incubatorGhid String
+  currentPhase  String?
+
+  phaseStart  DateTime? @db.Date
+  firstSeenAt DateTime  @default(now())
+  lastSeenAt  DateTime  @default(now())
+  vanishedAt  DateTime?
+
+  @@index([incubatorGhid])
+  @@index([currentPhase])
+}
+
+enum SyncStatus {
+  OK
+  PARTIAL
+  FAILED
+}
+
+model SyncRun {
+  id String @id @default(cuid())
+
+  provider   String
+  capability String
+  startedAt  DateTime   @default(now())
+  finishedAt DateTime?
+  status     SyncStatus
+  itemsSeen  Int        @default(0)
+  error      Json?
+
+  @@index([provider, startedAt])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Décidé
+// ---------------------------------------------------------------------------
+
+enum DepartureState {
+  WATCH
+  CANDIDATE
+  CONFIRMED
+  CANCELLED
+  DONE
+}
+
+model DepartureCase {
+  id String @id @default(cuid())
+
+  personId        String
+  state           DepartureState @default(WATCH)
+  firstSignalAt   DateTime       @default(now())
+  effectiveDate   DateTime?      @db.Date
+  cancelledReason String?
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+  plans  Plan[]
+
+  @@index([personId])
+  @@index([state])
+}
+
+enum PlanKind {
+  OFFBOARDING
+  DRIFT_FIX
+  MANUAL_OP
+}
+
+enum PlanState {
+  DRAFT
+  CONFIRMABLE
+  EXECUTING
+  EXECUTED
+  PARTIALLY_EXECUTED
+  CANCELLED
+  EXPIRED
+  STALE
+}
+
+model Plan {
+  id String @id @default(cuid())
+
+  departureCaseId String?
+  kind            PlanKind
+  state           PlanState @default(DRAFT)
+
+  planDigest      String
+  confirmedDigest String?
+
+  createdBy   String
+  confirmedBy String?
+  confirmedAt DateTime?
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime
+
+  departureCase DepartureCase? @relation(fields: [departureCaseId], references: [id], onDelete: SetNull)
+  steps         PlanStep[]
+
+  @@index([state])
+  @@index([departureCaseId])
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum StepState {
+  PENDING
+  SKIPPED
+  SUCCEEDED
+  ALREADY_ABSENT
+  STALE
+  FAILED
+}
+
+model PlanStep {
+  id String @id @default(cuid())
+
+  planId     String
+  systemKey  String
+  tier       String
+  capability String
+  action     String
+
+  // Figé à la création : ce qui est confirmé doit rester lisible dans deux ans,
+  // même si la ressource visée a changé de nom depuis.
+  label String
+
+  params        Json
+  riskLevel     RiskLevel @default(MEDIUM)
+  expectedState Json
+
+  state     StepState @default(PENDING)
+  attempts  Int       @default(0)
+  lastError String?
+
+  executedAt      DateTime?
+  reversibleUntil DateTime?
+  idempotencyKey  String    @unique
+
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId])
+  @@index([state])
+}
+
+enum FindingKind {
+  SCOPE_EXIT
+  INACTIVE_STARTUP
+  ORPHAN
+  UNREGISTERED
+  UNMATCHED_IDENTITY
+  EXPIRED_GRANT
+  DORMANT
+  PRIVILEGE_DRIFT
+  UNVERIFIABLE
+  OVERDUE_MANUAL_ACTION
+}
+
+model Finding {
+  id String @id @default(cuid())
+
+  kind               FindingKind
+  personId           String?
+  externalIdentityId String?
+  severity           RiskLevel   @default(MEDIUM)
+
+  dedupKey String @unique
+
+  openedAt    DateTime  @default(now())
+  closedAt    DateTime?
+  closeReason String?
+
+  /// Opérateur qui a clos le constat. Tant qu'il est renseigné, la collecte ne
+  /// rouvre pas le constat : un humain a jugé la situation traitée, et la lui
+  /// resservir chaque nuit reviendrait à ignorer son jugement. Le verrou se lève
+  /// dès que la situation cesse d'être constatée, pour qu'un nouvel épisode soit
+  /// bien signalé. Qui a clos quoi, et pourquoi, vit dans le journal.
+  closedBy String?
+
+  person           Person?           @relation(fields: [personId], references: [id], onDelete: Cascade)
+  externalIdentity ExternalIdentity? @relation(fields: [externalIdentityId], references: [id], onDelete: Cascade)
+
+  @@index([kind, closedAt])
+  @@index([personId])
+}
+
+model Derogation {
+  id String @id @default(cuid())
+
+  targetType String
+  targetId   String
+  reason     String
+
+  createdBy String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([targetType, targetId])
+  @@index([expiresAt])
+}
+
+// ---------------------------------------------------------------------------
+// Journal
+// ---------------------------------------------------------------------------
+
+enum ActorKind {
+  HUMAN
+  SYSTEM
+}
+
+model AuditEvent {
+  id String @id @default(cuid())
+
+  at            DateTime  @default(now())
+  actorKind     ActorKind
+  actorUsername String?
+  action        String
+  targetType    String
+  targetId      String?
+  correlationId String?
+  before        Json?
+  after         Json?
+  result        String
+
+  @@index([at])
+  @@index([targetType, targetId])
+  @@index([correlationId])
+  @@index([actorUsername])
+}
