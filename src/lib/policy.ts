@@ -10,6 +10,12 @@ import { accountsSchema, configSchema, type Policy } from "@/core/policy";
  * Répertoire des fichiers de politique. Configurable parce qu'ils ne vivent pas
  * nécessairement dans le dépôt du code : ils nomment des personnes et des comptes
  * machine, et une instance peut vouloir les tenir ailleurs.
+ *
+ * Seule variable lue hors du schéma de `env.ts`, et à dessein : ce dernier valide
+ * tout d'un bloc au premier accès, si bien que vérifier un fichier YAML exigerait
+ * une URL de base de données. Or `pnpm policy:check` doit tourner depuis le dépôt
+ * de configuration, qui n'a ni base ni secrets. Un chemin de fichier n'est de
+ * toute façon pas ce que ce schéma existe pour protéger.
  */
 const DOSSIER = resolve(process.cwd(), process.env["POLICY_DIR"] ?? "config");
 
