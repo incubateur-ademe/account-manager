@@ -27,6 +27,79 @@ RUN apt-get update \
 WORKDIR /app
 
 # ---------------------------------------------------------------------------
+# Politique de l'instance, recuperee depuis son propre depot.
+#
+# Elle nomme des personnes et dessine la carte des acces techniques : elle vit
+# hors du depot du code, dans un depot prive. Cette etape la depose dans
+# /politique, d'ou l'image finale la copie. L'etape elle-meme n'entre dans
+# aucune image : ni le jeton, ni le clone, ni git ne survivent au build.
+#
+# Elle part de l'image node brute et non de "base" : elle n'a besoin ni de
+# corepack ni de pnpm, et l'apt-get de git n'a pas a etre paye deux fois.
+#
+# Sans CONFIG_REPO, l'etape reussit sans rien deposer. C'est le cas du build
+# local et de l'integration continue, qui n'ont aucune politique reelle a
+# fournir. L'image demarre alors et refuse de servir, faute d'accounts.yaml :
+# mieux vaut ce refus franc qu'un demarrage sur un perimetre vide, qui
+# ressemblerait a un incubateur dont tout le monde est parti.
+# ---------------------------------------------------------------------------
+FROM ${NODE_IMAGE} AS politique
+
+# BuildKit avertit sur CONFIG_TOKEN (SecretsUsedInArgOrEnv). L'avertissement vise
+# le cas ou l'ARG finit dans l'image livree, ce qui n'arrive pas ici : cette etape
+# n'en est pas une. Un secret monte serait plus propre encore, mais Coolify ne
+# passe que des --build-arg, et une politique qu'on ne sait pas deployer ne
+# protege rien.
+ARG CONFIG_REPO=""
+ARG CONFIG_REF=main
+ARG CONFIG_TOKEN=""
+
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends ca-certificates git \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN <<'FETCH'
+set -eu
+
+mkdir -p /politique
+
+if [ -z "${CONFIG_REPO:-}" ]; then
+  echo "absente (build sans CONFIG_REPO)" > /politique/.revision
+  echo "[politique] CONFIG_REPO absent : aucune politique embarquee"
+  exit 0
+fi
+
+if [ -z "${CONFIG_TOKEN:-}" ]; then
+  echo "[politique] CONFIG_REPO est renseigne mais CONFIG_TOKEN est vide" >&2
+  exit 1
+fi
+
+# Le jeton passe par l'URL et non par la ligne de commande du Dockerfile : le
+# heredoc n'est pas expanse a la construction, l'historique de la couche porte
+# donc "${CONFIG_TOKEN}" et non sa valeur.
+git clone --depth 1 --branch "${CONFIG_REF:-main}" \
+  "https://x-access-token:${CONFIG_TOKEN}@github.com/${CONFIG_REPO}.git" /source
+
+# Copie nominative plutot que copie du depot : ce dernier ne fournit que la
+# politique, jamais un fichier qui entrerait dans l'image par surprise.
+for fichier in accounts.yaml config.yaml; do
+  if [ ! -f "/source/${fichier}" ]; then
+    echo "[politique] ${fichier} absent de ${CONFIG_REPO}@${CONFIG_REF:-main}" >&2
+    exit 1
+  fi
+  cp "/source/${fichier}" /politique/
+done
+
+# Quelle revision de la politique tourne : la question se pose le jour ou un
+# ecran affirme quelque chose d'inattendu, et l'image seule n'y repond pas.
+echo "${CONFIG_REPO}@${CONFIG_REF:-main} $(git -C /source rev-parse --short HEAD)" \
+  > /politique/.revision
+
+rm -rf /source
+echo "[politique] $(cat /politique/.revision)"
+FETCH
+
+# ---------------------------------------------------------------------------
 # Dependances completes, cache invalide par le seul lockfile
 # ---------------------------------------------------------------------------
 FROM base AS deps
@@ -101,12 +174,15 @@ COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 # depuis /app/ops. Elle doit donc exister aux deux endroits, sans quoi l'outil
 # demarre pour ne servir que des erreurs.
 #
-# Les fichiers de l'instance ne sont pas dans ce depot : ils nomment des personnes et
-# dessinent la carte des acces techniques. Ce qui est copie ici, ce sont les modeles
-# et les schemas ; les vrais fichiers arrivent au deploiement, dans ce meme
-# repertoire, et POLICY_DIR permet au besoin de les chercher ailleurs.
+# Deux provenances qui ne se recouvrent pas. Du depot du code viennent les
+# modeles et les schemas, qui documentent le format. Du depot de configuration
+# viennent accounts.yaml et config.yaml, les seuls fichiers que le code lit.
+# POLICY_DIR permet au besoin de les chercher ailleurs, un montage par exemple.
 COPY --from=builder --chown=node:node /app/config ./config
 COPY --from=builder --chown=node:node /app/config ./ops/config
+
+COPY --from=politique --chown=node:node /politique/ ./config/
+COPY --from=politique --chown=node:node /politique/ ./ops/config/
 
 COPY --from=ops --chown=node:node /app/node_modules ./ops/node_modules
 COPY --from=ops --chown=node:node /app/package.json ./ops/package.json
@@ -133,6 +209,10 @@ TSCONFIG
 COPY <<'ENTRYPOINT_SH' /usr/local/bin/entrypoint.sh
 #!/bin/sh
 set -e
+
+if [ -f /app/config/.revision ]; then
+  echo "[demarrage] politique : $(cat /app/config/.revision)"
+fi
 
 if [ "${RUN_MIGRATIONS_ON_BOOT:-true}" = "true" ]; then
   echo "[demarrage] application des migrations Prisma"

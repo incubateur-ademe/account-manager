@@ -18,6 +18,12 @@ src/generated/
 .env
 .env.*
 
+# La politique n'entre dans l'image que par l'etape "politique", qui la tire de
+# son propre depot. Sans cette exclusion, un build local embarquerait au passage
+# les fichiers reels du poste de developpement, silencieusement.
+config/*.yaml
+!config/*.exemple.yaml
+
 docs/
 coverage/
 *.tsbuildinfo

@@ -15,10 +15,39 @@ provider Espace Membre beta.gouv, react-dsfr, Biome, Vitest. Node 25, pnpm.
 
 ```bash
 pnpm install
-cp .env.example .env      # puis renseigner les valeurs
-docker compose up -d      # PostgreSQL et serveur de courriel local
+cp .env.example .env                                # puis renseigner les valeurs
+cp config/accounts.exemple.yaml config/accounts.yaml
+cp config/config.exemple.yaml config/config.yaml
+docker compose up -d                                # PostgreSQL et serveur de courriel local
 pnpm db:migrate
 pnpm dev
+```
+
+## Configuration
+
+L'application lit deux fichiers YAML dans `config/`, absents de ce dépôt.
+
+**`accounts.yaml` nomme** : le périmètre suivi et les comptes de service, avec leurs
+propriétaires. Il est obligatoire, l'application refuse de servir sans lui.
+**`config.yaml` règle** : seuils, vocabulaire, catalogues. Tout y a un défaut, il est
+donc facultatif.
+
+Ce qui nomme ne vit pas avec le code. La politique de l'instance ADEME est dans un dépôt
+privé dédié, [account-manager-config](https://github.com/incubateur-ademe/account-manager-config),
+que le build va chercher au moment de fabriquer l'image. Ce dépôt-ci ne porte que les
+modèles `config/*.exemple.yaml`, à copier pour démarrer, et les schémas JSON qui les
+valident.
+
+Les schémas sont **générés** depuis les schémas Zod de `src/core/policy.ts`, jamais
+écrits à la main. Chaque champ y porte sa description et un exemple, ce qui donne
+l'autocomplétion et la validation dans l'éditeur, y compris depuis un dépôt qui n'a pas
+le code sous la main. Après toute modification de `src/core/policy.ts`, lancer
+`pnpm policy:schema`.
+
+Pour vérifier une politique sans démarrer l'application, ici ou ailleurs :
+
+```bash
+POLICY_DIR=../account-manager-config pnpm policy:check
 ```
 
 ## Commandes
@@ -29,6 +58,8 @@ pnpm dev
 | `pnpm build` | build de production |
 | `pnpm verify` | lint, typecheck et tests |
 | `pnpm sync` | collecte sur les systèmes cibles |
+| `pnpm policy:check` | valide la politique et en affiche le résumé |
+| `pnpm policy:schema` | régénère les schémas JSON depuis Zod |
 | `pnpm db:migrate` | applique les migrations en développement |
 | `pnpm db:deploy` | applique les migrations en production |
 | `pnpm db:studio` | explorateur de base |

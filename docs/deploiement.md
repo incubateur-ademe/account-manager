@@ -61,7 +61,7 @@ créer un **enregistrement A** vers `51.15.216.229` dans la zone OVH, jamais un 
 
 ## 2. Ce que contient l'image
 
-Le `Dockerfile` produit une image en quatre étapes (`deps`, `builder`, `ops`,
+Le `Dockerfile` produit une image en cinq étapes (`politique`, `deps`, `builder`, `ops`,
 `runner`). L'image finale porte **deux arbres de dépendances**, et ce n'est pas un
 oubli.
 
@@ -86,16 +86,53 @@ Deux conséquences à connaître :
   être ajoutée à la liste de promotion du Dockerfile, comme `prisma` et `tsx`. C'est
   le seul endroit du fichier qui demande une maintenance manuelle.
 
-**`config/accounts.yaml` et `config/config.yaml` est copié dans les deux arbres.** La politique est lue sur le
-disque et jamais bundlée, or les deux arbres ne travaillent pas depuis le même
-répertoire : le serveur web depuis `/app`, le CLI depuis `/app/ops`. Elle doit donc
-exister aux deux endroits. Une image qui ne la porterait qu'à un seul démarrerait
-normalement pour ne servir que des erreurs, la politique n'étant chargée qu'au premier
-écran qui en a besoin.
+**`config/accounts.yaml` et `config/config.yaml` sont copiés dans les deux arbres.** La
+politique est lue sur le disque et jamais bundlée, or les deux arbres ne travaillent pas
+depuis le même répertoire : le serveur web depuis `/app`, le CLI depuis `/app/ops`. Elle
+doit donc exister aux deux endroits. Une image qui ne la porterait qu'à un seul
+démarrerait normalement pour ne servir que des erreurs, la politique n'étant chargée
+qu'au premier écran qui en a besoin.
 
 `/app/ops` embarque un `tsconfig.json` réduit, écrit par le Dockerfile. Celui du dépôt
 étend `@tsconfig/strictest` et `@tsconfig/next`, absents de l'arbre de production ;
 `tsx` ne vérifie pas les types, il n'a besoin que des alias `@/*`.
+
+### La politique vient d'un autre dépôt
+
+Elle nomme des personnes, désigne des propriétaires de comptes machine et dessine la
+carte des accès techniques de l'incubateur. Le code, lui, est public. Les deux fichiers
+vivent donc dans
+[account-manager-config](https://github.com/incubateur-ademe/account-manager-config),
+privé, et l'étape `politique` du Dockerfile va les y chercher au build.
+
+Cette étape part de l'image node brute, installe `git`, clone en profondeur 1, copie
+**nommément** `accounts.yaml` et `config.yaml` puis écrit la révision clonée dans
+`config/.revision`. Elle n'entre dans aucune image : ni le jeton, ni le clone, ni `git`
+ne survivent au build. Seuls les deux fichiers et la révision passent dans `runner`, par
+un `COPY --from`.
+
+Trois choix méritent d'être explicités.
+
+**Le jeton ne fuit pas dans l'image finale.** L'étape est intermédiaire, ses couches ne
+sont pas exportées. Et le script est un heredoc non expansé à la construction :
+l'historique de la couche porte `${CONFIG_TOKEN}`, jamais sa valeur. Un jeton
+*fine-grained* limité à ce seul dépôt, en lecture, reste néanmoins la bonne façon de le
+créer.
+
+**Sans `CONFIG_REPO`, le build réussit et n'embarque rien.** C'est le cas du build local
+et de l'intégration continue, qui n'ont aucune politique réelle à fournir. L'image
+démarre alors et refuse de servir, faute d'`accounts.yaml`. Ce refus franc vaut mieux
+qu'un démarrage sur un périmètre vide, qui ressemblerait trait pour trait à un
+incubateur dont tout le monde serait parti.
+
+**Modifier la politique ne change rien tant qu'on n'a pas redéployé.** C'est la
+contrepartie assumée du fetch au build : un déploiement correspond à un état connu de la
+politique, et le journal de démarrage dit lequel. Si un jour il faut découpler les deux,
+`POLICY_DIR` pointe déjà ailleurs et un montage de fichiers Coolify suffirait, au prix de
+cette traçabilité.
+
+Le `.dockerignore` exclut `config/*.yaml`. Sans cette exclusion, un build lancé depuis un
+poste de développement embarquerait au passage la politique locale, silencieusement.
 
 ### Choix de l'image de base
 
@@ -320,6 +357,25 @@ ressource Coolify :
 `NODE_ENV`, `PORT` et `HOSTNAME` sont posés par l'image, ne pas les redéfinir.
 `ESPACE_MEMBRE_URL` a une valeur par défaut correcte.
 
+### Les trois variables de build
+
+Elles ne servent qu'à fabriquer l'image et n'existent plus dans le conteneur. Dans
+Coolify, ce sont des variables ordinaires dont on coche **`Build Variable`** : sans cette
+case, elles ne sont pas passées en `--build-arg` et le clone de la politique échoue.
+
+| Variable | Valeur |
+|---|---|
+| `CONFIG_REPO` | `incubateur-ademe/account-manager-config` |
+| `CONFIG_REF` | `main` |
+| `CONFIG_TOKEN` | PAT *fine-grained*, ce seul dépôt, permission `Contents: read` |
+
+Laisser `CONFIG_REPO` vide produit une image sans politique, qui démarre et refuse de
+servir. Le renseigner sans `CONFIG_TOKEN` fait échouer le build tout de suite, plutôt que
+de livrer une image muette : c'est presque toujours un oubli de la case à cocher.
+
+Le jeton expire. Le jour où il expirera, c'est le **build** qui cassera, pas
+l'application en service, et le message sera un `403` de GitHub au clone.
+
 Deux points de vigilance.
 
 **`OPERATORS` vide ferme la porte à tout le monde.** L'allowlist est le seul filtre
@@ -356,6 +412,9 @@ fonctionne, personne ne se connecte. Trois options, par ordre de préférence :
 - La migration initiale existe et est committée (section 3).
 - Le relais SMTP est choisi et ses credentials sont en main.
 - La clé de l'API espace-membre est en main.
+- Le dépôt de configuration porte une politique valide, vérifiée par
+  `POLICY_DIR=../account-manager-config pnpm policy:check`, et le jeton de lecture qui
+  va avec est en main.
 
 ### 6.1 Créer la base
 
@@ -393,7 +452,8 @@ serveur `localhost / outils`.
 
 ### 6.4 Poser les variables
 
-Onglet Environment Variables, section 5. Vérifier `OPERATORS` avant de déployer.
+Onglet Environment Variables, section 5. Vérifier `OPERATORS` avant de déployer, et la
+case `Build Variable` sur les trois variables `CONFIG_*`.
 
 ### 6.5 Déployer
 
@@ -404,12 +464,16 @@ suivants réutilisent les couches tant que le lockfile ne bouge pas.
 Dans les logs du conteneur, la séquence attendue est :
 
 ```
+[demarrage] politique : incubateur-ademe/account-manager-config@main a1b2c3d
 [demarrage] application des migrations Prisma
 ... Applying migration `<timestamp>_init`
 [demarrage] migrations a jour
    ▲ Next.js 16.3.0
    - Local: http://0.0.0.0:3000
 ```
+
+Un `[demarrage] politique : absente (build sans CONFIG_REPO)` signale que les variables
+de build n'ont pas été prises : l'application démarrera pour ne servir que des erreurs.
 
 ### 6.6 Déclarer la tâche planifiée
 
