@@ -20,17 +20,21 @@ ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
 
 # openssl est requis par le moteur de schema Prisma sur les images slim.
 #
-# curl n'est pas la pour nous : le HEALTHCHECK de cette image est ecrit avec node
-# et n'a besoin de rien. Il est la pour Coolify, qui fabrique sa propre sonde en
-# essayant curl puis wget, et qui remplace celle de l'image par la sienne. Sans
-# l'un des deux, le conteneur est declare malade en permanence quel que soit
-# l'etat reel du serveur.
+# curl et wget ne sont pas la pour nous : le HEALTHCHECK de cette image est ecrit
+# avec node et n'a besoin de rien. Ils sont la pour Coolify, qui fabrique sa
+# propre sonde de la forme "curl ... || wget ... || exit 1" et qui remplace celle
+# de l'image par la sienne. Sans eux, le conteneur est declare malade en
+# permanence quel que soit l'etat reel du serveur.
+#
+# Les deux et pas seulement curl : quand curl echoue, c'est wget qui parle, et un
+# "wget: not found" seul en dit long moins qu'un message d'erreur reel. Le second
+# ne coute presque rien, curl ayant deja amene leurs dependances communes.
 #
 # Node 24 distribue encore corepack, et le sien accepte le packageManager de ce
 # depot : rien a installer. Node 25 l'a retire, une remontee de version demandera
 # donc de reintroduire "npm install --global --force corepack@latest" ici.
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends ca-certificates curl openssl \
+    && apt-get install --yes --no-install-recommends ca-certificates curl openssl wget \
     && rm -rf /var/lib/apt/lists/* \
     && corepack enable pnpm
 

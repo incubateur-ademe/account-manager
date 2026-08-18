@@ -496,9 +496,28 @@ serveur `localhost / outils`.
   d'écouter. Une fenêtre trop courte le déclare mort pendant qu'il travaille, et le
   proxy ne s'attache jamais.
 
-L'image porte son propre `HEALTHCHECK`, écrit avec `node` : il n'y a ni `curl`, ni
-`wget`, ni `nc` dans l'image de base, et en installer un pour cette seule ligne
-reviendrait à payer un paquet par sonde.
+**Health Check Host : `localhost`, Scheme : `http`.** C'est le réglage qui a coûté le
+plus cher au premier déploiement. Coolify construit sa commande à partir de ces champs
+et l'exécute **dans le conteneur**, pas depuis l'extérieur. Renseigner le domaine
+public y produit ceci :
+
+```
+curl -s -X 'GET' -f 'https://comptes.incubateur.ademe.fr:3000/healthz' || wget ... || exit 1
+```
+
+Trois erreurs d'un coup : la requête sort sur internet pour revenir, elle demande du
+`https` à un serveur qui ne parle que `http`, et elle vise le port du conteneur alors
+que Traefik écoute en 443. La sonde ne peut pas réussir, et le conteneur est déclaré
+mort quel que soit son état.
+
+**Start period : le défaut de 5 secondes ne suffit pas**, les migrations s'appliquant
+avant que le serveur n'écoute.
+
+L'image embarque `curl` et `wget`, uniquement pour cette sonde. Son propre
+`HEALTHCHECK` est écrit avec `node` et n'a besoin de rien, mais Coolify remplace celui
+de l'image par le sien. Les deux clients et pas seulement `curl` : la commande se
+replie sur `wget` quand `curl` échoue, et un `wget: not found` seul masque alors la
+vraie erreur, qui est ce que `curl` aurait dit.
 
 **Pourquoi pas `/`.** La racine est captée par le proxy, qui redirige toute requête
 sans cookie vers `/connexion` ; elle est `force-dynamic` et fait quatre requêtes en
