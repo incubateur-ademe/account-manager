@@ -46,3 +46,61 @@ export function fraicheurDe(
   );
   return { perimee: heures >= seuilHeures, heures };
 }
+
+export interface ReleveSysteme {
+  provider: string;
+  startedAt: Date;
+  status: "OK" | "PARTIAL" | "FAILED" | "SKIPPED";
+}
+
+export interface SystemeMuet {
+  provider: string;
+  /** Ce qui cloche : jamais lu, plus lu depuis trop longtemps, ou en échec. */
+  raison: "perime" | "echec" | "non-lu";
+  heures: number | null;
+}
+
+/**
+ * La fraîcheur du périmètre ne dit rien des systèmes cibles. Une lecture GitHub qui
+ * échoue toutes les nuits depuis un mois laisse pourtant les fiches affirmer que
+ * personne n'y a de compte, sur l'écran précis où se décide une coupure : l'absence
+ * d'observation s'y lit exactement comme une absence de compte.
+ *
+ * Cette fonction rend les systèmes dont on ne peut plus dire qu'on les regarde.
+ */
+export function systemesMuets(
+  releves: readonly ReleveSysteme[],
+  attendus: readonly string[],
+  maintenant: Date,
+  seuilHeures: number,
+): SystemeMuet[] {
+  const muets: SystemeMuet[] = [];
+
+  for (const provider of attendus) {
+    const releve = releves.find((candidat) => candidat.provider === provider);
+
+    if (!releve) {
+      muets.push({ provider, raison: "non-lu", heures: null });
+      continue;
+    }
+
+    if (releve.status === "FAILED") {
+      muets.push({ provider, raison: "echec", heures: null });
+      continue;
+    }
+
+    // Un système annoncé comme non lu n'est pas une panne : la trace existe, elle
+    // dit ce qu'il manque, et c'est déjà ce qu'on voulait savoir.
+    if (releve.status === "SKIPPED") {
+      muets.push({ provider, raison: "non-lu", heures: null });
+      continue;
+    }
+
+    const { perimee, heures } = fraicheurDe(releve.startedAt, maintenant, seuilHeures);
+    if (perimee) {
+      muets.push({ provider, raison: "perime", heures });
+    }
+  }
+
+  return muets;
+}

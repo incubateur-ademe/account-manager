@@ -318,6 +318,33 @@ L'heure est choisie creuse et décalée de l'heure ronde, pour ne pas tomber en 
 temps que les tâches planifiées de tout le monde. La collecte lisant une source en
 temps réel, un décalage de quelques heures ne change rien à ce qu'elle constate.
 
+### Ce que dit son code de sortie
+
+La commande sort en **1** dès qu'une étape a échoué : périmètre, comptes de service,
+report des startups, ou n'importe quel système cible. Ce dernier point est récent :
+un connecteur en échec laissait auparavant la tâche se terminer en 0, si bien qu'un
+système pouvait ne plus être lu pendant des semaines sans que rien ne devienne rouge.
+
+Un système **non lu faute de credential ne compte pas comme un échec**. Il est annoncé
+dans le journal, il laisse une trace `SKIPPED` en base, et il n'y a rien à réparer
+cette nuit-là. La distinction se lit dans les deux dernières lignes :
+
+```
+[sync] systèmes non lus : notion
+[sync] systèmes en échec : github
+```
+
+En base, chaque `SyncRun` porte l'un de quatre statuts. `OK` et `PARTIAL` sont des
+observations, la seconde n'ayant pas conclu sur les disparitions. `FAILED` est une
+panne. `SKIPPED` dit qu'on n'a pas regardé, ce qui n'est ni l'un ni l'autre, et
+surtout pas la même chose que l'absence de trace : un système absent des exécutions
+serait indiscernable d'un système sans écart.
+
+L'écran d'accueil reprend cette information. Un système en échec, jamais lu, ou muet
+depuis plus que le seuil de fraîcheur y est signalé nommément, avec la phrase qui
+compte : une fiche qui ne montre aucun compte sur ce système ne dit pas qu'il n'y en a
+pas, elle dit qu'on n'a pas regardé.
+
 ### Ce que ça impose à l'image
 
 C'est ce qui justifie l'arbre `/app/ops` décrit plus haut. `pnpm sync` exécute

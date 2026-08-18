@@ -1,3 +1,4 @@
+import { chuteExcessive } from "@/core/collecte";
 import {
   type Constat,
   constatsDe,
@@ -24,11 +25,28 @@ export interface ConstatsResult {
   actifs: number;
 }
 
+export interface StartupsResult {
+  revues: number;
+  disparues: number;
+  /** Vrai quand la chute observée a interdit de conclure à des sorties. */
+  chuteRefusee: boolean;
+}
+
+/**
+ * Le référentiel local des startups, qui sert à juger si une personne travaille
+ * encore sur quelque chose de vivant.
+ *
+ * Une startup retirée de l'incubateur n'était jusqu'ici jamais datée : sa dernière
+ * phase connue restait vraie pour toujours, et les constats de phase continuaient de
+ * s'appuyer dessus. `vanishedAt` dit maintenant qu'on ne l'observe plus, ce qui n'est
+ * pas la même chose que de la déclarer terminée.
+ */
 export async function syncStartups(
   startups: readonly IncubatorStartup[],
   incubatorGhid: string,
   now: Date,
-): Promise<void> {
+  options: { daterDisparitions: boolean; maxScopeDrop: number },
+): Promise<StartupsResult> {
   for (const startup of startups) {
     const data = {
       name: startup.name,
@@ -44,6 +62,26 @@ export async function syncStartups(
       create: { ...data, ghid: startup.ghid, firstSeenAt: now },
     });
   }
+
+  if (!options.daterDisparitions) {
+    return { revues: startups.length, disparues: 0, chuteRefusee: false };
+  }
+
+  // Même garde que sur les identités, et pour la même raison : une clause
+  // d'exclusion portant sur une liste vide n'exclut personne, et sortirait d'un coup
+  // toutes les startups de l'incubateur.
+  const reference = await prisma.startup.count({ where: { incubatorGhid, vanishedAt: null } });
+  if (chuteExcessive(reference, startups.length, options.maxScopeDrop)) {
+    return { revues: startups.length, disparues: 0, chuteRefusee: true };
+  }
+
+  const vues = startups.map((startup) => startup.ghid);
+  const parties = await prisma.startup.updateMany({
+    where: { incubatorGhid, ghid: { notIn: vues }, vanishedAt: null },
+    data: { vanishedAt: now },
+  });
+
+  return { revues: startups.length, disparues: parties.count, chuteRefusee: false };
 }
 
 /**

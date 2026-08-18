@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { chuteExcessive, fraicheurDe } from "./collecte";
+import { chuteExcessive, fraicheurDe, type ReleveSysteme, systemesMuets } from "./collecte";
 
 const SEUIL = 48;
 const MAINTENANT = new Date("2026-08-11T09:00:00.000Z");
@@ -56,6 +56,8 @@ describe("chute d'une collecte d'un relevé à l'autre", () => {
   });
 
   it("ne soupçonne rien faute de point de comparaison", () => {
+    // La référence est ce que la base tient pour vivant, non ce qu'un run passé a
+    // vu : zéro ne veut donc plus dire « pas d'historique », mais « rien à perdre ».
     // Premier relevé : tout est nouveau, rien n'a disparu.
     expect(chuteExcessive(0, 0, PART_MAX)).toBe(false);
     expect(chuteExcessive(0, 208, PART_MAX)).toBe(false);
@@ -63,5 +65,65 @@ describe("chute d'une collecte d'un relevé à l'autre", () => {
 
   it("ne bronche pas quand la collecte grossit", () => {
     expect(chuteExcessive(100, 500, PART_MAX)).toBe(false);
+  });
+});
+
+/**
+ * L'écran d'une personne ne distingue pas « aucun compte » de « pas regardé ». Un
+ * système qui a cessé d'être lu laisse donc les fiches affirmer, sur l'écran même où
+ * se décide une coupure, quelque chose que plus rien ne vérifie.
+ */
+describe("systèmes cibles dont on ne peut plus dire qu'on les regarde", () => {
+  const MAINTENANT = new Date("2026-08-18T09:00:00Z");
+  const SEUIL = 48;
+  const ATTENDUS = ["github", "notion"];
+
+  const releve = (over: Partial<ReleveSysteme> = {}): ReleveSysteme => ({
+    provider: "github",
+    startedAt: new Date("2026-08-18T03:00:00Z"),
+    status: "OK",
+    ...over,
+  });
+
+  it("se tait quand tous les systèmes ont été lus cette nuit", () => {
+    const releves = [releve(), releve({ provider: "notion" })];
+
+    expect(systemesMuets(releves, ATTENDUS, MAINTENANT, SEUIL)).toEqual([]);
+  });
+
+  it("signale l'échec, le silence prolongé, le jamais-lu et le non-lu, chacun pour ce qu'il est", () => {
+    // Given github qui échoue, notion lu il y a cinq jours, et un troisième système
+    // attendu dont aucune trace n'existe
+    const releves = [
+      releve({ status: "FAILED" }),
+      releve({ provider: "notion", startedAt: new Date("2026-08-13T03:00:00Z") }),
+    ];
+
+    // When on demande l'état de trois systèmes attendus
+    const muets = systemesMuets(releves, [...ATTENDUS, "ovh"], MAINTENANT, SEUIL);
+
+    // Then chacun est signalé avec sa raison, sans être confondu avec les autres
+    expect(muets).toEqual([
+      { provider: "github", raison: "echec", heures: null },
+      { provider: "notion", raison: "perime", heures: 126 },
+      { provider: "ovh", raison: "non-lu", heures: null },
+    ]);
+  });
+
+  it("compte un système annoncé comme non lu, plutôt que de le tenir pour sain", () => {
+    // Un credential absent produit une trace SKIPPED : elle dit qu'on n'a pas
+    // regardé, ce qui est précisément ce que l'écran doit reprendre. La taire
+    // reviendrait à traiter l'absence d'observation comme une absence d'écart.
+    const muets = systemesMuets([releve({ status: "SKIPPED" })], ["github"], MAINTENANT, SEUIL);
+
+    expect(muets).toEqual([{ provider: "github", raison: "non-lu", heures: null }]);
+  });
+
+  it("tolère un relevé partiel récent, qui reste une observation", () => {
+    // Un run partiel a vu quelque chose et l'a dit : il n'a simplement pas conclu
+    // sur les disparitions. Le signaler ici doublerait un avertissement déjà donné.
+    expect(systemesMuets([releve({ status: "PARTIAL" })], ["github"], MAINTENANT, SEUIL)).toEqual(
+      [],
+    );
   });
 });

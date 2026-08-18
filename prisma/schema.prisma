@@ -262,6 +262,11 @@ enum SyncStatus {
   OK
   PARTIAL
   FAILED
+  /// Systeme non lu, sans que ce soit un echec : credential absent, ou systeme
+  /// entierement manuel. Distinct de FAILED, qui accuserait le systeme a tort,
+  /// et surtout distinct de l'absence de trace, ou rien ne permet de dire si un
+  /// systeme est sans ecart ou simplement jamais regarde.
+  SKIPPED
 }
 
 model SyncRun {

@@ -103,6 +103,33 @@ async function enregistrerRessources(
   return parExternalId;
 }
 
+/**
+ * Le contrat autorise un acces sans ressource : « membre de l'organisation » vise le
+ * systeme entier et rien de plus precis. La base, elle, exige une ressource, et la
+ * contrainte d'unicite d'un acces la reclame aussi. Le systeme devient donc une
+ * ressource comme une autre, sous une cle reservee : les identifiants des systemes
+ * cibles (depots, espaces, domaines) n'ont pas le droit de commencer par une
+ * parenthese, la collision est impossible.
+ *
+ * Sans cela, un tel acces etait rejete comme incoherent, ce qui le perdait et faisait
+ * passer tout le run en PARTIAL, donc interdisait de dater la moindre disparition.
+ */
+const RESSOURCE_SYSTEME = "(systeme)";
+
+async function ressourceDuSysteme(provider: string): Promise<string> {
+  const enregistree = await prisma.resource.upsert({
+    where: { provider_externalId: { provider, externalId: RESSOURCE_SYSTEME } },
+    update: {},
+    create: {
+      provider,
+      externalId: RESSOURCE_SYSTEME,
+      label: `${provider} (le système lui-même)`,
+    },
+    select: { id: true },
+  });
+  return enregistree.id;
+}
+
 async function enregistrerAcces(
   provider: string,
   grants: readonly ObservedGrant[],
@@ -126,12 +153,20 @@ async function enregistrerAcces(
       continue;
     }
 
-    const resourceId =
-      grant.resourceExternalId === undefined ? undefined : ressources.get(grant.resourceExternalId);
+    let resourceId: string | undefined;
+    if (grant.resourceExternalId === undefined) {
+      resourceId = await ressourceDuSysteme(provider);
+    } else {
+      resourceId = ressources.get(grant.resourceExternalId);
 
-    if (resourceId === undefined) {
-      erreurs.push(`accès sur une ressource absente de la collecte : ${grant.identityExternalId}`);
-      continue;
+      // Une ressource nommee mais absente de la collecte est une contradiction du
+      // connecteur, contrairement a l'absence de ressource, qui est prevue.
+      if (resourceId === undefined) {
+        erreurs.push(
+          `accès sur une ressource absente de la collecte : ${grant.identityExternalId}`,
+        );
+        continue;
+      }
     }
 
     const cle = {
@@ -169,13 +204,19 @@ async function enregistrerAcces(
   return { crees, revus, erreurs };
 }
 
-async function dernierRelevecomplet(provider: string): Promise<number> {
-  const dernier = await prisma.syncRun.findFirst({
-    where: { provider, capability: "list", status: "OK" },
-    orderBy: { startedAt: "desc" },
-    select: { itemsSeen: true },
-  });
-  return dernier?.itemsSeen ?? 0;
+/**
+ * Ce que l'outil tient pour vrai en ce moment, et non ce qu'un run passe a vu.
+ *
+ * La reference etait le dernier run OK, si bien qu'en l'absence d'un tel run elle
+ * valait zero et desarmait le garde-fou. Des identites creees par des runs partiels
+ * survivaient alors a un premier run OK qui n'aurait rien rapporte : la clause
+ * d'exclusion portait sur une liste vide, qui n'exclut personne, et le systeme entier
+ * disparaissait d'un coup.
+ *
+ * L'etat de la base ne connait pas ce trou : il est vide quand il n'y a rien a perdre.
+ */
+async function identitesTenuesPourVivantes(provider: string): Promise<number> {
+  return prisma.externalIdentity.count({ where: { provider, vanishedAt: null } });
 }
 
 /**
@@ -200,10 +241,11 @@ export async function executerCollecte(
     erreurs: [],
   };
 
-  // Un système entièrement manuel ne se lit pas : son absence de collecte n'est pas
-  // un échec, et lui inventer une trace laisserait croire qu'on l'a observé.
+  // Un système entièrement manuel ne se lit pas. Ce n'est pas un échec, et lui
+  // inventer un relevé laisserait croire qu'on l'a observé : la trace dit donc qu'il
+  // n'a pas été lu, ce qui n'est pas la même chose que de n'en laisser aucune.
   if (!connector.list) {
-    return vide;
+    return noterSystemeNonLu(provider, "système sans capacité de lecture", now, correlationId);
   }
 
   const run = await prisma.syncRun.create({
@@ -256,11 +298,11 @@ export async function executerCollecte(
   let disparus = 0;
 
   if (status === "OK") {
-    const reference = await dernierRelevecomplet(provider);
+    const reference = await identitesTenuesPourVivantes(provider);
 
     if (chuteExcessive(reference, lu.itemsSeen, policy().thresholds.maxScopeDrop)) {
       erreurs.push(
-        `chute de la collecte : ${lu.itemsSeen} éléments contre ${reference} au dernier relevé complet, aucune disparition datée`,
+        `chute de la collecte : ${lu.itemsSeen} éléments contre ${reference} tenus pour vivants, aucune disparition datée`,
       );
       status = "PARTIAL";
     } else {
@@ -306,8 +348,49 @@ function tracer(provider: string, correlationId: string, resultat: ResultatColle
     targetId: provider,
     correlationId,
     after: resultat,
-    result: resultat.status === "OK" ? "SUCCESS" : "FAILURE",
+    result:
+      resultat.status === "OK" ? "SUCCESS" : resultat.status === "SKIPPED" ? "SKIPPED" : "FAILURE",
   });
+}
+
+/**
+ * Un systeme qu'on n'a pas lu laisse une trace disant qu'on ne l'a pas lu.
+ *
+ * Sans elle, il sort simplement des executions, et rien ne distingue plus un systeme
+ * sans ecart d'un systeme que personne ne regarde depuis des semaines. C'est
+ * exactement la question a laquelle cet outil doit repondre.
+ */
+export async function noterSystemeNonLu(
+  provider: string,
+  raison: string,
+  now: Date,
+  correlationId: string,
+): Promise<ResultatCollecte> {
+  const resultat: ResultatCollecte = {
+    provider,
+    status: "SKIPPED",
+    itemsSeen: 0,
+    identites: { creees: 0, revues: 0, disparues: 0 },
+    ressources: 0,
+    acces: { crees: 0, revus: 0, disparus: 0 },
+    erreurs: [raison],
+  };
+
+  await prisma.syncRun.create({
+    data: {
+      provider,
+      capability: "list",
+      status: "SKIPPED",
+      startedAt: now,
+      finishedAt: now,
+      // Le champ s'appelle error, il porte ici la raison de n'avoir rien lu : ce
+      // n'est pas une panne, mais ca se lit au meme endroit.
+      error: { messages: [raison] },
+    },
+  });
+
+  tracer(provider, correlationId, resultat);
+  return resultat;
 }
 
 async function cloreRun(id: string, now: Date, resultat: ResultatCollecte): Promise<void> {
