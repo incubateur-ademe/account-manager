@@ -417,13 +417,15 @@ changent une fois tous les deux ans, et l'indirection ne fait économiser aucune
 **`COOLIFY_URL` et `COOLIFY_FQDN` reprennent le port écrit dans le champ Domains.** Un
 domaine saisi `https://comptes.incubateur.ademe.fr:3000` donne un `COOLIFY_URL` qui
 porte ce `:3000`, alors que ce port n'existe que dans le conteneur : Traefik, lui,
-écoute en 443. Deux conséquences, et ce sont exactement les deux pannes du premier
-déploiement. Les liens de connexion envoyés par courriel pointent vers un port
-injoignable. Et la sonde de santé, fabriquée à partir du même FQDN, interroge une URL
-qui ne répond pas.
+écoute en 443. C'est de là que venait la sonde impossible du premier déploiement, elle
+est fabriquée à partir de ce FQDN.
 
-**Écrire le domaine sans port**, le port du conteneur étant déjà déclaré dans
-`Ports Exposes`.
+Les variables, elles, ne sont pas touchées : une variable définie par référence à
+`$COOLIFY_URL` reçoit l'URL publique **sans le port**, constaté dans le conteneur. Le
+port ne contamine donc que ce que Coolify construit lui-même à partir du FQDN.
+
+**Écrire quand même le domaine sans port**, le port du conteneur étant déjà déclaré
+dans `Ports Exposes` : c'est une source d'ennuis en moins pour ce qu'elle rapporte.
 
 ### Les trois variables de build
 
