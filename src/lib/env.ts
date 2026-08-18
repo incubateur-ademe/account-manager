@@ -61,8 +61,17 @@ const webSchema = coreSchema
       .default("false")
       .transform((value) => value === "true"),
 
-    EMAIL_SERVER: z.string().min(1),
-    EMAIL_FROM: z.email(),
+    /**
+     * URL de connexion nodemailer complète, identifiants compris :
+     * `smtp://utilisateur:motdepasse@serveur:port`. Nommée d'après le protocole et
+     * non d'après le courriel : `EMAIL_SERVER`, hérité de NextAuth v4, laissait
+     * croire qu'on attendait un nom d'hôte et faisait chercher où poser le mot de
+     * passe. Elle dit comment on envoie, là où `SMTP_EMAIL_FROM` dit au nom de qui.
+     * Préfixe commun aux deux : dans une liste de quinze variables triée par nom,
+     * ce qui relève du même sujet se retrouve côte à côte.
+     */
+    SMTP_URL: z.string().min(1),
+    SMTP_EMAIL_FROM: z.email(),
   })
   .superRefine((valeurs, ctx) => {
     if (valeurs.NODE_ENV === "production" && !valeurs.AUTH_URL) {

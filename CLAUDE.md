@@ -89,8 +89,8 @@ qui contourne ça est un blocage, pas un détail. Corollaire : un run non `ok` n
 explicitement. `RunContext.dryRun` en découle et ne se force jamais à `false` en dur.
 
 **Jamais de secret en dur.** Toute variable passe par le schéma Zod de `src/lib/env.ts`, qui fait foi
-sur la liste attendue : `NODE_ENV`, `DATABASE_URL`, `AUTH_SECRET`, `AUTH_URL`, `EMAIL_SERVER`,
-`EMAIL_FROM`, `ESPACE_MEMBRE_URL`, `ESPACE_MEMBRE_API_KEY`, `ACTIONS_ENABLED`, `OPERATORS`,
+sur la liste attendue : `NODE_ENV`, `DATABASE_URL`, `AUTH_SECRET`, `AUTH_URL`, `SMTP_URL`,
+`SMTP_EMAIL_FROM`, `ESPACE_MEMBRE_URL`, `ESPACE_MEMBRE_API_KEY`, `ACTIONS_ENABLED`, `OPERATORS`,
 `BREAK_GLASS_USERNAMES`. Ce dépôt manipule un triplet OVH à portée compte entier, un token de session
 Notion nominatif et un jeton GitHub d'organisation : un hook `PreToolUse` bloque tout accès aux
 fichiers `.env`. Seuls `.env.example` et `.env.dist` sont manipulables, et uniquement avec des formes,

@@ -394,8 +394,8 @@ ressource Coolify :
 | `AUTH_SECRET` | `openssl rand -base64 32`, à ne plus changer (invalide les sessions) |
 | `AUTH_URL` | `https://comptes.app.ops.incubateur.ademe.fr` |
 | `AUTH_TRUST_HOST` | `true`, obligatoire derrière Traefik |
-| `EMAIL_SERVER` | URL SMTP du relais d'envoi |
-| `EMAIL_FROM` | adresse expéditrice autorisée par ce relais |
+| `SMTP_URL` | `smtp://utilisateur:motdepasse@serveur:port`, identifiants compris |
+| `SMTP_EMAIL_FROM` | adresse expéditrice, sur un domaine que le relais accepte |
 | `ESPACE_MEMBRE_API_KEY` | clé de l'API protégée |
 | `ACTIONS_ENABLED` | `false` tant que la mise en service n'est pas validée |
 | `OPERATORS` | usernames beta.gouv, séparés par des virgules |

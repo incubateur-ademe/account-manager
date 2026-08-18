@@ -46,7 +46,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth(() => ({
   pages: { signIn: "/login" },
   providers: [
     espaceMembreProvider.ProviderWrapper(
-      Nodemailer({ server: webEnv.EMAIL_SERVER, from: webEnv.EMAIL_FROM }),
+      Nodemailer({ server: webEnv.SMTP_URL, from: webEnv.SMTP_EMAIL_FROM }),
     ),
   ],
   callbacks: espaceMembreProvider.CallbacksWrapper({
