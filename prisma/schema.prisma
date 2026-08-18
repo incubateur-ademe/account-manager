@@ -384,6 +384,12 @@ model PlanStep {
   riskLevel     RiskLevel @default(MEDIUM)
   expectedState Json
 
+  // La marche a suivre telle qu'elle etait au moment ou le plan a ete calcule :
+  // titre, runbook, lien direct, et ce qu'il faut constater pour cocher. Figee ici
+  // au meme titre que le reste de l'etape, parce qu'un runbook reformule ne doit pas
+  // changer ce qui a ete approuve. Nulle pour une etape automatique.
+  manual Json?
+
   state     StepState @default(PENDING)
   attempts  Int       @default(0)
   lastError String?

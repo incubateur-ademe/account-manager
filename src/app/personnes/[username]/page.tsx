@@ -17,6 +17,7 @@ import { env } from "@/lib/env";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
 
+import { BoutonDepart } from "./BoutonDepart";
 import { Detacher } from "./Detacher";
 
 export const dynamic = "force-dynamic";
@@ -349,6 +350,15 @@ export default async function FichePersonnePage({ params }: Props) {
             Historique de cette personne
           </Link>
         </p>
+      </section>
+
+      <section className={fr.cx("fr-mt-4w")}>
+        <h2 className={fr.cx("fr-h5")}>Départ</h2>
+        <p className={fr.cx("fr-text--sm")}>
+          Prépare la liste de ce qu'il faut retirer, système par système, à partir des comptes
+          observés. Rien n'est exécuté et rien n'est coupé.
+        </p>
+        <BoutonDepart username={personne.username} />
       </section>
 
       <section className={fr.cx("fr-mt-4w")}>
