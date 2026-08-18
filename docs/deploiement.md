@@ -136,15 +136,28 @@ poste de développement embarquerait au passage la politique locale, silencieuse
 
 ### Choix de l'image de base
 
-`node:25-bookworm-slim`, Debian et non Alpine. Le schéma déclare
+`node:24-bookworm-slim`, Debian et non Alpine. Le schéma déclare
 `binaryTargets = ["native", "debian-openssl-3.0.x"]`, et Bookworm est la Debian dont
 l'OpenSSL est en 3.0.x. Sur Alpine il faudrait `linux-musl-openssl-3.0.x`, qui n'est
 pas dans le schéma. Le paquet `openssl` est installé explicitement : les images slim
 ne l'embarquent pas et le moteur de schéma Prisma en a besoin.
 
-Node 25 ne distribue plus corepack, il faut donc l'installer (`npm install --global
-corepack@latest`) avant de pouvoir l'activer. Le champ `packageManager` de
-`package.json` fixe ensuite la version exacte de pnpm.
+**24 et non 25**, pour deux raisons. Les versions impaires de Node sortent en octobre
+et s'arrêtent en juin suivant : construire une production dessus, c'est accepter une
+base sans correctifs de sécurité amont. Et 24 est la version de `.nvmrc`, donc celle
+sur laquelle l'intégration continue vérifie ; construire sur une autre reviendrait à
+livrer ce qui n'a pas été testé.
+
+Node 24 distribue encore corepack, et le sien accepte le `packageManager` de ce dépôt
+(vérifié : corepack 0.35.0 active pnpm 10.34.5 sans rien télécharger de plus). Il n'y
+a donc rien à installer. Une remontée vers 25, qui ne le distribue plus, demandera de
+réintroduire `npm install --global --force corepack@latest`, le `--force` étant requis
+parce que l'image de base pose déjà ses propres relais `yarn` et `npx`.
+
+Passer à Alpine n'est pas la piste d'allègement qu'on croit : l'écart entre les deux
+bases est de quelques dizaines de mégaoctets sur une image qui en pèse plus de mille,
+et il faudrait ajouter `linux-musl-openssl-3.0.x` aux `binaryTargets`. Le poids est
+ailleurs, voir plus bas.
 
 L'image de base est un `ARG` (`NODE_IMAGE`), pour pouvoir en changer sans toucher au
 reste du fichier.
@@ -443,12 +456,28 @@ serveur `localhost / outils`.
 
 - Domaine : `https://comptes.app.ops.incubateur.ademe.fr`. Coolify en propose un
   aléatoire sous le wildcard, le remplacer.
-- Health Check : chemin `/`, port `3000`. La page d'accueil est prérendue et ne touche
-  pas la base : elle teste que le serveur répond, pas que tout va bien, ce qui est
-  exactement ce qu'on veut d'une sonde de vivacité.
+- Health Check : chemin **`/api/sante`**, port `3000`, jamais `/`.
 - **Start period : au moins 60 secondes.** Le conteneur applique les migrations avant
   d'écouter. Une fenêtre trop courte le déclare mort pendant qu'il travaille, et le
   proxy ne s'attache jamais.
+
+L'image porte son propre `HEALTHCHECK`, écrit avec `node` : il n'y a ni `curl`, ni
+`wget`, ni `nc` dans l'image de base, et en installer un pour cette seule ligne
+reviendrait à payer un paquet par sonde.
+
+**Pourquoi pas `/`.** La racine est captée par le proxy, qui redirige toute requête
+sans cookie vers `/connexion` ; elle est `force-dynamic` et fait quatre requêtes en
+base. Une sonde posée là mesure une redirection, c'est-à-dire à peu près rien.
+
+`/api/sante` répond deux questions et pas une de plus. Le serveur écoute-t-il, et
+l'image porte-t-elle une politique lisible. La politique en fait partie parce qu'une
+image construite sans elle ne servira jamais rien : le défaut est permanent, et une
+sonde verte laisserait ce déploiement remplacer une version qui fonctionnait. La base
+n'en fait pas partie, à l'inverse : une base momentanément injoignable est une panne
+dont l'application ne peut rien, et la déclarer morte remplacerait une page d'erreur
+lisible par une absence de réponse.
+
+Un `503` avec `{"etat":"degrade"}` dit donc, dans son corps, ce qui manque.
 
 ### 6.4 Poser les variables
 
@@ -567,12 +596,36 @@ le CLI échouait et les écrans protégés auraient échoué de même. Et la col
 proprement `github non lu : github-token` quand le jeton est absent, ce qui confirme le
 comportement dégradé attendu d'un credential manquant.
 
-**L'image pèse 1,53 Go**, non les 500 à 700 Mo espérés. L'essentiel de l'écart vient de
-l'arbre `/app/ops`, où `prisma`, promu en dépendance de production, entraîne
-`@prisma/dev` et son PostgreSQL embarqué (`pglite`), inutile en production. Si l'espace
-du VPS devient un sujet, c'est le premier endroit où couper : n'installer que
-`@prisma/client` et le CLI strictement nécessaire à `migrate deploy`, ou appliquer les
-migrations autrement.
+**L'image pesait 1,52 Go, elle en pèse 987 Mo.** L'explication qui figurait ici,
+`@prisma/dev` et son PostgreSQL embarqué, était fausse : mesure faite dans l'image,
+`@prisma/dev` pèse 18 Mo et n'apparaît même pas dans les huit premiers.
+
+Le poids était ailleurs. L'arbre `/app/ops`, qui ne sert qu'au CLI et aux migrations,
+portait `next` (201 Mo), son compilateur natif `@next/swc-linux-arm64-gnu` (86 Mo) et
+`@codegouvfr/react-dsfr` (98 Mo), c'est-à-dire du code qui ne s'exécute que dans un
+navigateur, et que le serveur web porte déjà de son côté dans sa sortie standalone.
+Le CLI, lui, n'importe que `@next/env`, le client Prisma et son adaptateur, `yaml` et
+`zod`, ce qu'on peut vérifier en suivant les imports depuis `src/cli/sync.ts`.
+
+L'étape `ops` retire donc ces paquets du `package.json` avant d'installer. Deux pièges
+rencontrés en le faisant :
+
+- Retirer `next` ne suffit pas. pnpm installe les `peerDependencies` tout seul, et
+  `next-auth` le faisait revenir par cette porte. La chaîne d'authentification part
+  donc avec, elle n'est atteignable depuis aucun chemin du CLI.
+- `@next/env` doit être promu explicitement. Il se résolvait jusqu'ici en remontant
+  depuis `/app/ops` vers l'arbre du serveur web, un emprunt qui fonctionnait par
+  accident et que le retrait de `next` aurait rompu sans prévenir.
+
+Résultat mesuré dans l'image : `/app/node_modules` 43 Mo, `/app/ops/node_modules`
+391 Mo au lieu de 811. `prisma migrate status` et `pnpm sync` se chargent et vont
+jusqu'à la connexion à la base, vérification faite dans le conteneur.
+
+Ce qui reste dans `ops` est dominé par `@prisma/client` (75 Mo), `prisma` (42 Mo) et
+`@prisma/studio-core` avec `effect` et `pglite` (une centaine de mégaoctets à eux
+trois). Ces derniers sont des dépendances fermes du CLI Prisma : les supprimer
+demanderait de les découper à la main après installation, pour un gain qui ne justifie
+pas encore le risque.
 
 **`migrate deploy` sans migration à appliquer sort bien en 0** : vérifié au démarrage
 du conteneur local sur une base déjà à jour, qui affiche « No pending migrations to
@@ -596,8 +649,8 @@ Un test de restauration sur une base jetable doit être fait avant que l'outil p
 des décisions réelles, parce que le journal d'audit est la seule donnée non
 reconstructible du système.
 
-**Node 25 n'est plus une version supportée** (les versions impaires sortent en octobre
-et s'arrêtent en juin suivant). C'est ce que dit `.nvmrc`, et l'image le suit pour ne
-pas diverger du développement, mais une base de production sans correctifs de sécurité
-amont est une dette. Le passage à la LTS se fait en une ligne, via l'`ARG NODE_IMAGE`,
-et devrait s'accompagner d'une mise à jour de `.nvmrc` et de `engines`.
+**La version de Node est réglée.** L'image construisait sur 25, une version impaire qui
+s'arrête en juin, pendant que `.nvmrc` et l'intégration continue vérifiaient sur 24 :
+on livrait donc ce qui n'avait pas été testé, sur une base sans correctifs amont. Les
+deux sont désormais sur 24, et l'installation manuelle de corepack a disparu avec, celui
+de Node 24 acceptant le `packageManager` du dépôt.

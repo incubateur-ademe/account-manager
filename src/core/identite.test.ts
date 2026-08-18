@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { candidateUsernames, resolveOperator } from "./identite";
+import { candidateUsernames, estOperateur, resolveOperator } from "./identite";
 
 const OPERATORS = ["claire.durand"];
 const BREAK_GLASS = ["samir.benali"];
@@ -67,5 +67,36 @@ describe("identification de l'opérateur au fil du parcours de connexion", () =>
     const user = { username: "jean.dupont", id: "claire.durand" };
     expect(candidateUsernames(user)[0]).toBe("jean.dupont");
     expect(resolveOperator(user, OPERATORS, BREAK_GLASS)?.username).toBe("claire.durand");
+  });
+});
+
+/**
+ * L'outil existe pour retirer des accès. Le sien ne doit pas faire exception, or
+ * la session est un jeton signé qui porte le username pour des semaines : c'est
+ * l'allowlist relue à chaque passage, et elle seule, qui referme la porte.
+ */
+describe("retrait d'un opérateur en cours de session", () => {
+  it("referme la porte dès que le nom quitte les deux listes", () => {
+    // Given une personne autorisée, dont la session est déjà ouverte
+    expect(estOperateur("claire.durand", OPERATORS, BREAK_GLASS)).toBe(true);
+
+    // When on la retire de la liste des opérateurs, sans toucher à sa session
+    const apresRetrait = OPERATORS.filter((nom) => nom !== "claire.durand");
+
+    // Then son jeton ne lui ouvre plus rien, sans attendre son expiration
+    expect(estOperateur("claire.durand", apresRetrait, BREAK_GLASS)).toBe(false);
+  });
+
+  it("tient l'accès de secours pour un accès, au même titre que la liste principale", () => {
+    // Un compte de secours ouvre les mêmes écrans : la connexion est journalisée
+    // comme telle, mais rien ne la restreint ensuite.
+    expect(estOperateur("samir.benali", OPERATORS, BREAK_GLASS)).toBe(true);
+    expect(estOperateur("samir.benali", OPERATORS, [])).toBe(false);
+  });
+
+  it("ne reconnaît personne quand les deux listes sont vides", () => {
+    // Le cas du premier déploiement, où OPERATORS n'a pas encore été renseigné :
+    // la porte est fermée pour tout le monde, y compris pour qui la déploie.
+    expect(estOperateur("claire.durand", [], [])).toBe(false);
   });
 });

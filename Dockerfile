@@ -3,8 +3,14 @@
 # Debian et non Alpine : le schema Prisma declare
 # binaryTargets ["native", "debian-openssl-3.0.x"]. Bookworm est la Debian dont
 # l'OpenSSL est en 3.0.x. Sur Alpine il faudrait "linux-musl-openssl-3.0.x",
-# absent du schema.
-ARG NODE_IMAGE=node:25-bookworm-slim
+# absent du schema. L'ecart de taille entre les deux bases ne represente qu'une
+# fraction de cette image, dont le poids vient d'ailleurs (voir docs/deploiement.md).
+#
+# 24 et non 25 : les versions impaires de Node s'arretent en juin suivant leur
+# sortie, une base de production sans correctifs amont est une dette. C'est aussi
+# la version de .nvmrc, donc celle sur laquelle l'integration continue verifie :
+# construire sur une autre reviendrait a livrer ce qui n'a pas ete teste.
+ARG NODE_IMAGE=node:24-bookworm-slim
 
 FROM ${NODE_IMAGE} AS base
 
@@ -12,16 +18,14 @@ ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
     COREPACK_HOME=/opt/corepack \
     NEXT_TELEMETRY_DISABLED=1
 
-# Node 25 ne distribue plus corepack, il faut l'installer explicitement.
 # openssl est requis par le moteur de schema Prisma sur les images slim.
 #
-# --force parce que l'image de base pose deja ses propres relais yarn et npx dans
-# /usr/local/bin : sans lui, corepack refuse d'ecraser des fichiers existants et
-# l'etape echoue avant meme d'avoir installe pnpm.
+# Node 24 distribue encore corepack, et le sien accepte le packageManager de ce
+# depot : rien a installer. Node 25 l'a retire, une remontee de version demandera
+# donc de reintroduire "npm install --global --force corepack@latest" ici.
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends ca-certificates openssl \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install --global --force corepack@latest \
     && corepack enable pnpm
 
 WORKDIR /app
@@ -128,10 +132,16 @@ RUN pnpm build
 # est bundle dans les chunks. Le CLI "pnpm sync" et "prisma migrate deploy" ont
 # donc besoin de leur propre arbre.
 #
-# prisma et tsx sont promus en dependances de production : ils sont des outils
-# de build pour le depot mais des outils d'execution pour l'image. Toute
-# nouvelle dependance d'un connecteur declaree dans "dependencies" arrive ici
-# automatiquement.
+# prisma, tsx et @next/env sont promus en dependances de production : ils sont
+# des outils de build pour le depot mais des outils d'execution pour l'image.
+# Toute nouvelle dependance d'un connecteur declaree dans "dependencies" arrive
+# ici automatiquement.
+#
+# Le front, lui, est retire. Le CLI ne rend aucune page : next et le systeme de
+# design pesaient 300 Mo dans cet arbre pour du code qui ne s'execute que dans un
+# navigateur, et le serveur web les porte deja dans sa sortie standalone. Liste
+# d'exclusion et non d'inclusion, pour que la dependance qu'un connecteur
+# apportera demain continue d'arriver sans qu'on touche a ce fichier.
 # ---------------------------------------------------------------------------
 FROM base AS ops
 
@@ -140,13 +150,39 @@ COPY package.json pnpm-lock.yaml ./
 RUN node <<'PROMOTE'
 const fs = require("node:fs");
 const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
-for (const name of ["prisma", "tsx"]) {
+
+// @next/env lit la configuration d'environnement pour le CLI et pour
+// prisma.config.ts. Sans cette promotion il se resout quand meme, en remontant
+// depuis /app/ops vers l'arbre standalone du serveur web : un emprunt qui marche
+// par accident, et que retirer next romprait sans prevenir.
+for (const name of ["prisma", "tsx", "@next/env"]) {
   const version = pkg.devDependencies?.[name];
   if (!version) {
     throw new Error(`devDependency introuvable dans package.json : ${name}`);
   }
   pkg.dependencies[name] = version;
 }
+
+// La chaine d'authentification part avec : pnpm installe les peerDependencies
+// tout seul, et laisser next-auth ici ramenait next par cette porte alors qu'on
+// venait de le sortir par l'autre. Aucune de ces entrees n'est atteignable
+// depuis le CLI, dont les seuls imports externes sont @next/env, le client
+// Prisma et son adaptateur, yaml et zod.
+for (const name of [
+  "next",
+  "react",
+  "react-dom",
+  "@codegouvfr/react-dsfr",
+  "next-auth",
+  "@auth/prisma-adapter",
+  "@incubateur-ademe/next-auth-espace-membre-provider",
+]) {
+  if (!pkg.dependencies[name]) {
+    throw new Error(`dependance front introuvable, la liste a vieilli : ${name}`);
+  }
+  delete pkg.dependencies[name];
+}
+
 pkg.devDependencies = {};
 fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2));
 PROMOTE
@@ -233,6 +269,16 @@ RUN chmod +x /usr/local/bin/entrypoint.sh \
 USER node
 
 EXPOSE 3000
+
+# Aucun client HTTP n'est installe : ni curl, ni wget, ni nc dans l'image de base,
+# et en ajouter un pour cette seule ligne reviendrait a payer un paquet par sonde.
+# node est deja la et sait faire une requete.
+#
+# Forme exec et non shell : le shell substituerait ce qui ressemble a une commande
+# dans la chaine. La fenetre de demarrage couvre les migrations, qui s'appliquent
+# avant que le serveur n'ecoute.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
+    CMD ["node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/api/sante').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["node", "server.js"]

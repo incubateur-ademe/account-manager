@@ -39,6 +39,10 @@ const espaceMembreProvider = EspaceMembreProvider({
 export const { handlers, auth, signIn, signOut } = NextAuth(() => ({
   adapter: espaceMembreProvider.AdapterWrapper(PrismaAdapter(prisma)),
   session: { strategy: "jwt" as const },
+  // Explicite plutôt que lu dans l'environnement par NextAuth lui-même : le schéma
+  // de env.ts fait foi sur la liste des variables attendues, et une variable qu'il
+  // ignore est une variable que personne ne valide.
+  trustHost: webEnv.AUTH_TRUST_HOST,
   pages: { signIn: "/connexion" },
   providers: [
     espaceMembreProvider.ProviderWrapper(

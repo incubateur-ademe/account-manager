@@ -40,12 +40,40 @@ const coreSchema = z.object({
  * Ce que seule l'application web exige. Le séparer évite qu'une collecte nocturne
  * échoue faute de configuration SMTP, dont elle n'a aucun usage.
  */
-const webSchema = coreSchema.extend({
-  AUTH_SECRET: z.string().min(1),
-  AUTH_URL: z.url().optional(),
-  EMAIL_SERVER: z.string().min(1),
-  EMAIL_FROM: z.email(),
-});
+const webSchema = coreSchema
+  .extend({
+    AUTH_SECRET: z.string().min(1),
+
+    /**
+     * Facultatif en développement, où l'hôte ne ment pas. En production il devient
+     * obligatoire : c'est lui qui construit les liens de connexion envoyés par
+     * courriel, et son absence ne se verrait qu'au premier lien mort, c'est-à-dire
+     * au moment précis où plus personne ne peut entrer pour diagnostiquer.
+     */
+    AUTH_URL: z.url().optional(),
+
+    /**
+     * Derrière un proxy, l'hôte vu par le serveur n'est pas celui vu par le
+     * navigateur. NextAuth refuse par défaut de faire confiance à cet en-tête.
+     */
+    AUTH_TRUST_HOST: z
+      .string()
+      .default("false")
+      .transform((value) => value === "true"),
+
+    EMAIL_SERVER: z.string().min(1),
+    EMAIL_FROM: z.email(),
+  })
+  .superRefine((valeurs, ctx) => {
+    if (valeurs.NODE_ENV === "production" && !valeurs.AUTH_URL) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["AUTH_URL"],
+        message:
+          "obligatoire en production : les liens de connexion envoyés par courriel sont construits avec",
+      });
+    }
+  });
 
 export type Env = z.infer<typeof coreSchema>;
 export type WebEnv = z.infer<typeof webSchema>;

@@ -27,10 +27,21 @@ function lire<T>(fichier: string, schema: z.ZodType<T>): T {
   // Un fichier absent n'est pas lu comme un fichier vide : le schéma décide, et il
   // n'acceptera que celui dont tout a un défaut. Les comptes, eux, seront refusés,
   // ce qui vaut mieux qu'un périmètre silencieusement réduit à personne.
-  const brut = existsSync(chemin) ? parse(readFileSync(chemin, "utf8")) : { version: 1 };
+  const present = existsSync(chemin);
+  const brut = present ? parse(readFileSync(chemin, "utf8")) : { version: 1 };
   const lu = schema.safeParse(brut);
 
   if (!lu.success) {
+    // Un fichier absent produirait autrement une liste de champs manquants, qui
+    // envoie chercher une faute de saisie dans un fichier qui n'existe pas. La
+    // cause est ailleurs : l'image a été construite sans politique, ou POLICY_DIR
+    // ne désigne pas le bon répertoire.
+    if (!present) {
+      throw new Error(
+        `Fichier de politique absent : ${chemin}. L'image a-t-elle été construite avec CONFIG_REPO, et POLICY_DIR désigne-t-il le bon répertoire ?`,
+      );
+    }
+
     const details = lu.error.issues
       .map((issue) => `  ${issue.path.join(".") || "(racine)"} : ${issue.message}`)
       .join("\n");

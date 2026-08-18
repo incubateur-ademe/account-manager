@@ -9,7 +9,7 @@ référence en cas de doute.
 ## Stack
 
 Next.js 16, React 19, TypeScript 7, Prisma 7 sur PostgreSQL, NextAuth 5 avec le
-provider Espace Membre beta.gouv, react-dsfr, Biome, Vitest. Node 25, pnpm.
+provider Espace Membre beta.gouv, react-dsfr, Biome, Vitest. Node 24, pnpm.
 
 ## Démarrage
 

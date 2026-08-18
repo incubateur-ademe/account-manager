@@ -24,6 +24,20 @@ export interface OperatorMatch {
   viaBreakGlass: boolean;
 }
 
+/**
+ * L'allowlist est une autorisation vivante, pas un droit acquis a la connexion.
+ * Elle se relit donc a chaque requete et pas seulement au moment ou le lien est
+ * suivi : sans cela, le seul acces que cet outil ne saurait pas retirer serait le
+ * sien.
+ */
+export function estOperateur(
+  username: string,
+  operators: readonly string[],
+  breakGlass: readonly string[],
+): boolean {
+  return operators.includes(username) || breakGlass.includes(username);
+}
+
 export function resolveOperator(
   user: AuthUserShape,
   operators: readonly string[],

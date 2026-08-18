@@ -49,13 +49,27 @@ export async function creerFichePourCompte(
 
   const identite = await prisma.externalIdentity.findUnique({
     where: { id },
-    select: { id: true, provider: true, handle: true, personId: true, serviceAccountId: true },
+    select: {
+      id: true,
+      provider: true,
+      handle: true,
+      personId: true,
+      serviceAccountId: true,
+      matchMethod: true,
+    },
   });
 
   if (!identite) {
     return { erreur: "Ce compte n'est plus en base." };
   }
-  if (identite.personId !== null || identite.serviceAccountId !== null) {
+  if (identite.serviceAccountId !== null) {
+    return { erreur: "Ce compte est déclaré comme compte de service." };
+  }
+  // Un rattachement issu d'une ressemblance n'est pas une décision, c'est la
+  // supposition que cet écran demande de trancher. Le refuser ici rendrait ces
+  // lignes intraitables, alors qu'elles sont précisément celles qui ne pourront
+  // jamais justifier une révocation tant que personne ne les a confirmées.
+  if (identite.personId !== null && identite.matchMethod !== "HEURISTIC") {
     return { erreur: "Ce compte est déjà rattaché." };
   }
 
