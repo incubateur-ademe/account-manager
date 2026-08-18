@@ -19,6 +19,11 @@ const LIBELLE_ACTION: Record<string, string> = {
   "depart.confirmation": "Confirmation d'un plan de départ",
   "depart.pointage": "Pointage d'une étape de départ",
   "depart.cloture": "Clôture d'un dossier de départ",
+  "identite.rattachement": "Rattachement d'un compte à une personne",
+  "identite.detachement": "Détachement d'un compte",
+  "identite.rapprochement": "Rapprochement automatique d'un compte",
+  "personne.creation": "Création d'une fiche personne",
+  "retirer-de-l-organisation": "Retrait d'une organisation",
 };
 
 const LIBELLE_CIBLE: Record<string, string> = {
@@ -44,7 +49,18 @@ const SEVERITE_RESULTAT: Record<string, "success" | "error" | "info"> = {
  * ce qui trahirait le journal au moment précis où il sert de preuve.
  */
 export function libelleAction(action: string): string {
-  return LIBELLE_ACTION[action] ?? action;
+  const connu = LIBELLE_ACTION[action];
+  if (connu) {
+    return connu;
+  }
+
+  // Les collectes portent le nom de leur système : les énumérer ici obligerait à
+  // penser au journal chaque fois qu'un connecteur arrive, et personne n'y pense.
+  if (action.startsWith("sync.")) {
+    return `Collecte du système ${action.slice("sync.".length)}`;
+  }
+
+  return action;
 }
 
 export function libelleCible(targetType: string): string {

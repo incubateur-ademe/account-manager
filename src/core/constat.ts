@@ -1,4 +1,9 @@
-export type ConstatKind = "SCOPE_EXIT" | "INACTIVE_STARTUP" | "ORPHAN" | "UNREGISTERED";
+export type ConstatKind =
+  | "SCOPE_EXIT"
+  | "INACTIVE_STARTUP"
+  | "ORPHAN"
+  | "UNREGISTERED"
+  | "OVERDUE_MANUAL_ACTION";
 
 export interface Constat {
   kind: ConstatKind;
@@ -157,6 +162,50 @@ export interface IdentiteConstatable {
  * comme un départ reviendrait à couper quelqu'un en poste, précisément parce qu'on
  * ne le connaît pas.
  */
+export interface ActionDeclaree {
+  /** Ce qui a été déclaré fait, tel que le plan le nommait. */
+  label: string;
+  systemKey: string;
+  username: string;
+  declareeLe: Date;
+  /** Vrai quand le compte visé est toujours observé sur ce système. */
+  compteToujoursLa: boolean;
+  /** Dernière lecture complète du système, ou null s'il n'a pas été relu depuis. */
+  relueLe: Date | null;
+}
+
+/**
+ * L'outil n'exécute rien : il enregistre ce qu'un opérateur déclare avoir fait. Sans
+ * contrepartie, une case cochée vaudrait donc preuve, alors qu'elle ne vaut que
+ * parole, et un accès resté ouvert par oubli passerait pour un accès coupé.
+ *
+ * C'est la collecte qui tranche, et elle seule. On n'attend pas un délai : on attend
+ * d'avoir regardé. Tant que le système n'a pas été relu depuis la déclaration, il n'y
+ * a rien à dire ; une fois relu, un compte toujours là contredit ce qui a été affirmé.
+ */
+export function constatsDActionsDeclarees(actions: readonly ActionDeclaree[]): Constat[] {
+  const constats: Constat[] = [];
+
+  for (const action of actions) {
+    if (!action.compteToujoursLa) {
+      continue;
+    }
+    if (action.relueLe === null || action.relueLe.getTime() <= action.declareeLe.getTime()) {
+      continue;
+    }
+
+    constats.push({
+      kind: "OVERDUE_MANUAL_ACTION",
+      dedupKey: `OVERDUE_MANUAL_ACTION:${action.systemKey}:${action.username}`,
+      severity: "HIGH",
+      detail: `« ${action.label} » a été déclarée faite, mais le compte est toujours présent sur ${action.systemKey} à la lecture suivante`,
+      username: action.username,
+    });
+  }
+
+  return constats;
+}
+
 export function constatsDIdentites(identites: readonly IdentiteConstatable[]): Constat[] {
   const constats: Constat[] = [];
 

@@ -1,6 +1,8 @@
 import { chuteExcessive } from "@/core/collecte";
 import {
+  type ActionDeclaree,
   type Constat,
+  constatsDActionsDeclarees,
   constatsDe,
   constatsDIdentites,
   type IdentiteConstatable,
@@ -17,7 +19,13 @@ import type { IncubatorStartup } from "@/lib/espace-membre";
  * refermer. Un constat d'une autre origine, posé à la main ou par un futur chemin,
  * ne doit pas se faire clore par une réconciliation qui ignore ce qui l'a levé.
  */
-const RECONCILIES = ["SCOPE_EXIT", "INACTIVE_STARTUP", "ORPHAN", "UNREGISTERED"] as const;
+const RECONCILIES = [
+  "SCOPE_EXIT",
+  "INACTIVE_STARTUP",
+  "ORPHAN",
+  "UNREGISTERED",
+  "OVERDUE_MANUAL_ACTION",
+] as const;
 
 export interface ConstatsResult {
   ouverts: number;
@@ -101,6 +109,7 @@ export async function syncConstats(
   const constats = [
     ...constatsDe(personnes, phaseParStartup, phasesTerminales, now),
     ...constatsDIdentites(identites),
+    ...constatsDActionsDeclarees(await actionsDeclarees()),
   ];
   const parCle = new Map<string, Constat>(constats.map((c) => [c.dedupKey, c]));
 
@@ -198,4 +207,68 @@ export async function syncConstats(
   }
 
   return { ouverts, fermes: aFermer.length, actifs: constats.length };
+}
+
+/**
+ * Ce qu'on a déclaré avoir fait, confronté à ce qu'on observe.
+ *
+ * Une étape pointée « faite » n'est qu'une parole tant qu'une lecture du système ne
+ * l'a pas confirmée. On rapproche donc chaque déclaration de deux choses : le compte
+ * de la personne sur ce système existe-t-il encore, et l'a-t-on relu depuis.
+ */
+async function actionsDeclarees(): Promise<ActionDeclaree[]> {
+  const etapes = await prisma.planStep.findMany({
+    where: { state: "SUCCEEDED", executedAt: { not: null } },
+    select: {
+      label: true,
+      systemKey: true,
+      executedAt: true,
+      plan: {
+        select: {
+          departureCase: {
+            select: {
+              person: {
+                select: {
+                  username: true,
+                  identities: { select: { provider: true, vanishedAt: true } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const relectures = new Map<string, Date>();
+  for (const releve of await prisma.syncRun.findMany({
+    where: { capability: "list", status: "OK" },
+    distinct: ["provider"],
+    orderBy: { startedAt: "desc" },
+    select: { provider: true, startedAt: true },
+  })) {
+    relectures.set(releve.provider, releve.startedAt);
+  }
+
+  const declarees: ActionDeclaree[] = [];
+
+  for (const etape of etapes) {
+    const personne = etape.plan.departureCase?.person;
+    if (!personne || !etape.executedAt) {
+      continue;
+    }
+
+    declarees.push({
+      label: etape.label,
+      systemKey: etape.systemKey,
+      username: personne.username,
+      declareeLe: etape.executedAt,
+      compteToujoursLa: personne.identities.some(
+        (identite) => identite.provider === etape.systemKey && identite.vanishedAt === null,
+      ),
+      relueLe: relectures.get(etape.systemKey) ?? null,
+    });
+  }
+
+  return declarees;
 }
