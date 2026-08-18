@@ -405,6 +405,26 @@ ressource Coolify :
 `NODE_ENV`, `PORT` et `HOSTNAME` sont posés par l'image, ne pas les redéfinir.
 `ESPACE_MEMBRE_URL` a une valeur par défaut correcte.
 
+### Deux pièges des variables Coolify
+
+**L'interpolation n'est pas récursive.** Une variable qui en référence une autre est
+remplacée par la valeur *stockée* de celle-ci, sans seconde passe. Poser
+`AUTH_URL=$APP_URL` alors que `APP_URL` vaut lui-même `$COOLIFY_URL` livre au conteneur
+la chaîne littérale `$COOLIFY_URL`, et le schéma d'environnement la refuse au démarrage
+avec un `AUTH_URL : Invalid URL`. Les URL publiques se posent donc en dur : elles
+changent une fois tous les deux ans, et l'indirection ne fait économiser aucune saisie.
+
+**`COOLIFY_URL` et `COOLIFY_FQDN` reprennent le port écrit dans le champ Domains.** Un
+domaine saisi `https://comptes.incubateur.ademe.fr:3000` donne un `COOLIFY_URL` qui
+porte ce `:3000`, alors que ce port n'existe que dans le conteneur : Traefik, lui,
+écoute en 443. Deux conséquences, et ce sont exactement les deux pannes du premier
+déploiement. Les liens de connexion envoyés par courriel pointent vers un port
+injoignable. Et la sonde de santé, fabriquée à partir du même FQDN, interroge une URL
+qui ne répond pas.
+
+**Écrire le domaine sans port**, le port du conteneur étant déjà déclaré dans
+`Ports Exposes`.
+
 ### Les trois variables de build
 
 Elles ne servent qu'à fabriquer l'image et n'existent plus dans le conteneur. Dans
