@@ -196,6 +196,22 @@ PROMOTE
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm-store,sharing=locked \
     pnpm install --no-frozen-lockfile --store-dir=/pnpm-store
 
+# Deux poids morts que le CLI de Prisma traine sans jamais les charger ici : le
+# PostgreSQL embarque de "prisma dev", et le compilateur TypeScript, tire comme
+# peerDependency et auto-installe par pnpm. Le client arrive deja genere depuis
+# l'etape de build, il n'y a plus rien a compiler dans cette image.
+#
+# Suppression apres coup et non exclusion : ce sont des dependances fermes du
+# paquet prisma, aucun reglage ne les ecarte.
+#
+# La liste s'arrete la, et pas par prudence : @prisma/studio-core, @prisma/dev et
+# effect ont ete essayes un a un, chacun fait echouer le CLI des son demarrage
+# sur un "Cannot find module". C'est aussi le symptome a surveiller apres une
+# montee de version de Prisma, si l'un des deux restants redevenait necessaire.
+RUN rm -rf node_modules/.pnpm/@electric-sql+pglite@* \
+    node_modules/.pnpm/typescript@* \
+    node_modules/.pnpm/@typescript+typescript-*
+
 # ---------------------------------------------------------------------------
 # Image finale
 # ---------------------------------------------------------------------------

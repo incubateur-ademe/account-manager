@@ -652,15 +652,20 @@ rencontrés en le faisant :
   depuis `/app/ops` vers l'arbre du serveur web, un emprunt qui fonctionnait par
   accident et que le retrait de `next` aurait rompu sans prévenir.
 
-Résultat mesuré dans l'image : `/app/node_modules` 43 Mo, `/app/ops/node_modules`
-391 Mo au lieu de 811. `prisma migrate status` et la collecte se chargent et vont
-jusqu'à la connexion à la base, vérification faite dans le conteneur.
+Un second passage a retiré de cet arbre le PostgreSQL embarqué de `prisma dev` et le
+compilateur TypeScript, tiré comme `peerDependency` et auto-installé par pnpm. Le
+client arrive généré depuis l'étape de build : il n'y a plus rien à compiler ici.
 
-Ce qui reste dans `ops` est dominé par `@prisma/client` (75 Mo), `prisma` (42 Mo) et
-`@prisma/studio-core` avec `effect` et `pglite` (une centaine de mégaoctets à eux
-trois). Ces derniers sont des dépendances fermes du CLI Prisma : les supprimer
-demanderait de les découper à la main après installation, pour un gain qui ne justifie
-pas encore le risque.
+Ce découpage se fait après installation, ces paquets étant des dépendances fermes du
+CLI Prisma qu'aucun réglage n'écarte. La liste s'arrête à ces deux-là et ce n'est pas
+par prudence : `@prisma/studio-core`, `@prisma/dev` et `effect` ont été essayés un à
+un, chacun fait échouer le CLI dès son démarrage sur un `Cannot find module`. C'est
+aussi le symptôme à surveiller après une montée de version de Prisma.
+
+Résultat mesuré dans l'image : `/app/node_modules` 43 Mo, `/app/ops/node_modules`
+328 Mo au lieu de 811, et l'image entière à **930 Mo au lieu de 1,52 Go**.
+`prisma migrate status`, la collecte et la sonde ont été vérifiés dans le conteneur
+après coupe.
 
 **`migrate deploy` sans migration à appliquer sort bien en 0** : vérifié au démarrage
 du conteneur local sur une base déjà à jour, qui affiche « No pending migrations to
