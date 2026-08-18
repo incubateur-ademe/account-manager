@@ -650,6 +650,54 @@ domaine expéditeur. Ni l'une ni l'autre n'affiche le mot de passe.
 qui reste possible même quand l'application ne répond pas. L'outillage est dans
 `/app/ops`.
 
+**Éprouver la restauration.** À refaire après tout changement de version de
+PostgreSQL, et au moins une fois par an : une procédure de reprise qu'on découvre le
+jour de l'incident n'est pas une procédure.
+
+La base tourne en **PostgreSQL 18**, alors que le développement local est en 17. Un
+dump produit par une 18 ne se restaure pas dans une 17 : le conteneur d'épreuve doit
+donc être une 18. C'est aussi pourquoi l'image du conteneur jetable est écrite en dur
+ci-dessous plutôt que déduite.
+
+Coolify sauvegarde la base `postgres` elle-même, celle que l'application utilise, et
+dépose le dump dans `/data/coolify/backups/databases/root-team-0/<ressource>/`.
+
+```bash
+DUMP=/data/coolify/backups/databases/root-team-0/<ressource>/<fichier>.dmp
+
+docker run -d --name am-restore-test -e POSTGRES_PASSWORD=epreuve postgres:18-alpine
+docker cp "$DUMP" am-restore-test:/tmp/dump.dmp
+docker exec am-restore-test pg_restore -U postgres -d postgres --no-owner --no-privileges /tmp/dump.dmp
+```
+
+La comparaison porte d'abord sur les volumes, puis sur le contenu de ce qui ne se
+reconstruit pas. Une collecte régénère les personnes, les identités et les constats ;
+le journal d'audit, non.
+
+```bash
+REQ='SELECT (SELECT count(*) FROM "Person"), (SELECT count(*) FROM "ExternalIdentity"),
+            (SELECT count(*) FROM "Finding"), (SELECT count(*) FROM "AuditEvent")'
+docker exec <conteneur-base> psql -U postgres -d postgres -c "$REQ"
+docker exec am-restore-test  psql -U postgres -d postgres -c "$REQ"
+
+# Le contenu du journal, et pas seulement son volume
+for c in <conteneur-base> am-restore-test; do
+  docker exec "$c" psql -U postgres -d postgres -tAc \
+    'SELECT md5(string_agg(id || action, chr(124) ORDER BY id)) FROM "AuditEvent"'
+done
+```
+
+Deux sommes identiques valent mieux que sept compteurs égaux : elles disent que les
+lignes sont les mêmes, pas seulement qu'elles sont aussi nombreuses.
+
+```bash
+docker rm -f am-restore-test
+```
+
+Épreuve du 18 août 2026 : 246 personnes, 49 identités, 49 accès, 15 constats, 53
+événements d'audit, 4 runs, 21 startups, 4 comptes de service, tous identiques de part
+et d'autre, et sommes de contrôle du journal égales.
+
 **État des migrations.**
 
 ```bash
@@ -766,10 +814,10 @@ jamais été exercé dans le parc. Le mécanisme est un `docker exec` piloté pa
 scheduler qui tourne toutes les minutes ; ce qui reste à voir, c'est le comportement
 en cas de redéploiement pendant l'exécution, et la rétention réelle des sorties.
 
-**La sauvegarde de la base n'a jamais été restaurée.** Activer le dump ne prouve rien.
-Un test de restauration sur une base jetable doit être fait avant que l'outil porte
-des décisions réelles, parce que le journal d'audit est la seule donnée non
-reconstructible du système.
+**La sauvegarde a été restaurée et vérifiée.** Voir la procédure en section 7 : dump
+de 74 ko restauré dans un conteneur jetable, sept tables comparées ligne à ligne, et
+somme de contrôle du journal d'audit identique à la production. L'opération a pris
+moins d'une minute et n'a jamais touché la base en service.
 
 **La version de Node est réglée.** L'image construisait sur 25, une version impaire qui
 s'arrête en juin, pendant que `.nvmrc` et l'intégration continue vérifiaient sur 24 :
