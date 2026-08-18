@@ -14,6 +14,7 @@ const LIBELLE_ACTION: Record<string, string> = {
   "finding.open": "Ouverture d'un constat",
   "finding.close": "Fermeture d'un constat",
   "service-account.review": "Revue d'un compte de service",
+  "sync.lancement": "Collecte lancée à la main",
 };
 
 const LIBELLE_CIBLE: Record<string, string> = {
@@ -21,6 +22,7 @@ const LIBELLE_CIBLE: Record<string, string> = {
   perimetre: "Périmètre",
   finding: "Constat",
   "service-account": "Compte de service",
+  collecte: "Collecte",
 };
 
 const SEVERITE_RESULTAT: Record<string, "success" | "error" | "info"> = {

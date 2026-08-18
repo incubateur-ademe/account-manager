@@ -10,6 +10,7 @@ const LIENS = [
   { text: "Constats", href: "/constats" },
   { text: "Comptes isolés", href: "/comptes-isoles" },
   { text: "Comptes de service", href: "/comptes-de-service" },
+  { text: "Collectes", href: "/collectes" },
   { text: "Journal", href: "/journal" },
 ] as const;
 
