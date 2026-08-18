@@ -462,16 +462,26 @@ du code.
 La connexion se fait par lien à usage unique envoyé par courriel : sans SMTP qui
 fonctionne, personne ne se connecte. Trois options, par ordre de préférence :
 
-1. **Scaleway TEM**, déjà utilisé par Messages et ERPNext sur ce serveur. Port
-   **2587** en STARTTLS, username = Project ID, password = secret key d'une clé API
-   portant la permission `TransactionalEmailEmailSmtpCreate`. Le domaine expéditeur
-   doit être vérifié dans le projet TEM.
+1. **Scaleway TEM**, déjà utilisé par Messages et ERPNext sur ce serveur. STARTTLS,
+   username = Project ID, password = secret key d'une clé API portant la permission
+   `TransactionalEmailEmailSmtpCreate`. Le domaine expéditeur doit être vérifié dans
+   le projet TEM.
 2. Le relais SMTP de l'incubateur, s'il accepte un nouveau client.
 3. Un compte dédié chez le fournisseur de messagerie, en dernier recours.
 
-> Les ports 25, 465 et 587 sont bloqués en sortie sur les Instances Scaleway. C'est la
-> raison du port 2587. Si même 2587 expire, il faut cocher « Enable SMTP » dans le
-> security group de l'Instance.
+**Le port 587 fonctionne depuis ce serveur**, vérifié au premier déploiement. Ce
+document affirmait le contraire, en reprenant la règle générale des Instances
+Scaleway, où 25, 465 et 587 sont filtrés en sortie pour endiguer le spam. Elle ne
+s'applique pas ici, et cette erreur a coûté un diagnostic : sur 2587, la connexion
+s'ouvrait sans qu'aucune bannière n'arrive.
+
+`2587` reste le repli documenté par Scaleway si le filtrage venait à s'appliquer, et
+« Enable SMTP » dans le security group de l'Instance le recours suivant.
+
+> Le symptôme d'un port filtré est un `Greeting never received` de nodemailer : la
+> connexion TCP s'ouvre, puis plus rien. Un port fermé, lui, donne un
+> `ECONNREFUSED` immédiat. Pour trancher sans envoyer de message, la commande de
+> diagnostic est dans la section [7](#7-exploitation-courante).
 
 ---
 
@@ -604,6 +614,37 @@ des deux listes est refusé.
 
 **Logs.** Onglet Logs de la ressource, ou
 `ssh scw-tools 'docker logs -f <conteneur>'`.
+
+**Vérifier le relais d'envoi**, sans envoyer le moindre message. Dans le terminal du
+conteneur, d'abord le réseau, qui ne dépend d'aucune dépendance installée :
+
+```bash
+node -e '
+const net = require("node:net");
+const u = new URL(process.env.SMTP_URL);
+const port = Number(u.port || (u.protocol === "smtps:" ? 465 : 587));
+console.log("schema:", u.protocol, "| hote:", u.hostname, "| port:", port, "| identifiants:", u.username ? "presents" : "absents");
+const s = net.connect({ host: u.hostname, port }, () => console.log("TCP ouvert, attente de la banniere..."));
+s.setTimeout(8000);
+s.on("data", (d) => { console.log("banniere recue:", d.toString().trim()); s.end(); });
+s.on("timeout", () => { console.log("aucune banniere en 8s : port filtre en sortie, ou TLS attendu des la connexion"); s.destroy(); });
+s.on("error", (e) => console.log("erreur TCP:", e.message));
+'
+```
+
+Une bannière `220 ... ESMTP` dit que le relais parle. Puis l'authentification :
+
+```bash
+cd /app/ops && node -e '
+require("nodemailer").createTransport(process.env.SMTP_URL).verify()
+  .then(() => console.log("authentification acceptee"))
+  .catch((e) => { console.error("echec :", e.message); process.exit(1); });
+'
+```
+
+Ces deux commandes répondent en quelques secondes, là où un lien de connexion qui
+n'arrive pas ne dit ni si c'est le réseau, ni le port, ni les identifiants, ni le
+domaine expéditeur. Ni l'une ni l'autre n'affiche le mot de passe.
 
 **Terminal.** Coolify ouvre un terminal sur le conteneur sans passer par le proxy, ce
 qui reste possible même quand l'application ne répond pas. L'outillage est dans
