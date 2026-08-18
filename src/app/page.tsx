@@ -114,7 +114,8 @@ export default async function AccueilPage() {
         </p>
       ) : (
         <p className={fr.cx("fr-text--sm")}>
-          Aucune collecte n'a encore été faite. Lancez <code>pnpm sync</code>.
+          Aucune collecte n'a encore été faite : les écrans se rempliront au premier passage du
+          traitement quotidien.
         </p>
       )}
 
