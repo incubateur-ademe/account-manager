@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { CONNECTEURS } from "@/connectors";
 import type { PlannedStep, RunContext } from "@/core/connector";
+import { type SystemesDuDepart, systemesDuDepart } from "@/core/depart";
 import { empreinteDuPlan } from "@/core/plan";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
@@ -17,20 +18,26 @@ const VALIDITE_JOURS = 7;
 const RISQUE = { low: "LOW", medium: "MEDIUM", high: "HIGH" } as const;
 
 /**
- * Les systèmes sur lesquels la personne a été observée. Planifier ailleurs
- * reviendrait à demander de retirer quelqu'un d'un endroit où il n'est pas : chaque
- * ligne d'un plan doit appeler un geste, sinon c'est une liste qu'on cesse de lire.
+ * Les systèmes sur lesquels la personne a été observée, répartis selon ce qu'on a le
+ * droit d'y faire. Planifier ailleurs reviendrait à demander de retirer quelqu'un
+ * d'un endroit où il n'est pas : chaque ligne d'un plan doit appeler un geste, sinon
+ * c'est une liste qu'on cesse de lire.
  *
  * Une identité disparue ne compte pas : elle dit qu'on ne l'observe plus, donc qu'il
  * n'y a plus rien à couper.
  */
-async function systemesOuElleExiste(personId: string): Promise<Set<string>> {
+async function systemesDeLaPersonne(personId: string): Promise<SystemesDuDepart> {
   const identites = await prisma.externalIdentity.findMany({
     where: { personId, vanishedAt: null },
-    select: { provider: true },
-    distinct: ["provider"],
+    select: { provider: true, matchMethod: true },
   });
-  return new Set(identites.map((identite) => identite.provider));
+
+  return systemesDuDepart(
+    identites.map((identite) => ({
+      provider: identite.provider,
+      methode: identite.matchMethod,
+    })),
+  );
 }
 
 export interface PlanCalcule {
@@ -40,6 +47,12 @@ export interface PlanCalcule {
   systemes: readonly string[];
   /** Systèmes où elle a un compte, mais qu'aucun connecteur ne sait traiter. */
   sansConnecteur: readonly string[];
+  /**
+   * Systèmes couverts par un connecteur où elle a un compte qu'aucune étape ne peut
+   * viser, faute d'un rattachement sûr. Sans cette liste, le plan se tairait sur eux
+   * et son silence passerait pour une absence de compte.
+   */
+  nonConfirmes: readonly string[];
 }
 
 /**
@@ -51,7 +64,8 @@ export async function calculerPlanDeDepart(
   username: string,
   maintenant: Date,
 ): Promise<PlanCalcule> {
-  const presente = await systemesOuElleExiste(personId);
+  const constates = await systemesDeLaPersonne(personId);
+  const presente = new Set(constates.revocables);
 
   const ctx: RunContext = {
     runId: randomUUID(),
@@ -86,7 +100,11 @@ export async function calculerPlanDeDepart(
     etapes,
     empreinte: empreinteDuPlan(etapes),
     systemes,
-    sansConnecteur: [...presente].filter((provider) => !couverts.has(provider)).sort(),
+    // Sur tous les systèmes observés et non sur les seuls révocables : un compte que
+    // rien ici ne sait traiter est à traiter dehors, que son rattachement soit sûr
+    // ou non.
+    sansConnecteur: constates.observes.filter((provider) => !couverts.has(provider)),
+    nonConfirmes: constates.nonConfirmes.filter((provider) => couverts.has(provider)),
   };
 }
 
@@ -137,8 +155,14 @@ export async function enregistrerPlan(
 ): Promise<string> {
   const expiresAt = new Date(maintenant.getTime() + VALIDITE_JOURS * 24 * 60 * 60_000);
 
+  // L'identifiant est tiré ici pour entrer dans les clés d'idempotence, uniques en
+  // base. Les suffixer par le dossier donnerait les mêmes clés à deux plans successifs
+  // du même dossier, ce qui interdirait d'en recalculer un après péremption.
+  const planId = randomUUID();
+
   const plan = await prisma.plan.create({
     data: {
+      id: planId,
       departureCaseId,
       kind: "OFFBOARDING",
       state: "DRAFT",
@@ -155,7 +179,7 @@ export async function enregistrerPlan(
           params: etape.params as object,
           riskLevel: RISQUE[etape.riskLevel],
           expectedState: (etape.expectedState ?? {}) as object,
-          idempotencyKey: `${etape.idempotencyKey}:${departureCaseId}`,
+          idempotencyKey: `${etape.idempotencyKey}:${planId}`,
           ...(etape.manual ? { manual: etape.manual as object } : {}),
         })),
       },

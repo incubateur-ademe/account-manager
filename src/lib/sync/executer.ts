@@ -1,5 +1,6 @@
 import { CONNECTEURS } from "@/connectors";
 import { resolveCapability } from "@/core/connector";
+import { autoriseUneRevocation } from "@/core/rapprochement";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { policy } from "@/lib/policy";
@@ -183,7 +184,7 @@ export async function executerSync(
         id: identite.id,
         provider: identite.provider,
         handle: identite.handle,
-        rattachementSur: ["DECLARED", "GITHUB_LOGIN", "EMAIL_EXACT"].includes(identite.matchMethod),
+        rattachementSur: autoriseUneRevocation(identite.matchMethod),
         personneUsername: identite.person?.username ?? null,
         personneSortie: identite.person?.vanishedAt != null,
         compteDeService: identite.serviceAccountId !== null,

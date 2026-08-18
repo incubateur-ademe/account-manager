@@ -4,7 +4,13 @@ import { fr } from "@codegouvfr/react-dsfr";
 import { Button } from "@codegouvfr/react-dsfr/Button";
 import { useActionState, useState } from "react";
 
-import { cloreDossier, confirmerPlan, type EtatAction, pointerEtape } from "./actions";
+import {
+  cloreDossier,
+  confirmerPlan,
+  type EtatAction,
+  pointerEtape,
+  recalculerPlan,
+} from "./actions";
 
 export function BoutonConfirmer({ planId }: { planId: string }) {
   const [etat, formAction, pending] = useActionState<EtatAction | null, FormData>(
@@ -98,6 +104,27 @@ export function BoutonClore({ dossierId }: { dossierId: string }) {
       <input type="hidden" name="dossierId" value={dossierId} />
       <Button type="submit" disabled={pending}>
         {pending ? "Clôture…" : "Clore le dossier"}
+      </Button>
+      {etat?.erreur ? (
+        <p className={fr.cx("fr-error-text", "fr-mt-1v")} role="alert">
+          {etat.erreur}
+        </p>
+      ) : null}
+    </form>
+  );
+}
+
+export function BoutonRecalculer({ planId }: { planId: string }) {
+  const [etat, formAction, pending] = useActionState<EtatAction | null, FormData>(
+    recalculerPlan,
+    null,
+  );
+
+  return (
+    <form action={formAction} className={fr.cx("fr-mt-1w")}>
+      <input type="hidden" name="planId" value={planId} />
+      <Button type="submit" priority="secondary" size="small" disabled={pending}>
+        {pending ? "Recalcul…" : "Recalculer le plan"}
       </Button>
       {etat?.erreur ? (
         <p className={fr.cx("fr-error-text", "fr-mt-1v")} role="alert">

@@ -1,4 +1,5 @@
 import type { Peremption } from "@/core/plan";
+import { autoriseUneRevocation } from "@/core/rapprochement";
 
 export type EtatEtape = "PENDING" | "SKIPPED" | "SUCCEEDED" | "ALREADY_ABSENT" | "STALE" | "FAILED";
 
@@ -93,4 +94,80 @@ export function etatApresPointage(etapes: readonly EtatEtape[]): EtatPlan {
  */
 export function dossierSoldable(etatPlan: EtatPlan): boolean {
   return etatPlan === "EXECUTED";
+}
+
+export interface CompteConstate {
+  provider: string;
+  methode: string;
+}
+
+export interface SystemesDuDepart {
+  /** Systèmes où un geste est possible : un compte y est rattaché de façon sûre. */
+  revocables: readonly string[];
+  /** Tous les systèmes où un compte est observé, quelle que soit la solidité du rattachement. */
+  observes: readonly string[];
+  /** Systèmes où un compte n'est rattaché que sur une ressemblance : aucune étape ne peut le viser. */
+  nonConfirmes: readonly string[];
+}
+
+/**
+ * Répartit les systèmes selon ce qu'on a le droit d'y faire.
+ *
+ * Un compte rattaché sur une ressemblance ne produit aucune étape, et c'est une règle
+ * dure : couper sur cette base reviendrait à couper l'accès d'un homonyme. Mais son
+ * système doit se dire quand même, sans quoi un plan muet laisserait croire qu'il n'y
+ * a rien là, alors qu'il y a un compte que personne n'a encore tranché.
+ */
+export function systemesDuDepart(comptes: readonly CompteConstate[]): SystemesDuDepart {
+  const revocables = new Set<string>();
+  const observes = new Set<string>();
+  const nonConfirmes = new Set<string>();
+
+  for (const compte of comptes) {
+    observes.add(compte.provider);
+    if (autoriseUneRevocation(compte.methode)) {
+      revocables.add(compte.provider);
+    } else {
+      nonConfirmes.add(compte.provider);
+    }
+  }
+
+  const trier = (valeurs: ReadonlySet<string>) =>
+    [...valeurs].sort((a, b) => a.localeCompare(b, "fr"));
+
+  return {
+    revocables: trier(revocables),
+    observes: trier(observes),
+    nonConfirmes: trier(nonConfirmes),
+  };
+}
+
+/**
+ * Recalculer remplace une liste que personne n'a approuvée. Un plan confirmé porte
+ * des pointages : le refaire effacerait ce que quelqu'un a déclaré avoir fait.
+ *
+ * Sans ce geste, un dossier dont le plan a péri n'a plus d'issue. La confirmation le
+ * refuse à juste titre, et rien d'autre ne permet d'en calculer un nouveau : le
+ * dossier reste ouvert sur des accès dont personne ne s'occupe plus.
+ */
+export function peutRecalculer(etat: EtatPlan, peremption: Peremption): Verdict {
+  if (etat !== "DRAFT") {
+    return { possible: false, raison: "Seul un brouillon se recalcule : ce plan est déjà engagé." };
+  }
+  if (!peremption.perime && !peremption.obsolete) {
+    return {
+      possible: false,
+      raison: "Ce plan décrit encore la situation observée : il n'y a rien à recalculer.",
+    };
+  }
+  return { possible: true };
+}
+
+/**
+ * Ce que devient le plan qu'un recalcul remplace. La péremption prime sur
+ * l'obsolescence : c'est un fait daté, là où l'autre est une comparaison qui dépend
+ * de ce qu'on vient de lire.
+ */
+export function etatDUnPlanRemplace(peremption: Peremption): EtatPlan {
+  return peremption.perime ? "EXPIRED" : "STALE";
 }

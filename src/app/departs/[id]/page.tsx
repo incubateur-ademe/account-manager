@@ -9,7 +9,7 @@ import { peremptionDuPlan } from "@/core/plan";
 import { prisma } from "@/lib/db";
 import { calculerPlanDeDepart } from "@/lib/depart";
 import { requireOperateur } from "@/lib/session";
-import { BoutonClore, BoutonConfirmer, Pointage } from "./Pointage";
+import { BoutonClore, BoutonConfirmer, BoutonRecalculer, Pointage } from "./Pointage";
 
 export const dynamic = "force-dynamic";
 
@@ -130,7 +130,15 @@ export default async function DepartPage({ params }: { params: Promise<{ id: str
           severity="warning"
           className={fr.cx("fr-mb-3w")}
           title="Ce plan ne décrit plus la situation"
-          description="Une collecte est passée depuis son calcul : cette personne a gagné ou perdu un compte. Il ne peut plus être confirmé en l'état."
+          description={
+            <>
+              <p className={fr.cx("fr-mb-1w")}>
+                Une collecte est passée depuis son calcul : cette personne a gagné ou perdu un
+                compte. Il ne peut plus être confirmé en l'état.
+              </p>
+              {plan ? <BoutonRecalculer planId={plan.id} /> : null}
+            </>
+          }
         />
       ) : null}
 
@@ -139,7 +147,37 @@ export default async function DepartPage({ params }: { params: Promise<{ id: str
           severity="warning"
           className={fr.cx("fr-mb-3w")}
           title="Ce plan a dépassé sa date de validité"
-          description={`Il valait jusqu'au ${dateFr.format(plan?.expiresAt ?? maintenant)}. Ce qu'il décrit a été constaté avant cette date.`}
+          description={
+            <>
+              <p className={fr.cx("fr-mb-1w")}>
+                Il valait jusqu'au {dateFr.format(plan?.expiresAt ?? maintenant)}. Ce qu'il décrit a
+                été constaté avant cette date.
+              </p>
+              {plan && !etat.obsolete ? <BoutonRecalculer planId={plan.id} /> : null}
+            </>
+          }
+        />
+      ) : null}
+
+      {actuel.nonConfirmes.length > 0 ? (
+        <Alert
+          severity="warning"
+          className={fr.cx("fr-mb-3w")}
+          title="Des comptes ne peuvent pas entrer dans ce plan"
+          description={
+            <>
+              <p className={fr.cx("fr-mb-1w")}>
+                {actuel.nonConfirmes.join(", ")}. Ces comptes lui sont rattachés sur une simple
+                ressemblance de nom, jamais sur une preuve. Couper sur cette base reviendrait à
+                couper l'accès d'un homonyme, donc aucune étape ne les vise.
+              </p>
+              <p className={fr.cx("fr-mb-0")}>
+                <Link href="/comptes-isoles">
+                  Confirmer ou détacher ces comptes pour qu'ils entrent dans un plan
+                </Link>
+              </p>
+            </>
+          }
         />
       ) : null}
 

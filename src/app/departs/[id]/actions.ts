@@ -1,11 +1,18 @@
 "use server";
 
 import type { EtatEtape } from "@/core/depart";
-import { dossierSoldable, etatApresPointage, peutConfirmer, peutPointer } from "@/core/depart";
+import {
+  dossierSoldable,
+  etatApresPointage,
+  etatDUnPlanRemplace,
+  peutConfirmer,
+  peutPointer,
+  peutRecalculer,
+} from "@/core/depart";
 import { peremptionDuPlan } from "@/core/plan";
 import { actionTracee } from "@/lib/actions";
 import { prisma } from "@/lib/db";
-import { calculerPlanDeDepart } from "@/lib/depart";
+import { calculerPlanDeDepart, enregistrerPlan } from "@/lib/depart";
 
 export interface EtatAction {
   erreur?: string;
@@ -218,6 +225,62 @@ export async function cloreDossier(
     revalider: [`/departs/${dossier.id}`, `/personnes/${dossier.person.username}`],
     ecrire: async () => {
       await prisma.departureCase.update({ where: { id: dossier.id }, data: { state: "DONE" } });
+    },
+  });
+
+  return {};
+}
+
+/**
+ * Remplace un brouillon que le temps ou une collecte a démenti.
+ *
+ * Sans ce geste, un plan périmé fige son dossier : la confirmation le refuse, et
+ * personne ne peut en calculer un autre. Le dossier resterait ouvert sur des accès
+ * dont plus rien ne s'occupe, ce qui est la panne la plus discrète de cet écran.
+ *
+ * Le plan remplacé n'est pas supprimé : il garde ce qu'il proposait et pourquoi il a
+ * cessé de valoir, comme tout ce qui a été calculé ici.
+ */
+export async function recalculerPlan(
+  _etat: EtatAction | null,
+  formData: FormData,
+): Promise<EtatAction> {
+  const planId = String(formData.get("planId") ?? "").trim();
+  const plan = await planDuDossier(planId);
+
+  if (!plan?.departureCase || !plan.departureCaseId) {
+    return { erreur: "Ce plan n'existe plus." };
+  }
+
+  const dossierId = plan.departureCaseId;
+  const maintenant = new Date();
+  const actuel = await calculerPlanDeDepart(
+    plan.departureCase.person.id,
+    plan.departureCase.person.username,
+    maintenant,
+  );
+
+  const peremption = peremptionDuPlan(plan, actuel.empreinte, maintenant);
+  const verdict = peutRecalculer(plan.state, peremption);
+
+  if (!verdict.possible) {
+    return { erreur: verdict.raison };
+  }
+
+  await actionTracee({
+    action: "depart.recalcul",
+    targetType: "plan",
+    targetId: plan.id,
+    before: { empreinte: plan.planDigest, etapes: plan.steps.length },
+    after: { empreinte: actuel.empreinte, etapes: actuel.etapes.length },
+    revalider: [`/departs/${dossierId}`],
+    ecrire: async (operateur) => {
+      await prisma.plan.update({
+        where: { id: plan.id },
+        data: { state: etatDUnPlanRemplace(peremption) },
+      });
+
+      await enregistrerPlan(dossierId, actuel, operateur.username, maintenant);
     },
   });
 
