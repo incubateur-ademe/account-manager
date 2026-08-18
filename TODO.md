@@ -18,3 +18,22 @@ _document fourni pas l'utilisateur_
 
 ## Onboarding et offboarding
 - liens publics pour l'onboarding et l'offboarding
+## Chantiers repérés en séance (18 août 2026)
+
+_ajoutés par Claude, objectif seulement : ni l'un ni l'autre n'a de plan d'implémentation
+étudié à ce stade_
+
+### Brancher les dérogations et les références
+`Derogation` et `Reference` existent en base et dans `docs/architecture.md`, aucun code ne les
+lit. Une dérogation dit qu'un écart est admis et cesse de le faire remonter à chaque collecte,
+avec une raison et un responsable obligatoires. Une référence est un objet possédé, ni accès ni
+révocable (une page, un dépôt), qui appelle `ARCHIVE`, `TRANSFER` ou `KEEP` au départ de son
+auteur, et non une suppression. Sans elles, les écarts tolérés font du bruit indéfiniment et les
+plans de départ proposent des gestes absurdes sur ce qui n'est pas un accès.
+
+### Étendre la couverture au-delà de GitHub
+La valeur de l'outil est proportionnelle au nombre de systèmes couverts, pas à la finesse avec
+laquelle on en traite un. Les candidats sont listés dans `.env.example` : Notion par SCIM, Notion
+par jeton de session, OVH via fine-grained-proxy. Un système entièrement manuel est un connecteur
+de plein droit, `plan` étant la seule méthode obligatoire du contrat : il suffit qu'il sache dire
+quoi faire à la main, avec le lien et le critère de complétion.
