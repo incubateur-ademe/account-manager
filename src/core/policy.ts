@@ -26,7 +26,7 @@ const version = z.literal(1).meta({
 });
 
 const serviceAccountSchema = z
-  .object({
+  .strictObject({
     key: z
       .string()
       .min(1)
@@ -67,7 +67,7 @@ const serviceAccountSchema = z
       }),
     identities: z
       .array(
-        z.object({
+        z.strictObject({
           provider: z
             .string()
             .min(1)
@@ -95,7 +95,7 @@ const serviceAccountSchema = z
   .meta({ description: "Un compte non humain : bot, jeton d'intégration continue, clé d'API." });
 
 const derogationSchema = z
-  .object({
+  .strictObject({
     targetType: z
       .string()
       .min(1)
@@ -126,7 +126,7 @@ const derogationSchema = z
   .meta({ description: "Un écart admis pour de bon, qu'aucune collecte ne doit plus signaler." });
 
 const systemSchema = z
-  .object({
+  .strictObject({
     key: z
       .string()
       .min(1)
@@ -165,11 +165,11 @@ const systemSchema = z
  * qui justifie qu'il puisse vivre hors du dépôt du code.
  */
 export const accountsSchema = z
-  .object({
+  .strictObject({
     version,
 
     scope: z
-      .object({
+      .strictObject({
         incubator: z
           .string()
           .min(1)
@@ -189,7 +189,7 @@ export const accountsSchema = z
           }),
         local: z
           .array(
-            z.object({
+            z.strictObject({
               username,
               until: z.iso.date().meta({
                 description: "Dernier jour travaillé, inclusif, au format AAAA-MM-JJ.",
@@ -241,11 +241,11 @@ export const accountsSchema = z
  * ne fournirait pas ce fichier fonctionnerait quand même.
  */
 export const configSchema = z
-  .object({
+  .strictObject({
     version,
 
     startups: z
-      .object({
+      .strictObject({
         terminalPhases: z
           .array(z.string().min(1))
           .default(["abandon", "abandon-investigation", "transfere", "alumni"])
@@ -259,7 +259,7 @@ export const configSchema = z
       .meta({ description: "Ce que l'incubateur tient pour une startup finie." }),
 
     thresholds: z
-      .object({
+      .strictObject({
         graceDays: z
           .number()
           .int()
