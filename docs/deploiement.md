@@ -562,7 +562,7 @@ ou ne se sont pas produits : la promotion de `prisma` et `tsx` fonctionne, les h
 BuildKit aussi, et l'amorçage de corepack a demandé un `--force`, l'image de base
 posant déjà ses propres relais dans `/usr/local/bin`.
 
-Deux enseignements de ce premier build. `config/accounts.yaml` et `config/config.yaml` manquait dans l'image :
+Deux enseignements de ce premier build. La politique manquait dans l'image :
 le CLI échouait et les écrans protégés auraient échoué de même. Et la collecte annonce
 proprement `github non lu : github-token` quand le jeton est absent, ce qui confirme le
 comportement dégradé attendu d'un credential manquant.
