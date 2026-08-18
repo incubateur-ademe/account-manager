@@ -16,6 +16,9 @@ const LIBELLE_ACTION: Record<string, string> = {
   "service-account.review": "Revue d'un compte de service",
   "sync.lancement": "Collecte lancée à la main",
   "depart.ouverture": "Ouverture d'un dossier de départ",
+  "depart.confirmation": "Confirmation d'un plan de départ",
+  "depart.pointage": "Pointage d'une étape de départ",
+  "depart.cloture": "Clôture d'un dossier de départ",
 };
 
 const LIBELLE_CIBLE: Record<string, string> = {
@@ -25,6 +28,8 @@ const LIBELLE_CIBLE: Record<string, string> = {
   "service-account": "Compte de service",
   collecte: "Collecte",
   personne: "Personne",
+  plan: "Plan",
+  etape: "Étape",
 };
 
 const SEVERITE_RESULTAT: Record<string, "success" | "error" | "info"> = {

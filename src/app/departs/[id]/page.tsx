@@ -4,10 +4,12 @@ import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { dossierSoldable, type EtatEtape, estSoldee } from "@/core/depart";
 import { peremptionDuPlan } from "@/core/plan";
 import { prisma } from "@/lib/db";
 import { calculerPlanDeDepart } from "@/lib/depart";
 import { requireOperateur } from "@/lib/session";
+import { BoutonClore, BoutonConfirmer, Pointage } from "./Pointage";
 
 export const dynamic = "force-dynamic";
 
@@ -19,8 +21,16 @@ const TIER: Record<string, { libelle: string; severite: "success" | "warning" | 
   manual: { libelle: "à faire à la main", severite: "warning" },
 };
 
+const ETAPE: Record<EtatEtape, { libelle: string; severite: "success" | "warning" | "error" }> = {
+  PENDING: { libelle: "à faire", severite: "warning" },
+  SUCCEEDED: { libelle: "fait", severite: "success" },
+  ALREADY_ABSENT: { libelle: "déjà absent", severite: "success" },
+  SKIPPED: { libelle: "écartée", severite: "warning" },
+  FAILED: { libelle: "échec", severite: "error" },
+  STALE: { libelle: "situation changée", severite: "warning" },
+};
+
 interface MarcheASuivre {
-  title?: string;
   runbook?: string;
   deeplink?: string;
   doneWhen?: string;
@@ -41,7 +51,7 @@ export default async function DepartPage({ params }: { params: Promise<{ id: str
       state: true,
       effectiveDate: true,
       firstSignalAt: true,
-      person: { select: { username: true, fullname: true, missionEnd: true } },
+      person: { select: { id: true, username: true, fullname: true } },
       plans: {
         orderBy: { createdAt: "desc" },
         take: 1,
@@ -52,6 +62,8 @@ export default async function DepartPage({ params }: { params: Promise<{ id: str
           expiresAt: true,
           createdAt: true,
           createdBy: true,
+          confirmedBy: true,
+          confirmedAt: true,
           steps: {
             orderBy: [{ systemKey: "asc" }, { label: "asc" }],
             select: {
@@ -62,6 +74,8 @@ export default async function DepartPage({ params }: { params: Promise<{ id: str
               riskLevel: true,
               state: true,
               manual: true,
+              lastError: true,
+              executedAt: true,
             },
           },
         },
@@ -76,28 +90,30 @@ export default async function DepartPage({ params }: { params: Promise<{ id: str
   const maintenant = new Date();
   const plan = dossier.plans[0];
 
-  // Recalculé à l'affichage, et comparé à ce qui est figé : c'est la seule façon de
-  // savoir qu'une collecte est passée depuis et que le plan ne décrit plus la
-  // situation. Le plan affiché reste celui qui a été enregistré.
-  const actuel = await calculerPlanDeDepart(
-    (
-      await prisma.person.findUniqueOrThrow({
-        where: { username: dossier.person.username },
-        select: { id: true },
-      })
-    ).id,
-    dossier.person.username,
-    maintenant,
-  );
+  // Recalculé à l'affichage et comparé à ce qui est figé : c'est la seule façon de
+  // savoir qu'une collecte est passée depuis. Le plan affiché reste celui qui a été
+  // enregistré, jamais le recalcul.
+  const actuel = await calculerPlanDeDepart(dossier.person.id, dossier.person.username, maintenant);
 
   const etat = plan ? peremptionDuPlan(plan, actuel.empreinte, maintenant) : null;
+  const brouillon = plan?.state === "DRAFT";
+  const enCours = plan?.state === "EXECUTING";
+  const clos = dossier.state === "DONE";
+  const restantes = plan?.steps.filter((etape) => !estSoldee(etape.state as EtatEtape)).length ?? 0;
 
   return (
     <main className={fr.cx("fr-container", "fr-my-6w")}>
-      <h1 className={fr.cx("fr-mb-1v")}>Départ de {dossier.person.fullname}</h1>
+      <h1 className={fr.cx("fr-mb-1v")}>
+        Départ de {dossier.person.fullname}{" "}
+        {clos ? (
+          <Badge severity="success" noIcon>
+            dossier clos
+          </Badge>
+        ) : null}
+      </h1>
       <p className={fr.cx("fr-text--sm")}>
         <Link href={`/personnes/${dossier.person.username}`}>{dossier.person.username}</Link>
-        {" — dossier ouvert le "}
+        {" — ouvert le "}
         {dateFr.format(dossier.firstSignalAt)}
         {dossier.effectiveDate ? `, fin de mission au ${dateFr.format(dossier.effectiveDate)}` : ""}
       </p>
@@ -106,24 +122,24 @@ export default async function DepartPage({ params }: { params: Promise<{ id: str
         severity="info"
         className={fr.cx("fr-my-3w")}
         small
-        description="Ce plan dit ce qu'il faut faire. Il n'exécute rien : chaque étape se fait à la main, sur le système concerné, et rien ici ne le vérifiera pour vous."
+        description="Cocher une étape n'exécute rien : l'outil consigne ce que vous déclarez avoir fait, il ne coupe aucun accès lui-même. La collecte suivante dira si le compte a réellement disparu."
       />
 
-      {etat?.obsolete ? (
+      {etat?.obsolete && brouillon ? (
         <Alert
           severity="warning"
           className={fr.cx("fr-mb-3w")}
           title="Ce plan ne décrit plus la situation"
-          description="Une collecte est passée depuis son calcul : la personne a gagné ou perdu un compte. Rouvrez un dossier pour obtenir un plan à jour."
+          description="Une collecte est passée depuis son calcul : cette personne a gagné ou perdu un compte. Il ne peut plus être confirmé en l'état."
         />
       ) : null}
 
-      {etat?.perime ? (
+      {etat?.perime && brouillon ? (
         <Alert
           severity="warning"
           className={fr.cx("fr-mb-3w")}
           title="Ce plan a dépassé sa date de validité"
-          description={`Calculé le ${dateFr.format(plan?.createdAt ?? maintenant)}, il valait jusqu'au ${dateFr.format(plan?.expiresAt ?? maintenant)}. Ce qu'il décrit a été constaté avant cette date.`}
+          description={`Il valait jusqu'au ${dateFr.format(plan?.expiresAt ?? maintenant)}. Ce qu'il décrit a été constaté avant cette date.`}
         />
       ) : null}
 
@@ -136,55 +152,106 @@ export default async function DepartPage({ params }: { params: Promise<{ id: str
         />
       ) : null}
 
-      <h2 className={fr.cx("fr-h4")}>Ce qu'il reste à faire</h2>
+      <h2 className={fr.cx("fr-h4")}>
+        {brouillon ? "Ce qui sera à faire" : "Ce qu'il reste à faire"}
+      </h2>
 
       {!plan || plan.steps.length === 0 ? (
         <p>
-          Aucune étape. Cette personne n'a de compte sur aucun système que l'outil sait traiter.
+          Aucune étape : cette personne n'a de compte sur aucun système que l'outil sait traiter.
         </p>
       ) : (
-        <ol className={fr.cx("fr-mt-2w")}>
-          {plan.steps.map((etape) => {
-            const aide = marche(etape.manual);
-            const tier = TIER[etape.tier] ?? { libelle: etape.tier, severite: "info" as const };
+        <>
+          <ol className={fr.cx("fr-mt-2w")}>
+            {plan.steps.map((etape) => {
+              const aide = marche(etape.manual);
+              const tier = TIER[etape.tier] ?? { libelle: etape.tier, severite: "info" as const };
+              const pointee = ETAPE[etape.state as EtatEtape];
+              const soldee = estSoldee(etape.state as EtatEtape);
 
-            return (
-              <li key={etape.id} className={fr.cx("fr-mb-3w")}>
-                <strong>{etape.label}</strong>{" "}
-                <Badge severity={tier.severite} small noIcon>
-                  {tier.libelle}
-                </Badge>{" "}
-                {etape.riskLevel === "HIGH" ? (
-                  <Badge severity="error" small noIcon>
-                    risque élevé
-                  </Badge>
-                ) : null}
-                {aide.runbook ? (
-                  <p className={fr.cx("fr-text--sm", "fr-mb-1v", "fr-mt-1v")}>{aide.runbook}</p>
-                ) : null}
-                {aide.deeplink ? (
-                  <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-                    <a href={aide.deeplink} target="_blank" rel="noreferrer">
-                      Ouvrir la page concernée
-                    </a>
-                  </p>
-                ) : null}
-                {aide.doneWhen ? (
-                  <p className={fr.cx("fr-text--sm", "fr-mb-0")}>
-                    <em>C'est fait quand : {aide.doneWhen}</em>
-                  </p>
-                ) : null}
-              </li>
-            );
-          })}
-        </ol>
+              return (
+                <li key={etape.id} className={fr.cx("fr-mb-4w")}>
+                  <strong>{etape.label}</strong>{" "}
+                  <Badge severity={pointee.severite} small noIcon>
+                    {pointee.libelle}
+                  </Badge>{" "}
+                  <Badge severity={tier.severite} small noIcon>
+                    {tier.libelle}
+                  </Badge>{" "}
+                  {etape.riskLevel === "HIGH" ? (
+                    <Badge severity="error" small noIcon>
+                      risque élevé
+                    </Badge>
+                  ) : null}
+                  {aide.runbook ? (
+                    <p className={fr.cx("fr-text--sm", "fr-mb-1v", "fr-mt-1v")}>{aide.runbook}</p>
+                  ) : null}
+                  {aide.deeplink ? (
+                    <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
+                      <a href={aide.deeplink} target="_blank" rel="noreferrer">
+                        Ouvrir la page concernée
+                      </a>
+                    </p>
+                  ) : null}
+                  {aide.doneWhen ? (
+                    <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
+                      <em>C'est fait quand : {aide.doneWhen}</em>
+                    </p>
+                  ) : null}
+                  {etape.lastError ? (
+                    <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
+                      <strong>Note :</strong> {etape.lastError}
+                    </p>
+                  ) : null}
+                  {etape.executedAt ? (
+                    <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
+                      Pointée le {dateFr.format(etape.executedAt)}.
+                    </p>
+                  ) : null}
+                  {enCours ? <Pointage etapeId={etape.id} faite={soldee} /> : null}
+                </li>
+              );
+            })}
+          </ol>
+
+          {brouillon ? (
+            <>
+              <p className={fr.cx("fr-text--sm")}>
+                Confirmer, c'est dire que vous répondez de cette liste. Elle ne bougera plus
+                ensuite, et chaque étape pourra être pointée.
+              </p>
+              <BoutonConfirmer planId={plan.id} />
+            </>
+          ) : null}
+
+          {enCours && restantes === 0 && dossierSoldable("EXECUTED") ? (
+            <BoutonClore dossierId={dossier.id} />
+          ) : null}
+
+          {enCours && restantes > 0 ? (
+            <p className={fr.cx("fr-text--sm")}>
+              {restantes} étape{restantes > 1 ? "s" : ""} en attente. Le dossier se clôt quand il
+              n'en reste aucune.
+            </p>
+          ) : null}
+
+          {plan.state === "PARTIALLY_EXECUTED" ? (
+            <Alert
+              severity="warning"
+              className={fr.cx("fr-mt-2w")}
+              title="Des accès sont restés ouverts"
+              description="Une étape au moins a échoué. Le dossier ne peut pas être clos tant qu'elle n'est pas reprise."
+            />
+          ) : null}
+        </>
       )}
 
       <p className={fr.cx("fr-text--sm", "fr-mt-3w")}>
-        Plan calculé le {dateFr.format(plan?.createdAt ?? maintenant)} par {plan?.createdBy},
-        valable jusqu'au {dateFr.format(plan?.expiresAt ?? maintenant)}. Cocher les étapes et
-        enregistrer ce qui a été fait viendra ensuite : pour l'instant, le journal garde l'ouverture
-        du dossier, pas son exécution.
+        Plan calculé le {dateFr.format(plan?.createdAt ?? maintenant)} par {plan?.createdBy}
+        {plan?.confirmedBy
+          ? `, confirmé le ${dateFr.format(plan.confirmedAt ?? maintenant)} par ${plan.confirmedBy}`
+          : `, valable jusqu'au ${dateFr.format(plan?.expiresAt ?? maintenant)}`}
+        .
       </p>
     </main>
   );
