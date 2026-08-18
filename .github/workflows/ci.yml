@@ -1,4 +1,4 @@
-name: Vérification
+name: CI
 
 on:
   push:
@@ -12,8 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verifier:
-    name: Lint, types et tests
+  verify:
     runs-on: ubuntu-latest
 
     steps:

@@ -3,7 +3,10 @@ import { loadPolicy } from "@/lib/policy";
 export const dynamic = "force-dynamic";
 
 /**
- * Sonde de vivacite. Elle repond deux questions, et pas une de plus : le serveur
+ * Sonde de vivacite. Le nom est celui que tout le monde cherche (Kubernetes en a
+ * fait un standard de fait) : cette route n'est lue par aucun humain, elle est
+ * interrogee par un orchestrateur, la ou les ecrans, eux, restent en francais.
+ * Elle repond deux questions, et pas une de plus : le serveur
  * ecoute-t-il, et l'image porte-t-elle une politique lisible.
  *
  * La politique en fait partie parce qu'une image construite sans elle ne servira

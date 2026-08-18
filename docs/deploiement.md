@@ -456,7 +456,7 @@ serveur `localhost / outils`.
 
 - Domaine : `https://comptes.app.ops.incubateur.ademe.fr`. Coolify en propose un
   aléatoire sous le wildcard, le remplacer.
-- Health Check : chemin **`/api/sante`**, port `3000`, jamais `/`.
+- Health Check : chemin **`/healthz`**, port `3000`, jamais `/`.
 - **Start period : au moins 60 secondes.** Le conteneur applique les migrations avant
   d'écouter. Une fenêtre trop courte le déclare mort pendant qu'il travaille, et le
   proxy ne s'attache jamais.
@@ -469,7 +469,7 @@ reviendrait à payer un paquet par sonde.
 sans cookie vers `/connexion` ; elle est `force-dynamic` et fait quatre requêtes en
 base. Une sonde posée là mesure une redirection, c'est-à-dire à peu près rien.
 
-`/api/sante` répond deux questions et pas une de plus. Le serveur écoute-t-il, et
+`/healthz` répond deux questions et pas une de plus. Le serveur écoute-t-il, et
 l'image porte-t-elle une politique lisible. La politique en fait partie parce qu'une
 image construite sans elle ne servira jamais rien : le défaut est permanent, et une
 sonde verte laisserait ce déploiement remplacer une version qui fonctionnait. La base

@@ -5,7 +5,7 @@ export function Deconnexion({ username }: { username: string }) {
     <form
       action={async () => {
         "use server";
-        await signOut({ redirectTo: "/connexion" });
+        await signOut({ redirectTo: "/login" });
       }}
     >
       <button

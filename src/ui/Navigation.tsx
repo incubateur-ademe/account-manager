@@ -18,7 +18,7 @@ export function Navigation({ deconnexion }: { deconnexion?: JSX.Element }) {
 
   // Sur la page de connexion, proposer un menu vers des écrans protégés reviendrait
   // à inviter à cliquer sur des liens qui renvoient ici.
-  const surConnexion = pathname === "/connexion";
+  const surConnexion = pathname === "/login";
   const menu = surConnexion ? [] : LIENS;
 
   return (

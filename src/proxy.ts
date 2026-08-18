@@ -12,7 +12,7 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const target = new URL("/connexion", request.url);
+  const target = new URL("/login", request.url);
   const from = request.nextUrl.pathname + request.nextUrl.search;
   if (from !== "/") {
     target.searchParams.set("suite", from);
@@ -25,7 +25,5 @@ export const config = {
   // La sonde de sante est hors barriere : elle est interrogee par l'orchestrateur,
   // qui ne porte aucun cookie, et une redirection vers la page de connexion lui
   // ferait conclure que tout va bien.
-  matcher: [
-    "/((?!connexion|api/auth|api/sante|_next/static|_next/image|favicon.ico|robots.txt).*)",
-  ],
+  matcher: ["/((?!login|api/auth|healthz|_next/static|_next/image|favicon.ico|robots.txt).*)"],
 };

@@ -43,7 +43,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth(() => ({
   // de env.ts fait foi sur la liste des variables attendues, et une variable qu'il
   // ignore est une variable que personne ne valide.
   trustHost: webEnv.AUTH_TRUST_HOST,
-  pages: { signIn: "/connexion" },
+  pages: { signIn: "/login" },
   providers: [
     espaceMembreProvider.ProviderWrapper(
       Nodemailer({ server: webEnv.EMAIL_SERVER, from: webEnv.EMAIL_FROM }),

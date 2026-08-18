@@ -25,7 +25,7 @@ export async function requireOperateur(): Promise<Operateur> {
   const username = session?.user?.username;
 
   if (!username || !estOperateur(username, webEnv.OPERATORS, webEnv.BREAK_GLASS_USERNAMES)) {
-    redirect("/connexion");
+    redirect("/login");
   }
 
   return {

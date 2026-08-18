@@ -278,7 +278,7 @@ EXPOSE 3000
 # dans la chaine. La fenetre de demarrage couvre les migrations, qui s'appliquent
 # avant que le serveur n'ecoute.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
-    CMD ["node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/api/sante').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+    CMD ["node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/healthz').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["node", "server.js"]
