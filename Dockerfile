@@ -20,11 +20,17 @@ ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
 
 # openssl est requis par le moteur de schema Prisma sur les images slim.
 #
+# curl n'est pas la pour nous : le HEALTHCHECK de cette image est ecrit avec node
+# et n'a besoin de rien. Il est la pour Coolify, qui fabrique sa propre sonde en
+# essayant curl puis wget, et qui remplace celle de l'image par la sienne. Sans
+# l'un des deux, le conteneur est declare malade en permanence quel que soit
+# l'etat reel du serveur.
+#
 # Node 24 distribue encore corepack, et le sien accepte le packageManager de ce
 # depot : rien a installer. Node 25 l'a retire, une remontee de version demandera
 # donc de reintroduire "npm install --global --force corepack@latest" ici.
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends ca-certificates openssl \
+    && apt-get install --yes --no-install-recommends ca-certificates curl openssl \
     && rm -rf /var/lib/apt/lists/* \
     && corepack enable pnpm
 
@@ -108,7 +114,7 @@ FETCH
 # ---------------------------------------------------------------------------
 FROM base AS deps
 
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm-store,sharing=locked \
     pnpm install --frozen-lockfile --store-dir=/pnpm-store
 
@@ -145,7 +151,7 @@ RUN pnpm build
 # ---------------------------------------------------------------------------
 FROM base AS ops
 
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
 RUN node <<'PROMOTE'
 const fs = require("node:fs");

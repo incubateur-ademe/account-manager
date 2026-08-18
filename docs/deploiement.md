@@ -73,7 +73,7 @@ Prisma généré) est **bundlé dans les chunks du serveur** et n'existe plus co
 résolvable.
 
 **`/app/ops`, l'outillage d'exploitation.** Conséquence directe du point précédent :
-`prisma migrate deploy` et `pnpm sync` ne peuvent pas fonctionner dans l'arbre
+`prisma migrate deploy` et la collecte ne peuvent pas fonctionner dans l'arbre
 standalone, il leur manque tout. `/app/ops` contient donc un `node_modules` de
 production complet, plus `prisma` et `tsx` promus en dépendances de production par le
 Dockerfile, plus les sources (`src/`), le schéma (`prisma/`) et `prisma.config.ts`.
@@ -297,7 +297,7 @@ git add prisma/migrations && git commit
 
 ---
 
-## 4. La tâche planifiée `pnpm sync`
+## 4. La tâche planifiée de collecte
 
 La collecte est un point d'entrée CLI lancé une fois par jour, pas un worker (cf.
 architecture 1.1).
@@ -310,9 +310,17 @@ Scalingo : la collecte tourne dans le conteneur web, et elle en partage la mémo
 | Champ | Valeur |
 |---|---|
 | Name | `sync-quotidien` |
-| Command | `sh -c 'cd /app/ops && pnpm sync'` |
+| Command | `sh -c 'cd /app/ops && node --import tsx src/cli/sync.ts'` |
 | Frequency | `30 4 * * *` |
 | Container | laisser vide (une seule image dans la ressource) |
+
+> **Ne pas écrire `pnpm sync` ici.** Depuis pnpm 11, lancer un script du
+> `package.json` déclenche d'abord une vérification des dépendances, qui tente une
+> installation. Dans cette image, l'arbre `/app/ops` a été volontairement élagué et son
+> `package.json` réécrit : l'installation échoue, et la collecte avec, sur une pile
+> d'appels qui ne parle que de pnpm. Le CLI est appelé directement, ce qui est de toute
+> façon plus juste : un conteneur de production n'a aucune raison d'invoquer un
+> gestionnaire de paquets pour lancer un script.
 
 L'heure est choisie creuse et décalée de l'heure ronde, pour ne pas tomber en même
 temps que les tâches planifiées de tout le monde. La collecte lisant une source en
@@ -347,7 +355,7 @@ pas, elle dit qu'on n'a pas regardé.
 
 ### Ce que ça impose à l'image
 
-C'est ce qui justifie l'arbre `/app/ops` décrit plus haut. `pnpm sync` exécute
+C'est ce qui justifie l'arbre `/app/ops` décrit plus haut. La collecte exécute
 `node --import tsx src/cli/sync.ts`, donc l'image doit porter :
 
 - **`tsx`**, qui est une `devDependency` du dépôt mais un outil d'exécution ici. Le
@@ -366,7 +374,7 @@ source de vérité (l'écran « dernier scan il y a X » en dépend). Pour décl
 main :
 
 ```bash
-ssh scw-tools "docker exec \$(docker ps -qf name=<uuid-ressource>) sh -c 'cd /app/ops && pnpm sync'"
+ssh scw-tools "docker exec \$(docker ps -qf name=<uuid-ressource>) sh -c 'cd /app/ops && node --import tsx src/cli/sync.ts'"
 ```
 
 Tant qu'aucun connecteur n'est enregistré, la commande sort en 0 avec
@@ -612,7 +620,7 @@ sur l'instance. Ce sont les points à surveiller au premier déploiement.
 
 **L'image a été construite et exécutée en local**, contre la base de développement.
 Ce qui suit a été vérifié : les quatre étapes passent, le point d'entrée applique les
-migrations puis démarre le serveur, la page de connexion répond, et `pnpm sync`
+migrations puis démarre le serveur, la page de connexion répond, et la collecte
 s'exécute depuis `/app/ops`. Les trois risques annoncés à la rédaction se sont réglés
 ou ne se sont pas produits : la promotion de `prisma` et `tsx` fonctionne, les heredocs
 BuildKit aussi, et l'amorçage de corepack a demandé un `--force`, l'image de base
@@ -645,7 +653,7 @@ rencontrés en le faisant :
   accident et que le retrait de `next` aurait rompu sans prévenir.
 
 Résultat mesuré dans l'image : `/app/node_modules` 43 Mo, `/app/ops/node_modules`
-391 Mo au lieu de 811. `prisma migrate status` et `pnpm sync` se chargent et vont
+391 Mo au lieu de 811. `prisma migrate status` et la collecte se chargent et vont
 jusqu'à la connexion à la base, vérification faite dans le conteneur.
 
 Ce qui reste dans `ops` est dominé par `@prisma/client` (75 Mo), `prisma` (42 Mo) et

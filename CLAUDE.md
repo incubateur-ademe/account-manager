@@ -20,7 +20,7 @@ ne se modifie pas sans validation explicite de l'utilisateur.
 ## Stack
 
 Next 16.3.0 (App Router, `output: "standalone"`), React 19.2.8, TypeScript 7.0.2, Node 24 (`.nvmrc`),
-pnpm 10.15.0. Le `tsconfig.json` étend `@tsconfig/strictest` et `@tsconfig/next` ; seule
+pnpm 11.22.0. Le `tsconfig.json` étend `@tsconfig/strictest` et `@tsconfig/next` ; seule
 `exactOptionalPropertyTypes` est désactivée en surcharge, Prisma et NextAuth ne la respectent pas dans
 leurs propres types.
 

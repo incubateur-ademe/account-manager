@@ -1,0 +1,18 @@
+# pnpm 11 ne lit plus le champ "pnpm" de package.json : ses reglages vivent ici,
+# meme hors monorepo. Voir https://pnpm.io/settings
+#
+# Les scripts d'installation sont bloques par defaut, et pnpm 11 attend une
+# decision explicite pour chacun, la ou pnpm 10 se contentait d'une liste
+# d'autorises. Un paquet laisse sans reponse fait echouer l'installation, donc
+# toute commande pnpm : c'est voulu, un script d'installation execute par
+# inadvertance est du code tiers lance sans qu'on l'ait decide.
+allowBuilds:
+  # Les moteurs Prisma et le binaire esbuild, dont tsx depend pour executer le
+  # CLI de collecte : sans eux, rien ne tourne.
+  '@prisma/engines': true
+  esbuild: true
+  prisma: true
+
+  # Surveillance de fichiers en mode natif, pour le watch de vitest. Il existe un
+  # repli en JavaScript pur, et aucune commande de ce depot n'en a besoin.
+  '@parcel/watcher': false
