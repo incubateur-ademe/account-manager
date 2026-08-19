@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { after } from "next/server";
 
 import { actionTracee } from "@/lib/actions";
-import { prisma } from "@/lib/db";
+import { deconnecter } from "@/lib/db";
 import { collecteEnCours, executerSync } from "@/lib/sync/executer";
 
 export interface EtatLancement {
@@ -66,7 +66,7 @@ export async function lancerCollecte(): Promise<EtatLancement> {
           console.error("[sync] échec non rattrapé", error);
         } finally {
           lancementEnCours = false;
-          await prisma.$disconnect().catch(() => undefined);
+          await deconnecter().catch(() => undefined);
         }
       });
     },
