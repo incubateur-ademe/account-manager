@@ -6,8 +6,9 @@ import { prisma } from "@/lib/db";
 import { executerSync } from "@/lib/sync/executer";
 
 // Charge la configuration d'environnement comme le fait Next : sans ça, la collecte
-// en ligne de commande ne voit rien. L'accès à env étant différé, l'ordre
-// d'évaluation des imports ne pose pas de problème.
+// en ligne de commande ne voit rien. Ce corps de module s'exécute après l'évaluation
+// de ses imports : tout ce qu'ils tirent de `process.env` doit donc l'être au premier
+// appel, jamais dans une constante de module, qui serait calculée avant.
 loadEnvConfig(process.cwd(), process.env["NODE_ENV"] !== "production");
 
 /**
