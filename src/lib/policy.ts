@@ -16,13 +16,20 @@ import { accountsSchema, configSchema, type Policy } from "@/core/policy";
  * une URL de base de données. Or `pnpm policy:check` doit tourner depuis le dépôt
  * de configuration, qui n'a ni base ni secrets. Un chemin de fichier n'est de
  * toute façon pas ce que ce schéma existe pour protéger.
+ *
+ * Résolue à l'appel et non à l'import : la collecte en ligne de commande ne renseigne
+ * l'environnement depuis les fichiers d'environnement que dans le corps de son
+ * module, donc après l'évaluation de ses imports. Une constante de module la lirait
+ * avant, et retomberait invariablement sur `config`.
  */
-const DOSSIER = resolve(process.cwd(), process.env["POLICY_DIR"] ?? "config");
+function dossier(): string {
+  return resolve(process.cwd(), process.env["POLICY_DIR"] ?? "config");
+}
 
 let cached: Policy | undefined;
 
 function lire<T>(fichier: string, schema: z.ZodType<T>): T {
-  const chemin = resolve(DOSSIER, fichier);
+  const chemin = resolve(dossier(), fichier);
 
   // Un fichier absent n'est pas lu comme un fichier vide : le schéma décide, et il
   // n'acceptera que celui dont tout a un défaut. Les comptes, eux, seront refusés,
