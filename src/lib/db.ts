@@ -27,3 +27,13 @@ export const prisma = new Proxy({} as PrismaClient, {
     return typeof value === "function" ? value.bind(client) : value;
   },
 });
+
+/**
+ * Ferme la connexion sans jamais en ouvrir une. `prisma.$disconnect()` passe par le
+ * proxy, qui instancie le client et exige donc une configuration valide : appelée
+ * depuis le rattrapage d'erreur d'une commande, elle relançait l'erreur de
+ * configuration qu'on était précisément en train de rapporter.
+ */
+export async function deconnecter(): Promise<void> {
+  await globalForPrisma.prisma?.$disconnect();
+}

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { loadEnvConfig } from "@next/env";
 
-import { prisma } from "@/lib/db";
+import { deconnecter } from "@/lib/db";
 import { executerSync } from "@/lib/sync/executer";
 
 // Charge la configuration d'environnement comme le fait Next : sans ça, la collecte
@@ -10,6 +10,13 @@ import { executerSync } from "@/lib/sync/executer";
 // de ses imports : tout ce qu'ils tirent de `process.env` doit donc l'être au premier
 // appel, jamais dans une constante de module, qui serait calculée avant.
 loadEnvConfig(process.cwd(), process.env["NODE_ENV"] !== "production");
+
+async function terminer(echec: boolean): Promise<void> {
+  // Une fermeture qui échoue ne change rien à ce qui vient d'être rapporté : la
+  // laisser remonter remplacerait le compte rendu par sa propre pile d'appels.
+  await deconnecter().catch(() => undefined);
+  process.exitCode = echec ? 1 : 0;
+}
 
 /**
  * Point d'entrée en ligne de commande, et rien de plus : la collecte elle-même vit
@@ -20,12 +27,8 @@ loadEnvConfig(process.cwd(), process.env["NODE_ENV"] !== "production");
 executerSync(new Date(), randomUUID(), (ligne) => {
   console.log(ligne);
 })
-  .then(async (compteRendu) => {
-    await prisma.$disconnect();
-    process.exitCode = compteRendu.echec ? 1 : 0;
-  })
-  .catch(async (error: unknown) => {
+  .then((compteRendu) => terminer(compteRendu.echec))
+  .catch((error: unknown) => {
     console.error("[sync] échec non rattrapé", error);
-    await prisma.$disconnect();
-    process.exitCode = 1;
+    return terminer(true);
   });
