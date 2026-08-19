@@ -4,11 +4,11 @@ import { fr } from "@codegouvfr/react-dsfr";
 import { Button } from "@codegouvfr/react-dsfr/Button";
 import { useActionState } from "react";
 
-import { detacherIdentite, type EtatDetachement } from "./actions";
+import { type EtatRattachementStartup, retirerRattachement } from "./actions";
 
-export function Detacher({ id, compte }: { id: string; compte: string }) {
-  const [etat, formAction, pending] = useActionState<EtatDetachement, FormData>(
-    detacherIdentite,
+export function RetirerRattachement({ id, startup }: { id: string; startup: string }) {
+  const [etat, formAction, pending] = useActionState<EtatRattachementStartup, FormData>(
+    retirerRattachement,
     null,
   );
 
@@ -20,9 +20,9 @@ export function Detacher({ id, compte }: { id: string; compte: string }) {
         priority="tertiary no outline"
         size="small"
         disabled={pending}
-        title={`Détacher ${compte} de cette personne`}
+        title={`Retirer le rattachement à ${startup}`}
       >
-        {pending ? "Détachement…" : "Détacher"}
+        {pending ? "Retrait…" : "Retirer"}
       </Button>
       {etat ? (
         <p className={fr.cx("fr-error-text", "fr-mt-1v")} role="alert">

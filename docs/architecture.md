@@ -109,6 +109,15 @@ l'espace-membre et aucun code ne le met à jour. L'`uuid` interne de leur API n'
 utilisé : aucun endpoint ne permet de le résoudre, c'est un identifiant sans porte
 d'entrée.
 
+Une exception, et une seule : l'identifiant fabriqué ici pour quelqu'un que
+l'espace-membre ne connaît pas. Il ne sert de pivot à aucune source et n'engage
+personne d'autre, mais une faute d'une lettre y empêche la collecte de retrouver la
+personne le jour où elle apparaît en amont, et l'outil porte alors deux fiches pour une
+seule personne. `Person.usernameFabricated` désigne ces identifiants : posé à la
+création, éteint par la collecte le jour où elle adopte la fiche. Lui seul ouvre le
+renommage, et la fusion vers la fiche qui porte déjà le bon identifiant. Un vrai
+username beta.gouv reste en lecture seule, y compris sur une fiche locale.
+
 ### 2.2 Une collecte en un appel
 
 **Le périmètre vient en entier de l'espace-membre**, qui sait désormais dire qui
@@ -153,13 +162,38 @@ mois après le départ réel.
 l'incubateur : sa fin de mission beta.gouv globale fait alors foi, et c'est sa fiche
 complète qui la donne.
 
-Le champ `attachment` retient `STARTUPS`, `DECLARED`, `BOTH` ou `LOCAL`.
+Le champ `attachment` retient `STARTUPS`, `DECLARED`, `BOTH` ou `NONE`. Il documente
+la voie **constatée** par l'espace-membre, « aucune » comprise, et rien d'autre : on n'y
+mélange pas du décidé. `LOCAL` portait un second sens sur cet axe et entrait en collision
+avec `PersonSource.LOCAL`, qui dit d'où vient la fiche.
 
 La liste transverse de `config/accounts.yaml` et `config/config.yaml` fait **autorité sur l'appartenance** : qui
-y est déclaré reste dans le périmètre même si l'espace-membre ne le rattache à aucune
+y est déclaré reste dans l'incubateur même si l'espace-membre ne le rattache à aucune
 équipe, sa fiche ne servant alors qu'à dater sa fin. L'en retirer est le geste qui
 l'en sort. Une personne qui y figure sans avoir de fiche est signalée à chaque
 collecte plutôt que d'être ignorée : c'est une faute de frappe ou une fiche à créer.
+
+**L'appartenance à l'incubateur est calculée, jamais stockée**, au même titre que le
+statut. Elle se lit dans cet ordre : une sortie forcée par un opérateur, puis une entrée
+forcée, puis les rattachements en cours, collectés et manuels sans préséance entre eux,
+puis rien. La liste transverse n'apparaît pas comme source distincte dans cet ordre : la
+collecte la matérialise déjà en `attachment = DECLARED`, elle est donc lue sous sa forme
+constatée, et il n'y a pas deux chemins à maintenir.
+
+**Une seconde autorité existe désormais, et elle est assumée.** `ScopeOverride` dit
+qu'un opérateur place quelqu'un dans l'incubateur, ou l'en sort, avec une raison
+obligatoire et son nom. Le geste de sortie existe donc des deux côtés : retirer de
+`scope.transverse` dans le YAML, poser une exclusion dans l'outil. Quand les deux se
+contredisent, l'écran affiche la contradiction et nomme le geste manquant, plutôt que de
+laisser la collecte nocturne rétablir en silence un rattachement qu'un opérateur a
+explicitement retiré.
+
+**Une surcharge dit l'appartenance, elle n'ordonne rien.** Elle ne date aucune
+disparition, n'ouvre ni ne ferme aucun constat, ne rend aucune identité révocable ni non
+révocable, et ne touche aucun système cible. La personne reste dans les listes et ses
+comptes continuent d'être examinés. Sans cette règle, la sortie forcée deviendrait le
+moyen le plus rapide de faire disparaître un écart gênant. Ce qui coupe des accès reste
+le dossier de départ, avec son plan, sa confirmation et son journal.
 
 ### 2.4 Comptes non humains
 
@@ -191,7 +225,7 @@ saisie localement.
 
 - `scope.incubator` : l'acronyme de l'incubateur, `ademe`
 - `scope.transverse[]` : usernames de l'équipe transverse, qui font autorité sur
-  l'appartenance au périmètre
+  l'appartenance à l'incubateur
 - `scope.local[]` : personnes hors incubateur, avec leur échéance
 - `startups.terminalPhases[]` : phases dans lesquelles une startup ne justifie plus
   d'accès
@@ -207,9 +241,12 @@ livraison de code, et n'a pas à être publié dans un dépôt lisible de tous.
 
 ### 3.2 Constaté (PostgreSQL)
 
-**`Person`** : `username` (pivot), `fullname`, `primaryEmail`, `communicationEmail`,
-`githubLogin`, `missionEnd`, `source`, `attachment`, `startups[]`, `firstSeenAt`,
-`lastSeenAt`, `vanishedAt`.
+**`Person`** : `username` (pivot), `usernameFabricated`, `fullname`, `primaryEmail`,
+`communicationEmail`, `githubLogin`, `missionEnd`, `source`, `attachment`, `startups[]`,
+`firstSeenAt`, `lastSeenAt`, `vanishedAt`.
+
+`attachment` dit la voie constatée par l'espace-membre, « aucune » comprise. À quel titre
+une personne appartient à l'incubateur ne s'y lit pas : cela se calcule, voir §2.3.
 
 On persiste le minimum nécessaire au calcul : ce qui sert de clé, ce qui sert au
 rapprochement, ce qui déclenche. Filtrage à l'ingestion, non négociable : `bio`,
@@ -252,7 +289,12 @@ promu qu'à la fin : un processus tué laisse une trace d'échec, pas un run ver
 ### 3.3 Décidé (PostgreSQL, immuable)
 
 **`DepartureCase`**, **`Plan`**, **`PlanStep`**, **`Finding`**, **`Derogation`**,
-**`AuditEvent`**.
+**`StartupAssignment`**, **`ScopeOverride`**, **`AuditEvent`**.
+
+Un rattachement manuel à une startup ne vit pas dans `Person.startups`, que la collecte
+réécrit sans condition à chaque passage : c'est un objet daté, avec son auteur, et il se
+ferme au lieu de se supprimer. Une surcharge d'appartenance ne vit pas davantage sur
+`Person` : ce serait mêler du décidé à une table de constaté.
 
 Les champs d'une étape de plan sont **dénormalisés et figés à la création**. On
 stocke la photo, pas une clé étrangère : ce qui a été approuvé doit rester lisible
@@ -271,7 +313,10 @@ trois familles.
 
 **Ce qu'un opérateur attribue relève de l'état décidé**, et se rejoue depuis le
 journal. Rattacher un compte à quelqu'un, l'en détacher, nommer une personne que
-l'espace-membre ne connaît pas : aucune collecte ne redevinera ces gestes, mais
+l'espace-membre ne connaît pas, corriger l'identifiant qu'on lui a fabriqué, fusionner
+sa fiche avec celle qui porte le bon, la rattacher à une startup pour un temps donné,
+forcer ou retirer son appartenance à l'incubateur : aucune collecte ne redevinera ces
+gestes, mais
 chacun y laisse une trace nominative qui suffit à les reconstituer. C'est ce qui
 dispense de les déclarer dans le YAML : la politique dit les règles, la base porte
 les faits et les décisions, et le journal garantit qu'on peut les retrouver.
@@ -282,10 +327,14 @@ rattacher un second, alors que rien dans les sources ne relie les deux, c'est
 affirmer qu'ils appartiennent à la même personne, et une révocation les coupera tous
 les deux. Le second geste se confirme explicitement ; le premier non.
 
-Une fiche créée ainsi n'a **pas d'échéance** : elle n'existe que par son compte et
-vit tant qu'il est observé. Lui en inventer une reviendrait à prétendre savoir ce
-qu'aucune source ne dit. La collecte du périmètre ne la fait donc pas disparaître
-tant qu'une de ses identités est encore vue.
+Une fiche créée ainsi n'a **pas d'échéance** tant qu'aucun rattachement daté ne lui en
+donne une : elle n'existe que par son compte et vit tant qu'il est observé. Lui en
+inventer une reviendrait à prétendre savoir ce qu'aucune source ne dit. Un rattachement
+manuel à une startup, lui, porte obligatoirement une date de fin : c'est une décision,
+elle est bornée par elle-même, et la fiche a alors une échéance qui n'a rien d'inventé.
+La collecte du périmètre ne fait donc disparaître une fiche locale ni tant qu'une de ses
+identités est vue, ni tant qu'un de ses rattachements court. Une personne venue de
+l'espace-membre qui en sort, elle, continue de lever `SCOPE_EXIT`.
 
 ---
 
@@ -293,7 +342,12 @@ tant qu'une de ses identités est encore vue.
 
 ### 4.1 Le statut d'une personne
 
-Calculé, jamais stocké, à partir de l'échéance et de la présence au référentiel.
+Calculé, jamais stocké, à partir de l'**échéance effective** et de la présence au
+référentiel. L'échéance effective est la plus lointaine entre la fin de mission que
+l'amont donne et les rattachements manuels en cours. Un rattachement court ne rogne donc
+jamais une mission longue, et prolonger un accès est permis, tracé et daté, mais se voit
+partout où le statut se lit. Rien n'est écrit dans `Person.missionEnd`, qui reste ce que
+l'amont dit.
 
 | Statut | Signification |
 |---|---|
@@ -339,13 +393,21 @@ ne serait plus jamais signalé et le silence ressemblerait à une absence d'éca
 `SCOPE_EXIT`, gravité haute : quelqu'un que plus aucune source ne réclame. C'est le
 constat le plus important, parce que rien d'autre ne le signalerait.
 
-`INACTIVE_STARTUP`, gravité moyenne : toutes les startups d'une personne sont dans
-une phase terminale, alors que sa mission court encore. Elle ne travaille donc plus
-sur rien au sein de l'incubateur.
+`INACTIVE_STARTUP`, gravité moyenne : toutes les startups d'une personne, collectées
+comme rattachées à la main, sont dans une phase terminale, alors que son échéance court
+encore. Elle ne travaille donc plus sur rien au sein de l'incubateur.
 
-Deux garde-fous. Le constat ne se lève **pas** sur une mission déjà terminée, où
-l'échéance dit la même chose et la dit mieux. Et une **phase inconnue interdit de
-conclure** : on ne propose pas une coupure sur une supposition.
+Trois garde-fous. Le constat épargne qui tient son appartenance d'une équipe (`DECLARED`,
+`BOTH`) : son titre ne dépend d'aucune startup, le lui opposer serait un contresens. Il
+ne se lève **pas** sur une échéance effective déjà passée, où elle dit la même chose et
+la dit mieux ; la comparaison tronque au jour UTC, si bien que le dernier jour travaillé
+compte encore comme travaillé. Et une **phase inconnue interdit de conclure** : on ne
+propose pas une coupure sur une supposition.
+
+Poser ou retirer un rattachement manuel ne lève ni ne ferme ce constat sur le champ, et
+c'est délibéré : il dépend des phases de toutes les startups et d'une date qui passe
+toute seule. Le recalculer dans le geste créerait une seconde vérité, et resterait
+incomplet le jour où un rattachement expire sans que personne n'ait cliqué.
 
 ---
 

@@ -11,6 +11,7 @@ import { requireOperateur } from "@/lib/session";
 import {
   auMoinsUnFiltre,
   type Criteres,
+  identifiantsLies,
   lienJournal,
   lireCriteres,
   nombreDePages,
@@ -77,7 +78,19 @@ export default async function JournalPage(props: {
   await requireOperateur();
 
   const criteres = lireCriteres(await props.searchParams);
-  const filtre = versFiltre(criteres);
+
+  // Une fiche renommée puis fusionnée a porté plusieurs identifiants, et les
+  // événements antérieurs nomment les précédents. Sans cette relecture, l'histoire
+  // d'un compte se couperait au premier renommage.
+  const liens =
+    criteres.personne === ""
+      ? []
+      : await prisma.auditEvent.findMany({
+          where: { action: { in: ["personne.renommage", "personne.fusion"] } },
+          select: { before: true, after: true },
+        });
+
+  const filtre = versFiltre(criteres, identifiantsLies(liens, criteres.personne));
 
   const [total, acteurs, actions] = await Promise.all([
     prisma.auditEvent.count({ where: filtre }),

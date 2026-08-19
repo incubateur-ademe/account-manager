@@ -23,7 +23,15 @@ const LIBELLE_ACTION: Record<string, string> = {
   "identite.rattachement": "Rattachement d'un compte à une personne",
   "identite.detachement": "Détachement d'un compte",
   "identite.rapprochement": "Rapprochement automatique d'un compte",
+  "identite.reattribution": "Réattribution d'un compte à une autre fiche",
   "personne.creation": "Création d'une fiche personne",
+  "personne.edition": "Édition d'une fiche personne",
+  "personne.renommage": "Renommage d'une fiche personne",
+  "personne.fusion": "Fusion de deux fiches personne",
+  "personne.appartenance.forcee": "Appartenance forcée",
+  "personne.appartenance.liberee": "Surcharge d'appartenance retirée",
+  "rattachement.pose": "Rattachement manuel à une startup",
+  "rattachement.retrait": "Retrait d'un rattachement manuel",
   "retirer-de-l-organisation": "Retrait d'une organisation",
 };
 
@@ -34,6 +42,7 @@ const LIBELLE_CIBLE: Record<string, string> = {
   "service-account": "Compte de service",
   collecte: "Collecte",
   personne: "Personne",
+  rattachement: "Rattachement à une startup",
   plan: "Plan",
   etape: "Étape",
 };

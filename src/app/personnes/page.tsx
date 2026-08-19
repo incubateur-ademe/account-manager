@@ -4,6 +4,8 @@ import { Table } from "@codegouvfr/react-dsfr/Table";
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { LIBELLE_APPARTENANCE } from "@/core/appartenance";
+import { echeanceEffective, startupsEffectives } from "@/core/rattachement-startup";
 import { LIBELLE_STATUT, type Statut, statutDePersonne } from "@/core/statut";
 import {
   type Colonne,
@@ -15,6 +17,7 @@ import {
   trier,
   type Vue,
 } from "@/core/tri-personnes";
+import { appartenanceDeLaLigne, phasesDesStartups } from "@/lib/appartenance";
 import { prisma } from "@/lib/db";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
@@ -34,13 +37,6 @@ const SEVERITE: Record<Statut, "success" | "info" | "warning" | "error" | "new">
   ACTIF: "success",
   SANS_ECHEANCE: "info",
   ANCIEN: "info",
-};
-
-const RATTACHEMENT: Record<string, string> = {
-  STARTUPS: "Startup",
-  DECLARED: "Transverse",
-  BOTH: "Transverse et startup",
-  LOCAL: "Hors incubateur",
 };
 
 const dateFr = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "UTC" });
@@ -64,28 +60,56 @@ export default async function PersonnesPage(props: {
   const sens: Sens = estSens(sensBrut) ? sensBrut : "asc";
   const recherche = premier("q") ?? "";
 
-  const { thresholds } = policy();
+  const { thresholds, startups: reglesStartups } = policy();
   const today = new Date();
 
-  const personnes = await prisma.person.findMany({
-    select: {
-      username: true,
-      fullname: true,
-      missionEnd: true,
-      attachment: true,
-      startups: true,
-      vanishedAt: true,
-    },
-  });
-
-  const avecStatut = personnes.map((personne) => ({
-    ...personne,
-    statut: statutDePersonne(personne, today, {
-      graceDays: thresholds.graceDays,
-      soonDays: thresholds.soonDays,
-      staleDays: thresholds.staleDays,
+  const [personnes, phases] = await Promise.all([
+    prisma.person.findMany({
+      select: {
+        username: true,
+        fullname: true,
+        missionEnd: true,
+        attachment: true,
+        startups: true,
+        vanishedAt: true,
+        startupAssignments: {
+          where: { endedAt: null },
+          select: { startupGhid: true, until: true, endedAt: true },
+        },
+        scopeOverride: {
+          select: { decision: true, reason: true, createdBy: true, createdAt: true },
+        },
+      },
     }),
-  }));
+    phasesDesStartups(),
+  ]);
+
+  const avecStatut = personnes.map(({ startupAssignments, scopeOverride, ...personne }) => {
+    const echeance = echeanceEffective(personne.missionEnd, startupAssignments, today);
+    const appartenance = appartenanceDeLaLigne(
+      { ...personne, startupAssignments, scopeOverride },
+      phases,
+      reglesStartups.terminalPhases,
+      today,
+    );
+    return {
+      ...personne,
+      appartenance,
+      // Le tri et le filtre lisent `missionEnd` : c'est l'échéance effective qui doit
+      // s'y trouver, faute de quoi la liste classerait sur une date que la fiche
+      // contredit.
+      missionEnd: echeance,
+      prolongee:
+        echeance !== null &&
+        (personne.missionEnd === null || echeance.getTime() !== personne.missionEnd.getTime()),
+      startups: startupsEffectives(personne.startups, startupAssignments, today),
+      statut: statutDePersonne({ missionEnd: echeance, vanishedAt: personne.vanishedAt }, today, {
+        graceDays: thresholds.graceDays,
+        soonDays: thresholds.soonDays,
+        staleDays: thresholds.staleDays,
+      }),
+    };
+  });
 
   const parametresConserves: Record<string, string> = { vue };
   if (recherche.length > 0) {
@@ -137,7 +161,7 @@ export default async function PersonnesPage(props: {
               sens={sens}
               parametres={parametresConserves}
             />,
-            "Rattachement",
+            "Appartenance",
             "Startups",
           ]}
           data={visibles.map((personne) => [
@@ -148,11 +172,19 @@ export default async function PersonnesPage(props: {
               <br />
               <span className={fr.cx("fr-text--sm")}>{personne.username}</span>
             </span>,
-            personne.missionEnd ? dateFr.format(personne.missionEnd) : "aucune",
+            <span key="e">
+              {personne.missionEnd ? dateFr.format(personne.missionEnd) : "aucune"}
+              {personne.prolongee ? (
+                <>
+                  <br />
+                  <span className={fr.cx("fr-text--sm")}>rattachement manuel</span>
+                </>
+              ) : null}
+            </span>,
             <Badge key="s" severity={SEVERITE[personne.statut]} noIcon>
               {LIBELLE_STATUT[personne.statut]}
             </Badge>,
-            RATTACHEMENT[personne.attachment] ?? personne.attachment,
+            LIBELLE_APPARTENANCE[personne.appartenance.motif].libelleCourt,
             personne.startups.length > 0 ? personne.startups.join(", ") : "aucune",
           ])}
         />

@@ -79,17 +79,25 @@ enum PersonSource {
   SERVICE
 }
 
+/// Voie par laquelle l'espace-membre rattache une personne à l'incubateur, et rien
+/// d'autre : par startup, par équipe, par les deux, ou pas du tout. Ce champ
+/// documente un fait constaté, on n'y mélange pas du décidé, d'où ScopeOverride.
 enum Attachment {
   STARTUPS
   DECLARED
   BOTH
-  LOCAL
+  NONE
 }
 
 model Person {
   id String @id @default(cuid())
 
   username String @unique
+
+  /// Vrai quand l'identifiant a été construit ici, faute de fiche beta.gouv. C'est
+  /// le seul cas où il se renomme : un vrai pivot ne se met à jour nulle part. La
+  /// collecte l'éteint le jour où elle adopte la fiche.
+  usernameFabricated Boolean @default(false)
 
   // Conserve a titre informatif, pour croiser avec une autre source le jour ou
   // ce sera utile. Ce n'est ni le pivot ni une cle de rapprochement : le username
@@ -102,20 +110,54 @@ model Person {
   githubLogin        String?
   missionEnd         DateTime?    @db.Date
   source             PersonSource @default(BETA)
-  attachment         Attachment   @default(STARTUPS)
+  attachment         Attachment   @default(NONE)
   startups           String[]     @default([])
 
   firstSeenAt DateTime  @default(now())
   lastSeenAt  DateTime  @default(now())
   vanishedAt  DateTime?
 
-  identities     ExternalIdentity[]
-  references     Reference[]
-  departureCases DepartureCase[]
-  findings       Finding[]
+  identities         ExternalIdentity[]
+  references         Reference[]
+  departureCases     DepartureCase[]
+  findings           Finding[]
+  startupAssignments StartupAssignment[]
+  scopeOverride      ScopeOverride?
 
   @@index([missionEnd])
   @@index([vanishedAt])
+}
+
+/// Rattachement à une startup décidé par un opérateur, là où Person.startups ne
+/// porte que ce que la collecte constate et se réécrit sans condition à chaque
+/// passage. Il vit donc ici, où rien ne l'écrase.
+model StartupAssignment {
+  id String @id @default(cuid())
+
+  personId String
+
+  /// Identifiant et non clé étrangère, comme Person.startups : la startup peut
+  /// disparaître de l'incubateur sans que la décision cesse d'avoir été prise.
+  startupGhid String
+
+  /// Dernier jour couvert, inclusif, au même titre qu'une fin de mission. Il n'y a
+  /// pas de rattachement manuel sans date de fin : c'est ce qui borne le geste.
+  until DateTime @db.Date
+
+  reason String?
+
+  createdBy String
+  createdAt DateTime @default(now())
+
+  /// Un retrait ferme, il ne supprime pas : une ligne effacée rendrait illisible un
+  /// constat levé la veille.
+  endedAt DateTime?
+  endedBy String?
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@index([personId, endedAt])
+  @@index([startupGhid, endedAt])
 }
 
 model ServiceAccount {
@@ -287,6 +329,39 @@ model SyncRun {
 // ---------------------------------------------------------------------------
 // Décidé
 // ---------------------------------------------------------------------------
+
+enum ScopeDecision {
+  INCLUDE
+  EXCLUDE
+}
+
+/// Ce qu'un opérateur décide de l'appartenance au périmètre, quand les faits ne
+/// suffisent pas : quelqu'un rattaché à l'incubateur sans être sur une startup
+/// précise, ou quelqu'un dont on veut dire qu'il n'est plus des nôtres.
+///
+/// Elle dit l'appartenance, elle n'ordonne rien : elle ne pose aucun vanishedAt,
+/// n'ouvre ni ne ferme aucun constat, ne rend aucune identité révocable. Ce qui
+/// coupe des accès reste le dossier de départ, avec son plan et sa confirmation.
+///
+/// L'historique n'est pas dupliqué ici : il vit dans le journal, et le retrait
+/// supprime la ligne.
+model ScopeOverride {
+  id String @id @default(cuid())
+
+  /// Une surcharge en cours au plus, portée par le schéma plutôt que par le code
+  /// appelant.
+  personId String        @unique
+  decision ScopeDecision
+
+  /// Obligatoire, comme la raison d'une clôture de constat : une décision
+  /// d'appartenance sans motif est une décision qu'on ne saura pas réexaminer.
+  reason String
+
+  createdBy String
+  createdAt DateTime @default(now())
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+}
 
 enum DepartureState {
   WATCH

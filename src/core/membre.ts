@@ -1,4 +1,4 @@
-import type { Attachment } from "./perimetre";
+import type { Attachment } from "./appartenance";
 
 /** Voie par laquelle l'espace-membre rattache une personne à un incubateur. */
 export type RattachementApi = "startups" | "teams" | "both";

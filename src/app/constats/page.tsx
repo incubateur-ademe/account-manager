@@ -32,7 +32,7 @@ export default async function ConstatsPage() {
       severity: true,
       openedAt: true,
       dedupKey: true,
-      person: { select: { username: true, fullname: true, missionEnd: true, startups: true } },
+      person: { select: { username: true, fullname: true } },
       externalIdentity: { select: { provider: true, handle: true } },
     },
   });

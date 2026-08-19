@@ -13,6 +13,8 @@ const TERMINALES = ["abandon", "abandon-investigation", "transfere", "alumni"];
 
 // Un jeu de phases représentatif : deux vivantes, trois terminales.
 const PHASES = new Map<string, string | null>([
+  ["produit-alpha", "acceleration"],
+  ["produit-omega", "abandon"],
   ["produit-gamma", "consolidation"],
   ["produit-delta", "construction"],
   ["produit-epsilon", "abandon"],
@@ -25,6 +27,7 @@ const personne = (over: Partial<PersonneConstatable> = {}): PersonneConstatable 
   fullname: "Jean Dupont",
   attachment: "STARTUPS",
   startups: ["produit-gamma"],
+  rattachementsManuels: [],
   missionEnd: new Date("2027-01-01T00:00:00Z"),
   vanishedAt: null,
   ...over,
@@ -201,5 +204,134 @@ describe("constats levés par la lecture d'un système cible", () => {
         { ...base, id: "i2", personneUsername: "marie.martin", personneSortie: false },
       ]),
     ).toEqual([]);
+  });
+});
+
+describe("le constat de startups terminées voit les rattachements manuels", () => {
+  const le = (iso: string) => new Date(`${iso}T00:00:00Z`);
+
+  const rattache = (startupGhid: string, until = "2026-11-30", endedAt: Date | null = null) => ({
+    startupGhid,
+    until: le(until),
+    endedAt,
+  });
+
+  // Fiche créée à la main : aucune startup collectée, et jusqu'ici aucun constat
+  // possible sur elle, quoi qu'un opérateur ait décidé.
+  const dominique = (over: Partial<PersonneConstatable> = {}) =>
+    personne({
+      username: "dominique.exemple",
+      fullname: "Dominique Exemple",
+      attachment: "NONE",
+      startups: [],
+      ...over,
+    });
+
+  it("lève le constat sur une personne dont la seule startup vient d'un rattachement manuel", () => {
+    const constats = constatsDe(
+      [dominique({ rattachementsManuels: [rattache("produit-omega")] })],
+      PHASES,
+      TERMINALES,
+      AUJOURDHUI,
+    );
+
+    expect(constats).toHaveLength(1);
+    expect(constats[0]).toMatchObject({
+      kind: "INACTIVE_STARTUP",
+      dedupKey: "INACTIVE_STARTUP:dominique.exemple",
+    });
+    // D'où vient le rattachement change le geste à poser : retirer une décision
+    // humaine n'est pas ouvrir un départ.
+    expect(constats[0]?.detail).toContain("produit-omega par rattachement manuel");
+  });
+
+  it("se tait dès qu'une seule startup de l'union reste vivante", () => {
+    expect(
+      constatsDe(
+        [
+          dominique({
+            rattachementsManuels: [rattache("produit-omega"), rattache("produit-alpha")],
+          }),
+        ],
+        PHASES,
+        TERMINALES,
+        AUJOURDHUI,
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("ne conclut pas plus sur un rattachement manuel dont la phase est inconnue", () => {
+    expect(
+      constatsDe(
+        [dominique({ rattachementsManuels: [rattache("startup.jamais.vue")] })],
+        PHASES,
+        TERMINALES,
+        AUJOURDHUI,
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("épargne une personne transverse, dont le titre ne dépend d'aucune startup", () => {
+    expect(
+      constatsDe(
+        [dominique({ attachment: "DECLARED", rattachementsManuels: [rattache("produit-omega")] })],
+        PHASES,
+        TERMINALES,
+        AUJOURDHUI,
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("cesse de compter un rattachement expiré ou retiré, sans qu'on ait rien écrit", () => {
+    const expire = dominique({ rattachementsManuels: [rattache("produit-omega", "2026-07-31")] });
+    expect(constatsDe([expire], PHASES, TERMINALES, AUJOURDHUI)).toHaveLength(0);
+
+    const retire = dominique({
+      rattachementsManuels: [rattache("produit-omega", "2026-11-30", le("2026-08-01"))],
+    });
+    expect(constatsDe([retire], PHASES, TERMINALES, AUJOURDHUI)).toHaveLength(0);
+  });
+});
+
+describe("le garde-fou de mission terminée se lit sur l'échéance effective", () => {
+  const le = (iso: string) => new Date(`${iso}T00:00:00Z`);
+
+  // Une heure dans la journée, là où une échéance arrive toujours à minuit UTC :
+  // c'est l'écart qui étouffait le constat un jour trop tôt.
+  const CET_APRES_MIDI = new Date("2026-08-08T14:00:00Z");
+
+  it("se tait sur une mission finie, et reparle dès qu'un rattachement la prolonge", () => {
+    const partie = personne({
+      startups: ["produit-omega"],
+      missionEnd: le("2026-07-08"),
+    });
+    expect(constatsDe([partie], PHASES, TERMINALES, CET_APRES_MIDI)).toHaveLength(0);
+
+    // Prolongée jusqu'au mois prochain : elle est de nouveau réputée en poste, et
+    // plus rien de vivant ne le justifie. C'est exactement ce que le geste de
+    // prolongation doit rendre visible.
+    const prolongee = personne({
+      startups: ["produit-omega"],
+      missionEnd: le("2026-07-08"),
+      rattachementsManuels: [
+        { startupGhid: "produit-omega", until: le("2026-09-08"), endedAt: null },
+      ],
+    });
+    expect(constatsDe([prolongee], PHASES, TERMINALES, CET_APRES_MIDI)[0]).toMatchObject({
+      kind: "INACTIVE_STARTUP",
+    });
+  });
+
+  it("compte le dernier jour travaillé comme encore travaillé", () => {
+    const dernierJour = personne({
+      startups: ["produit-omega"],
+      missionEnd: le("2026-08-08"),
+    });
+    expect(constatsDe([dernierJour], PHASES, TERMINALES, CET_APRES_MIDI)[0]).toMatchObject({
+      kind: "INACTIVE_STARTUP",
+    });
+
+    const veille = personne({ startups: ["produit-omega"], missionEnd: le("2026-08-07") });
+    expect(constatsDe([veille], PHASES, TERMINALES, CET_APRES_MIDI)).toHaveLength(0);
   });
 });

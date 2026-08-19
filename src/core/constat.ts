@@ -1,3 +1,12 @@
+import { type Attachment, toutesLesStartupsSontTerminees } from "./appartenance";
+import {
+  echeanceEffective,
+  enCours,
+  type RattachementManuel,
+  startupsEffectives,
+} from "./rattachement-startup";
+import { jourUTC } from "./statut";
+
 export type ConstatKind =
   | "SCOPE_EXIT"
   | "INACTIVE_STARTUP"
@@ -19,8 +28,10 @@ export interface Constat {
 export interface PersonneConstatable {
   username: string;
   fullname: string;
-  attachment: "STARTUPS" | "DECLARED" | "BOTH" | "LOCAL";
+  attachment: Attachment;
+  /** Les startups que la collecte constate, et elles seules : l'union se fait ici. */
   startups: readonly string[];
+  rattachementsManuels: readonly RattachementManuel[];
   missionEnd: Date | null;
   vanishedAt: Date | null;
 }
@@ -55,33 +66,50 @@ function startupsToutesTerminees(
   phasesTerminales: readonly string[],
   today: Date,
 ): Constat | null {
-  // Une personne rattachée par équipe n'est pas concernée : son rattachement ne
-  // dépend d'aucune startup.
-  if (personne.attachment !== "STARTUPS" || personne.startups.length === 0) {
+  // Une personne rattachée par équipe garde un titre d'appartenance qui ne dépend
+  // d'aucune startup : lui lever ce constat serait un contresens. Les autres sont
+  // concernées, y compris celles dont les seules startups viennent d'un
+  // rattachement posé à la main.
+  if (personne.attachment === "DECLARED" || personne.attachment === "BOTH") {
+    return null;
+  }
+
+  const effectives = startupsEffectives(personne.startups, personne.rattachementsManuels, today);
+  if (effectives.length === 0) {
     return null;
   }
 
   // Sur une mission déjà terminée, l'échéance dit la même chose et le dit mieux.
   // Lever le constat quand même noierait le seul cas qui compte, celui d'une
-  // personne toujours en mission dont plus aucune startup ne vit.
-  if (personne.missionEnd !== null && personne.missionEnd < today) {
+  // personne toujours en mission dont plus aucune startup ne vit. L'échéance lue
+  // est l'effective : prolonger un accès remet la personne en poste, et c'est
+  // exactement la situation que ce constat doit rendre visible.
+  const echeance = echeanceEffective(personne.missionEnd, personne.rattachementsManuels, today);
+  if (echeance !== null && jourUTC(echeance) < jourUTC(today)) {
     return null;
   }
 
-  const terminales = new Set(phasesTerminales);
-  const phases = personne.startups.map((ghid) => phaseParStartup.get(ghid) ?? null);
-
-  // Une phase inconnue interdit de conclure : on ne signale que sur du constaté.
-  if (phases.some((phase) => phase === null || !terminales.has(phase))) {
+  // Prédicat partagé avec la dérivation de l'appartenance, garde-fou de phase
+  // inconnue compris : décidé deux fois, l'écran et la file finiraient par se
+  // contredire sur le même sujet.
+  if (!toutesLesStartupsSontTerminees(effectives, phaseParStartup, phasesTerminales)) {
     return null;
   }
+
+  // D'où vient le rattachement change le geste à poser : retirer une décision
+  // humaine n'est pas la même chose qu'ouvrir un départ.
+  const manuelles = personne.rattachementsManuels
+    .filter((rattachement) => enCours(rattachement, today))
+    .map((rattachement) => rattachement.startupGhid);
 
   return {
     kind: "INACTIVE_STARTUP",
     username: personne.username,
     dedupKey: `INACTIVE_STARTUP:${personne.username}`,
     severity: "MEDIUM",
-    detail: `${personne.fullname} n'est rattaché qu'à des startups terminées : ${personne.startups.join(", ")}`,
+    detail:
+      `${personne.fullname} n'est rattaché qu'à des startups terminées : ${effectives.join(", ")}` +
+      (manuelles.length > 0 ? ` (dont ${manuelles.join(", ")} par rattachement manuel)` : ""),
   };
 }
 

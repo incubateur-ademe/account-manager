@@ -3,6 +3,7 @@ import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Tile } from "@codegouvfr/react-dsfr/Tile";
 import { CONNECTEURS } from "@/connectors";
 import { fraicheurDe, systemesMuets } from "@/core/collecte";
+import { echeanceEffective } from "@/core/rattachement-startup";
 import { statutDePersonne } from "@/core/statut";
 import { prisma } from "@/lib/db";
 import { policy } from "@/lib/policy";
@@ -21,7 +22,14 @@ export default async function AccueilPage() {
   const [personnes, dernierRun, constatsOuverts, sortiesSansTraitement, relevesSystemes] =
     await Promise.all([
       prisma.person.findMany({
-        select: { missionEnd: true, vanishedAt: true },
+        select: {
+          missionEnd: true,
+          vanishedAt: true,
+          startupAssignments: {
+            where: { endedAt: null },
+            select: { startupGhid: true, until: true, endedAt: true },
+          },
+        },
       }),
       prisma.syncRun.findFirst({
         where: { provider: "espace-membre" },
@@ -39,11 +47,18 @@ export default async function AccueilPage() {
     ]);
 
   const statuts = personnes.map((personne) =>
-    statutDePersonne(personne, today, {
-      graceDays: thresholds.graceDays,
-      soonDays: thresholds.soonDays,
-      staleDays: thresholds.staleDays,
-    }),
+    statutDePersonne(
+      {
+        missionEnd: echeanceEffective(personne.missionEnd, personne.startupAssignments, today),
+        vanishedAt: personne.vanishedAt,
+      },
+      today,
+      {
+        graceDays: thresholds.graceDays,
+        soonDays: thresholds.soonDays,
+        staleDays: thresholds.staleDays,
+      },
+    ),
   );
   const aTraiter = statuts.filter((statut) => statut === "A_TRAITER").length;
   const enSursis = statuts.filter((statut) => statut === "EN_SURSIS").length;

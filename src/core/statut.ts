@@ -16,11 +16,21 @@ export interface StatutOptions {
   staleDays?: number;
 }
 
+/**
+ * Minuit UTC du jour que porte cette date, sous forme comparable.
+ *
+ * Comparer deux `Date` brutes fait dépendre le résultat de l'heure à laquelle on
+ * regarde : une échéance arrive à minuit UTC, l'instant courant non. Le dernier
+ * jour travaillé se retrouve alors déjà passé dès la première seconde de la
+ * journée, et un accès se coupe un jour trop tôt.
+ */
+export function jourUTC(date: Date): number {
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+}
+
 function daysBetween(from: Date, to: Date): number {
   const day = 24 * 60 * 60 * 1000;
-  const a = Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate());
-  const b = Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate());
-  return Math.round((b - a) / day);
+  return Math.round((jourUTC(to) - jourUTC(from)) / day);
 }
 
 /**

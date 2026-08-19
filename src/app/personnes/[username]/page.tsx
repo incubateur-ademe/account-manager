@@ -8,17 +8,27 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { libelleAppartenance, surchargeSuperflue } from "@/core/appartenance";
 import { fraicheurDe } from "@/core/collecte";
 import type { ConstatKind } from "@/core/constat";
+import { ficheEditable, RAISON_NON_EDITABLE, renommable } from "@/core/fiche-manuelle";
 import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
+import { echeanceEffective, enCours, startupsEffectives } from "@/core/rattachement-startup";
 import { LIBELLE_STATUT, type Statut, statutDePersonne } from "@/core/statut";
+import type { MatchMethod, PersonSource } from "@/generated/prisma/enums";
+import { appartenanceDeLaLigne } from "@/lib/appartenance";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
 
+import { Appartenance } from "./Appartenance";
 import { BoutonDepart } from "./BoutonDepart";
 import { Detacher } from "./Detacher";
+import { FicheEditable } from "./FicheEditable";
+import { Identifiant } from "./Identifiant";
+import { RattacherStartup } from "./RattacherStartup";
+import { RetirerRattachement } from "./RetirerRattachement";
 
 export const dynamic = "force-dynamic";
 
@@ -41,34 +51,17 @@ const SEVERITE_STATUT: Record<Statut, "success" | "info" | "warning" | "error" |
 const SEVERITE_CONSTAT = { HIGH: "error", MEDIUM: "warning", LOW: "info" } as const;
 const LIBELLE_SEVERITE = { HIGH: "Haute", MEDIUM: "Moyenne", LOW: "Basse" } as const;
 
-const RATTACHEMENT: Record<string, { libelle: string; precision: string }> = {
-  STARTUPS: {
-    libelle: "Par startup",
-    precision:
-      "Son échéance est la plus lointaine des startups de l'incubateur auxquelles elle est rattachée.",
-  },
-  DECLARED: {
-    libelle: "Équipe transverse",
-    precision:
-      "Déclarée dans la politique : aucune startup ne porte son rattachement, sa fin de mission beta.gouv fait foi.",
-  },
-  BOTH: {
-    libelle: "Transverse et startup",
-    precision: "Déclarée dans la politique et rattachée à au moins une startup de l'incubateur.",
-  },
-  LOCAL: {
-    libelle: "Hors incubateur",
-    precision: "Suivie localement, avec une échéance saisie à la main dans la politique.",
-  },
-};
-
-const SOURCE: Record<string, string> = {
+// Exhaustives et non `Record<string, ...>` : sous @tsconfig/strictest, une clé
+// d'union littérale n'est pas une signature d'index, si bien qu'ajouter une valeur
+// à l'enum casse le typecheck au lieu de tomber dans un repli qui afficherait la
+// valeur brute.
+const SOURCE: Record<PersonSource, string> = {
   BETA: "Espace-membre beta.gouv",
   LOCAL: "Saisie locale",
   SERVICE: "Compte de service",
 };
 
-const RATTACHEMENT_IDENTITE: Record<string, { libelle: string; sur: boolean }> = {
+const RATTACHEMENT_IDENTITE: Record<MatchMethod, { libelle: string; sur: boolean }> = {
   DECLARED: { libelle: "Déclaré", sur: true },
   GITHUB_LOGIN: { libelle: "Login GitHub", sur: true },
   EMAIL_EXACT: { libelle: "Adresse exacte", sur: true },
@@ -144,7 +137,7 @@ export default async function FichePersonnePage({ params }: Props) {
   await requireOperateur();
 
   const { username } = await params;
-  const { thresholds, startups: reglesStartups } = policy();
+  const { thresholds, startups: reglesStartups, scope } = policy();
   const today = new Date();
 
   const [personne, collectes, dernierePasse] = await Promise.all([
@@ -158,8 +151,25 @@ export default async function FichePersonnePage({ params }: Props) {
         githubLogin: true,
         missionEnd: true,
         source: true,
+        usernameFabricated: true,
         attachment: true,
         startups: true,
+        scopeOverride: {
+          select: { decision: true, reason: true, createdBy: true, createdAt: true },
+        },
+        startupAssignments: {
+          orderBy: [{ endedAt: "asc" }, { until: "desc" }],
+          select: {
+            id: true,
+            startupGhid: true,
+            until: true,
+            reason: true,
+            createdBy: true,
+            createdAt: true,
+            endedAt: true,
+            endedBy: true,
+          },
+        },
         firstSeenAt: true,
         lastSeenAt: true,
         vanishedAt: true,
@@ -203,18 +213,35 @@ export default async function FichePersonnePage({ params }: Props) {
     notFound();
   }
 
-  const collectees =
-    personne.startups.length > 0
-      ? await prisma.startup.findMany({
-          where: { ghid: { in: personne.startups } },
-          select: { ghid: true, name: true, currentPhase: true, phaseStart: true },
-        })
-      : [];
+  // Dix-neuf startups : une lecture complète coûte moins qu'une requête par
+  // rattachement, et sert à la fois le tableau et la liste de saisie.
+  const startupsConnues = await prisma.startup.findMany({
+    select: { ghid: true, name: true, currentPhase: true, phaseStart: true, vanishedAt: true },
+    orderBy: { name: "asc" },
+  });
 
-  const parGhid = new Map(collectees.map((startup) => [startup.ghid, startup]));
+  const parGhid = new Map(startupsConnues.map((startup) => [startup.ghid, startup]));
   const phasesTerminales = new Set(reglesStartups.terminalPhases);
 
-  const lignesStartups = personne.startups
+  const rattachementsEnCours = personne.startupAssignments.filter((rattachement) =>
+    enCours(rattachement, today),
+  );
+  const rattachementsClos = personne.startupAssignments.filter(
+    (rattachement) => !enCours(rattachement, today),
+  );
+  // Deux rattachements ouverts sur la même startup restent possibles, Prisma ne
+  // sachant pas exprimer d'index unique partiel. On retient le plus lointain, celui
+  // que retient aussi l'échéance effective : afficher l'autre ferait dire à la ligne
+  // le contraire de la date en haut de page.
+  const manuelParGhid = new Map<string, (typeof rattachementsEnCours)[number]>();
+  for (const rattachement of rattachementsEnCours) {
+    const connu = manuelParGhid.get(rattachement.startupGhid);
+    if (!connu || rattachement.until > connu.until) {
+      manuelParGhid.set(rattachement.startupGhid, rattachement);
+    }
+  }
+
+  const lignesStartups = startupsEffectives(personne.startups, rattachementsEnCours, today)
     .map((ghid) => {
       const collectee = parGhid.get(ghid);
       const phase = collectee?.currentPhase ?? null;
@@ -225,6 +252,8 @@ export default async function FichePersonnePage({ params }: Props) {
         phaseStart: collectee?.phaseStart ?? null,
         terminale: phase !== null && phasesTerminales.has(phase),
         connue: phase !== null,
+        collectee: personne.startups.includes(ghid),
+        manuel: manuelParGhid.get(ghid) ?? null,
       };
     })
     .sort((a, b) => (a.nom ?? a.ghid).localeCompare(b.nom ?? b.ghid, "fr"));
@@ -233,18 +262,35 @@ export default async function FichePersonnePage({ params }: Props) {
   const toutesTerminees =
     lignesStartups.length > 0 && lignesStartups.every((ligne) => ligne.terminale);
 
-  const statut = statutDePersonne(personne, today, {
-    graceDays: thresholds.graceDays,
-    soonDays: thresholds.soonDays,
-    staleDays: thresholds.staleDays,
-  });
+  const echeance = echeanceEffective(personne.missionEnd, rattachementsEnCours, today);
+  const prolongee =
+    echeance !== null &&
+    (personne.missionEnd === null || echeance.getTime() !== personne.missionEnd.getTime());
+
+  const statut = statutDePersonne(
+    { missionEnd: echeance, vanishedAt: personne.vanishedAt },
+    today,
+    {
+      graceDays: thresholds.graceDays,
+      soonDays: thresholds.soonDays,
+      staleDays: thresholds.staleDays,
+    },
+  );
 
   const fraicheur = fraicheurDe(
     dernierePasse?.startedAt ?? null,
     today,
     thresholds.collectStaleHours,
   );
-  const rattachement = RATTACHEMENT[personne.attachment];
+  const appartenance = appartenanceDeLaLigne(
+    personne,
+    new Map(startupsConnues.map((startup) => [startup.ghid, startup.currentPhase])),
+    reglesStartups.terminalPhases,
+    today,
+  );
+  const titre = libelleAppartenance(appartenance);
+  const declaresLocaux = scope.local.map((entree) => entree.username);
+  const editabilite = ficheEditable(personne, declaresLocaux);
   const ouverts = personne.findings.filter((constat) => constat.closedAt === null);
   const fermes = personne.findings.filter((constat) => constat.closedAt !== null);
   const systemesCollectes = collectes
@@ -287,15 +333,11 @@ export default async function FichePersonnePage({ params }: Props) {
         <h2 className={fr.cx("fr-h5")}>Situation</h2>
 
         <dl className={fr.cx("fr-grid-row", "fr-grid-row--gutters")}>
-          <Champ libelle="Échéance de mission">
-            {personne.missionEnd ? (
-              dateFr.format(personne.missionEnd)
-            ) : (
-              <Absent mention="aucune date de fin connue" />
-            )}
+          <Champ libelle="Échéance">
+            {echeance ? dateFr.format(echeance) : <Absent mention="aucune date de fin connue" />}
           </Champ>
-          <Champ libelle="Rattachement">{rattachement?.libelle ?? personne.attachment}</Champ>
-          <Champ libelle="Source">{SOURCE[personne.source] ?? personne.source}</Champ>
+          <Champ libelle="Appartenance">{titre.libelle}</Champ>
+          <Champ libelle="Source">{SOURCE[personne.source]}</Champ>
           <Champ libelle="Adresse principale">
             {personne.primaryEmail ? (
               <a className={fr.cx("fr-link")} href={`mailto:${personne.primaryEmail}`}>
@@ -330,7 +372,17 @@ export default async function FichePersonnePage({ params }: Props) {
           </Champ>
         </dl>
 
-        {rattachement ? <p className={fr.cx("fr-text--sm")}>{rattachement.precision}</p> : null}
+        <p className={fr.cx("fr-text--sm")}>{titre.precision}</p>
+
+        {/* Une date affichée sans son motif serait une troisième vérité, entre ce que
+            dit l'amont et ce qu'un opérateur a décidé. */}
+        {prolongee ? (
+          <p className={fr.cx("fr-text--sm")}>
+            Sa fin de mission connue est{" "}
+            {personne.missionEnd ? `le ${dateFr.format(personne.missionEnd)}` : "inexistante"} :
+            l'échéance affichée vient d'un rattachement manuel à une startup.
+          </p>
+        ) : null}
 
         {/* Ce que l'outil existe pour éviter, c'est la recopie d'un identifiant vers
             les consoles tierces : autant que chaque fiche y mène directement. */}
@@ -353,6 +405,80 @@ export default async function FichePersonnePage({ params }: Props) {
       </section>
 
       <section className={fr.cx("fr-mt-4w")}>
+        <h2 className={fr.cx("fr-h5")}>Appartenance à l'incubateur</h2>
+
+        {appartenance.surcharge ? (
+          <Alert
+            className={fr.cx("fr-mb-2w")}
+            severity={surchargeSuperflue(appartenance) ? "info" : "warning"}
+            title={
+              appartenance.surcharge.sens === "EXCLUDE"
+                ? "Hors incubateur, forcé"
+                : "Dans l'incubateur, forcé"
+            }
+            description={
+              <>
+                <p className={fr.cx("fr-mb-1w")}>
+                  Décidée par {appartenance.surcharge.par} le{" "}
+                  {dateFr.format(appartenance.surcharge.depuis)} : « {appartenance.surcharge.raison}{" "}
+                  ».
+                </p>
+                <p className={fr.cx("fr-mb-1w")}>
+                  {surchargeSuperflue(appartenance)
+                    ? "La collecte dit désormais la même chose : cette décision est devenue superflue et peut être retirée. Elle ne se retire pas d'elle-même, une décision nominative ne s'annule pas par une collecte anonyme."
+                    : "Elle dit l'appartenance et n'ordonne rien : aucun accès n'est coupé, ses comptes continuent d'être examinés, et un départ reste à instruire par un dossier."}
+                </p>
+
+                {/* Deux autorités qui se contredisent, et une seule visible ici. Sans
+                    cette phrase, un opérateur croirait avoir sorti quelqu'un que la
+                    politique continue de réclamer chaque nuit. */}
+                {appartenance.surcharge.sens === "EXCLUDE" &&
+                (appartenance.sansSurcharge === "EQUIPE" ||
+                  appartenance.sansSurcharge === "EQUIPE_ET_STARTUP") ? (
+                  <p className={fr.cx("fr-mb-0")}>
+                    L'espace-membre la rattache pourtant par une équipe, et la collecte le réécrira
+                    à chaque passage. Pour que la sortie soit portée des deux côtés, il reste à la
+                    retirer de <code>scope.transverse</code> dans la politique.
+                  </p>
+                ) : null}
+              </>
+            }
+          />
+        ) : null}
+
+        <Appartenance
+          username={personne.username}
+          surcharge={
+            appartenance.surcharge
+              ? {
+                  sens: appartenance.surcharge.sens,
+                  par: appartenance.surcharge.par,
+                  depuis: appartenance.surcharge.depuis.toISOString().slice(0, 10),
+                  raison: appartenance.surcharge.raison,
+                }
+              : null
+          }
+        />
+      </section>
+
+      <section className={fr.cx("fr-mt-4w")}>
+        <h2 className={fr.cx("fr-h5")}>Corriger la fiche</h2>
+
+        {editabilite.editable ? (
+          <>
+            <FicheEditable fiche={personne} />
+            {renommable(personne, declaresLocaux) ? (
+              <div className={fr.cx("fr-mt-4w")}>
+                <Identifiant username={personne.username} />
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <p>{RAISON_NON_EDITABLE[editabilite.raison]}</p>
+        )}
+      </section>
+
+      <section className={fr.cx("fr-mt-4w")}>
         <h2 className={fr.cx("fr-h5")}>Départ</h2>
         <p className={fr.cx("fr-text--sm")}>
           Prépare la liste de ce qu'il faut retirer, système par système, à partir des comptes
@@ -367,11 +493,11 @@ export default async function FichePersonnePage({ params }: Props) {
         {lignesStartups.length === 0 ? (
           <>
             <p>Aucune startup ne lui est rattachée.</p>
-            {personne.attachment === "STARTUPS" || personne.attachment === "BOTH" ? (
+            {appartenance.sansStartupConnue ? (
               <Alert
                 severity="warning"
                 small
-                description="Son rattachement est pourtant censé passer par des startups. Une liste vide veut dire que la dernière collecte n'en a trouvé aucune, ce qui devrait la faire sortir du périmètre."
+                description="Son rattachement est pourtant censé passer par des startups. Une liste vide veut dire que la dernière collecte n'en a trouvé aucune. Elle reste dans l'incubateur : l'en sortir sur ce seul constat reviendrait à conclure d'une collecte peut-être tronquée."
               />
             ) : null}
           </>
@@ -380,7 +506,7 @@ export default async function FichePersonnePage({ params }: Props) {
             <Table
               caption={`Startups de ${personne.fullname} et phase de chacune`}
               noCaption
-              headers={["Startup", "Phase", "Depuis", "Justifie des accès"]}
+              headers={["Startup", "Phase", "Depuis", "Justifie des accès", "Origine", ""]}
               data={lignesStartups.map((ligne) => [
                 <span key="s">
                   {ligne.nom ?? ligne.ghid}
@@ -401,6 +527,28 @@ export default async function FichePersonnePage({ params }: Props) {
                   <Badge key="j" severity="info" noIcon>
                     On ne sait pas
                   </Badge>
+                ),
+                <span key="o">
+                  {ligne.collectee ? "Collecté" : null}
+                  {ligne.collectee && ligne.manuel ? <br /> : null}
+                  {ligne.manuel ? (
+                    <>
+                      Manuel, jusqu'au {dateFr.format(ligne.manuel.until)}
+                      <br />
+                      <span className={fr.cx("fr-text--sm")}>
+                        posé par {ligne.manuel.createdBy}
+                      </span>
+                    </>
+                  ) : null}
+                </span>,
+                ligne.manuel ? (
+                  <RetirerRattachement
+                    key="r"
+                    id={ligne.manuel.id}
+                    startup={ligne.nom ?? ligne.ghid}
+                  />
+                ) : (
+                  <span key="r" />
                 ),
               ])}
             />
@@ -424,6 +572,47 @@ export default async function FichePersonnePage({ params }: Props) {
             ) : null}
           </>
         )}
+
+        {/* Sans eux, un constat levé la veille deviendrait inexplicable. */}
+        {rattachementsClos.length > 0 ? (
+          <div className={fr.cx("fr-mt-4w", "fr-text--sm")}>
+            <h3 className={fr.cx("fr-h6")}>Rattachements manuels clos ou expirés</h3>
+            <Table
+              caption={`Rattachements manuels passés de ${personne.fullname}`}
+              noCaption
+              headers={["Startup", "Jusqu'au", "Posé par", "Fin", "Motif"]}
+              data={rattachementsClos.map((rattachement) => [
+                parGhid.get(rattachement.startupGhid)?.name ?? rattachement.startupGhid,
+                dateFr.format(rattachement.until),
+                rattachement.createdBy,
+                rattachement.endedAt ? (
+                  `retiré le ${dateFr.format(rattachement.endedAt)} par ${rattachement.endedBy ?? "?"}`
+                ) : (
+                  <span key="f">expiré</span>
+                ),
+                rattachement.reason ?? <Absent key="m" />,
+              ])}
+            />
+          </div>
+        ) : null}
+
+        <div className={fr.cx("fr-mt-4w")}>
+          <h3 className={fr.cx("fr-h6")}>Rattacher à une startup</h3>
+          <p className={fr.cx("fr-text--sm")}>
+            Un rattachement manuel porte obligatoirement une date de fin et le nom de qui l'a posé.
+            Il survit aux collectes, contrairement à la liste ci-dessus, que l'espace-membre réécrit
+            à chaque passage.
+          </p>
+          <RattacherStartup
+            username={personne.username}
+            missionEnd={personne.missionEnd?.toISOString().slice(0, 10) ?? null}
+            startups={startupsConnues.map((startup) => ({
+              ghid: startup.ghid,
+              name: startup.name,
+              disparue: startup.vanishedAt !== null,
+            }))}
+          />
+        </div>
       </section>
 
       <section className={fr.cx("fr-mt-4w")}>
@@ -516,8 +705,8 @@ export default async function FichePersonnePage({ params }: Props) {
                       </>
                     ) : null}
                   </span>,
-                  <Badge key="r" severity={methode?.sur ? "success" : "warning"} noIcon>
-                    {methode?.libelle ?? identite.matchMethod}
+                  <Badge key="r" severity={methode.sur ? "success" : "warning"} noIcon>
+                    {methode.libelle}
                   </Badge>,
                   dateFr.format(identite.lastSeenAt),
                   <Detacher key="d" id={identite.id} compte={identite.handle} />,
