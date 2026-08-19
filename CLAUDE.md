@@ -97,7 +97,9 @@ fichiers `.env`. Seuls `.env.example` et `.env.dist` sont manipulables, et uniqu
 jamais des valeurs réelles.
 
 **Le `username` beta.gouv est le pivot d'identité.** L'`uuid` interne de l'API espace-membre n'est pas
-utilisé : il n'est résolvable par aucun endpoint, c'est un identifiant sans porte d'entrée.
+utilisé : il n'est résolvable par aucun endpoint, c'est un identifiant sans porte d'entrée. Un
+identifiant fabriqué ici, et lui seul, se renomme : `Person.usernameFabricated` le désigne, la
+collecte l'éteint en adoptant la fiche. Voir `docs/architecture.md` §2.1.
 
 **Une identité dont `matchMethod` vaut `HEURISTIC` ou `NONE` ne peut jamais produire une révocation.**
 Elle alimente une file de rattachement manuel. `ExternalIdentity.personId` nullable est le cœur du

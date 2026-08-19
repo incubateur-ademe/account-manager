@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   ACTEUR_SYSTEME,
   auMoinsUnFiltre,
+  identifiantsLies,
   lienJournal,
   lireCriteres,
   nombreDePages,
@@ -104,5 +105,57 @@ describe("critères de consultation du journal", () => {
     const retour = lienJournal(criteres, { personne: "" });
     expect(retour).toBe("/journal");
     expect(lienJournal(criteres)).toContain("personne=jean.dupont");
+  });
+});
+
+describe("histoire d'une fiche à travers ses renommages et sa fusion", () => {
+  // Deux corrections d'identifiant, puis l'arrivée de la personne dans
+  // l'espace-membre et la fusion vers son vrai pivot.
+  const LIENS = [
+    { before: { username: "camile.exempl" }, after: { username: "camille.exempl" } },
+    { before: { username: "camille.exempl" }, after: { username: "camille.exemple" } },
+    { before: { username: "camille.exemple" }, after: { username: "camille.roux" } },
+    // Bruit du journal : d'autres fiches, et des charges utiles qui ne nomment
+    // personne. Ni l'une ni l'autre n'a à entrer dans la chaîne.
+    { before: { username: "dominique.roux" }, after: { username: "dominique.exemple" } },
+    { before: null, after: { comptes: 2 } },
+  ];
+
+  it("retrouve tous les identifiants portés, quel que soit le bout par lequel on entre", () => {
+    const attendus = ["camile.exempl", "camille.exempl", "camille.exemple", "camille.roux"];
+
+    expect(identifiantsLies(LIENS, "camille.roux")).toEqual(attendus);
+    expect(identifiantsLies(LIENS, "camile.exempl")).toEqual(attendus);
+    expect(identifiantsLies(LIENS, "camille.exempl")).toEqual(attendus);
+
+    // Une fiche qu'aucun renommage n'a touchée reste seule, et une recherche vide
+    // ne fabrique aucun alias.
+    expect(identifiantsLies(LIENS, "jean.dupont")).toEqual(["jean.dupont"]);
+    expect(identifiantsLies(LIENS, "")).toEqual([]);
+  });
+
+  it("couvre les quatre identifiants dans le filtre servi à la base", () => {
+    const criteres = lireCriteres({ personne: "camille.roux" });
+    const filtre = versFiltre(criteres, identifiantsLies(LIENS, criteres.personne));
+
+    expect(filtre.OR).toHaveLength(12);
+    expect(filtre.OR).toContainEqual({ targetId: "camile.exempl" });
+    expect(filtre.OR).toContainEqual({ targetId: { endsWith: ":camille.exempl" } });
+    expect(filtre.OR).toContainEqual({ actorUsername: "camille.roux", targetType: "session" });
+
+    // Sans alias, le filtre reste exactement celui d'avant : la chaîne ne se paie
+    // pas sur les écrans qui n'en ont pas besoin.
+    expect(versFiltre(criteres).OR).toHaveLength(3);
+  });
+
+  it("ne tourne pas en rond sur une chaîne circulaire", () => {
+    const boucle = [
+      { before: { username: "a.exemple" }, after: { username: "b.exemple" } },
+      { before: { username: "b.exemple" }, after: { username: "c.exemple" } },
+      { before: { username: "c.exemple" }, after: { username: "a.exemple" } },
+      { before: { username: "a.exemple" }, after: { username: "a.exemple" } },
+    ];
+
+    expect(identifiantsLies(boucle, "b.exemple")).toEqual(["a.exemple", "b.exemple", "c.exemple"]);
   });
 });

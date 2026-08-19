@@ -153,7 +153,7 @@ export async function executerSync(
   // avant la lecture des systèmes cibles reviendrait à juger des accès d'hier, et à
   // ne jamais voir qu'une personne partie détient encore un compte.
   if (perimetre.status !== "FAILED") {
-    const [personnes, identites] = await Promise.all([
+    const [lignesPersonnes, identites] = await Promise.all([
       prisma.person.findMany({
         select: {
           username: true,
@@ -162,6 +162,12 @@ export async function executerSync(
           startups: true,
           missionEnd: true,
           vanishedAt: true,
+          // Filtre de lecture seulement : aucune écriture n'est ajoutée au chemin
+          // de collecte, un rattachement expiré se reconnaît à sa date.
+          startupAssignments: {
+            where: { endedAt: null },
+            select: { startupGhid: true, until: true, endedAt: true },
+          },
         },
       }),
       prisma.externalIdentity.findMany({
@@ -176,6 +182,11 @@ export async function executerSync(
         },
       }),
     ]);
+
+    const personnes = lignesPersonnes.map(({ startupAssignments, ...personne }) => ({
+      ...personne,
+      rattachementsManuels: startupAssignments,
+    }));
 
     const constats = await syncConstats(
       personnes,

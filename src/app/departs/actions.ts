@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 
+import { echeanceEffective } from "@/core/rattachement-startup";
 import { actionTracee } from "@/lib/actions";
 import { prisma } from "@/lib/db";
 import { calculerPlanDeDepart, enregistrerPlan, ouvrirDossierDeDepart } from "@/lib/depart";
@@ -25,7 +26,15 @@ export async function ouvrirDepart(
 
   const personne = await prisma.person.findUnique({
     where: { username },
-    select: { id: true, username: true, missionEnd: true },
+    select: {
+      id: true,
+      username: true,
+      missionEnd: true,
+      startupAssignments: {
+        where: { endedAt: null },
+        select: { startupGhid: true, until: true, endedAt: true },
+      },
+    },
   });
 
   if (!personne) {
@@ -34,14 +43,18 @@ export async function ouvrirDepart(
 
   const maintenant = new Date();
 
+  // La date de départ de quelqu'un dont l'accès est prolongé est la date prolongée,
+  // sans quoi le dossier contredirait sa fiche.
+  const echeance = echeanceEffective(personne.missionEnd, personne.startupAssignments, maintenant);
+
   const dossierId = await actionTracee({
     action: "depart.ouverture",
     targetType: "personne",
     targetId: personne.username,
-    after: { echeance: personne.missionEnd?.toISOString().slice(0, 10) ?? null },
+    after: { echeance: echeance?.toISOString().slice(0, 10) ?? null },
     revalider: [`/personnes/${personne.username}`, "/departs"],
     ecrire: async (operateur) => {
-      const dossier = await ouvrirDossierDeDepart(personne.id, personne.missionEnd);
+      const dossier = await ouvrirDossierDeDepart(personne.id, echeance);
       if (dossier.deja) {
         return dossier.id;
       }

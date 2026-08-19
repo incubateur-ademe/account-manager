@@ -8,9 +8,9 @@ _document fourni pas l'utilisateur_
     - donner des infos sur les dernières collectes
 
 ## Personnes
-- Pouvoir éditer une fiche créée manuellement
-- (1.) Pouvoir rattacher une personne créée manuellement à une startup. Use case : il est possible d'avoir des personnes externe qui participent à une startup via contribution (compte guest Notion dédié pour une startup, team flagguée "externe" sur Github, etc.) mais elle n'auront jamais de compte Espace Membre.
-- Ajouter un type de rattachement "Manuel Hors Incubateur" et "Manuel Incubateur", pour distinguer les personnes créées manuellement et celles créées par collecte
+- [x] Pouvoir éditer une fiche créée manuellement
+- [x] (1.) Pouvoir rattacher une personne créée manuellement à une startup. Use case : il est possible d'avoir des personnes externe qui participent à une startup via contribution (compte guest Notion dédié pour une startup, team flagguée "externe" sur Github, etc.) mais elle n'auront jamais de compte Espace Membre.
+- [x] Ajouter un type de rattachement "Manuel Hors Incubateur" et "Manuel Incubateur", pour distinguer les personnes créées manuellement et celles créées par collecte
     - il est possible d'ajouter une personne manuellement et rattachée à l'incubateur (cf 1.)
 
 ## Startup

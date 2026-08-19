@@ -1,24 +1,11 @@
 "use server";
 
+import { normaliserIdentifiant } from "@/core/fiche-manuelle";
 import { actionTracee } from "@/lib/actions";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 
 export type EtatCreation = { erreur: string } | null;
-
-/**
- * Un username beta.gouv sert de pivot à tout le système. Une personne qui n'en a
- * pas s'en voit attribuer un, dérivé de son nom : il n'a pas de valeur au-dehors,
- * seulement celle d'identifier la fiche ici.
- */
-function identifiantDepuis(nom: string): string {
-  return nom
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ".")
-    .replace(/^\.+|\.+$/g, "");
-}
 
 /**
  * Crée la fiche d'une personne que l'espace-membre ne connaît pas, et lui rattache
@@ -42,7 +29,7 @@ export async function creerFichePourCompte(
     return { erreur: "Indiquez le nom de la personne." };
   }
 
-  const username = identifiantDepuis(nom);
+  const username = normaliserIdentifiant(nom);
   if (username.length < 3) {
     return { erreur: "Ce nom ne donne pas d'identifiant exploitable." };
   }
@@ -92,8 +79,9 @@ export async function creerFichePourCompte(
       const personne = await prisma.person.create({
         data: {
           username,
+          usernameFabricated: true,
           fullname: nom,
-          attachment: "LOCAL",
+          attachment: "NONE",
           source: "LOCAL",
           startups: [],
           firstSeenAt: now,

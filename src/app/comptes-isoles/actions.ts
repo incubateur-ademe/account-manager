@@ -6,7 +6,12 @@ import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { fetchMemberDetail } from "@/lib/espace-membre";
 
-export type EtatRattachement = { erreur: string } | null;
+/**
+ * `confirmationRequise` porte le refus qui attend une confirmation, plutôt que de
+ * laisser le client reconnaître une phrase dans le message : un libellé se
+ * reformule, et le garde-fou disparaîtrait alors sans que rien ne le signale.
+ */
+export type EtatRattachement = { erreur: string; confirmationRequise?: true } | null;
 
 function toDate(iso: string | null): Date | null {
   return iso === null ? null : new Date(`${iso}T00:00:00Z`);
@@ -110,6 +115,7 @@ export async function rattacherIdentite(
   if (construitUneIdentite && String(formData.get("confirme") ?? "") !== "oui") {
     return {
       erreur: `« ${cible} » n'est connue que par un compte déjà rattaché. Lui en ajouter un second affirme qu'il s'agit de la même personne, et une coupure vaudra pour les deux. Confirmez pour continuer.`,
+      confirmationRequise: true,
     };
   }
 
@@ -140,7 +146,7 @@ export async function rattacherIdentite(
             primaryEmail: horsPerimetre.primary_email ?? null,
             communicationEmail: emailDeContact(horsPerimetre),
             missionEnd: toDate(rattachement.missionEnd),
-            attachment: "LOCAL",
+            attachment: "NONE",
             source: "LOCAL",
             startups: [],
             firstSeenAt: now,

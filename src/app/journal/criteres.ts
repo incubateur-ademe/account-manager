@@ -45,7 +45,75 @@ export function lireCriteres(params: Record<string, string | string[] | undefine
   };
 }
 
-export function versFiltre(criteres: Criteres): Prisma.AuditEventWhereInput {
+/**
+ * Un événement de renommage ou de fusion, tel que le journal le porte : l'avant et
+ * l'après vivent dans `before` et `after`, en JSON libre.
+ */
+export interface LienDIdentifiant {
+  before: unknown;
+  after: unknown;
+}
+
+function usernameDe(charge: unknown): string | null {
+  if (typeof charge !== "object" || charge === null) {
+    return null;
+  }
+  const brut = (charge as Record<string, unknown>)["username"];
+  return typeof brut === "string" && brut.length > 0 ? brut : null;
+}
+
+/**
+ * Tous les identifiants qu'une même fiche a portés, en remontant et en descendant
+ * la chaîne des renommages et des fusions.
+ *
+ * Sans elle, l'histoire d'un compte se coupe au premier renommage : les événements
+ * antérieurs nomment un identifiant que plus rien ne relie à la fiche d'aujourd'hui.
+ * La chaîne se parcourt dans les deux sens, et l'ensemble des identifiants déjà vus
+ * tient lieu de garde : une boucle fabriquée à la main ne doit pas faire tourner
+ * l'écran indéfiniment.
+ */
+export function identifiantsLies(liens: readonly LienDIdentifiant[], username: string): string[] {
+  if (username === "") {
+    return [];
+  }
+
+  const voisins = new Map<string, Set<string>>();
+  const relier = (de: string, vers: string): void => {
+    const deja = voisins.get(de) ?? new Set<string>();
+    deja.add(vers);
+    voisins.set(de, deja);
+  };
+
+  for (const lien of liens) {
+    const avant = usernameDe(lien.before);
+    const apres = usernameDe(lien.after);
+    if (avant === null || apres === null || avant === apres) {
+      continue;
+    }
+    relier(avant, apres);
+    relier(apres, avant);
+  }
+
+  const vus = new Set([username]);
+  const aVisiter = [username];
+
+  while (aVisiter.length > 0) {
+    const courant = aVisiter.pop() as string;
+    for (const voisin of voisins.get(courant) ?? []) {
+      if (!vus.has(voisin)) {
+        vus.add(voisin);
+        aVisiter.push(voisin);
+      }
+    }
+  }
+
+  return [...vus].sort();
+}
+
+export function versFiltre(
+  criteres: Criteres,
+  alias: readonly string[] = [],
+): Prisma.AuditEventWhereInput {
   const filtre: Prisma.AuditEventWhereInput = {};
 
   if (criteres.acteur === ACTEUR_SYSTEME) {
@@ -66,11 +134,15 @@ export function versFiltre(criteres: Criteres): Prisma.AuditEventWhereInput {
     // Les cibles qui portent sur quelqu'un le nomment en fin d'identifiant, après
     // le type de constat. Chercher le suffixe plutôt qu'un champ dédié évite de
     // dupliquer le username sur chaque événement, au prix de cette convention.
-    filtre.OR = [
-      { targetId: criteres.personne },
-      { targetId: { endsWith: `:${criteres.personne}` } },
-      { actorUsername: criteres.personne, targetType: "session" },
-    ];
+    //
+    // La recherche porte sur tous les identifiants que cette fiche a portés : une
+    // fusion et un renommage n'ont pas à couper l'histoire d'un compte en deux.
+    const identifiants = alias.includes(criteres.personne) ? alias : [criteres.personne, ...alias];
+    filtre.OR = identifiants.flatMap((identifiant) => [
+      { targetId: identifiant },
+      { targetId: { endsWith: `:${identifiant}` } },
+      { actorUsername: identifiant, targetType: "session" },
+    ]);
   }
 
   return filtre;

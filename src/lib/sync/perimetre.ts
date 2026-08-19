@@ -1,3 +1,4 @@
+import type { Attachment } from "@/core/appartenance";
 import { chuteExcessive } from "@/core/collecte";
 import {
   emailDeContact,
@@ -6,6 +7,7 @@ import {
   rattachementDeclare,
 } from "@/core/membre";
 import { declaresManquants } from "@/core/perimetre";
+import { jourUTC } from "@/core/statut";
 import type { PersonSource } from "@/generated/prisma/enums";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
@@ -32,7 +34,7 @@ export interface PerimetreSyncResult {
   startups: IncubatorStartup[];
 }
 
-interface PersonneResolue {
+export interface PersonneResolue {
   username: string;
   betaUuid: string | null;
   fullname: string;
@@ -40,7 +42,7 @@ interface PersonneResolue {
   primaryEmail: string | null;
   communicationEmail: string | null;
   missionEnd: string | null;
-  attachment: "STARTUPS" | "DECLARED" | "BOTH" | "LOCAL";
+  attachment: Attachment;
   startups: string[];
   source: PersonSource;
 }
@@ -49,8 +51,20 @@ function toDate(iso: string | null): Date | null {
   return iso === null ? null : new Date(`${iso}T00:00:00Z`);
 }
 
-async function upsert(personne: PersonneResolue, now: Date): Promise<"created" | "updated"> {
-  const data = {
+/**
+ * Tout ce que la collecte réécrit sur une fiche, et rien d'autre.
+ *
+ * Extrait pour être lisible d'un coup d'œil et vérifiable par un test : c'est la
+ * liste qui dit ce qu'un opérateur ne peut pas saisir durablement sur une fiche
+ * collectée. Le jour où quelqu'un ajoute un champ à `Person`, c'est ici qu'on voit
+ * si la collecte s'est mise à écraser une décision.
+ */
+export function champsCollectes(personne: PersonneResolue, now: Date) {
+  return {
+    // Le jour où une source amont connaît cet identifiant, il cesse d'être une
+    // construction locale et redevient un pivot que rien n'a le droit de renommer.
+    // Sans cette ligne, une fiche fabriquée puis adoptée resterait renommable.
+    usernameFabricated: false,
     betaUuid: personne.betaUuid,
     fullname: personne.fullname,
     githubLogin: personne.githubLogin,
@@ -63,6 +77,10 @@ async function upsert(personne: PersonneResolue, now: Date): Promise<"created" |
     lastSeenAt: now,
     vanishedAt: null,
   };
+}
+
+async function upsert(personne: PersonneResolue, now: Date): Promise<"created" | "updated"> {
+  const data = champsCollectes(personne, now);
 
   const existing = await prisma.person.findUnique({
     where: { username: personne.username },
@@ -200,7 +218,7 @@ export async function syncPerimetre(
         primaryEmail: null,
         communicationEmail: null,
         missionEnd: entry.until,
-        attachment: "LOCAL",
+        attachment: "NONE",
         startups: [],
         source: "LOCAL" as PersonSource,
       });
@@ -260,9 +278,25 @@ export async function syncPerimetre(
       // Une fiche créée à la main pour nommer un compte n'existe que par lui : elle
       // n'est réclamée par aucune source amont, et la faire disparaître à la collecte
       // suivante reviendrait à effacer chaque nuit ce qu'un opérateur vient d'écrire.
-      // Elle vit donc tant que son compte est observé.
+      // Elle vit donc tant que son compte est observé, ou tant qu'un rattachement
+      // qu'on lui a posé court encore : dire qu'une personne est là jusqu'à telle
+      // date et la faire disparaître la nuit même serait se contredire.
+      //
+      // `source: "LOCAL"` reste en tête et hors du `OR` : une personne venue de
+      // l'espace-membre qui en sort doit continuer de lever `SCOPE_EXIT`, qui est le
+      // constat le plus important du système.
       const adossees = await prisma.person.findMany({
-        where: { source: "LOCAL", identities: { some: { vanishedAt: null } } },
+        where: {
+          source: "LOCAL",
+          OR: [
+            { identities: { some: { vanishedAt: null } } },
+            {
+              startupAssignments: {
+                some: { endedAt: null, until: { gte: new Date(jourUTC(now)) } },
+              },
+            },
+          ],
+        },
         select: { username: true },
       });
 

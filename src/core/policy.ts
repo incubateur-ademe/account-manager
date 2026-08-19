@@ -184,7 +184,7 @@ export const accountsSchema = z
           .default([])
           .meta({
             description:
-              "Fait autorité sur l'appartenance au périmètre. Une équipe transverse n'apparaît dans aucune startup d'État : sans cette liste, elle serait invisible. L'en retirer est le geste qui l'en sort.",
+              "Fait autorité sur l'appartenance à l'incubateur. Une équipe transverse n'apparaît dans aucune startup d'État : sans cette liste, elle serait invisible. L'en retirer est le geste qui l'en sort.",
             examples: [["claire.durand", "samir.benali"]],
           }),
         local: z

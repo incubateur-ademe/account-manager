@@ -22,7 +22,7 @@ export function Rattacher({ id, listeId }: { id: string; listeId: string }) {
   // Le refus n'est pas une erreur de saisie mais une question posée : la case ne
   // s'affiche qu'une fois qu'elle a un sens, pour ne pas proposer d'emblée de passer
   // outre un garde-fou qu'on n'a pas encore rencontré.
-  const demandeConfirmation = etat?.erreur.includes("Confirmez pour continuer") === true;
+  const demandeConfirmation = etat?.confirmationRequise === true;
 
   return (
     <>
