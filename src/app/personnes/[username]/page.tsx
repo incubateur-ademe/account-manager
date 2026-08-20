@@ -7,16 +7,13 @@ import { Table } from "@codegouvfr/react-dsfr/Table";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import type { ReactNode } from "react";
-
-import { libelleAppartenance, surchargeSuperflue } from "@/core/appartenance";
+import { LIBELLE_APPARTENANCE, libelleAppartenance, surchargeSuperflue } from "@/core/appartenance";
 import { fraicheurDe } from "@/core/collecte";
 import type { ConstatKind } from "@/core/constat";
 import { ficheEditable } from "@/core/fiche-manuelle";
 import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
 import { echeanceEffective, enCours, startupsEffectives } from "@/core/rattachement-startup";
-import { LIBELLE_STATUT, type Statut, statutDePersonne } from "@/core/statut";
-import type { MatchMethod, PersonSource } from "@/generated/prisma/enums";
+import { LIBELLE_STATUT, statutDePersonne } from "@/core/statut";
 import { appartenanceDeLaLigne } from "@/lib/appartenance";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -24,14 +21,12 @@ import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
 
 import { ActionsDePage } from "./ActionsDePage";
-import {
-  CeQuiAppelleUneAction,
-  type MotifDAction,
-  motifsDesConstats,
-} from "./CeQuiAppelleUneAction";
-import { Detacher } from "./Detacher";
-import { ModaleRattacherStartup } from "./ModaleRattacherStartup";
-import { RetirerRattachement } from "./RetirerRattachement";
+import { CeQuiAppelleUneAction } from "./CeQuiAppelleUneAction";
+import { Absent, Champ } from "./Champs";
+import { dateFr, expliquerStatut, SEVERITE_STATUT, SOURCE, STATUT_A_TRAITER } from "./libelles";
+import { motifsDAction } from "./motifs";
+import { SectionComptesExternes } from "./SectionComptesExternes";
+import { SectionStartups } from "./SectionStartups";
 
 export const dynamic = "force-dynamic";
 
@@ -39,103 +34,12 @@ interface Props {
   params: Promise<{ username: string }>;
 }
 
-const dateFr = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "UTC" });
-
-const SEVERITE_STATUT: Record<Statut, "success" | "info" | "warning" | "error" | "new"> = {
-  SORTI: "error",
-  A_TRAITER: "error",
-  EN_SURSIS: "warning",
-  BIENTOT: "new",
-  ACTIF: "success",
-  SANS_ECHEANCE: "info",
-  ANCIEN: "info",
-};
-
-/**
- * Les seuls statuts qui appellent un geste, et la gravité de ce geste.
- *
- * Les autres décrivent une situation dont il n'y a rien à faire : les porter dans le
- * bloc d'action le ferait paraître sur chaque fiche, et un bloc qui paraît partout ne
- * signale plus rien.
- */
-const STATUT_A_TRAITER: Partial<Record<Statut, "error" | "warning" | "info">> = {
-  SORTI: "error",
-  A_TRAITER: "error",
-  EN_SURSIS: "warning",
-  BIENTOT: "info",
-};
-
-// Exhaustives et non `Record<string, ...>` : sous @tsconfig/strictest, une clé
-// d'union littérale n'est pas une signature d'index, si bien qu'ajouter une valeur
-// à l'enum casse le typecheck au lieu de tomber dans un repli qui afficherait la
-// valeur brute.
-const SOURCE: Record<PersonSource, string> = {
-  BETA: "Espace-membre beta.gouv",
-  LOCAL: "Saisie locale",
-  SERVICE: "Compte de service",
-};
-
-const RATTACHEMENT_IDENTITE: Record<MatchMethod, { libelle: string; sur: boolean }> = {
-  DECLARED: { libelle: "Déclaré", sur: true },
-  GITHUB_LOGIN: { libelle: "Login GitHub", sur: true },
-  EMAIL_EXACT: { libelle: "Adresse exacte", sur: true },
-  HEURISTIC: { libelle: "Heuristique", sur: false },
-  NONE: { libelle: "Aucun", sur: false },
-};
-
-const LIBELLE_PHASE: Record<string, string> = {
-  investigation: "Investigation",
-  construction: "Construction",
-  acceleration: "Accélération",
-  transfer: "Transfert",
-  transfere: "Transférée",
-  success: "Pérennisée",
-  alumni: "Alumni",
-  abandon: "Abandonnée",
-  "abandon-investigation": "Abandonnée en investigation",
-};
-
 /**
  * L'ingestion du périmètre passe par ce fournisseur : ses runs disent qu'on connaît
  * les personnes, jamais qu'on a lu un système cible. Les compter comme une collecte
  * de comptes ferait passer une absence d'observation pour une absence d'accès.
  */
 const FOURNISSEUR_PERIMETRE = "espace-membre";
-
-function expliquerStatut(
-  statut: Statut,
-  { graceDays, soonDays, staleDays }: { graceDays: number; soonDays: number; staleDays: number },
-): string {
-  switch (statut) {
-    case "SORTI":
-      return "Elle a quitté le référentiel de l'incubateur, et rien ici ne dit ce que ses accès sont devenus.";
-    case "A_TRAITER":
-      return `Son échéance est dépassée au-delà du délai de grâce de ${graceDays} jours.`;
-    case "EN_SURSIS":
-      return `Son échéance est dépassée, mais le délai de grâce de ${graceDays} jours court encore : un renouvellement signé en retard est encore possible.`;
-    case "BIENTOT":
-      return `Son échéance tombe dans les ${soonDays} prochains jours.`;
-    case "ACTIF":
-      return "Son échéance est lointaine : rien ne la signale de ce côté.";
-    case "SANS_ECHEANCE":
-      return "Aucune date de fin de mission n'est connue : aucune échéance ne la fera remonter.";
-    case "ANCIEN":
-      return `Son échéance est dépassée depuis plus de ${staleDays} jours : elle relève désormais de l'historique.`;
-  }
-}
-
-function Champ({ libelle, children }: { libelle: string; children: ReactNode }) {
-  return (
-    <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
-      <dt className={fr.cx("fr-text--sm", "fr-mb-0")}>{libelle}</dt>
-      <dd className={fr.cx("fr-text--bold", "fr-ml-0")}>{children}</dd>
-    </div>
-  );
-}
-
-function Absent({ mention = "non renseigné" }: { mention?: string }) {
-  return <span className={fr.cx("fr-hint-text")}>{mention}</span>;
-}
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { username } = await params;
@@ -284,11 +188,7 @@ export default async function FichePersonnePage({ params }: Props) {
   const statut = statutDePersonne(
     { missionEnd: echeance, vanishedAt: personne.vanishedAt },
     today,
-    {
-      graceDays: thresholds.graceDays,
-      soonDays: thresholds.soonDays,
-      staleDays: thresholds.staleDays,
-    },
+    thresholds,
   );
 
   const fraicheur = fraicheurDe(
@@ -316,86 +216,17 @@ export default async function FichePersonnePage({ params }: Props) {
   // celle du calcul des constats, sans quoi l'écran lèverait ici ce que la file
   // refuse de lever.
   const parEquipe = personne.attachment === "DECLARED" || personne.attachment === "BOTH";
-  const surchargeContredite = appartenance.surcharge !== null && !surchargeSuperflue(appartenance);
-  const sortieContreEquipe =
-    appartenance.surcharge?.sens === "EXCLUDE" &&
-    (appartenance.sansSurcharge === "EQUIPE" || appartenance.sansSurcharge === "EQUIPE_ET_STARTUP");
 
-  const graviteStatut = STATUT_A_TRAITER[statut];
-  const motifs: MotifDAction[] = [];
-
-  if (graviteStatut) {
-    motifs.push({
-      cle: "statut",
-      severite: graviteStatut,
-      titre: LIBELLE_STATUT[statut],
-      description: expliquerStatut(statut, thresholds),
-    });
-  }
-
-  motifs.push(...motifsDesConstats(ouverts));
-
-  if (fraicheur.perimee) {
-    motifs.push({
-      cle: "fraicheur",
-      severite: "warning",
-      titre: "Ce que montre cette fiche n'est plus frais",
-      description:
-        fraicheur.heures === null
-          ? "Aucune collecte n'a jamais eu lieu : cette fiche ne reflète aucune observation."
-          : `Dernière collecte lancée il y a ${fraicheur.heures} heures. Sa situation a pu changer depuis.`,
-    });
-  }
-
-  // Doublon écarté : quand le constat est déjà levé, il porte la même chose et la
-  // porte mieux, avec sa gravité et sa date.
-  if (
-    toutesTerminees &&
-    !parEquipe &&
-    !ouverts.some((constat) => constat.kind === "INACTIVE_STARTUP")
-  ) {
-    motifs.push({
-      cle: "startups-terminees",
-      severite: "warning",
-      titre: "Toutes ses startups sont dans une phase terminale",
-      description:
-        "Plus aucune startup vivante de l'incubateur ne porte son rattachement. Confirmer son rattachement réel, ou retirer les accès devenus sans objet.",
-    });
-  }
-
-  if (surchargeContredite) {
-    motifs.push({
-      cle: "surcharge",
-      severite: "warning",
-      titre:
-        appartenance.surcharge?.sens === "EXCLUDE"
-          ? "Déclarée hors incubateur, contre ce que portent ses rattachements"
-          : "Forcée dans l'incubateur, faute de rattachement qui l'y place",
-      description: `Décidée par ${appartenance.surcharge?.par ?? "?"}. Sans cette décision, elle serait « ${
-        titre.libelle
-      } » d'après ses rattachements en cours.`,
-    });
-  }
-
-  if (sortieContreEquipe) {
-    motifs.push({
-      cle: "sortie-contre-equipe",
-      severite: "warning",
-      titre: "Deux autorités se contredisent",
-      description:
-        "Elle relève pourtant d'une équipe de l'incubateur, et la collecte le réécrira à chaque passage. Pour que la sortie soit portée des deux côtés, il reste à la retirer de scope.transverse dans la politique.",
-    });
-  }
-
-  if (appartenance.sansStartupConnue) {
-    motifs.push({
-      cle: "sans-startup",
-      severite: "warning",
-      titre: "Un rattachement par startup, mais aucune startup connue",
-      description:
-        "La dernière collecte n'en a trouvé aucune. Conclure d'une collecte peut-être tronquée reviendrait à la sortir sur du vide : c'est la collecte qu'il faut regarder avant elle.",
-    });
-  }
+  const motifs = motifsDAction({
+    statut,
+    seuils: thresholds,
+    appartenance,
+    libelleSansSurcharge: LIBELLE_APPARTENANCE[appartenance.sansSurcharge].libelle,
+    ouverts,
+    fraicheur,
+    toutesStartupsTerminees: toutesTerminees,
+    parEquipe,
+  });
 
   return (
     <main className={fr.cx("fr-container", "fr-my-6w")}>
@@ -412,7 +243,7 @@ export default async function FichePersonnePage({ params }: Props) {
           <Badge severity={SEVERITE_STATUT[statut]} noIcon>
             {LIBELLE_STATUT[statut]}
           </Badge>
-          {graviteStatut ? null : (
+          {STATUT_A_TRAITER[statut] ? null : (
             <p className={fr.cx("fr-text--sm", "fr-mt-1w", "fr-mb-0")}>
               {expliquerStatut(statut, thresholds)}
             </p>
@@ -536,178 +367,28 @@ export default async function FichePersonnePage({ params }: Props) {
         ) : null}
       </section>
 
-      <section className={fr.cx("fr-mt-4w")}>
-        <div className={fr.cx("fr-grid-row", "fr-grid-row--middle")}>
-          <div className={fr.cx("fr-col")}>
-            <h2 className={fr.cx("fr-h5", "fr-mb-0")}>Startups</h2>
-          </div>
-          <ModaleRattacherStartup
-            username={personne.username}
-            missionEnd={personne.missionEnd?.toISOString().slice(0, 10) ?? null}
-            startups={startupsConnues.map((startup) => ({
-              ghid: startup.ghid,
-              name: startup.name,
-              disparue: startup.vanishedAt !== null,
-            }))}
-          />
-        </div>
+      <SectionStartups
+        personne={personne}
+        lignes={lignesStartups}
+        clos={rattachementsClos.map((rattachement) => ({
+          ...rattachement,
+          startup: parGhid.get(rattachement.startupGhid)?.name ?? rattachement.startupGhid,
+        }))}
+        startupsProposables={startupsConnues.map((startup) => ({
+          ghid: startup.ghid,
+          name: startup.name,
+          disparue: startup.vanishedAt !== null,
+        }))}
+        toutesTerminees={toutesTerminees}
+        parEquipe={parEquipe}
+        inconnues={inconnues}
+      />
 
-        {lignesStartups.length === 0 ? (
-          <p className={fr.cx("fr-mt-2w")}>Aucune startup ne lui est rattachée.</p>
-        ) : (
-          <>
-            <Table
-              className={fr.cx("fr-mt-2w")}
-              caption={`Startups de ${personne.fullname} et phase de chacune`}
-              noCaption
-              headers={["Startup", "Phase", "Depuis", "Justifie des accès", "Origine", ""]}
-              data={lignesStartups.map((ligne) => [
-                <span key="s">
-                  {ligne.nom ?? ligne.ghid}
-                  <br />
-                  <span className={fr.cx("fr-text--sm")}>{ligne.ghid}</span>
-                </span>,
-                ligne.phase === null ? (
-                  <Absent key="p" mention="phase inconnue" />
-                ) : (
-                  (LIBELLE_PHASE[ligne.phase] ?? ligne.phase)
-                ),
-                ligne.phaseStart ? dateFr.format(ligne.phaseStart) : <Absent key="d" />,
-                ligne.connue ? (
-                  <Badge key="j" severity={ligne.terminale ? "error" : "success"} noIcon>
-                    {ligne.terminale ? "Non, phase terminale" : "Oui"}
-                  </Badge>
-                ) : (
-                  <Badge key="j" severity="info" noIcon>
-                    On ne sait pas
-                  </Badge>
-                ),
-                <span key="o">
-                  {ligne.collectee ? "Collecté" : null}
-                  {ligne.collectee && ligne.manuel ? <br /> : null}
-                  {ligne.manuel ? (
-                    <>
-                      Manuel, jusqu'au {dateFr.format(ligne.manuel.until)}
-                      <br />
-                      <span className={fr.cx("fr-text--sm")}>
-                        posé par {ligne.manuel.createdBy}
-                      </span>
-                    </>
-                  ) : null}
-                </span>,
-                ligne.manuel ? (
-                  <RetirerRattachement
-                    key="r"
-                    id={ligne.manuel.id}
-                    startup={ligne.nom ?? ligne.ghid}
-                  />
-                ) : (
-                  <span key="r" />
-                ),
-              ])}
-            />
-
-            {/* Le constat de startups terminées épargne les rattachés par équipe :
-                la fiche doit dire la même chose que la file, sans quoi elle lèverait
-                ici ce que la file refuse de lever. */}
-            {toutesTerminees && parEquipe ? (
-              <Alert
-                className={fr.cx("fr-mt-2w")}
-                severity="info"
-                small
-                description="Toutes ses startups sont dans une phase terminale. Son rattachement à l'incubateur passe par une équipe : il ne dépend d'aucune d'elles."
-              />
-            ) : null}
-
-            {inconnues > 0 ? (
-              <Alert
-                className={fr.cx("fr-mt-2w")}
-                severity="info"
-                small
-                description={`La phase de ${inconnues} startup${inconnues > 1 ? "s" : ""} n'est pas connue. Tant qu'elle le reste, on ne peut pas conclure que toutes ses startups sont terminées.`}
-              />
-            ) : null}
-          </>
-        )}
-
-        {/* Sans eux, un constat levé la veille deviendrait inexplicable. */}
-        {rattachementsClos.length > 0 ? (
-          <Accordion
-            className={fr.cx("fr-mt-2w")}
-            titleAs="h3"
-            label={`Rattachements manuels clos ou expirés (${rattachementsClos.length})`}
-          >
-            <Table
-              caption={`Rattachements manuels passés de ${personne.fullname}`}
-              noCaption
-              headers={["Startup", "Jusqu'au", "Posé par", "Fin", "Motif"]}
-              data={rattachementsClos.map((rattachement) => [
-                parGhid.get(rattachement.startupGhid)?.name ?? rattachement.startupGhid,
-                dateFr.format(rattachement.until),
-                rattachement.createdBy,
-                rattachement.endedAt ? (
-                  `retiré le ${dateFr.format(rattachement.endedAt)} par ${rattachement.endedBy ?? "?"}`
-                ) : (
-                  <span key="f">expiré</span>
-                ),
-                rattachement.reason ?? <Absent key="m" />,
-              ])}
-            />
-          </Accordion>
-        ) : null}
-      </section>
-
-      <section className={fr.cx("fr-mt-4w")}>
-        <h2 className={fr.cx("fr-h5")}>Comptes externes</h2>
-
-        {personne.identities.length === 0 ? (
-          <Alert
-            severity="info"
-            small
-            description={
-              systemesCollectes.length === 0
-                ? "Aucun connecteur n'a encore lu de système cible. Cette liste est vide faute d'observation, ce qui ne dit rien des accès réellement détenus."
-                : `Aucun compte ne lui est rattaché sur les systèmes déjà collectés (${systemesCollectes.join(", ")}). Tout système absent de cette liste n'a jamais été lu : son état reste inconnu.`
-            }
-          />
-        ) : (
-          <>
-            <Table
-              caption={`Comptes externes rattachés à ${personne.fullname}`}
-              noCaption
-              headers={["Système", "Compte", "Rattachement", "Vu pour la dernière fois", ""]}
-              data={personne.identities.map((identite) => {
-                const methode = RATTACHEMENT_IDENTITE[identite.matchMethod];
-                return [
-                  identite.provider,
-                  <span key="c">
-                    {identite.handle}
-                    {identite.vanishedAt ? (
-                      <>
-                        <br />
-                        <Badge severity="info" small noIcon>
-                          Disparu le {dateFr.format(identite.vanishedAt)}
-                        </Badge>
-                      </>
-                    ) : null}
-                  </span>,
-                  <Badge key="r" severity={methode.sur ? "success" : "warning"} noIcon>
-                    {methode.libelle}
-                  </Badge>,
-                  dateFr.format(identite.lastSeenAt),
-                  <Detacher key="d" id={identite.id} compte={identite.handle} />,
-                ];
-              })}
-            />
-            <p className={fr.cx("fr-text--sm", "fr-mt-2w")}>
-              Systèmes collectés à ce jour :{" "}
-              {systemesCollectes.length === 0 ? "aucun" : systemesCollectes.join(", ")}. Tout
-              système absent de cette liste n'a jamais été lu. Un rattachement heuristique ou absent
-              ne peut jamais produire de révocation.
-            </p>
-          </>
-        )}
-      </section>
+      <SectionComptesExternes
+        fullname={personne.fullname}
+        comptes={personne.identities}
+        systemesCollectes={systemesCollectes}
+      />
 
       {fermes.length > 0 ? (
         <Accordion

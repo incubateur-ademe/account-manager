@@ -19,7 +19,6 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html {...getHtmlAttributes({ lang })}>
       <head>
-        <StartDsfrOnHydration />
         <DsfrHead />
       </head>
       <body>
@@ -28,6 +27,14 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             deconnexion={operateur ? <Deconnexion username={operateur.username} /> : undefined}
           />
           <Suspense>{children}</Suspense>
+          {/* Après le contenu, et non dans le `head` : le `Suspense` ci-dessus laisse
+              React hydrater la coque avant la page, si bien qu'un démarrage plus haut
+              lâchait le JS du DSFR sur des tableaux que React n'avait pas encore
+              hydratés. Il y posait ses `data-fr-js-*`, écart que React signale en
+              annonçant qu'il ne le rattrapera pas. Ici, il démarre une fois la page
+              hydratée, et les composants qui s'enregistrent avant lui sont rejoués
+              par `registerEffectAction`. */}
+          <StartDsfrOnHydration />
         </DsfrProvider>
       </body>
     </html>
