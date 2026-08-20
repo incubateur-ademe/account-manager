@@ -89,20 +89,29 @@ function normaliserEmail(valeur: string | null | undefined): string | null {
  * Indexe par clé en écartant les clés portées par plusieurs personnes : deux fiches
  * qui revendiquent le même compte ne se départagent pas ici, et choisir au hasard
  * finirait par couper l'accès de la mauvaise.
+ *
+ * L'ambiguïté se juge sur la personne, jamais sur le nombre de fois où la clé passe :
+ * une même fiche a le droit d'apporter deux fois la même valeur, et c'est le cas
+ * courant, `primaryEmail` et `communicationEmail` portant la même adresse dès que la
+ * personne n'a pas déclaré d'adresse secondaire. Compter les passages écartait alors
+ * la clé de sa propre titulaire, et rendait `EMAIL_EXACT` inatteignable pour elle.
  */
-function indexSansAmbiguite<T>(entrees: readonly (readonly [string | null, T])[]): Map<string, T> {
-  const index = new Map<string, T>();
+function indexSansAmbiguite(
+  entrees: readonly (readonly [string | null, PersonneConnue])[],
+): Map<string, PersonneConnue> {
+  const index = new Map<string, PersonneConnue>();
   const ambigus = new Set<string>();
 
-  for (const [cle, valeur] of entrees) {
+  for (const [cle, personne] of entrees) {
     if (cle === null) {
       continue;
     }
-    if (index.has(cle)) {
+    const deja = index.get(cle);
+    if (deja !== undefined && deja.id !== personne.id) {
       ambigus.add(cle);
       continue;
     }
-    index.set(cle, valeur);
+    index.set(cle, personne);
   }
 
   for (const cle of ambigus) {

@@ -101,6 +101,80 @@ describe("rapprochement d'un compte observé", () => {
     ).toEqual({ personId: null, serviceAccountId: null, methode: "NONE" });
   });
 
+  it("distingue une fiche qui répète son adresse de deux fiches qui la partagent", () => {
+    // Given une fiche dont l'adresse de communication reprend l'adresse principale,
+    // ce qui est le cas par défaut et non le cas limite, et deux fiches distinctes
+    // adossées à une même boîte d'équipe.
+    const personnes: PersonneConnue[] = [
+      {
+        id: "p-camille",
+        username: "camille.rouvier",
+        githubLogin: null,
+        primaryEmail: "camille.rouvier@beta.gouv.fr",
+        communicationEmail: "Camille.Rouvier@beta.gouv.fr",
+      },
+      {
+        id: "p-nadia",
+        username: "nadia.belkacem",
+        githubLogin: null,
+        primaryEmail: "contact@equipe-tacite.fr",
+        communicationEmail: "nadia.belkacem@beta.gouv.fr",
+      },
+      {
+        id: "p-oumar",
+        username: "oumar.sylla",
+        githubLogin: null,
+        primaryEmail: "contact@equipe-tacite.fr",
+        communicationEmail: null,
+      },
+    ];
+
+    // Then une adresse répétée par sa seule titulaire reste une preuve : la répéter
+    // ne la rend pas ambiguë, sans quoi la quasi-totalité des fiches deviendrait
+    // hors d'atteinte de `EMAIL_EXACT` sans que rien ne le signale.
+    expect(
+      rapprocher(
+        {
+          provider: "notion",
+          externalId: "n10",
+          handle: "Camille R.",
+          emails: ["camille.rouvier@beta.gouv.fr"],
+        },
+        personnes,
+        COMPTES,
+      ),
+    ).toEqual({ personId: "p-camille", serviceAccountId: null, methode: "EMAIL_EXACT" });
+
+    // Then une adresse revendiquée par deux fiches distinctes reste écartée : la
+    // rattacher au hasard finirait par couper l'accès de la mauvaise.
+    expect(
+      rapprocher(
+        {
+          provider: "notion",
+          externalId: "n11",
+          handle: "boite-partagee",
+          emails: ["contact@equipe-tacite.fr"],
+        },
+        personnes,
+        COMPTES,
+      ),
+    ).toEqual({ personId: null, serviceAccountId: null, methode: "NONE" });
+
+    // Then l'adresse écartée n'emporte pas les autres adresses de la même fiche.
+    expect(
+      rapprocher(
+        {
+          provider: "notion",
+          externalId: "n12",
+          handle: "Nadia B.",
+          emails: ["Nadia.Belkacem@beta.gouv.fr"],
+        },
+        personnes,
+        COMPTES,
+      ),
+    ).toEqual({ personId: "p-nadia", serviceAccountId: null, methode: "EMAIL_EXACT" });
+  });
+
   it("refuse de trancher entre deux fiches qui revendiquent le même compte", () => {
     // Choisir au hasard reviendrait à couper un jour l'accès de la mauvaise.
     const jumelles: PersonneConnue[] = [
