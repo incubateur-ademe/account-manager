@@ -42,8 +42,7 @@ export function peutConfirmer(etat: EtatPlan, peremption: Peremption, etapes: nu
   if (peremption.obsolete) {
     return {
       possible: false,
-      raison:
-        "Une collecte est passée depuis le calcul : ce plan ne décrit plus les accès de cette personne.",
+      raison: "Les accès observés ont changé depuis le calcul : ce plan ne les décrit plus.",
     };
   }
   return { possible: true };
@@ -152,7 +151,10 @@ export function systemesDuDepart(comptes: readonly CompteConstate[]): SystemesDu
  */
 export function peutRecalculer(etat: EtatPlan, peremption: Peremption): Verdict {
   if (etat !== "DRAFT") {
-    return { possible: false, raison: "Seul un brouillon se recalcule : ce plan est déjà engagé." };
+    return {
+      possible: false,
+      raison: "Seul un brouillon se recalcule : ce plan n'en est plus un.",
+    };
   }
   if (!peremption.perime && !peremption.obsolete) {
     return {

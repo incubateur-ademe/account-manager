@@ -6,7 +6,7 @@ import { Button } from "@codegouvfr/react-dsfr/Button";
 import { Checkbox } from "@codegouvfr/react-dsfr/Checkbox";
 import { Input } from "@codegouvfr/react-dsfr/Input";
 import { useActionState, useState } from "react";
-
+import { useFermetureApresSucces } from "@/ui/modale";
 import { type EtatRattachementStartup, rattacherAStartup } from "./actions";
 
 export interface StartupProposable {
@@ -19,11 +19,13 @@ export function RattacherStartup({
   username,
   missionEnd,
   startups,
+  onSucces,
 }: {
   username: string;
   /** Fin de mission connue, au format AAAA-MM-JJ, ou null. */
   missionEnd: string | null;
   startups: readonly StartupProposable[];
+  onSucces?: () => void;
 }) {
   const [etat, formAction, pending] = useActionState<EtatRattachementStartup, FormData>(
     rattacherAStartup,
@@ -34,6 +36,8 @@ export function RattacherStartup({
 
   const listeId = `startups-${username}`;
   const demandeConfirmation = etat?.confirmationRequise === true;
+
+  useFermetureApresSucces(pending, etat?.erreur, onSucces);
 
   // L'écran avertit dès la saisie, le serveur refuse tant que la confirmation
   // manque. Les deux dispositifs ne se remplacent pas : le premier est du confort,
@@ -95,7 +99,7 @@ export function RattacherStartup({
           className={fr.cx("fr-mb-2w")}
           severity="warning"
           small
-          description={`Cette date dépasse la fin de mission connue (${missionEnd}) : le rattachement repoussera son échéance et prolongera ses accès d'autant.`}
+          description={`Cette date dépasse la fin de mission connue (${missionEnd}) : le rattachement fera courir ses accès au-delà.`}
         />
       ) : null}
 

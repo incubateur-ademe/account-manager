@@ -113,7 +113,7 @@ export default async function DepartPage({ params }: { params: Promise<{ id: str
       </h1>
       <p className={fr.cx("fr-text--sm")}>
         <Link href={`/personnes/${dossier.person.username}`}>{dossier.person.username}</Link>
-        {" — ouvert le "}
+        {", ouvert le "}
         {dateFr.format(dossier.firstSignalAt)}
         {dossier.effectiveDate ? `, fin de mission au ${dateFr.format(dossier.effectiveDate)}` : ""}
       </p>
@@ -133,8 +133,8 @@ export default async function DepartPage({ params }: { params: Promise<{ id: str
           description={
             <>
               <p className={fr.cx("fr-mb-1w")}>
-                Une collecte est passée depuis son calcul : cette personne a gagné ou perdu un
-                compte. Il ne peut plus être confirmé en l'état.
+                Les accès observés ont changé depuis son calcul : il ne peut plus être confirmé en
+                l'état.
               </p>
               {plan ? <BoutonRecalculer planId={plan.id} /> : null}
             </>
@@ -196,7 +196,8 @@ export default async function DepartPage({ params }: { params: Promise<{ id: str
 
       {!plan || plan.steps.length === 0 ? (
         <p>
-          Aucune étape : cette personne n'a de compte sur aucun système que l'outil sait traiter.
+          Aucune étape : aucun compte rattaché de façon sûre n'a été trouvé sur les systèmes que
+          l'outil sait traiter.
         </p>
       ) : (
         <>

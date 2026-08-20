@@ -4,10 +4,20 @@ import { Button } from "@codegouvfr/react-dsfr/Button";
 import { Input } from "@codegouvfr/react-dsfr/Input";
 import { useActionState } from "react";
 
+import { useFermetureApresSucces } from "@/ui/modale";
+
 import { cloreConstat, type EtatCloture } from "./actions";
 
-export function ClotureConstat({ dedupKey }: { dedupKey: string }) {
+export function ClotureConstat({
+  dedupKey,
+  onSucces,
+}: {
+  dedupKey: string;
+  onSucces?: () => void;
+}) {
   const [etat, formAction, pending] = useActionState<EtatCloture, FormData>(cloreConstat, null);
+
+  useFermetureApresSucces(pending, etat?.erreur, onSucces);
 
   return (
     <form action={formAction}>

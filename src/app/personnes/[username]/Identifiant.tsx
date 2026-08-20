@@ -19,7 +19,7 @@ function Inventaire({ fusion }: { fusion: ApercuFusion }) {
             .map((compte) => `${compte.provider} ${compte.handle} (${compte.methode})`)
             .join(", ")
     }`,
-    `${fusion.constatsMigres} constat${fusion.constatsMigres > 1 ? "s" : ""} déplacé${fusion.constatsMigres > 1 ? "s" : ""}, dont ${fusion.clesReecrites} réattribué${fusion.clesReecrites > 1 ? "s" : ""} au nouvel identifiant et ${fusion.constatsFermes} fermé${fusion.constatsFermes > 1 ? "s" : ""} faute de place, la clé étant déjà prise côté cible`,
+    `${fusion.constatsMigres} constat${fusion.constatsMigres > 1 ? "s" : ""} déplacé${fusion.constatsMigres > 1 ? "s" : ""}, dont ${fusion.clesReecrites} réattribué${fusion.clesReecrites > 1 ? "s" : ""} au nouvel identifiant et ${fusion.constatsFermes} fermé${fusion.constatsFermes > 1 ? "s" : ""} faute de place, leur clé étant déjà prise`,
     `${fusion.dossiers} dossier${fusion.dossiers > 1 ? "s" : ""} de départ`,
     `${fusion.rattachements} rattachement${fusion.rattachements > 1 ? "s" : ""} manuel${fusion.rattachements > 1 ? "s" : ""} à une startup, dont ${fusion.rattachementsEnCours} en cours`,
     `${fusion.references} référence${fusion.references > 1 ? "s" : ""} déplacée${fusion.references > 1 ? "s" : ""}, ${fusion.referencesSupprimees} déjà portée${fusion.referencesSupprimees > 1 ? "s" : ""} par la fiche cible`,
@@ -48,8 +48,7 @@ function Inventaire({ fusion }: { fusion: ApercuFusion }) {
               : `, au lieu du ${fusion.prolongation.avant}`}
             .
           </strong>{" "}
-          Le rattachement déplacé repousse son échéance : posé sur l'autre fiche, il ne prolongeait
-          rien, il le fait ici.
+          Le rattachement déplacé repousse l'échéance de la fiche cible.
         </p>
       ) : null}
       {fusion.surchargeAbandonnee ? (
@@ -89,7 +88,7 @@ export function Identifiant({ username }: { username: string }) {
 
       <Input
         label="Corriger l'identifiant"
-        hintText="Cet identifiant a été fabriqué ici à partir d'un nom. Le corriger vers un vrai username beta.gouv fera adopter la fiche par la collecte, qui réécrira alors nom, login et adresses avec la version de l'espace-membre."
+        hintText="Cet identifiant a été fabriqué ici, faute de fiche beta.gouv. Le corriger vers un vrai username beta.gouv fera adopter la fiche par la collecte, qui réécrira alors nom, login et adresses avec la version de l'espace-membre."
         nativeInputProps={{
           name: "nouveau",
           required: true,

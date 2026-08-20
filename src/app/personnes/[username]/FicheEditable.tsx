@@ -69,9 +69,9 @@ export function FicheEditable({ fiche }: { fiche: ChampsSaisis }) {
       </div>
 
       <p className={fr.cx("fr-text--sm")}>
-        Le login et les adresses alimentent le rapprochement automatique : les corriger rebranche
-        les comptes encore isolés et ceux à venir, jamais ceux déjà rattachés à quelqu'un d'autre,
-        qui se détachent à la main.
+        Le login et les adresses alimentent le rapprochement automatique : tant que sa fiche est
+        suivie, les corriger rebranche les comptes encore isolés et ceux à venir, jamais ceux déjà
+        rattachés à quelqu'un d'autre, qui se détachent à la main.
       </p>
 
       <Button type="submit" priority="secondary" disabled={pending}>

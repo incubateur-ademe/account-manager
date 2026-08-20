@@ -164,6 +164,11 @@ export function surchargeSuperflue(appartenance: Appartenance): boolean {
  * au lieu de passer au travers.
  *
  * `libelleCourt` sert la colonne d'une liste, où une phrase ne tient pas.
+ *
+ * Une précision dit à quel titre la personne appartient à l'incubateur, et rien de
+ * plus. Ni d'où vient son échéance, que `motifDesFaits` ne regarde jamais, ni ce
+ * qu'une autre source constate, que le motif seul n'établit pas. Une phrase qui en
+ * dirait davantage contredirait tôt ou tard la ligne affichée juste en dessous.
  */
 export const LIBELLE_APPARTENANCE: Record<
   MotifAppartenance,
@@ -173,7 +178,7 @@ export const LIBELLE_APPARTENANCE: Record<
     libelle: "Dans l'incubateur, forcé",
     libelleCourt: "Forcé dans",
     precision:
-      "Un opérateur a décidé qu'elle en fait partie, alors qu'aucun rattachement constaté ne le porte.",
+      "Un opérateur a décidé qu'elle en fait partie : sa décision prime sur ce que les rattachements disent.",
   },
   EXCLUSION_FORCEE: {
     libelle: "Hors incubateur, forcé",
@@ -184,20 +189,18 @@ export const LIBELLE_APPARTENANCE: Record<
   EQUIPE_ET_STARTUP: {
     libelle: "Équipe et startup",
     libelleCourt: "Transverse et startup",
-    precision:
-      "L'espace-membre la rattache à la fois par une équipe de l'incubateur et par au moins une startup.",
+    precision: "Elle relève à la fois d'une équipe de l'incubateur et d'au moins une startup.",
   },
   EQUIPE: {
     libelle: "Équipe transverse",
     libelleCourt: "Transverse",
     precision:
-      "L'espace-membre la rattache par une équipe : aucune startup ne porte son rattachement, sa fin de mission beta.gouv fait foi.",
+      "Elle relève d'une équipe de l'incubateur : aucune startup ne porte son rattachement.",
   },
   STARTUP: {
     libelle: "Par startup",
     libelleCourt: "Startup",
-    precision:
-      "Son échéance est la plus lointaine des startups de l'incubateur auxquelles elle est rattachée.",
+    precision: "Elle relève d'au moins une startup de l'incubateur, et d'aucune équipe transverse.",
   },
   STARTUP_MANUELLE: {
     libelle: "Par rattachement manuel",
@@ -235,7 +238,7 @@ export function libelleAppartenance(appartenance: Appartenance): {
   // contradiction qui n'existe plus.
   if (appartenance.surcharge !== null && !surchargeSuperflue(appartenance)) {
     precisions.push(
-      `Sans cette décision, elle serait « ${LIBELLE_APPARTENANCE[appartenance.sansSurcharge].libelle} » d'après ce que la collecte constate.`,
+      `Sans cette décision, elle serait « ${LIBELLE_APPARTENANCE[appartenance.sansSurcharge].libelle} » d'après ses rattachements en cours.`,
     );
   }
 

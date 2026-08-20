@@ -1,4 +1,5 @@
 import { fr } from "@codegouvfr/react-dsfr";
+import { Accordion } from "@codegouvfr/react-dsfr/Accordion";
 import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import { Breadcrumb } from "@codegouvfr/react-dsfr/Breadcrumb";
@@ -11,7 +12,7 @@ import type { ReactNode } from "react";
 import { libelleAppartenance, surchargeSuperflue } from "@/core/appartenance";
 import { fraicheurDe } from "@/core/collecte";
 import type { ConstatKind } from "@/core/constat";
-import { ficheEditable, RAISON_NON_EDITABLE, renommable } from "@/core/fiche-manuelle";
+import { ficheEditable } from "@/core/fiche-manuelle";
 import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
 import { echeanceEffective, enCours, startupsEffectives } from "@/core/rattachement-startup";
 import { LIBELLE_STATUT, type Statut, statutDePersonne } from "@/core/statut";
@@ -22,12 +23,14 @@ import { env } from "@/lib/env";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
 
-import { Appartenance } from "./Appartenance";
-import { BoutonDepart } from "./BoutonDepart";
+import { ActionsDePage } from "./ActionsDePage";
+import {
+  CeQuiAppelleUneAction,
+  type MotifDAction,
+  motifsDesConstats,
+} from "./CeQuiAppelleUneAction";
 import { Detacher } from "./Detacher";
-import { FicheEditable } from "./FicheEditable";
-import { Identifiant } from "./Identifiant";
-import { RattacherStartup } from "./RattacherStartup";
+import { ModaleRattacherStartup } from "./ModaleRattacherStartup";
 import { RetirerRattachement } from "./RetirerRattachement";
 
 export const dynamic = "force-dynamic";
@@ -48,8 +51,19 @@ const SEVERITE_STATUT: Record<Statut, "success" | "info" | "warning" | "error" |
   ANCIEN: "info",
 };
 
-const SEVERITE_CONSTAT = { HIGH: "error", MEDIUM: "warning", LOW: "info" } as const;
-const LIBELLE_SEVERITE = { HIGH: "Haute", MEDIUM: "Moyenne", LOW: "Basse" } as const;
+/**
+ * Les seuls statuts qui appellent un geste, et la gravité de ce geste.
+ *
+ * Les autres décrivent une situation dont il n'y a rien à faire : les porter dans le
+ * bloc d'action le ferait paraître sur chaque fiche, et un bloc qui paraît partout ne
+ * signale plus rien.
+ */
+const STATUT_A_TRAITER: Partial<Record<Statut, "error" | "warning" | "info">> = {
+  SORTI: "error",
+  A_TRAITER: "error",
+  EN_SURSIS: "warning",
+  BIENTOT: "info",
+};
 
 // Exhaustives et non `Record<string, ...>` : sous @tsconfig/strictest, une clé
 // d'union littérale n'est pas une signature d'index, si bien qu'ajouter une valeur
@@ -94,19 +108,19 @@ function expliquerStatut(
 ): string {
   switch (statut) {
     case "SORTI":
-      return "Elle a quitté le référentiel de l'incubateur et rien n'indique que ses accès ont été traités.";
+      return "Elle a quitté le référentiel de l'incubateur, et rien ici ne dit ce que ses accès sont devenus.";
     case "A_TRAITER":
-      return `Son échéance est dépassée au-delà du délai de grâce de ${graceDays} jours : il y a quelque chose à faire.`;
+      return `Son échéance est dépassée au-delà du délai de grâce de ${graceDays} jours.`;
     case "EN_SURSIS":
       return `Son échéance est dépassée, mais le délai de grâce de ${graceDays} jours court encore : un renouvellement signé en retard est encore possible.`;
     case "BIENTOT":
       return `Son échéance tombe dans les ${soonDays} prochains jours.`;
     case "ACTIF":
-      return "Son échéance est lointaine, il n'y a rien à faire.";
+      return "Son échéance est lointaine : rien ne la signale de ce côté.";
     case "SANS_ECHEANCE":
-      return "Aucune date de fin de mission n'est connue : rien ne déclenchera de coupure pour elle.";
+      return "Aucune date de fin de mission n'est connue : aucune échéance ne la fera remonter.";
     case "ANCIEN":
-      return `Son échéance est dépassée depuis plus de ${staleDays} jours : cela relève de l'historique, pas d'une action.`;
+      return `Son échéance est dépassée depuis plus de ${staleDays} jours : elle relève désormais de l'historique.`;
   }
 }
 
@@ -298,6 +312,91 @@ export default async function FichePersonnePage({ params }: Props) {
     .filter((provider) => provider !== FOURNISSEUR_PERIMETRE)
     .sort((a, b) => a.localeCompare(b, "fr"));
 
+  // Un titre d'appartenance qui ne passe par aucune startup : la même exception que
+  // celle du calcul des constats, sans quoi l'écran lèverait ici ce que la file
+  // refuse de lever.
+  const parEquipe = personne.attachment === "DECLARED" || personne.attachment === "BOTH";
+  const surchargeContredite = appartenance.surcharge !== null && !surchargeSuperflue(appartenance);
+  const sortieContreEquipe =
+    appartenance.surcharge?.sens === "EXCLUDE" &&
+    (appartenance.sansSurcharge === "EQUIPE" || appartenance.sansSurcharge === "EQUIPE_ET_STARTUP");
+
+  const graviteStatut = STATUT_A_TRAITER[statut];
+  const motifs: MotifDAction[] = [];
+
+  if (graviteStatut) {
+    motifs.push({
+      cle: "statut",
+      severite: graviteStatut,
+      titre: LIBELLE_STATUT[statut],
+      description: expliquerStatut(statut, thresholds),
+    });
+  }
+
+  motifs.push(...motifsDesConstats(ouverts));
+
+  if (fraicheur.perimee) {
+    motifs.push({
+      cle: "fraicheur",
+      severite: "warning",
+      titre: "Ce que montre cette fiche n'est plus frais",
+      description:
+        fraicheur.heures === null
+          ? "Aucune collecte n'a jamais eu lieu : cette fiche ne reflète aucune observation."
+          : `Dernière collecte lancée il y a ${fraicheur.heures} heures. Sa situation a pu changer depuis.`,
+    });
+  }
+
+  // Doublon écarté : quand le constat est déjà levé, il porte la même chose et la
+  // porte mieux, avec sa gravité et sa date.
+  if (
+    toutesTerminees &&
+    !parEquipe &&
+    !ouverts.some((constat) => constat.kind === "INACTIVE_STARTUP")
+  ) {
+    motifs.push({
+      cle: "startups-terminees",
+      severite: "warning",
+      titre: "Toutes ses startups sont dans une phase terminale",
+      description:
+        "Plus aucune startup vivante de l'incubateur ne porte son rattachement. Confirmer son rattachement réel, ou retirer les accès devenus sans objet.",
+    });
+  }
+
+  if (surchargeContredite) {
+    motifs.push({
+      cle: "surcharge",
+      severite: "warning",
+      titre:
+        appartenance.surcharge?.sens === "EXCLUDE"
+          ? "Déclarée hors incubateur, contre ce que portent ses rattachements"
+          : "Forcée dans l'incubateur, faute de rattachement qui l'y place",
+      description: `Décidée par ${appartenance.surcharge?.par ?? "?"}. Sans cette décision, elle serait « ${
+        titre.libelle
+      } » d'après ses rattachements en cours.`,
+    });
+  }
+
+  if (sortieContreEquipe) {
+    motifs.push({
+      cle: "sortie-contre-equipe",
+      severite: "warning",
+      titre: "Deux autorités se contredisent",
+      description:
+        "Elle relève pourtant d'une équipe de l'incubateur, et la collecte le réécrira à chaque passage. Pour que la sortie soit portée des deux côtés, il reste à la retirer de scope.transverse dans la politique.",
+    });
+  }
+
+  if (appartenance.sansStartupConnue) {
+    motifs.push({
+      cle: "sans-startup",
+      severite: "warning",
+      titre: "Un rattachement par startup, mais aucune startup connue",
+      description:
+        "La dernière collecte n'en a trouvé aucune. Conclure d'une collecte peut-être tronquée reviendrait à la sortir sur du vide : c'est la collecte qu'il faut regarder avant elle.",
+    });
+  }
+
   return (
     <main className={fr.cx("fr-container", "fr-my-6w")}>
       <Breadcrumb
@@ -306,28 +405,57 @@ export default async function FichePersonnePage({ params }: Props) {
         segments={[{ label: "Personnes suivies", linkProps: { href: "/personnes" } }]}
       />
 
-      <h1 className={fr.cx("fr-mb-1v")}>{personne.fullname}</h1>
-      <p className={fr.cx("fr-text--sm", "fr-mb-2v")}>{personne.username}</p>
+      <div className={fr.cx("fr-grid-row", "fr-grid-row--top")}>
+        <div className={fr.cx("fr-col-12", "fr-col-md-7")}>
+          <h1 className={fr.cx("fr-mb-1v")}>{personne.fullname}</h1>
+          <p className={fr.cx("fr-text--sm", "fr-mb-1w")}>{personne.username}</p>
+          <Badge severity={SEVERITE_STATUT[statut]} noIcon>
+            {LIBELLE_STATUT[statut]}
+          </Badge>
+          {graviteStatut ? null : (
+            <p className={fr.cx("fr-text--sm", "fr-mt-1w", "fr-mb-0")}>
+              {expliquerStatut(statut, thresholds)}
+            </p>
+          )}
+        </div>
+        <div className={fr.cx("fr-col-12", "fr-col-md-5")}>
+          <ActionsDePage
+            username={personne.username}
+            editable={editabilite.editable}
+            surcharge={
+              appartenance.surcharge
+                ? {
+                    sens: appartenance.surcharge.sens,
+                    par: appartenance.surcharge.par,
+                    depuis: appartenance.surcharge.depuis.toISOString().slice(0, 10),
+                    raison: appartenance.surcharge.raison,
+                  }
+                : null
+            }
+          />
+        </div>
+      </div>
 
-      <Badge severity={SEVERITE_STATUT[statut]} noIcon>
-        {LIBELLE_STATUT[statut]}
-      </Badge>
-      <p className={fr.cx("fr-mt-2v")}>{expliquerStatut(statut, thresholds)}</p>
+      {/* Ce que l'outil existe pour éviter, c'est la recopie d'un identifiant vers
+          les consoles tierces : autant que chaque fiche y mène directement. */}
+      <p className={fr.cx("fr-mt-2w")}>
+        <a
+          className={fr.cx("fr-link", "fr-mr-3w")}
+          href={`${env.ESPACE_MEMBRE_URL}/community/${encodeURIComponent(personne.username)}`}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Fiche espace-membre
+        </a>
+        <Link
+          className={fr.cx("fr-link")}
+          href={`/journal?personne=${encodeURIComponent(personne.username)}`}
+        >
+          Historique de cette personne
+        </Link>
+      </p>
 
-      {/* C'est sur cette page qu'on décide de couper un accès : elle doit dire quand
-          ce qu'elle affiche a cessé d'être frais. */}
-      {fraicheur.perimee ? (
-        <Alert
-          severity="warning"
-          small
-          className={fr.cx("fr-mt-2w")}
-          description={
-            fraicheur.heures === null
-              ? "Aucune collecte n'a jamais eu lieu : cette fiche ne reflète aucune observation."
-              : `Dernière collecte il y a ${fraicheur.heures} heures. Sa situation a pu changer depuis.`
-          }
-        />
-      ) : null}
+      <CeQuiAppelleUneAction motifs={motifs} />
 
       <section className={fr.cx("fr-mt-4w")}>
         <h2 className={fr.cx("fr-h5")}>Situation</h2>
@@ -384,126 +512,52 @@ export default async function FichePersonnePage({ params }: Props) {
           </p>
         ) : null}
 
-        {/* Ce que l'outil existe pour éviter, c'est la recopie d'un identifiant vers
-            les consoles tierces : autant que chaque fiche y mène directement. */}
-        <p className={fr.cx("fr-mt-2w")}>
-          <a
-            className={fr.cx("fr-link", "fr-mr-3w")}
-            href={`${env.ESPACE_MEMBRE_URL}/community/${encodeURIComponent(personne.username)}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Fiche espace-membre
-          </a>
-          <Link
-            className={fr.cx("fr-link")}
-            href={`/journal?personne=${encodeURIComponent(personne.username)}`}
-          >
-            Historique de cette personne
-          </Link>
-        </p>
-      </section>
-
-      <section className={fr.cx("fr-mt-4w")}>
-        <h2 className={fr.cx("fr-h5")}>Appartenance à l'incubateur</h2>
-
         {appartenance.surcharge ? (
           <Alert
-            className={fr.cx("fr-mb-2w")}
+            className={fr.cx("fr-mt-2w")}
             severity={surchargeSuperflue(appartenance) ? "info" : "warning"}
-            title={
-              appartenance.surcharge.sens === "EXCLUDE"
-                ? "Hors incubateur, forcé"
-                : "Dans l'incubateur, forcé"
-            }
+            small
             description={
               <>
-                <p className={fr.cx("fr-mb-1w")}>
-                  Décidée par {appartenance.surcharge.par} le{" "}
-                  {dateFr.format(appartenance.surcharge.depuis)} : « {appartenance.surcharge.raison}{" "}
-                  ».
-                </p>
-                <p className={fr.cx("fr-mb-1w")}>
-                  {surchargeSuperflue(appartenance)
-                    ? "La collecte dit désormais la même chose : cette décision est devenue superflue et peut être retirée. Elle ne se retire pas d'elle-même, une décision nominative ne s'annule pas par une collecte anonyme."
-                    : "Elle dit l'appartenance et n'ordonne rien : aucun accès n'est coupé, ses comptes continuent d'être examinés, et un départ reste à instruire par un dossier."}
-                </p>
-
-                {/* Deux autorités qui se contredisent, et une seule visible ici. Sans
-                    cette phrase, un opérateur croirait avoir sorti quelqu'un que la
-                    politique continue de réclamer chaque nuit. */}
-                {appartenance.surcharge.sens === "EXCLUDE" &&
-                (appartenance.sansSurcharge === "EQUIPE" ||
-                  appartenance.sansSurcharge === "EQUIPE_ET_STARTUP") ? (
-                  <p className={fr.cx("fr-mb-0")}>
-                    L'espace-membre la rattache pourtant par une équipe, et la collecte le réécrira
-                    à chaque passage. Pour que la sortie soit portée des deux côtés, il reste à la
-                    retirer de <code>scope.transverse</code> dans la politique.
-                  </p>
-                ) : null}
+                <strong>
+                  {appartenance.surcharge.sens === "EXCLUDE"
+                    ? "Hors incubateur, forcé"
+                    : "Dans l'incubateur, forcé"}
+                </strong>{" "}
+                Décidée par {appartenance.surcharge.par} le{" "}
+                {dateFr.format(appartenance.surcharge.depuis)} : « {appartenance.surcharge.raison}{" "}
+                ».{" "}
+                {surchargeSuperflue(appartenance)
+                  ? "Ses rattachements en cours disent désormais la même chose : cette décision est devenue superflue et peut être retirée. Elle ne se retire pas d'elle-même, une décision nominative ne s'annule pas par une collecte anonyme."
+                  : "Elle dit l'appartenance et n'ordonne rien : aucun accès n'est coupé, ses comptes continuent d'être examinés, et un départ reste à instruire par un dossier."}
               </>
             }
           />
         ) : null}
-
-        <Appartenance
-          username={personne.username}
-          surcharge={
-            appartenance.surcharge
-              ? {
-                  sens: appartenance.surcharge.sens,
-                  par: appartenance.surcharge.par,
-                  depuis: appartenance.surcharge.depuis.toISOString().slice(0, 10),
-                  raison: appartenance.surcharge.raison,
-                }
-              : null
-          }
-        />
       </section>
 
       <section className={fr.cx("fr-mt-4w")}>
-        <h2 className={fr.cx("fr-h5")}>Corriger la fiche</h2>
-
-        {editabilite.editable ? (
-          <>
-            <FicheEditable fiche={personne} />
-            {renommable(personne, declaresLocaux) ? (
-              <div className={fr.cx("fr-mt-4w")}>
-                <Identifiant username={personne.username} />
-              </div>
-            ) : null}
-          </>
-        ) : (
-          <p>{RAISON_NON_EDITABLE[editabilite.raison]}</p>
-        )}
-      </section>
-
-      <section className={fr.cx("fr-mt-4w")}>
-        <h2 className={fr.cx("fr-h5")}>Départ</h2>
-        <p className={fr.cx("fr-text--sm")}>
-          Prépare la liste de ce qu'il faut retirer, système par système, à partir des comptes
-          observés. Rien n'est exécuté et rien n'est coupé.
-        </p>
-        <BoutonDepart username={personne.username} />
-      </section>
-
-      <section className={fr.cx("fr-mt-4w")}>
-        <h2 className={fr.cx("fr-h5")}>Startups</h2>
+        <div className={fr.cx("fr-grid-row", "fr-grid-row--middle")}>
+          <div className={fr.cx("fr-col")}>
+            <h2 className={fr.cx("fr-h5", "fr-mb-0")}>Startups</h2>
+          </div>
+          <ModaleRattacherStartup
+            username={personne.username}
+            missionEnd={personne.missionEnd?.toISOString().slice(0, 10) ?? null}
+            startups={startupsConnues.map((startup) => ({
+              ghid: startup.ghid,
+              name: startup.name,
+              disparue: startup.vanishedAt !== null,
+            }))}
+          />
+        </div>
 
         {lignesStartups.length === 0 ? (
-          <>
-            <p>Aucune startup ne lui est rattachée.</p>
-            {appartenance.sansStartupConnue ? (
-              <Alert
-                severity="warning"
-                small
-                description="Son rattachement est pourtant censé passer par des startups. Une liste vide veut dire que la dernière collecte n'en a trouvé aucune. Elle reste dans l'incubateur : l'en sortir sur ce seul constat reviendrait à conclure d'une collecte peut-être tronquée."
-              />
-            ) : null}
-          </>
+          <p className={fr.cx("fr-mt-2w")}>Aucune startup ne lui est rattachée.</p>
         ) : (
           <>
             <Table
+              className={fr.cx("fr-mt-2w")}
               caption={`Startups de ${personne.fullname} et phase de chacune`}
               noCaption
               headers={["Startup", "Phase", "Depuis", "Justifie des accès", "Origine", ""]}
@@ -514,7 +568,7 @@ export default async function FichePersonnePage({ params }: Props) {
                   <span className={fr.cx("fr-text--sm")}>{ligne.ghid}</span>
                 </span>,
                 ligne.phase === null ? (
-                  <Absent key="p" mention="non collectée" />
+                  <Absent key="p" mention="phase inconnue" />
                 ) : (
                   (LIBELLE_PHASE[ligne.phase] ?? ligne.phase)
                 ),
@@ -553,12 +607,15 @@ export default async function FichePersonnePage({ params }: Props) {
               ])}
             />
 
-            {toutesTerminees ? (
+            {/* Le constat de startups terminées épargne les rattachés par équipe :
+                la fiche doit dire la même chose que la file, sans quoi elle lèverait
+                ici ce que la file refuse de lever. */}
+            {toutesTerminees && parEquipe ? (
               <Alert
                 className={fr.cx("fr-mt-2w")}
-                severity="warning"
+                severity="info"
                 small
-                description="Toutes ses startups sont dans une phase terminale : elle ne travaille plus sur rien au sein de l'incubateur, quelle que soit son échéance."
+                description="Toutes ses startups sont dans une phase terminale. Son rattachement à l'incubateur passe par une équipe : il ne dépend d'aucune d'elles."
               />
             ) : null}
 
@@ -567,7 +624,7 @@ export default async function FichePersonnePage({ params }: Props) {
                 className={fr.cx("fr-mt-2w")}
                 severity="info"
                 small
-                description={`La phase de ${inconnues} startup${inconnues > 1 ? "s" : ""} n'a pas été collectée. Tant qu'elle reste inconnue, on ne peut rien conclure sur l'activité réelle de cette personne.`}
+                description={`La phase de ${inconnues} startup${inconnues > 1 ? "s" : ""} n'est pas connue. Tant qu'elle le reste, on ne peut pas conclure que toutes ses startups sont terminées.`}
               />
             ) : null}
           </>
@@ -575,8 +632,11 @@ export default async function FichePersonnePage({ params }: Props) {
 
         {/* Sans eux, un constat levé la veille deviendrait inexplicable. */}
         {rattachementsClos.length > 0 ? (
-          <div className={fr.cx("fr-mt-4w", "fr-text--sm")}>
-            <h3 className={fr.cx("fr-h6")}>Rattachements manuels clos ou expirés</h3>
+          <Accordion
+            className={fr.cx("fr-mt-2w")}
+            titleAs="h3"
+            label={`Rattachements manuels clos ou expirés (${rattachementsClos.length})`}
+          >
             <Table
               caption={`Rattachements manuels passés de ${personne.fullname}`}
               noCaption
@@ -593,82 +653,8 @@ export default async function FichePersonnePage({ params }: Props) {
                 rattachement.reason ?? <Absent key="m" />,
               ])}
             />
-          </div>
+          </Accordion>
         ) : null}
-
-        <div className={fr.cx("fr-mt-4w")}>
-          <h3 className={fr.cx("fr-h6")}>Rattacher à une startup</h3>
-          <p className={fr.cx("fr-text--sm")}>
-            Un rattachement manuel porte obligatoirement une date de fin et le nom de qui l'a posé.
-            Il survit aux collectes, contrairement à la liste ci-dessus, que l'espace-membre réécrit
-            à chaque passage.
-          </p>
-          <RattacherStartup
-            username={personne.username}
-            missionEnd={personne.missionEnd?.toISOString().slice(0, 10) ?? null}
-            startups={startupsConnues.map((startup) => ({
-              ghid: startup.ghid,
-              name: startup.name,
-              disparue: startup.vanishedAt !== null,
-            }))}
-          />
-        </div>
-      </section>
-
-      <section className={fr.cx("fr-mt-4w")}>
-        <h2 className={fr.cx("fr-h5")}>Constats</h2>
-
-        {personne.findings.length === 0 ? (
-          <p>Aucun constat n'a jamais été levé sur cette personne.</p>
-        ) : (
-          <>
-            {ouverts.length === 0 ? (
-              <p>Aucun constat ouvert.</p>
-            ) : (
-              <Table
-                caption={`Constats ouverts sur ${personne.fullname}`}
-                noCaption
-                headers={["Gravité", "Constat", "Ouvert le"]}
-                data={ouverts.map((constat) => {
-                  const libelle = LIBELLE_CONSTAT[constat.kind as ConstatKind];
-                  return [
-                    <Badge key="g" severity={SEVERITE_CONSTAT[constat.severity]} noIcon>
-                      {LIBELLE_SEVERITE[constat.severity]}
-                    </Badge>,
-                    <span key="c">
-                      <strong>{libelle?.titre ?? constat.kind}</strong>
-                      <br />
-                      <span className={fr.cx("fr-text--sm")}>{libelle?.action ?? ""}</span>
-                    </span>,
-                    dateFr.format(constat.openedAt),
-                  ];
-                })}
-              />
-            )}
-
-            {fermes.length > 0 ? (
-              <>
-                <h3 className={fr.cx("fr-h6", "fr-mt-4w")}>Constats fermés</h3>
-                <Table
-                  caption={`Constats fermés sur ${personne.fullname}`}
-                  noCaption
-                  headers={["Constat", "Ouvert le", "Fermé le", "Raison"]}
-                  data={fermes.map((constat) => {
-                    const libelle = LIBELLE_CONSTAT[constat.kind as ConstatKind];
-                    return [
-                      libelle?.titre ?? constat.kind,
-                      dateFr.format(constat.openedAt),
-                      constat.closedAt ? dateFr.format(constat.closedAt) : <Absent key="f" />,
-                      constat.closeReason ?? (
-                        <Absent key="r" mention="réconcilié par une collecte" />
-                      ),
-                    ];
-                  })}
-                />
-              </>
-            ) : null}
-          </>
-        )}
       </section>
 
       <section className={fr.cx("fr-mt-4w")}>
@@ -677,7 +663,7 @@ export default async function FichePersonnePage({ params }: Props) {
         {personne.identities.length === 0 ? (
           <Alert
             severity="info"
-            title="On ne sait pas quels comptes cette personne possède"
+            small
             description={
               systemesCollectes.length === 0
                 ? "Aucun connecteur n'a encore lu de système cible. Cette liste est vide faute d'observation, ce qui ne dit rien des accès réellement détenus."
@@ -723,21 +709,36 @@ export default async function FichePersonnePage({ params }: Props) {
         )}
       </section>
 
-      <section className={fr.cx("fr-mt-4w")}>
-        <h2 className={fr.cx("fr-h5")}>Observation</h2>
+      {fermes.length > 0 ? (
+        <Accordion
+          className={fr.cx("fr-mt-4w")}
+          titleAs="h2"
+          label={`Constats fermés (${fermes.length})`}
+        >
+          <Table
+            caption={`Constats fermés sur ${personne.fullname}`}
+            noCaption
+            headers={["Constat", "Ouvert le", "Fermé le", "Raison"]}
+            data={fermes.map((constat) => {
+              const libelle = LIBELLE_CONSTAT[constat.kind as ConstatKind];
+              return [
+                libelle?.titre ?? constat.kind,
+                dateFr.format(constat.openedAt),
+                constat.closedAt ? dateFr.format(constat.closedAt) : <Absent key="f" />,
+                constat.closeReason ?? <Absent key="r" mention="réconcilié par une collecte" />,
+              ];
+            })}
+          />
+        </Accordion>
+      ) : null}
 
-        <dl className={fr.cx("fr-grid-row", "fr-grid-row--gutters")}>
-          <Champ libelle="Première observation">{dateFr.format(personne.firstSeenAt)}</Champ>
-          <Champ libelle="Dernière observation">{dateFr.format(personne.lastSeenAt)}</Champ>
-          <Champ libelle="Sortie du référentiel">
-            {personne.vanishedAt ? (
-              dateFr.format(personne.vanishedAt)
-            ) : (
-              <Absent mention="toujours présente" />
-            )}
-          </Champ>
-        </dl>
-      </section>
+      <p className={fr.cx("fr-text--sm", "fr-mt-4w")}>
+        Observée du {dateFr.format(personne.firstSeenAt)} au {dateFr.format(personne.lastSeenAt)},{" "}
+        {personne.vanishedAt
+          ? `sortie du référentiel le ${dateFr.format(personne.vanishedAt)}`
+          : "toujours présente"}
+        .
+      </p>
     </main>
   );
 }

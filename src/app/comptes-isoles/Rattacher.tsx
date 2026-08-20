@@ -6,10 +6,20 @@ import { Checkbox } from "@codegouvfr/react-dsfr/Checkbox";
 import { Input } from "@codegouvfr/react-dsfr/Input";
 import { useActionState } from "react";
 
+import { useFermetureApresSucces } from "@/ui/modale";
+
 import { type EtatRattachement, rattacherIdentite } from "./actions";
 import { creerFichePourCompte, type EtatCreation } from "./creer";
 
-export function Rattacher({ id, listeId }: { id: string; listeId: string }) {
+export function Rattacher({
+  id,
+  listeId,
+  onSucces,
+}: {
+  id: string;
+  listeId: string;
+  onSucces?: () => void;
+}) {
   const [etat, formAction, pending] = useActionState<EtatRattachement, FormData>(
     rattacherIdentite,
     null,
@@ -23,6 +33,9 @@ export function Rattacher({ id, listeId }: { id: string; listeId: string }) {
   // s'affiche qu'une fois qu'elle a un sens, pour ne pas proposer d'emblée de passer
   // outre un garde-fou qu'on n'a pas encore rencontré.
   const demandeConfirmation = etat?.confirmationRequise === true;
+
+  useFermetureApresSucces(pending, etat?.erreur, onSucces);
+  useFermetureApresSucces(enCreation, creation?.erreur, onSucces);
 
   return (
     <>

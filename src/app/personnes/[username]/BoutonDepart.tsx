@@ -15,7 +15,7 @@ export function BoutonDepart({ username }: { username: string }) {
   return (
     <form action={formAction}>
       <input type="hidden" name="username" value={username} />
-      <Button type="submit" priority="secondary" disabled={pending}>
+      <Button type="submit" priority="secondary" size="small" disabled={pending}>
         {pending ? "Calcul du plan…" : "Préparer le départ"}
       </Button>
       {etat?.erreur ? (

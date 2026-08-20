@@ -4,7 +4,7 @@ import { fr } from "@codegouvfr/react-dsfr";
 import { Button } from "@codegouvfr/react-dsfr/Button";
 import { Input } from "@codegouvfr/react-dsfr/Input";
 import { useActionState } from "react";
-
+import { useFermetureApresSucces } from "@/ui/modale";
 import { type EtatAppartenance, forcerAppartenance, libererAppartenance } from "./actions";
 
 export interface SurchargePosee {
@@ -17,9 +17,11 @@ export interface SurchargePosee {
 export function Appartenance({
   username,
   surcharge,
+  onSucces,
 }: {
   username: string;
   surcharge: SurchargePosee | null;
+  onSucces?: () => void;
 }) {
   const [pose, poserAction, enPose] = useActionState<EtatAppartenance, FormData>(
     forcerAppartenance,
@@ -29,6 +31,9 @@ export function Appartenance({
     libererAppartenance,
     null,
   );
+
+  useFermetureApresSucces(enPose, pose?.erreur, onSucces);
+  useFermetureApresSucces(enRetrait, retrait?.erreur, onSucces);
 
   return (
     <>
