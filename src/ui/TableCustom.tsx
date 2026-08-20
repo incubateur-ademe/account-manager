@@ -5,7 +5,7 @@ import style from "./TableCustom.module.css";
 
 export interface TableCustomProps {
   body: Array<
-    | { className?: CxArg; row: Array<JSX.IntrinsicElements["td"]> }
+    | { className?: CxArg; key?: string; row: Array<JSX.IntrinsicElements["td"]> }
     | Array<JSX.IntrinsicElements["td"]>
   >;
   bodyRef?: React.Ref<HTMLTableSectionElement>;
@@ -24,9 +24,7 @@ export const TableCustom = ({
   className,
   showColWhenNullData,
 }: TableCustomProps) => {
-  const tableId = (function useClosure() {
-    return `table-custom-${useId()}`;
-  })();
+  const tableId = `table-custom-${useId()}`;
 
   return (
     <div id={tableId} className={cx(style["table"], compact && style["tableCompact"], className)}>
@@ -36,7 +34,7 @@ export const TableCustom = ({
             {header.map((col, id) =>
               !showColWhenNullData && col.children === null ? null : (
                 <TableCustomHeadCol
-                  key={`${tableId}-head-col-${id}`}
+                  key={`${tableId}-head-${cleDe(col.children, id)}`}
                   {...col}
                   className={cx(classes?.[`col-${id}`], col.className)}
                 />
@@ -47,15 +45,18 @@ export const TableCustom = ({
         <tbody ref={bodyRef}>
           {body.map((row, rowId) => {
             const rowArray = Array.isArray(row) ? row : row.row;
+            const cleFournie = Array.isArray(row) ? undefined : row.key;
+            const cleLigne =
+              cleFournie ?? `${tableId}-ligne-${cleDe(rowArray[0]?.children, rowId)}`;
             return (
               <tr
-                key={`${tableId}-body-row-${rowId}`}
+                key={cleLigne}
                 className={cx(style["tableBodyRow"], !Array.isArray(row) && row.className)}
               >
                 {rowArray.map((bodyCol, colId) =>
                   !showColWhenNullData && bodyCol.children === null ? null : (
                     <TableCustomBodyRowCol
-                      key={`${tableId}-body-col-${rowId}-${colId}`}
+                      key={`${cleLigne}-${header[colId]?.children ? cleDe(header[colId].children, colId) : colId}`}
                       {...bodyCol}
                       className={cx(classes?.[`col-${colId}`], bodyCol.className)}
                     />
@@ -69,6 +70,17 @@ export const TableCustom = ({
     </div>
   );
 };
+
+/**
+ * Une clé stable tirée du contenu quand il est textuel, du rang sinon : l'ordre des
+ * lignes change au tri, et une clé qui suit le rang ferait suivre l'état des
+ * composants montés dedans plutôt que la donnée.
+ */
+function cleDe(contenu: unknown, rang: number): string {
+  return typeof contenu === "string" || typeof contenu === "number"
+    ? String(contenu).slice(0, 40)
+    : `rang-${rang}`;
+}
 
 export interface TableCustomHeadColProps extends PropsWithChildren {
   className?: CxArg;
