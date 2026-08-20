@@ -71,7 +71,7 @@ export function ChampAvecListe({
         filterOptions={(options, { inputValue }) => {
           const recherche = inputValue.trim().toLowerCase();
           if (recherche === "") {
-            return options.slice(0, 8);
+            return options.slice(0, 6);
           }
           return options
             .filter(
@@ -79,20 +79,22 @@ export function ChampAvecListe({
                 option.valeur.toLowerCase().includes(recherche) ||
                 option.libelle.toLowerCase().includes(recherche),
             )
-            .slice(0, 8);
+            .slice(0, 6);
         }}
         renderOption={({ key, ...props }, option) => (
           <li key={key} {...props}>
-            <span>
-              <strong>{option.valeur}</strong>
-              <br />
-              <span className={fr.cx("fr-text--sm")}>
-                {option.libelle}
-                {option.mention ? ` · ${option.mention}` : null}
-              </span>
+            <span className={fr.cx("fr-text--sm")}>
+              <strong>{option.valeur}</strong> · {option.libelle}
+              {option.mention ? ` · ${option.mention}` : null}
             </span>
           </li>
         )}
+        slotProps={{
+          // Le menu vit dans la modale : sans borne, il la fait déborder, une barre
+          // de défilement apparaît et tout le contenu se décale sur sa largeur. La
+          // hauteur retenue tient les six suggestions d'une ligne.
+          listbox: { style: { maxHeight: "13rem" } },
+        }}
         renderInput={({ slotProps }) => (
           <div ref={slotProps.input.ref}>
             <input
@@ -108,6 +110,13 @@ export function ChampAvecListe({
               required={requis}
               placeholder={placeholder}
               autoComplete="off"
+              // `autoComplete` ne suffit pas : les gestionnaires de mots de passe
+              // l'ignorent et posent leur propre menu par-dessus celui-ci. Chacun
+              // écoute son attribut, d'où la série.
+              data-bwignore="true"
+              data-1p-ignore="true"
+              data-lpignore="true"
+              data-form-type="other"
               className={fr.cx("fr-input")}
             />
           </div>
