@@ -68,21 +68,21 @@ export function ChampAvecListe({
           onValeur?.(saisie);
         }}
         getOptionLabel={(option) => (typeof option === "string" ? option : option.valeur)}
+        // La liste entière, filtrée au fil de la frappe, et jamais tronquée : borner
+        // le nombre de résultats les cachait sans le dire, si bien qu'une recherche
+        // rendant huit correspondances n'en montrait que les premières. Ce que
+        // l'écran des personnes trouve, la modale le trouve aussi.
         filterOptions={(options, { inputValue }) => {
           const recherche = inputValue.trim().toLowerCase();
-          // Rien tant que rien n'est tapé : c'est un champ de recherche, pas un menu
-          // déroulant. Les premières entrées d'une liste de deux cents ne sont pas
-          // des suggestions, elles ne font que laisser croire à une liste courte.
           if (recherche === "") {
-            return [];
+            return options;
           }
-          return options
-            .filter(
-              (option) =>
-                option.valeur.toLowerCase().includes(recherche) ||
-                option.libelle.toLowerCase().includes(recherche),
-            )
-            .slice(0, 4);
+          // La même cible que `filtrer` du noyau, libellé et identifiant réunis en
+          // une chaîne : les deux écrans doivent trouver la même chose sur la même
+          // saisie, y compris quand elle chevauche le nom et l'identifiant.
+          return options.filter((option) =>
+            `${option.libelle} ${option.valeur}`.toLowerCase().includes(recherche),
+          );
         }}
         renderOption={({ key, ...props }, option) => (
           <li key={key} {...props}>
@@ -93,10 +93,10 @@ export function ChampAvecListe({
           </li>
         )}
         slotProps={{
-          // Le menu vit dans la modale : trop haut, il la fait déborder, une barre
-          // de défilement apparaît et tout le contenu se décale sur sa largeur.
-          // Cette hauteur tient les quatre suggestions sans que rien ne défile, ni
-          // dans la liste ni dans la modale. Mesuré : 21rem déborde de 112 pixels.
+          // Le menu défile en lui-même, jamais la modale : au-delà, celle-ci
+          // déborde, une barre de défilement y apparaît et tout son contenu se
+          // décale sur sa largeur. Mesuré : 21rem la fait déborder de 112 pixels,
+          // MUI repositionnant alors le menu hors d'elle.
           listbox: { style: { maxHeight: "20rem" } },
         }}
         renderInput={({ slotProps }) => (
