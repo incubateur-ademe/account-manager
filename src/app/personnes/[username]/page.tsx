@@ -358,9 +358,12 @@ export default async function FichePersonnePage({ params }: Props) {
                 Décidée par {appartenance.surcharge.par} le{" "}
                 {dateFr.format(appartenance.surcharge.depuis)} : « {appartenance.surcharge.raison}{" "}
                 ».{" "}
+                {/* La précision du motif dit déjà ce qu'une décision emporte : ne
+                    reste ici que ce qu'elle seule sait, qui l'a prise et quand, plus
+                    l'invitation à la retirer le jour où elle ne sert plus. */}
                 {surchargeSuperflue(appartenance)
                   ? "Ses rattachements en cours disent désormais la même chose : cette décision est devenue superflue et peut être retirée. Elle ne se retire pas d'elle-même, une décision nominative ne s'annule pas par une collecte anonyme."
-                  : "Elle dit l'appartenance et n'ordonne rien : aucun accès n'est coupé, ses comptes continuent d'être examinés, et un départ reste à instruire par un dossier."}
+                  : null}
               </>
             }
           />

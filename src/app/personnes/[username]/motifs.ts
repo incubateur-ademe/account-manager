@@ -29,7 +29,14 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
   const motifs: MotifDAction[] = [];
   const graviteStatut = STATUT_A_TRAITER[etat.statut];
 
-  if (graviteStatut) {
+  // Le statut « Sorti du référentiel » et le constat de sortie naissent du même
+  // `vanishedAt`. Les afficher tous les deux mettrait deux lignes presque
+  // identiques en tête de bloc, là où le constat dit déjà tout et dit en plus quoi
+  // faire. Le constat prime, comme partout ailleurs ici.
+  const sortieDejaConstatee =
+    etat.statut === "SORTI" && etat.ouverts.some((constat) => constat.kind === "SCOPE_EXIT");
+
+  if (graviteStatut && !sortieDejaConstatee) {
     motifs.push({
       cle: "statut",
       severite: graviteStatut,
@@ -74,7 +81,10 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
         surcharge.sens === "EXCLUDE"
           ? "Déclarée hors incubateur, contre ce que portent ses rattachements"
           : "Forcée dans l'incubateur, faute de rattachement qui l'y place",
-      description: `Décidée par ${surcharge.par}. Sans cette décision, elle serait « ${etat.libelleSansSurcharge} » d'après ses rattachements en cours.`,
+      // La phrase qui dit ce que serait l'appartenance sans la décision vit sous
+      // Situation, avec le libellé qu'elle explique. La redire ici la mettrait deux
+      // fois sur le même écran.
+      description: `Décidée par ${surcharge.par}, contre ce que la collecte constate. C'est à trancher.`,
     });
   }
 
