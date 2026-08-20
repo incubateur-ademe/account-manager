@@ -4,7 +4,8 @@ import { fr } from "@codegouvfr/react-dsfr";
 import { Button } from "@codegouvfr/react-dsfr/Button";
 import { Input } from "@codegouvfr/react-dsfr/Input";
 import { useActionState } from "react";
-
+import { useFermetureApresSucces } from "@/ui/modale";
+import { messageObligatoire } from "@/ui/validation";
 import { type EtatAppartenance, forcerAppartenance, libererAppartenance } from "./actions";
 
 export interface SurchargePosee {
@@ -17,9 +18,11 @@ export interface SurchargePosee {
 export function Appartenance({
   username,
   surcharge,
+  onSucces,
 }: {
   username: string;
   surcharge: SurchargePosee | null;
+  onSucces?: () => void;
 }) {
   const [pose, poserAction, enPose] = useActionState<EtatAppartenance, FormData>(
     forcerAppartenance,
@@ -30,6 +33,9 @@ export function Appartenance({
     null,
   );
 
+  useFermetureApresSucces(enPose, pose?.erreur, onSucces);
+  useFermetureApresSucces(enRetrait, retrait?.erreur, onSucces);
+
   return (
     <>
       <form action={poserAction}>
@@ -37,7 +43,12 @@ export function Appartenance({
         <Input
           label={surcharge ? "Changer la décision" : "Forcer son appartenance"}
           hintText="Raison obligatoire : sans motif, la décision ne se réexamine pas."
-          nativeInputProps={{ name: "raison", required: true, autoComplete: "off" }}
+          nativeInputProps={{
+            name: "raison",
+            required: true,
+            autoComplete: "off",
+            ...messageObligatoire("Indiquez la raison de cette décision."),
+          }}
           state={pose ? "error" : "default"}
           stateRelatedMessage={pose?.erreur}
         />

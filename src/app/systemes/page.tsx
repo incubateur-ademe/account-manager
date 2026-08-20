@@ -107,7 +107,7 @@ export default async function SystemesPage() {
                 </span>
               ) : (
                 <span key="m" className={fr.cx("fr-text--sm")}>
-                  —
+                  sans objet
                 </span>
               ),
               <span key="r" className={fr.cx("fr-text--sm")}>

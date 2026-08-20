@@ -19,15 +19,15 @@ export const LIBELLE_CONSTAT: Record<ConstatKind, Libelle> = {
     action: "Reprendre l'étape sur le système, ou corriger le pointage s'il était erroné.",
   },
   SCOPE_EXIT: {
-    titre: "Sortie du référentiel sans traitement",
+    titre: "Sortie du référentiel",
     explication:
-      "Cette personne a disparu du référentiel de l'incubateur alors que rien n'indique que ses accès ont été coupés. Le référentiel amont retire des équipes les membres dont la mission est terminée, ce qui la rend invisible au moment précis où il faut agir.",
+      "Cette personne a disparu du référentiel de l'incubateur, et rien ici ne dit ce que ses accès sont devenus. Le référentiel amont retire des équipes les membres dont la mission est terminée, ce qui la rend invisible au moment précis où il faut agir.",
     action: "Vérifier ses accès et les couper, puis clore ce constat.",
   },
   INACTIVE_STARTUP: {
     titre: "Startups toutes terminées",
     explication:
-      "Cette personne est encore en mission, mais toutes les startups auxquelles elle est rattachée sont abandonnées ou transférées. Elle ne travaille donc plus sur rien au sein de l'incubateur.",
+      "Toutes les startups qui portent son rattachement sont dans une phase terminale, alors que son échéance ne la signale pas encore comme partie. Plus aucune startup vivante de l'incubateur ne justifie ses accès.",
     action: "Confirmer son rattachement réel, ou retirer les accès devenus sans objet.",
   },
   ORPHAN: {

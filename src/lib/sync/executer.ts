@@ -220,7 +220,7 @@ export async function executerSync(
     journal(`[sync] fiche introuvable dans l'espace-membre : ${username}`);
   }
   for (const username of perimetre.missingDeclared) {
-    journal(`[sync] déclaré dans la politique mais absent de l'annuaire : ${username}`);
+    journal(`[sync] déclaré dans la politique mais non résolu ce passage : ${username}`);
   }
   for (const message of perimetre.errors) {
     journal(`[sync] ${message}`);

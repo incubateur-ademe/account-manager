@@ -6,7 +6,9 @@ import { Button } from "@codegouvfr/react-dsfr/Button";
 import { Checkbox } from "@codegouvfr/react-dsfr/Checkbox";
 import { Input } from "@codegouvfr/react-dsfr/Input";
 import { useActionState, useState } from "react";
-
+import { ChampAvecListe } from "@/ui/ChampAvecListe";
+import { useFermetureApresSucces } from "@/ui/modale";
+import { messageObligatoire } from "@/ui/validation";
 import { type EtatRattachementStartup, rattacherAStartup } from "./actions";
 
 export interface StartupProposable {
@@ -19,11 +21,13 @@ export function RattacherStartup({
   username,
   missionEnd,
   startups,
+  onSucces,
 }: {
   username: string;
   /** Fin de mission connue, au format AAAA-MM-JJ, ou null. */
   missionEnd: string | null;
   startups: readonly StartupProposable[];
+  onSucces?: () => void;
 }) {
   const [etat, formAction, pending] = useActionState<EtatRattachementStartup, FormData>(
     rattacherAStartup,
@@ -32,8 +36,9 @@ export function RattacherStartup({
   const [jusquAu, setJusquAu] = useState("");
   const [startup, setStartup] = useState("");
 
-  const listeId = `startups-${username}`;
   const demandeConfirmation = etat?.confirmationRequise === true;
+
+  useFermetureApresSucces(pending, etat?.erreur, onSucces);
 
   // L'écran avertit dès la saisie, le serveur refuse tant que la confirmation
   // manque. Les deux dispositifs ne se remplacent pas : le premier est du confort,
@@ -45,27 +50,19 @@ export function RattacherStartup({
     <form action={formAction}>
       <input type="hidden" name="username" value={username} />
 
-      <datalist id={listeId}>
-        {startups.map((connue) => (
-          <option key={connue.ghid} value={connue.ghid}>
-            {connue.name}
-          </option>
-        ))}
-      </datalist>
-
       <div className={fr.cx("fr-grid-row", "fr-grid-row--gutters")}>
         <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
-          <Input
+          <ChampAvecListe
+            nom="startup"
             label="Startup"
             hintText="Identifiant beta.gouv de la startup, parmi celles connues en base."
-            nativeInputProps={{
-              name: "startup",
-              required: true,
-              list: listeId,
-              autoComplete: "off",
-              value: startup,
-              onChange: (event) => setStartup(event.target.value),
-            }}
+            suggestions={startups.map((connue) => ({
+              valeur: connue.ghid,
+              libelle: connue.name,
+              ...(connue.disparue ? { mention: "hors incubateur" } : {}),
+            }))}
+            requis
+            onValeur={setStartup}
           />
         </div>
         <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
@@ -76,6 +73,7 @@ export function RattacherStartup({
               name: "jusquAu",
               type: "date",
               required: true,
+              ...messageObligatoire("Indiquez le dernier jour couvert."),
               value: jusquAu,
               onChange: (event) => setJusquAu(event.target.value),
             }}
@@ -95,7 +93,7 @@ export function RattacherStartup({
           className={fr.cx("fr-mb-2w")}
           severity="warning"
           small
-          description={`Cette date dépasse la fin de mission connue (${missionEnd}) : le rattachement repoussera son échéance et prolongera ses accès d'autant.`}
+          description={`Cette date dépasse la fin de mission connue (${missionEnd}) : le rattachement fera courir ses accès au-delà.`}
         />
       ) : null}
 

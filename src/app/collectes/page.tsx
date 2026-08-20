@@ -105,7 +105,7 @@ export default async function CollectesPage() {
             <Badge key="e" severity={SEVERITE[run.status]} small noIcon>
               {run.status}
             </Badge>,
-            run.status === "SKIPPED" ? "—" : run.itemsSeen,
+            run.status === "SKIPPED" ? "sans objet" : run.itemsSeen,
             <span key="m" className={fr.cx("fr-text--sm")}>
               {messages(run.error).join(" / ") || EXPLICATION[run.status]}
             </span>,

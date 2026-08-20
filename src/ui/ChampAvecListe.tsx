@@ -1,0 +1,154 @@
+"use client";
+
+import { fr } from "@codegouvfr/react-dsfr";
+import MuiDsfrThemeProvider from "@codegouvfr/react-dsfr/mui";
+import Autocomplete from "@mui/material/Autocomplete";
+import { useId, useState } from "react";
+
+import { messageObligatoire } from "@/ui/validation";
+
+export interface Suggestion {
+  /** Ce qui part au serveur. */
+  valeur: string;
+  /** Ce qui se lit à l'écran, sous la valeur. */
+  libelle: string;
+  /** Nuance affichée à droite, pour départager deux entrées qui se ressemblent. */
+  mention?: string;
+}
+
+/**
+ * Un champ de saisie adossé à une liste connue.
+ *
+ * Le `datalist` natif rendait la main sur une liste de deux cent quarante entrées :
+ * il n'affiche qu'un préfixe, ne cherche pas dans le libellé, et déroule un menu que
+ * rien ne borne. `Autocomplete` filtre sur les deux champs et coupe la liste à ce qui
+ * tient à l'écran.
+ *
+ * La saisie libre reste permise : le serveur refuse une cible inconnue avec un
+ * message qui dit laquelle, et c'est lui qui fait foi. L'empêcher ici transformerait
+ * une aide à la frappe en verrou.
+ */
+export function ChampAvecListe({
+  nom,
+  label,
+  hintText,
+  suggestions,
+  requis = false,
+  erreur,
+  placeholder,
+  onValeur,
+}: {
+  nom: string;
+  label: string;
+  hintText?: string;
+  suggestions: readonly Suggestion[];
+  requis?: boolean;
+  erreur?: string;
+  placeholder?: string;
+  /** Pour les formulaires qui réagissent à la saisie avant même l'envoi. */
+  onValeur?: (valeur: string) => void;
+}) {
+  const [valeur, setValeur] = useState("");
+  const id = useId();
+
+  return (
+    <div className={fr.cx("fr-input-group", erreur ? "fr-input-group--error" : undefined)}>
+      <label className={fr.cx("fr-label")} htmlFor={id}>
+        {label}
+        {hintText ? <span className={fr.cx("fr-hint-text")}>{hintText}</span> : null}
+      </label>
+
+      <MuiDsfrThemeProvider>
+        <Autocomplete
+          freeSolo
+          autoHighlight
+          // Sans portail, le menu reste dans la modale, donc dans son piège à focus :
+          // ailleurs, il serait hors d'atteinte au clavier.
+          disablePortal
+          options={[...suggestions]}
+          inputValue={valeur}
+          onInputChange={(_evenement, saisie) => {
+            setValeur(saisie);
+            onValeur?.(saisie);
+          }}
+          getOptionLabel={(option) => (typeof option === "string" ? option : option.valeur)}
+          // La liste entière, filtrée au fil de la frappe, et jamais tronquée : borner
+          // le nombre de résultats les cachait sans le dire, si bien qu'une recherche
+          // rendant huit correspondances n'en montrait que les premières. Ce que
+          // l'écran des personnes trouve, la modale le trouve aussi.
+          filterOptions={(options, { inputValue }) => {
+            const recherche = inputValue.trim().toLowerCase();
+            if (recherche === "") {
+              return options;
+            }
+            // La même cible que `filtrer` du noyau, libellé et identifiant réunis en
+            // une chaîne : les deux écrans doivent trouver la même chose sur la même
+            // saisie, y compris quand elle chevauche le nom et l'identifiant.
+            return options.filter((option) =>
+              `${option.libelle} ${option.valeur}`.toLowerCase().includes(recherche),
+            );
+          }}
+          renderOption={({ key, ...props }, option) => (
+            <li key={key} {...props}>
+              <span className={fr.cx("fr-text--sm")}>
+                <strong>{option.valeur}</strong> · {option.libelle}
+                {option.mention ? ` · ${option.mention}` : null}
+              </span>
+            </li>
+          )}
+          slotProps={{
+            popper: {
+              modifiers: [
+                // Le menu s'ouvre vers le haut quand le champ est bas dans la modale,
+                // et venait alors coller son bord supérieur. Popper garde désormais
+                // ses distances avec les bords, quel que soit le côté où il bascule.
+                { name: "preventOverflow", options: { padding: 16 } },
+              ],
+            },
+            // Le menu défile en lui-même, jamais la modale : au-delà, celle-ci
+            // déborde, une barre de défilement y apparaît et tout son contenu se
+            // décale sur sa largeur. La hauteur est le seul levier fiable, le
+            // `preventOverflow` de Popper prenant la fenêtre pour borne et non la
+            // modale : à 20rem, le menu ouvert vers le haut la dépassait de 64 pixels.
+            listbox: { style: { maxHeight: "13rem" } },
+          }}
+          renderInput={({ slotProps }) => (
+            <div ref={slotProps.input.ref}>
+              <input
+                {...slotProps.htmlInput}
+                id={id}
+                name={nom}
+                // Obligatoire, et pas seulement par correction : le piège à focus du
+                // DSFR ne laisse passer un `input` que si son `type` est présent et
+                // vaut autre chose que `radio`. Sans attribut, il le cherche parmi les
+                // groupes de boutons radio, n'y trouve rien et lève, ce qui interrompt
+                // le JS du système de design et laisse la page entière sans style.
+                type="text"
+                required={requis}
+                {...(requis
+                  ? messageObligatoire("Indiquez une cible, même hors de la liste.")
+                  : {})}
+                placeholder={placeholder}
+                autoComplete="off"
+                // `autoComplete` ne suffit pas : les gestionnaires de mots de passe
+                // l'ignorent et posent leur propre menu par-dessus celui-ci. Chacun
+                // écoute son attribut, d'où la série.
+                data-bwignore="true"
+                data-1p-ignore="true"
+                data-lpignore="true"
+                data-form-type="other"
+                className={fr.cx("fr-input")}
+              />
+            </div>
+          )}
+        />
+      </MuiDsfrThemeProvider>
+
+      {erreur ? (
+        <p className={fr.cx("fr-error-text")} role="alert">
+          {erreur}
+        </p>
+      ) : null}
+    </div>
+  );
+}

@@ -58,9 +58,13 @@ simplification.
 
 **R3. Modifier est une vue, pas une section.** « Corriger la fiche » cesse d'être un pavé sur la
 fiche : un bouton « Éditer » mène à une vue d'édition qui porte les champs modifiables et la
-correction d'identifiant. La fiche redevient ce qu'elle doit être, un écran de lecture. Le corollaire
-tient tout seul : sur une fiche que la collecte réécrit, le bouton n'apparaît pas, et il n'y a plus
-de section expliquant qu'on ne peut rien faire.
+correction d'identifiant. La fiche redevient ce qu'elle doit être, un écran de lecture, et il n'y a
+plus de section expliquant qu'on ne peut rien faire.
+
+Sur une fiche que la collecte réécrit, le bouton reste mais devient inerte, et porte la raison au
+survol. Le faire disparaître laissait chercher ce qui n'existe pas : une action absente ne se
+distingue pas d'une action qu'on n'a pas trouvée. La même raison s'affiche en clair quand on arrive
+sur la fiche depuis l'adresse d'édition, que le serveur refuse sur les mêmes règles.
 
 **R3 bis. Une action rare est discrète, pas cachée.** Elle reste sur la même ligne que les autres,
 en priorité tertiaire, ce que le DSFR sait faire sans dépliant ni menu. Forcer une appartenance
@@ -96,6 +100,14 @@ n'affirme que ce que son calcul établit.
 l'État, et rien d'autre. Ce dépôt n'a aucune feuille de style propre, et ce lot n'en introduit pas :
 la contrainte est un choix, elle garde l'outil aligné sur le reste du parc et évite de maintenir une
 seconde grammaire visuelle pour un mainteneur à temps partiel.
+
+La règle porte sur la grammaire visuelle, pas sur l'inventaire des composants. Là où le système de
+design n'a rien à proposer, react-dsfr ouvre lui-même une porte : sa surcouche MUI, dont il aligne le
+thème sur le sien. L'emprunt reste borné à ce qui manque, et le rendu continue de passer par les
+classes du DSFR. Le premier cas est la saisie assistée, qu'il n'a pas : le `datalist` natif rend la
+main sur deux cent quarante entrées, il n'affiche qu'un préfixe et ne cherche pas dans le libellé.
+Emprunter n'est pas contourner : écrire ce composant à la main aurait fait exactement ce que cette
+règle interdit.
 
 **R9. Aucun changement de comportement métier.** Ce lot déplace, replie, supprime et reformule. Il ne
 touche ni aux actions serveur, ni au calcul des constats, ni aux invariants. La seule exception est
@@ -215,7 +227,9 @@ Aucun travail sur les écrans que ce lot ne cite pas : comptes de service, syst�
 journal. Ils suivront les mêmes règles le jour où on y touchera, et les règles sont écrites ici pour
 ça.
 
-Aucune feuille de style, aucun composant maison, aucune dépendance ajoutée.
+Aucune feuille de style, aucun composant maison. Aucune dépendance ajoutée, à la seule exception de
+la surcouche MUI de react-dsfr et de ce qu'elle exige, au titre de R8 et pour ce que le DSFR n'a
+pas.
 
 ## Risques et pièges
 
@@ -239,7 +253,9 @@ Le build Next reste le seul filet automatique, et il ne dit que la compilation.
 
 **Le DSFR contraint plus qu'il n'y paraît.** Ses composants n'offrent pas tout ce qu'une page dense
 demande. Là où il manque quelque chose, on compose avec ce qu'il a plutôt que d'écrire du CSS : c'est
-R8, et elle ne se contourne pas au premier obstacle.
+R8, et elle ne se contourne pas au premier obstacle. Quand il ne manque pas un habillage mais un
+composant entier, l'emprunt à la surcouche MUI est la sortie prévue, à condition que le rendu reste
+habillé par le DSFR.
 
 ## Vérification
 
