@@ -4,6 +4,7 @@ import { operateurCourant } from "@/lib/session";
 import { Deconnexion } from "@/ui/Deconnexion";
 import { DsfrProvider, StartDsfrOnHydration } from "@/ui/dsfr/client";
 import { DsfrHead, getHtmlAttributes } from "@/ui/dsfr/server";
+import { ModeAideProvider } from "@/ui/ModeAide";
 import { Navigation } from "@/ui/Navigation";
 
 export const metadata: Metadata = {
@@ -23,18 +24,22 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       </head>
       <body>
         <DsfrProvider lang={lang}>
-          <Navigation
-            deconnexion={operateur ? <Deconnexion username={operateur.username} /> : undefined}
-          />
-          <Suspense>{children}</Suspense>
-          {/* Après le contenu, et non dans le `head` : le `Suspense` ci-dessus laisse
-              React hydrater la coque avant la page, si bien qu'un démarrage plus haut
-              lâchait le JS du DSFR sur des tableaux que React n'avait pas encore
-              hydratés. Il y posait ses `data-fr-js-*`, écart que React signale en
-              annonçant qu'il ne le rattrapera pas. Ici, il démarre une fois la page
-              hydratée, et les composants qui s'enregistrent avant lui sont rejoués
-              par `registerEffectAction`. */}
-          <StartDsfrOnHydration />
+          <ModeAideProvider>
+            <Navigation
+              deconnexion={operateur ? <Deconnexion username={operateur.username} /> : undefined}
+            />
+            {/* Le démarrage du DSFR vit dans la même frontière que la page, et après
+              elle. Placé dehors, il s'hydrate avec la coque et lâche son JS sur des
+              tableaux, des modales et un fil d'Ariane que React n'a pas encore
+              hydratés : il y pose ses `data-fr-js-*`, écart que React signale en
+              annonçant qu'il ne le rattrapera pas. Ici, il part une fois la page
+              hydratée, et les composants montés avant lui sont rejoués par
+              `registerEffectAction`. */}
+            <Suspense>
+              {children}
+              <StartDsfrOnHydration />
+            </Suspense>
+          </ModeAideProvider>
         </DsfrProvider>
       </body>
     </html>

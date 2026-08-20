@@ -8,6 +8,7 @@ import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
 export interface ConstatOuvert {
   id: string;
   kind: string;
+  dedupKey: string;
   severity: "HIGH" | "MEDIUM" | "LOW";
 }
 
@@ -70,7 +71,10 @@ export function motifsDesConstats(ouverts: readonly ConstatOuvert[]): MotifDActi
       severite: SEVERITE_CONSTAT[constat.severity],
       titre: libelle?.titre ?? constat.kind,
       description: libelle?.action ?? "",
-      lien: { href: "/constats", libelle: "Le traiter dans la file" },
+      lien: {
+        href: `/constats?constat=${encodeURIComponent(constat.dedupKey)}`,
+        libelle: "Le traiter dans la file",
+      },
     };
   });
 }

@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { TableCustom } from "@/ui/TableCustom";
+import style from "@/ui/TableCustom.module.css";
 
 import { ClotureConstat } from "./ClotureConstat";
 
@@ -37,7 +38,14 @@ const modale = createModal({ id: "clore-constat", isOpenedByDefault: false });
  * sur quoi elle porte : sans ce rappel, elle obligerait à mémoriser la ligne avant de
  * cliquer.
  */
-export function FileDesConstats({ lignes }: { lignes: readonly LigneConstat[] }) {
+export function FileDesConstats({
+  lignes,
+  designe,
+}: {
+  lignes: readonly LigneConstat[];
+  /** Clé du constat sur lequel une fiche vient de renvoyer. */
+  designe?: string;
+}) {
   const [choisi, setChoisi] = useState<LigneConstat | null>(null);
 
   return (
@@ -50,61 +58,70 @@ export function FileDesConstats({ lignes }: { lignes: readonly LigneConstat[] })
           { children: "Ouvert le" },
           { children: "" },
         ]}
-        body={lignes.map((ligne) => [
-          {
-            children: (
-              <Badge severity={SEVERITE[ligne.severity]} noIcon>
-                {LIBELLE_SEVERITE[ligne.severity]}
-              </Badge>
-            ),
-          },
-          // Un constat porte sur quelqu'un, sur un compte, ou sur les deux quand un
-          // compte survit à son détenteur. Sans le compte, treize lignes d'affilée
-          // diraient la même chose sans dire de quoi.
-          {
-            children: (
-              <span>
-                {ligne.personne ? (
-                  <Link href={`/personnes/${ligne.personne.username}`} className={fr.cx("fr-link")}>
-                    {ligne.personne.fullname}
-                  </Link>
-                ) : ligne.compte ? (
-                  <Link href="/comptes-isoles" className={fr.cx("fr-link")}>
-                    {ligne.compte.handle}
-                  </Link>
-                ) : (
-                  "inconnue"
-                )}
-                <br />
-                <span className={fr.cx("fr-text--sm")}>
-                  {ligne.compte
-                    ? `${ligne.compte.provider} : ${ligne.compte.handle}`
-                    : (ligne.personne?.username ?? "")}
+        body={lignes.map((ligne) => ({
+          // Arriver d'une fiche sur une file de quinze lignes sans savoir laquelle
+          // on venait traiter revenait à chercher deux fois.
+          className: ligne.dedupKey === designe ? style["ligneDesignee"] : undefined,
+          key: ligne.dedupKey,
+          row: [
+            {
+              children: (
+                <Badge severity={SEVERITE[ligne.severity]} noIcon>
+                  {LIBELLE_SEVERITE[ligne.severity]}
+                </Badge>
+              ),
+            },
+            // Un constat porte sur quelqu'un, sur un compte, ou sur les deux quand un
+            // compte survit à son détenteur. Sans le compte, treize lignes d'affilée
+            // diraient la même chose sans dire de quoi.
+            {
+              children: (
+                <span>
+                  {ligne.personne ? (
+                    <Link
+                      href={`/personnes/${ligne.personne.username}`}
+                      className={fr.cx("fr-link")}
+                    >
+                      {ligne.personne.fullname}
+                    </Link>
+                  ) : ligne.compte ? (
+                    <Link href="/comptes-isoles" className={fr.cx("fr-link")}>
+                      {ligne.compte.handle}
+                    </Link>
+                  ) : (
+                    "inconnue"
+                  )}
+                  <br />
+                  <span className={fr.cx("fr-text--sm")}>
+                    {ligne.compte
+                      ? `${ligne.compte.provider} : ${ligne.compte.handle}`
+                      : (ligne.personne?.username ?? "")}
+                  </span>
                 </span>
-              </span>
-            ),
-          },
-          // La consigne complète vit en bas de page, une fois par type. Au survol,
-          // elle est là sans qu'on ait à descendre la chercher.
-          { children: <span title={ligne.explication}>{ligne.titre}</span> },
-          { children: ligne.ouvertLe },
-          {
-            children: (
-              <Button
-                priority="secondary"
-                size="small"
-                nativeButtonProps={{
-                  ...modale.buttonProps,
-                  onClick: () => {
-                    setChoisi(ligne);
-                  },
-                }}
-              >
-                Clore
-              </Button>
-            ),
-          },
-        ])}
+              ),
+            },
+            // La consigne complète vit en bas de page, une fois par type. Au survol,
+            // elle est là sans qu'on ait à descendre la chercher.
+            { children: <span title={ligne.explication}>{ligne.titre}</span> },
+            { children: ligne.ouvertLe },
+            {
+              children: (
+                <Button
+                  priority="secondary"
+                  size="small"
+                  nativeButtonProps={{
+                    ...modale.buttonProps,
+                    onClick: () => {
+                      setChoisi(ligne);
+                    },
+                  }}
+                >
+                  Clore
+                </Button>
+              ),
+            },
+          ],
+        }))}
       />
 
       <modale.Component title="Clore ce constat">

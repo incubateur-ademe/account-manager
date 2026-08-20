@@ -53,3 +53,9 @@
 .tableBodyRowCol :global(.fr-btns-group) :global(.fr-btn) {
   margin-bottom: 0;
 }
+
+/* La ligne qu'une fiche vient de désigner : elle se signale sans crier, la bordure
+   suffit à retrouver ce qu'on venait traiter. */
+.ligneDesignee {
+  box-shadow: inset 3px 0 0 0 var(--border-active-blue-france);
+}

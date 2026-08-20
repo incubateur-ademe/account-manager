@@ -14,8 +14,13 @@ export const dynamic = "force-dynamic";
 
 const dateFr = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "UTC" });
 
-export default async function ConstatsPage() {
+export default async function ConstatsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   await requireOperateur();
+  const { constat: designe } = await searchParams;
 
   const constats = await prisma.finding.findMany({
     where: { closedAt: null },
@@ -75,7 +80,7 @@ export default async function ConstatsPage() {
             .
           </p>
 
-          <FileDesConstats lignes={lignes} />
+          <FileDesConstats lignes={lignes} {...(typeof designe === "string" ? { designe } : {})} />
 
           {/* Une consigne par type et non par ligne : répétée treize fois, elle
               cessait d'être lue dès la deuxième. */}

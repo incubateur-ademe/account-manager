@@ -50,33 +50,36 @@ export function SectionComptesExternes({
             ]}
             body={comptes.map((identite) => {
               const methode = RATTACHEMENT_IDENTITE[identite.matchMethod];
-              return [
-                { children: identite.provider },
-                {
-                  children: (
-                    <span>
-                      {identite.handle}
-                      {identite.vanishedAt ? (
-                        <>
-                          <br />
-                          <Badge severity="info" small noIcon>
-                            Disparu le {dateFr.format(identite.vanishedAt)}
-                          </Badge>
-                        </>
-                      ) : null}
-                    </span>
-                  ),
-                },
-                {
-                  children: (
-                    <Badge severity={methode.sur ? "success" : "warning"} noIcon>
-                      {methode.libelle}
-                    </Badge>
-                  ),
-                },
-                { children: dateFr.format(identite.lastSeenAt) },
-                { children: <Detacher id={identite.id} compte={identite.handle} /> },
-              ];
+              return {
+                key: identite.id,
+                row: [
+                  { children: identite.provider },
+                  {
+                    children: (
+                      <span>
+                        {identite.handle}
+                        {identite.vanishedAt ? (
+                          <>
+                            <br />
+                            <Badge severity="info" small noIcon>
+                              Disparu le {dateFr.format(identite.vanishedAt)}
+                            </Badge>
+                          </>
+                        ) : null}
+                      </span>
+                    ),
+                  },
+                  {
+                    children: (
+                      <Badge severity={methode.sur ? "success" : "warning"} noIcon>
+                        {methode.libelle}
+                      </Badge>
+                    ),
+                  },
+                  { children: dateFr.format(identite.lastSeenAt) },
+                  { children: <Detacher id={identite.id} compte={identite.handle} /> },
+                ],
+              };
             })}
           />
           <p className={fr.cx("fr-text--sm", "fr-mt-2w")}>

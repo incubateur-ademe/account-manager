@@ -116,6 +116,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
           select: {
             id: true,
             kind: true,
+            dedupKey: true,
             severity: true,
             openedAt: true,
             closedAt: true,
@@ -248,6 +249,15 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
         segments={[{ label: "Personnes suivies", linkProps: { href: "/personnes" } }]}
       />
 
+      {refusALEdition ? (
+        <Alert
+          className={fr.cx("fr-mb-3w")}
+          severity="warning"
+          small
+          description={`Cette fiche ne s'édite pas. ${RAISON_NON_EDITABLE[refusALEdition]}`}
+        />
+      ) : null}
+
       <div className={fr.cx("fr-grid-row", "fr-grid-row--top")}>
         <div className={fr.cx("fr-col-12", "fr-col-md-7")}>
           <h1 className={fr.cx("fr-mb-1v")}>{personne.fullname}</h1>
@@ -300,15 +310,6 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
           Historique de cette personne
         </Link>
       </p>
-
-      {refusALEdition ? (
-        <Alert
-          className={fr.cx("fr-mt-2w")}
-          severity="info"
-          small
-          description={`Cette fiche ne s'édite pas. ${RAISON_NON_EDITABLE[refusALEdition]}`}
-        />
-      ) : null}
 
       <CeQuiAppelleUneAction motifs={motifs} />
 

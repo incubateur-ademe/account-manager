@@ -52,56 +52,59 @@ export function FileDesComptesIsoles({
           { children: "Vu" },
           { children: "" },
         ]}
-        body={lignes.map((ligne) => [
-          { children: ligne.provider },
-          {
-            children: (
-              <span>
-                <strong>{ligne.handle}</strong>
-                {ligne.ressemblance ? (
-                  <>
-                    <br />
-                    <Badge severity="warning" small noIcon>
-                      Ressemblance non confirmée
-                    </Badge>
-                  </>
-                ) : null}
-              </span>
-            ),
-          },
-          {
-            children: (
-              <span className={fr.cx("fr-text--sm")}>
-                {ligne.acces.length === 0 ? "aucun" : ligne.acces.join(", ")}
-              </span>
-            ),
-          },
-          {
-            children: (
-              <span className={fr.cx("fr-text--sm")}>
-                depuis le {ligne.vuDepuis}
-                <br />
-                encore le {ligne.vuEncore}
-              </span>
-            ),
-          },
-          {
-            children: (
-              <Button
-                priority="secondary"
-                size="small"
-                nativeButtonProps={{
-                  ...modale.buttonProps,
-                  onClick: () => {
-                    setChoisi(ligne);
-                  },
-                }}
-              >
-                Traiter
-              </Button>
-            ),
-          },
-        ])}
+        body={lignes.map((ligne) => ({
+          key: ligne.id,
+          row: [
+            { children: ligne.provider },
+            {
+              children: (
+                <span>
+                  <strong>{ligne.handle}</strong>
+                  {ligne.ressemblance ? (
+                    <>
+                      <br />
+                      <Badge severity="warning" small noIcon>
+                        Ressemblance non confirmée
+                      </Badge>
+                    </>
+                  ) : null}
+                </span>
+              ),
+            },
+            {
+              children: (
+                <span className={fr.cx("fr-text--sm")}>
+                  {ligne.acces.length === 0 ? "aucun" : ligne.acces.join(", ")}
+                </span>
+              ),
+            },
+            {
+              children: (
+                <span className={fr.cx("fr-text--sm")}>
+                  depuis le {ligne.vuDepuis}
+                  <br />
+                  encore le {ligne.vuEncore}
+                </span>
+              ),
+            },
+            {
+              children: (
+                <Button
+                  priority="secondary"
+                  size="small"
+                  nativeButtonProps={{
+                    ...modale.buttonProps,
+                    onClick: () => {
+                      setChoisi(ligne);
+                    },
+                  }}
+                >
+                  Traiter
+                </Button>
+              ),
+            },
+          ],
+        }))}
       />
 
       <modale.Component title="À qui appartient ce compte" size="large">

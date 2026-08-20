@@ -46,8 +46,7 @@ export const TableCustom = ({
           {body.map((row, rowId) => {
             const rowArray = Array.isArray(row) ? row : row.row;
             const cleFournie = Array.isArray(row) ? undefined : row.key;
-            const cleLigne =
-              cleFournie ?? `${tableId}-ligne-${cleDe(rowArray[0]?.children, rowId)}`;
+            const cleLigne = cleFournie ?? `${tableId}-ligne-${cleDeLigne(rowArray, rowId)}`;
             return (
               <tr
                 key={cleLigne}
@@ -75,11 +74,25 @@ export const TableCustom = ({
  * Une clé stable tirée du contenu quand il est textuel, du rang sinon : l'ordre des
  * lignes change au tri, et une clé qui suit le rang ferait suivre l'état des
  * composants montés dedans plutôt que la donnée.
+ *
+ * Elle lit toute la ligne et pas seulement sa première cellule : deux comptes du
+ * même système commencent par le même mot, et la clé les confondait.
  */
+function texteDe(contenu: unknown): string {
+  return typeof contenu === "string" || typeof contenu === "number" ? String(contenu) : "";
+}
+
 function cleDe(contenu: unknown, rang: number): string {
-  return typeof contenu === "string" || typeof contenu === "number"
-    ? String(contenu).slice(0, 40)
-    : `rang-${rang}`;
+  const texte = texteDe(contenu);
+  return texte === "" ? `rang-${rang}` : texte.slice(0, 40);
+}
+
+function cleDeLigne(cellules: readonly JSX.IntrinsicElements["td"][], rang: number): string {
+  const texte = cellules
+    .map((cellule) => texteDe(cellule.children))
+    .filter((morceau) => morceau !== "")
+    .join("-");
+  return texte === "" ? `rang-${rang}` : texte.slice(0, 80);
 }
 
 export interface TableCustomHeadColProps extends PropsWithChildren {

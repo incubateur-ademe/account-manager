@@ -3,6 +3,8 @@
 import { fr } from "@codegouvfr/react-dsfr";
 import { Button } from "@codegouvfr/react-dsfr/Button";
 import { createModal } from "@codegouvfr/react-dsfr/Modal";
+import style from "@/ui/Actions.module.css";
+import { Aide } from "@/ui/Aide";
 
 import { RattacherStartup, type StartupProposable } from "./RattacherStartup";
 
@@ -24,9 +26,21 @@ export function ModaleRattacherStartup({
 }) {
   return (
     <>
-      <Button priority="secondary" size="small" nativeButtonProps={modale.buttonProps}>
-        Rattacher à une startup
-      </Button>
+      <span className={style["geste"]}>
+        <Button
+          className={fr.cx("fr-mr-1v")}
+          priority="secondary"
+          size="small"
+          nativeButtonProps={modale.buttonProps}
+        >
+          Rattacher à une startup
+        </Button>
+        <Aide>
+          {
+            "Rattacher cette personne à une startup par une décision datée, qui survit aux collectes et porte le nom de qui l'a prise. Peut repousser son échéance."
+          }
+        </Aide>
+      </span>
 
       <modale.Component title="Rattacher à une startup" size="large">
         <p className={fr.cx("fr-text--sm")}>

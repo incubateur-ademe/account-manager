@@ -4,8 +4,9 @@ import { fr } from "@codegouvfr/react-dsfr";
 import { Button } from "@codegouvfr/react-dsfr/Button";
 import { createModal } from "@codegouvfr/react-dsfr/Modal";
 import { useActionState } from "react";
-
 import { type EtatDepart, ouvrirDepart } from "@/app/departs/actions";
+import style from "@/ui/Actions.module.css";
+import { Aide } from "@/ui/Aide";
 
 const modale = createModal({ id: "preparer-depart", isOpenedByDefault: false });
 
@@ -24,17 +25,21 @@ export function BoutonDepart({ username }: { username: string }) {
 
   return (
     <>
-      <Button
-        priority="primary"
-        size="small"
-        nativeButtonProps={{
-          ...modale.buttonProps,
-          title:
-            "Ouvrir un dossier de départ et calculer la liste de ce qu'il faudra retirer, système par système. Rien n'est exécuté et aucun accès n'est coupé.",
-        }}
-      >
-        Préparer le départ
-      </Button>
+      <span className={style["geste"]}>
+        <Button
+          className={fr.cx("fr-mr-1v")}
+          priority="primary"
+          size="small"
+          nativeButtonProps={modale.buttonProps}
+        >
+          Préparer le départ
+        </Button>
+        <Aide>
+          {
+            "Ouvrir un dossier de départ et calculer la liste de ce qu'il faudra retirer, système par système. Rien n'est exécuté et aucun accès n'est coupé."
+          }
+        </Aide>
+      </span>
 
       <modale.Component title="Préparer le départ">
         <p className={fr.cx("fr-text--sm")}>

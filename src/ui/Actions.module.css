@@ -1,0 +1,9 @@
+/* Un geste et son point d'interrogation forment un tout : sans cela, le « ? » de la
+   dernière action passe seul à la ligne dès que la place manque, et se retrouve sous
+   un bouton auquel il n'appartient pas. */
+.geste {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+}

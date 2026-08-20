@@ -172,43 +172,46 @@ export default async function PersonnesPage(props: {
             { children: "Appartenance" },
             { children: "Startups" },
           ]}
-          body={visibles.map((personne) => [
-            {
-              children: (
-                <span>
-                  <Link href={`/personnes/${encodeURIComponent(personne.username)}`}>
-                    {personne.fullname}
-                  </Link>
-                  <br />
-                  <span className={fr.cx("fr-text--sm")}>{personne.username}</span>
-                </span>
-              ),
-            },
-            {
-              children: (
-                <span>
-                  {personne.missionEnd ? dateFr.format(personne.missionEnd) : "aucune"}
-                  {personne.prolongee ? (
-                    <>
-                      <br />
-                      <span className={fr.cx("fr-text--sm")}>rattachement manuel</span>
-                    </>
-                  ) : null}
-                </span>
-              ),
-            },
-            {
-              children: (
-                <Badge severity={SEVERITE[personne.statut]} noIcon>
-                  {LIBELLE_STATUT[personne.statut]}
-                </Badge>
-              ),
-            },
-            { children: LIBELLE_APPARTENANCE[personne.appartenance.motif].libelleCourt },
-            {
-              children: personne.startups.length > 0 ? personne.startups.join(", ") : "aucune",
-            },
-          ])}
+          body={visibles.map((personne) => ({
+            key: personne.username,
+            row: [
+              {
+                children: (
+                  <span>
+                    <Link href={`/personnes/${encodeURIComponent(personne.username)}`}>
+                      {personne.fullname}
+                    </Link>
+                    <br />
+                    <span className={fr.cx("fr-text--sm")}>{personne.username}</span>
+                  </span>
+                ),
+              },
+              {
+                children: (
+                  <span>
+                    {personne.missionEnd ? dateFr.format(personne.missionEnd) : "aucune"}
+                    {personne.prolongee ? (
+                      <>
+                        <br />
+                        <span className={fr.cx("fr-text--sm")}>rattachement manuel</span>
+                      </>
+                    ) : null}
+                  </span>
+                ),
+              },
+              {
+                children: (
+                  <Badge severity={SEVERITE[personne.statut]} noIcon>
+                    {LIBELLE_STATUT[personne.statut]}
+                  </Badge>
+                ),
+              },
+              { children: LIBELLE_APPARTENANCE[personne.appartenance.motif].libelleCourt },
+              {
+                children: personne.startups.length > 0 ? personne.startups.join(", ") : "aucune",
+              },
+            ],
+          }))}
         />
       )}
     </main>

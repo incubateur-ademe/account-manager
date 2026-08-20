@@ -3,6 +3,7 @@
 import { Header } from "@codegouvfr/react-dsfr/Header";
 import { usePathname } from "next/navigation";
 import type { JSX } from "react";
+import { BasculeModeAide } from "@/ui/ModeAide";
 
 const LIENS = [
   { text: "Tableau de bord", href: "/" },
@@ -35,7 +36,9 @@ export function Navigation({ deconnexion }: { deconnexion?: JSX.Element }) {
       homeLinkProps={{ href: "/", title: "Accueil du gestionnaire de comptes" }}
       serviceTitle="Gestionnaire de comptes"
       serviceTagline="Donner et retirer des accès, avec une trace"
-      quickAccessItems={surConnexion || !deconnexion ? [] : [deconnexion]}
+      quickAccessItems={
+        surConnexion || !deconnexion ? [] : [<BasculeModeAide key="aide" />, deconnexion]
+      }
       navigation={menu.map((lien) => ({
         text: lien.text,
         linkProps: { href: lien.href },

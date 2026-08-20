@@ -3,6 +3,8 @@
 import { fr } from "@codegouvfr/react-dsfr";
 import { Button } from "@codegouvfr/react-dsfr/Button";
 import { createModal } from "@codegouvfr/react-dsfr/Modal";
+import style from "@/ui/Actions.module.css";
+import { Aide } from "@/ui/Aide";
 
 import { Appartenance, type SurchargePosee } from "./Appartenance";
 import { BoutonDepart } from "./BoutonDepart";
@@ -12,11 +14,13 @@ import { BoutonDepart } from "./BoutonDepart";
 const modaleAppartenance = createModal({ id: "appartenance", isOpenedByDefault: false });
 
 /**
- * Les gestes qui portent sur la personne entière, sur une seule ligne.
+ * Les gestes qui portent sur la personne entière, sur une seule ligne, rangés par
+ * priorité décroissante : ce qui vaut pour toutes les fiches d'abord, ce qui ne vaut
+ * que pour une poignée en dernier.
  *
- * Forcer l'appartenance concerne une poignée de fiches : elle reste sur la même ligne
- * que les autres, en priorité tertiaire, plutôt que de déplier son formulaire au
- * milieu des faits ou de disparaître derrière un geste supplémentaire.
+ * Chaque geste porte son infobulle, signalée par le point d'interrogation du système
+ * de design : une conséquence qu'il faut deviner est une conséquence qu'on découvre
+ * après coup.
  */
 export function ActionsDePage({
   username,
@@ -33,41 +37,44 @@ export function ActionsDePage({
   return (
     <>
       <div className={fr.cx("fr-grid-row", "fr-grid-row--right", "fr-grid-row--middle")}>
-        {/* Le bouton reste, même inerte : absent, il laissait chercher ce qui
-            n'existait pas. Sa raison est la même que celle de l'alerte, pour qu'on
-            ne l'apprenne pas deux fois différemment. */}
-        <Button
-          className={fr.cx("fr-mr-2w")}
-          priority="secondary"
-          size="small"
-          {...(editable
-            ? { linkProps: { href: `/personnes/${encodeURIComponent(username)}/edit` } }
-            : {
-                nativeButtonProps: {
-                  type: "button" as const,
-                  disabled: true,
-                  title: raisonNonEditable,
-                },
-              })}
-        >
-          Éditer
-        </Button>
+        <BoutonDepart username={username} />
 
-        <div className={fr.cx("fr-mr-2w")}>
-          <BoutonDepart username={username} />
-        </div>
+        <span className={style["geste"]}>
+          {/* Le bouton reste, même inerte : absent, il laissait chercher ce qui
+            n'existait pas. Son infobulle porte la raison, la même que celle de
+            l'alerte, pour qu'on ne l'apprenne pas deux fois différemment. */}
+          <Button
+            className={fr.cx("fr-ml-2w", "fr-mr-1v")}
+            priority="secondary"
+            size="small"
+            {...(editable
+              ? { linkProps: { href: `/personnes/${encodeURIComponent(username)}/edit` } }
+              : { nativeButtonProps: { type: "button" as const, disabled: true } })}
+          >
+            Éditer
+          </Button>
+          <Aide>
+            {editable
+              ? "Corriger les champs de cette fiche, et son identifiant s'il a été fabriqué ici."
+              : (raisonNonEditable ?? "")}
+          </Aide>
+        </span>
 
-        <Button
-          priority="tertiary no outline"
-          size="small"
-          nativeButtonProps={{
-            ...modaleAppartenance.buttonProps,
-            title:
-              "Décider à quel titre cette personne relève de l'incubateur, contre ou faute de rattachement constaté. Ne coupe aucun accès.",
-          }}
-        >
-          {surcharge ? "Changer l'appartenance" : "Forcer l'appartenance"}
-        </Button>
+        <span className={style["geste"]}>
+          <Button
+            className={fr.cx("fr-ml-2w", "fr-mr-1v")}
+            priority="tertiary no outline"
+            size="small"
+            nativeButtonProps={modaleAppartenance.buttonProps}
+          >
+            {surcharge ? "Changer l'appartenance" : "Forcer l'appartenance"}
+          </Button>
+          <Aide>
+            {
+              "Décider à quel titre cette personne relève de l'incubateur, contre ou faute de rattachement constaté. Ne coupe aucun accès."
+            }
+          </Aide>
+        </span>
       </div>
 
       <modaleAppartenance.Component
