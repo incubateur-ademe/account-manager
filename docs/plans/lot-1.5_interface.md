@@ -97,6 +97,14 @@ l'État, et rien d'autre. Ce dépôt n'a aucune feuille de style propre, et ce l
 la contrainte est un choix, elle garde l'outil aligné sur le reste du parc et évite de maintenir une
 seconde grammaire visuelle pour un mainteneur à temps partiel.
 
+La règle porte sur la grammaire visuelle, pas sur l'inventaire des composants. Là où le système de
+design n'a rien à proposer, react-dsfr ouvre lui-même une porte : sa surcouche MUI, dont il aligne le
+thème sur le sien. L'emprunt reste borné à ce qui manque, et le rendu continue de passer par les
+classes du DSFR. Le premier cas est la saisie assistée, qu'il n'a pas : le `datalist` natif rend la
+main sur deux cent quarante entrées, il n'affiche qu'un préfixe et ne cherche pas dans le libellé.
+Emprunter n'est pas contourner : écrire ce composant à la main aurait fait exactement ce que cette
+règle interdit.
+
 **R9. Aucun changement de comportement métier.** Ce lot déplace, replie, supprime et reformule. Il ne
 touche ni aux actions serveur, ni au calcul des constats, ni aux invariants. La seule exception est
 R7, qui corrige un libellé faux, et c'est pour cela qu'elle fait l'objet d'un ticket de bug séparé.
@@ -215,7 +223,9 @@ Aucun travail sur les écrans que ce lot ne cite pas : comptes de service, syst�
 journal. Ils suivront les mêmes règles le jour où on y touchera, et les règles sont écrites ici pour
 ça.
 
-Aucune feuille de style, aucun composant maison, aucune dépendance ajoutée.
+Aucune feuille de style, aucun composant maison. Aucune dépendance ajoutée, à la seule exception de
+la surcouche MUI de react-dsfr et de ce qu'elle exige, au titre de R8 et pour ce que le DSFR n'a
+pas.
 
 ## Risques et pièges
 
@@ -239,7 +249,9 @@ Le build Next reste le seul filet automatique, et il ne dit que la compilation.
 
 **Le DSFR contraint plus qu'il n'y paraît.** Ses composants n'offrent pas tout ce qu'une page dense
 demande. Là où il manque quelque chose, on compose avec ce qu'il a plutôt que d'écrire du CSS : c'est
-R8, et elle ne se contourne pas au premier obstacle.
+R8, et elle ne se contourne pas au premier obstacle. Quand il ne manque pas un habillage mais un
+composant entier, l'emprunt à la surcouche MUI est la sortie prévue, à condition que le rendu reste
+habillé par le DSFR.
 
 ## Vérification
 
