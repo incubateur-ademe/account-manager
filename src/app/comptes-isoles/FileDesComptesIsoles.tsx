@@ -7,6 +7,8 @@ import { createModal } from "@codegouvfr/react-dsfr/Modal";
 import { Table } from "@codegouvfr/react-dsfr/Table";
 import { useState } from "react";
 
+import type { Suggestion } from "@/ui/ChampAvecListe";
+
 import { Rattacher } from "./Rattacher";
 
 export interface LigneCompteIsole {
@@ -33,10 +35,10 @@ const modale = createModal({ id: "traiter-compte-isole", isOpenedByDefault: fals
  */
 export function FileDesComptesIsoles({
   lignes,
-  listeId,
+  cibles,
 }: {
   lignes: readonly LigneCompteIsole[];
-  listeId: string;
+  cibles: readonly Suggestion[];
 }) {
   const [choisi, setChoisi] = useState<LigneCompteIsole | null>(null);
 
@@ -108,7 +110,7 @@ export function FileDesComptesIsoles({
               révocation : c'est un jugement, il est journalisé avec votre nom. Le plus souvent il
               manque une fiche, plutôt qu'il ne faut retirer un accès.
             </p>
-            <Rattacher key={choisi.id} id={choisi.id} listeId={listeId} onSucces={modale.close} />
+            <Rattacher key={choisi.id} id={choisi.id} cibles={cibles} onSucces={modale.close} />
           </>
         )}
       </modale.Component>

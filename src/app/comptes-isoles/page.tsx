@@ -4,13 +4,13 @@ import type { Metadata } from "next";
 import { prisma } from "@/lib/db";
 import { requireOperateur } from "@/lib/session";
 
+import type { Suggestion } from "@/ui/ChampAvecListe";
+
 import { FileDesComptesIsoles, type LigneCompteIsole } from "./FileDesComptesIsoles";
 
 export const metadata: Metadata = { title: "Comptes isolés" };
 
 export const dynamic = "force-dynamic";
-
-const LISTE_CIBLES = "cibles-de-rattachement";
 
 const dateFr = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "UTC" });
 
@@ -50,6 +50,15 @@ export default async function ComptesIsolesPage() {
 
   // Les dates sont mises en forme ici : la même chaîne traverse jusqu'au client, là
   // où deux `Intl` de fuseaux différents feraient diverger le rendu.
+  const cibles: Suggestion[] = [
+    ...personnes.map((personne) => ({ valeur: personne.username, libelle: personne.fullname })),
+    ...comptes.map((compte) => ({
+      valeur: compte.key,
+      libelle: compte.label,
+      mention: "compte de service",
+    })),
+  ];
+
   const lignes: LigneCompteIsole[] = isoles.map((identite) => ({
     id: identite.id,
     provider: identite.provider,
@@ -70,21 +79,6 @@ export default async function ComptesIsolesPage() {
         précisément ce que cet outil existe pour mettre au jour.
       </p>
 
-      {/* Une seule liste pour toute la page : la répéter par ligne alourdirait le
-          document d'autant de copies qu'il y a de comptes à traiter. */}
-      <datalist id={LISTE_CIBLES}>
-        {personnes.map((personne) => (
-          <option key={personne.username} value={personne.username}>
-            {personne.fullname}
-          </option>
-        ))}
-        {comptes.map((compte) => (
-          <option key={compte.key} value={compte.key}>
-            {compte.label}
-          </option>
-        ))}
-      </datalist>
-
       {lignes.length === 0 ? (
         <p>
           Aucun compte isolé. Tout ce qui a été observé est rattaché à quelqu'un, ou à un compte de
@@ -96,7 +90,7 @@ export default async function ComptesIsolesPage() {
             {lignes.length} compte{lignes.length > 1 ? "s" : ""} sans détenteur connu.
           </p>
 
-          <FileDesComptesIsoles lignes={lignes} listeId={LISTE_CIBLES} />
+          <FileDesComptesIsoles lignes={lignes} cibles={cibles} />
         </>
       )}
     </main>

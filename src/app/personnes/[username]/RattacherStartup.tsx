@@ -6,6 +6,7 @@ import { Button } from "@codegouvfr/react-dsfr/Button";
 import { Checkbox } from "@codegouvfr/react-dsfr/Checkbox";
 import { Input } from "@codegouvfr/react-dsfr/Input";
 import { useActionState, useState } from "react";
+import { ChampAvecListe } from "@/ui/ChampAvecListe";
 import { useFermetureApresSucces } from "@/ui/modale";
 import { type EtatRattachementStartup, rattacherAStartup } from "./actions";
 
@@ -34,7 +35,6 @@ export function RattacherStartup({
   const [jusquAu, setJusquAu] = useState("");
   const [startup, setStartup] = useState("");
 
-  const listeId = `startups-${username}`;
   const demandeConfirmation = etat?.confirmationRequise === true;
 
   useFermetureApresSucces(pending, etat?.erreur, onSucces);
@@ -49,27 +49,19 @@ export function RattacherStartup({
     <form action={formAction}>
       <input type="hidden" name="username" value={username} />
 
-      <datalist id={listeId}>
-        {startups.map((connue) => (
-          <option key={connue.ghid} value={connue.ghid}>
-            {connue.name}
-          </option>
-        ))}
-      </datalist>
-
       <div className={fr.cx("fr-grid-row", "fr-grid-row--gutters")}>
         <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
-          <Input
+          <ChampAvecListe
+            nom="startup"
             label="Startup"
             hintText="Identifiant beta.gouv de la startup, parmi celles connues en base."
-            nativeInputProps={{
-              name: "startup",
-              required: true,
-              list: listeId,
-              autoComplete: "off",
-              value: startup,
-              onChange: (event) => setStartup(event.target.value),
-            }}
+            suggestions={startups.map((connue) => ({
+              valeur: connue.ghid,
+              libelle: connue.name,
+              ...(connue.disparue ? { mention: "hors incubateur" } : {}),
+            }))}
+            requis
+            onValeur={setStartup}
           />
         </div>
         <div className={fr.cx("fr-col-12", "fr-col-md-4")}>

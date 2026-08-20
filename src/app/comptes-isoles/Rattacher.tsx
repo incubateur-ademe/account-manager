@@ -6,6 +6,7 @@ import { Checkbox } from "@codegouvfr/react-dsfr/Checkbox";
 import { Input } from "@codegouvfr/react-dsfr/Input";
 import { useActionState } from "react";
 
+import { ChampAvecListe, type Suggestion } from "@/ui/ChampAvecListe";
 import { useFermetureApresSucces } from "@/ui/modale";
 
 import { type EtatRattachement, rattacherIdentite } from "./actions";
@@ -13,11 +14,11 @@ import { creerFichePourCompte, type EtatCreation } from "./creer";
 
 export function Rattacher({
   id,
-  listeId,
+  cibles,
   onSucces,
 }: {
   id: string;
-  listeId: string;
+  cibles: readonly Suggestion[];
   onSucces?: () => void;
 }) {
   const [etat, formAction, pending] = useActionState<EtatRattachement, FormData>(
@@ -41,12 +42,13 @@ export function Rattacher({
     <>
       <form action={formAction}>
         <input type="hidden" name="id" value={id} />
-        <Input
+        <ChampAvecListe
+          nom="cible"
           label="Rattacher à"
           hintText="Username beta.gouv, même hors incubateur, ou clé d'un compte de service."
-          nativeInputProps={{ name: "cible", required: true, list: listeId, autoComplete: "off" }}
-          state={etat ? "error" : "default"}
-          stateRelatedMessage={etat?.erreur}
+          suggestions={cibles}
+          requis
+          erreur={etat?.erreur}
         />
         {demandeConfirmation ? (
           <Checkbox
