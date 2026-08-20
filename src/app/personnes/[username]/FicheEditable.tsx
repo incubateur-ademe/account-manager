@@ -5,6 +5,8 @@ import { Button } from "@codegouvfr/react-dsfr/Button";
 import { Input } from "@codegouvfr/react-dsfr/Input";
 import { useActionState } from "react";
 
+import { messageObligatoire } from "@/ui/validation";
+
 import { type EtatEdition, modifierFiche } from "./edition";
 
 export interface ChampsSaisis {
@@ -31,6 +33,7 @@ export function FicheEditable({ fiche }: { fiche: ChampsSaisis }) {
               name: "fullname",
               defaultValue: fiche.fullname,
               required: true,
+              ...messageObligatoire("Le nom complet ne peut pas être vide."),
               autoComplete: "off",
             }}
           />

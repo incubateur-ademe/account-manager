@@ -47,6 +47,7 @@ export async function ouvrirDepart(
   // sans quoi le dossier contredirait sa fiche.
   const echeance = echeanceEffective(personne.missionEnd, personne.startupAssignments, maintenant);
 
+  let dejaOuvert = false;
   const dossierId = await actionTracee({
     action: "depart.ouverture",
     targetType: "personne",
@@ -56,6 +57,7 @@ export async function ouvrirDepart(
     ecrire: async (operateur) => {
       const dossier = await ouvrirDossierDeDepart(personne.id, echeance);
       if (dossier.deja) {
+        dejaOuvert = true;
         return dossier.id;
       }
 
@@ -67,6 +69,8 @@ export async function ouvrirDepart(
 
   // Hors du passage tracé : `redirect` interrompt le flux par une exception que le
   // journal prendrait pour un échec, et l'action serait consignée comme ratée alors
-  // qu'elle a abouti.
-  redirect(`/departs/${dossierId}`);
+  // qu'elle a abouti. Le drapeau dit au dossier s'il vient d'être ouvert ou s'il
+  // attendait déjà : sans lui, un second clic donne l'impression d'en avoir créé un
+  // deuxième.
+  redirect(`/departs/${dossierId}${dejaOuvert ? "?deja=1" : ""}`);
 }

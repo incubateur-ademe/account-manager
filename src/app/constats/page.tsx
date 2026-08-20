@@ -45,6 +45,8 @@ export default async function ConstatsPage() {
     id: constat.id,
     dedupKey: constat.dedupKey,
     titre: LIBELLE_CONSTAT[constat.kind as ConstatKind]?.titre ?? constat.kind,
+    explication: LIBELLE_CONSTAT[constat.kind as ConstatKind]?.explication ?? "",
+    action: LIBELLE_CONSTAT[constat.kind as ConstatKind]?.action ?? "",
     severity: constat.severity,
     ouvertLe: dateFr.format(constat.openedAt),
     personne: constat.person
@@ -66,23 +68,31 @@ export default async function ConstatsPage() {
           <p className={fr.cx("fr-text--lead")}>
             {lignes.length} constat{lignes.length > 1 ? "s" : ""} ouvert
             {lignes.length > 1 ? "s" : ""}. Ils se referment d'eux-mêmes dès qu'une collecte ne les
-            vérifie plus.
+            vérifie plus.{" "}
+            <a className={fr.cx("fr-link")} href="#consignes">
+              Ce que dit chaque type de constat
+            </a>
+            .
           </p>
 
           <FileDesConstats lignes={lignes} />
 
           {/* Une consigne par type et non par ligne : répétée treize fois, elle
               cessait d'être lue dès la deuxième. */}
+          <h2 className={fr.cx("fr-h6", "fr-mt-6w")} id="consignes">
+            Ce que dit chaque type de constat
+          </h2>
+
           {[...parType.entries()].map(([kind, nombre]) => {
             const libelle = LIBELLE_CONSTAT[kind as ConstatKind];
             if (!libelle) {
               return null;
             }
             return (
-              <section key={kind} className={fr.cx("fr-mt-4w")}>
-                <h2 className={fr.cx("fr-h6")}>
+              <section key={kind} className={fr.cx("fr-mt-3w")}>
+                <h3 className={fr.cx("fr-text--bold", "fr-mb-1v")}>
                   {libelle.titre} ({nombre})
-                </h2>
+                </h3>
                 <p className={fr.cx("fr-mb-1w")}>{libelle.explication}</p>
                 <p className={fr.cx("fr-text--sm", "fr-mb-0")}>
                   <strong>Ce qu'il y a à faire :</strong> {libelle.action}

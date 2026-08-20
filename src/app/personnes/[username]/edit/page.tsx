@@ -56,7 +56,7 @@ export default async function EditionFichePage({ params }: Props) {
   // La fiche n'affiche pas le bouton, mais l'adresse reste tapable : le refus se
   // décide ici, sur les mêmes règles, et non sur la présence d'un lien.
   if (!ficheEditable(personne, declaresLocaux).editable) {
-    redirect(`/personnes/${encodeURIComponent(personne.username)}`);
+    redirect(`/personnes/${encodeURIComponent(personne.username)}?edition=refusee`);
   }
 
   const retour = `/personnes/${encodeURIComponent(personne.username)}`;

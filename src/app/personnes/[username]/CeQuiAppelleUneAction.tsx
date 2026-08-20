@@ -1,5 +1,6 @@
 import { fr } from "@codegouvfr/react-dsfr";
 import { Alert } from "@codegouvfr/react-dsfr/Alert";
+import Link from "next/link";
 
 import type { ConstatKind } from "@/core/constat";
 import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
@@ -15,6 +16,8 @@ export interface MotifDAction {
   severite: "error" | "warning" | "info";
   titre: string;
   description: string;
+  /** Où le geste se fait, quand ce n'est pas sur cette page. */
+  lien?: { href: string; libelle: string };
 }
 
 const SEVERITE_CONSTAT = { HIGH: "error", MEDIUM: "warning", LOW: "info" } as const;
@@ -43,6 +46,14 @@ export function CeQuiAppelleUneAction({ motifs }: { motifs: readonly MotifDActio
           description={
             <>
               <strong>{motif.titre}</strong> {motif.description}
+              {motif.lien ? (
+                <>
+                  {" "}
+                  <Link className={fr.cx("fr-link", "fr-text--sm")} href={motif.lien.href}>
+                    {motif.lien.libelle}
+                  </Link>
+                </>
+              ) : null}
             </>
           }
         />
@@ -59,6 +70,7 @@ export function motifsDesConstats(ouverts: readonly ConstatOuvert[]): MotifDActi
       severite: SEVERITE_CONSTAT[constat.severity],
       titre: libelle?.titre ?? constat.kind,
       description: libelle?.action ?? "",
+      lien: { href: "/constats", libelle: "Le traiter dans la file" },
     };
   });
 }

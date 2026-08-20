@@ -40,9 +40,16 @@ function marche(valeur: unknown): MarcheASuivre {
   return valeur && typeof valeur === "object" ? (valeur as MarcheASuivre) : {};
 }
 
-export default async function DepartPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function DepartPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   await requireOperateur();
   const { id } = await params;
+  const { deja } = await searchParams;
 
   const dossier = await prisma.departureCase.findUnique({
     where: { id },
@@ -117,6 +124,15 @@ export default async function DepartPage({ params }: { params: Promise<{ id: str
         {dateFr.format(dossier.firstSignalAt)}
         {dossier.effectiveDate ? `, fin de mission au ${dateFr.format(dossier.effectiveDate)}` : ""}
       </p>
+
+      {deja ? (
+        <Alert
+          severity="info"
+          className={fr.cx("fr-mt-3w")}
+          small
+          description="Ce dossier était déjà ouvert : vous êtes revenu dessus, aucun second dossier n'a été créé. Un départ ne s'ouvre qu'une fois par personne tant qu'il n'est pas clos."
+        />
+      ) : null}
 
       <Alert
         severity="info"

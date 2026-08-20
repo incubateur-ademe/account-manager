@@ -7,6 +7,8 @@ import { Checkbox } from "@codegouvfr/react-dsfr/Checkbox";
 import { Input } from "@codegouvfr/react-dsfr/Input";
 import { useActionState, useState } from "react";
 
+import { messageObligatoire } from "@/ui/validation";
+
 import type { ApercuFusion, EtatIdentifiant } from "./edition";
 import { renommerFiche } from "./edition";
 
@@ -92,6 +94,7 @@ export function Identifiant({ username }: { username: string }) {
         nativeInputProps={{
           name: "nouveau",
           required: true,
+          ...messageObligatoire("Indiquez le nouvel identifiant."),
           autoComplete: "off",
           value: nouveau,
           onChange: (event) => setNouveau(event.target.value),

@@ -10,7 +10,7 @@ import { notFound } from "next/navigation";
 import { LIBELLE_APPARTENANCE, libelleAppartenance, surchargeSuperflue } from "@/core/appartenance";
 import { fraicheurDe } from "@/core/collecte";
 import type { ConstatKind } from "@/core/constat";
-import { ficheEditable } from "@/core/fiche-manuelle";
+import { ficheEditable, RAISON_NON_EDITABLE } from "@/core/fiche-manuelle";
 import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
 import { echeanceEffective, enCours, startupsEffectives } from "@/core/rattachement-startup";
 import { LIBELLE_STATUT, statutDePersonne } from "@/core/statut";
@@ -23,7 +23,14 @@ import { requireOperateur } from "@/lib/session";
 import { ActionsDePage } from "./ActionsDePage";
 import { CeQuiAppelleUneAction } from "./CeQuiAppelleUneAction";
 import { Absent, Champ } from "./Champs";
-import { dateFr, expliquerStatut, SEVERITE_STATUT, SOURCE, STATUT_A_TRAITER } from "./libelles";
+import {
+  dateFr,
+  expliquerStatut,
+  SEVERITE_APPARTENANCE,
+  SEVERITE_STATUT,
+  SOURCE,
+  STATUT_A_TRAITER,
+} from "./libelles";
 import { motifsDAction } from "./motifs";
 import { SectionComptesExternes } from "./SectionComptesExternes";
 import { SectionStartups } from "./SectionStartups";
@@ -32,6 +39,7 @@ export const dynamic = "force-dynamic";
 
 interface Props {
   params: Promise<{ username: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
 /**
@@ -51,10 +59,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return { title: personne ? `${personne.fullname} (${username})` : "Personne introuvable" };
 }
 
-export default async function FichePersonnePage({ params }: Props) {
+export default async function FichePersonnePage({ params, searchParams }: Props) {
   await requireOperateur();
 
   const { username } = await params;
+  const { edition } = await searchParams;
   const { thresholds, startups: reglesStartups, scope } = policy();
   const today = new Date();
 
@@ -205,6 +214,9 @@ export default async function FichePersonnePage({ params }: Props) {
   const titre = libelleAppartenance(appartenance);
   const declaresLocaux = scope.local.map((entree) => entree.username);
   const editabilite = ficheEditable(personne, declaresLocaux);
+  // On arrive de la vue d'édition, qui a refusé : le dire ici plutôt que de rendre
+  // la fiche comme si de rien n'était.
+  const refusALEdition = edition === "refusee" && !editabilite.editable ? editabilite.raison : null;
   const ouverts = personne.findings.filter((constat) => constat.closedAt === null);
   const fermes = personne.findings.filter((constat) => constat.closedAt !== null);
   const systemesCollectes = collectes
@@ -253,6 +265,9 @@ export default async function FichePersonnePage({ params }: Props) {
           <ActionsDePage
             username={personne.username}
             editable={editabilite.editable}
+            {...(editabilite.editable
+              ? {}
+              : { raisonNonEditable: RAISON_NON_EDITABLE[editabilite.raison] })}
             surcharge={
               appartenance.surcharge
                 ? {
@@ -286,17 +301,68 @@ export default async function FichePersonnePage({ params }: Props) {
         </Link>
       </p>
 
+      {refusALEdition ? (
+        <Alert
+          className={fr.cx("fr-mt-2w")}
+          severity="info"
+          small
+          description={`Cette fiche ne s'édite pas. ${RAISON_NON_EDITABLE[refusALEdition]}`}
+        />
+      ) : null}
+
       <CeQuiAppelleUneAction motifs={motifs} />
 
       <section className={fr.cx("fr-mt-4w")}>
         <h2 className={fr.cx("fr-h5")}>Situation</h2>
 
-        <dl className={fr.cx("fr-grid-row", "fr-grid-row--gutters")}>
+        {/* Deux groupes plutôt qu'une grille de six : ce qui décide de
+            l'appartenance d'un côté, ce par quoi on la joint de l'autre. Mêlés, ils
+            se lisaient comme une seule liste sans hiérarchie. */}
+        <h3 className={fr.cx("fr-text--xs", "fr-text--bold", "fr-mb-1w")}>
+          Ce qui la place dans l'incubateur
+        </h3>
+        <dl className={fr.cx("fr-grid-row", "fr-grid-row--gutters", "fr-mb-2w")}>
           <Champ libelle="Échéance">
             {echeance ? dateFr.format(echeance) : <Absent mention="aucune date de fin connue" />}
           </Champ>
-          <Champ libelle="Appartenance">{titre.libelle}</Champ>
-          <Champ libelle="Source">{SOURCE[personne.source]}</Champ>
+          <Champ libelle="Appartenance">
+            <Badge
+              severity={
+                appartenance.toutesStartupsTerminees
+                  ? "warning"
+                  : SEVERITE_APPARTENANCE[appartenance.motif]
+              }
+              small
+              noIcon
+            >
+              {titre.libelle}
+            </Badge>
+          </Champ>
+          <Champ libelle="Source">
+            <Badge small noIcon>
+              {SOURCE[personne.source]}
+            </Badge>
+          </Champ>
+        </dl>
+
+        <p className={fr.cx("fr-text--sm")}>{titre.precision}</p>
+
+        {/* Une date affichée sans son motif serait une troisième vérité, entre ce que
+            dit l'amont et ce qu'un opérateur a décidé. */}
+        {prolongee ? (
+          <p className={fr.cx("fr-text--sm")}>
+            Sa fin de mission connue est{" "}
+            {personne.missionEnd ? `le ${dateFr.format(personne.missionEnd)}` : "inexistante"} :
+            l'échéance affichée vient d'un rattachement manuel à une startup.
+          </p>
+        ) : null}
+
+        <hr className={fr.cx("fr-hr", "fr-mt-1w")} />
+
+        <h3 className={fr.cx("fr-text--xs", "fr-text--bold", "fr-mb-1w")}>
+          Par où on la joint, et par où on la reconnaît
+        </h3>
+        <dl className={fr.cx("fr-grid-row", "fr-grid-row--gutters")}>
           <Champ libelle="Adresse principale">
             {personne.primaryEmail ? (
               <a className={fr.cx("fr-link")} href={`mailto:${personne.primaryEmail}`}>
@@ -330,18 +396,6 @@ export default async function FichePersonnePage({ params }: Props) {
             )}
           </Champ>
         </dl>
-
-        <p className={fr.cx("fr-text--sm")}>{titre.precision}</p>
-
-        {/* Une date affichée sans son motif serait une troisième vérité, entre ce que
-            dit l'amont et ce qu'un opérateur a décidé. */}
-        {prolongee ? (
-          <p className={fr.cx("fr-text--sm")}>
-            Sa fin de mission connue est{" "}
-            {personne.missionEnd ? `le ${dateFr.format(personne.missionEnd)}` : "inexistante"} :
-            l'échéance affichée vient d'un rattachement manuel à une startup.
-          </p>
-        ) : null}
 
         {appartenance.surcharge ? (
           <Alert

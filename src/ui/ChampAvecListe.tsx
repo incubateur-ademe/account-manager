@@ -4,6 +4,8 @@ import { fr } from "@codegouvfr/react-dsfr";
 import Autocomplete from "@mui/material/Autocomplete";
 import { useId, useState } from "react";
 
+import { messageObligatoire } from "@/ui/validation";
+
 export interface Suggestion {
   /** Ce qui part au serveur. */
   valeur: string;
@@ -121,6 +123,7 @@ export function ChampAvecListe({
               // le JS du système de design et laisse la page entière sans style.
               type="text"
               required={requis}
+              {...(requis ? messageObligatoire("Indiquez une cible, même hors de la liste.") : {})}
               placeholder={placeholder}
               autoComplete="off"
               // `autoComplete` ne suffit pas : les gestionnaires de mots de passe

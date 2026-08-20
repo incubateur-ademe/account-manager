@@ -88,7 +88,7 @@ export const LIBELLE_STATUT: Record<Statut, string> = {
   SORTI: "Sorti du référentiel",
   ANCIEN: "Ancien",
   SANS_ECHEANCE: "Sans échéance",
-  ACTIF: "Actif",
+  ACTIF: "Échéance lointaine",
   BIENTOT: "Échéance proche",
   EN_SURSIS: "En sursis",
   A_TRAITER: "À traiter",

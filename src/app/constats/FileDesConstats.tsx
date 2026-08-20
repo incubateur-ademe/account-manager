@@ -14,6 +14,9 @@ export interface LigneConstat {
   id: string;
   dedupKey: string;
   titre: string;
+  /** Ce que le calcul a constaté, pour que la modale n'oblige pas à le deviner. */
+  explication: string;
+  action: string;
   severity: "HIGH" | "MEDIUM" | "LOW";
   ouvertLe: string;
   personne: { username: string; fullname: string } | null;
@@ -66,7 +69,11 @@ export function FileDesConstats({ lignes }: { lignes: readonly LigneConstat[] })
                 : (ligne.personne?.username ?? "")}
             </span>
           </span>,
-          ligne.titre,
+          // La consigne complète vit en bas de page, une fois par type. Au survol,
+          // elle est là sans qu'on ait à descendre la chercher.
+          <span key="c" title={ligne.explication}>
+            {ligne.titre}
+          </span>,
           ligne.ouvertLe,
           <Button
             key="t"
@@ -87,10 +94,21 @@ export function FileDesConstats({ lignes }: { lignes: readonly LigneConstat[] })
       <modale.Component title="Clore ce constat">
         {choisi === null ? null : (
           <>
+            <p className={fr.cx("fr-text--lead", "fr-mb-1v")}>
+              {choisi.personne?.fullname ?? choisi.compte?.handle ?? "Cible inconnue"}
+            </p>
+            <p className={fr.cx("fr-text--sm", "fr-mb-2w")}>
+              {choisi.personne ? choisi.personne.username : null}
+              {choisi.personne && choisi.compte ? " · " : null}
+              {choisi.compte ? `${choisi.compte.provider} : ${choisi.compte.handle}` : null}
+            </p>
+
             <p className={fr.cx("fr-mb-1w")}>
               <strong>{choisi.titre}</strong>
-              {choisi.personne ? `, ${choisi.personne.fullname}` : null}
-              {choisi.compte ? `, ${choisi.compte.provider} ${choisi.compte.handle}` : null}
+            </p>
+            <p className={fr.cx("fr-text--sm")}>{choisi.explication}</p>
+            <p className={fr.cx("fr-text--sm")}>
+              <strong>Ce qu'il y a à faire :</strong> {choisi.action}
             </p>
             <p className={fr.cx("fr-text--sm")}>
               Clore à la main dit qu'une situation qui dure a bien été traitée, pour qu'elle cesse

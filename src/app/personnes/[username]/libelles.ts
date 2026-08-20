@@ -1,3 +1,4 @@
+import type { MotifAppartenance } from "@/core/appartenance";
 import type { Statut } from "@/core/statut";
 import type { MatchMethod, PersonSource } from "@/generated/prisma/enums";
 
@@ -55,6 +56,20 @@ export const LIBELLE_PHASE: Record<string, string> = {
   "abandon-investigation": "Abandonnée en investigation",
 };
 
+/**
+ * Le badge d'appartenance ne colore que ce que le motif dit : une décision forcée
+ * se signale, une absence de rattachement aussi, le reste est du constaté ordinaire.
+ */
+export const SEVERITE_APPARTENANCE: Record<MotifAppartenance, "success" | "info" | "warning"> = {
+  INCLUSION_FORCEE: "warning",
+  EXCLUSION_FORCEE: "warning",
+  EQUIPE_ET_STARTUP: "success",
+  EQUIPE: "success",
+  STARTUP: "success",
+  STARTUP_MANUELLE: "success",
+  AUCUN: "info",
+};
+
 export interface Seuils {
   graceDays: number;
   soonDays: number;
@@ -75,7 +90,7 @@ export function expliquerStatut(
     case "BIENTOT":
       return `Son échéance tombe dans les ${soonDays} prochains jours.`;
     case "ACTIF":
-      return "Son échéance est lointaine : rien ne la signale de ce côté.";
+      return "Aucune échéance ne la fait remonter. Cela ne dit rien de son activité réelle, que ses startups seules renseignent.";
     case "SANS_ECHEANCE":
       return "Aucune date de fin de mission n'est connue : aucune échéance ne la fera remonter.";
     case "ANCIEN":

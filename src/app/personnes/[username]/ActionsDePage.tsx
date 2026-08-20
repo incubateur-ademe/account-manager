@@ -21,25 +21,37 @@ const modaleAppartenance = createModal({ id: "appartenance", isOpenedByDefault: 
 export function ActionsDePage({
   username,
   editable,
+  raisonNonEditable,
   surcharge,
 }: {
   username: string;
   editable: boolean;
+  /** Pourquoi la fiche ne s'édite pas, à dire plutôt qu'à taire. */
+  raisonNonEditable?: string;
   surcharge: SurchargePosee | null;
 }) {
   return (
     <>
       <div className={fr.cx("fr-grid-row", "fr-grid-row--right", "fr-grid-row--middle")}>
-        {editable ? (
-          <Button
-            className={fr.cx("fr-mr-2w")}
-            priority="secondary"
-            size="small"
-            linkProps={{ href: `/personnes/${encodeURIComponent(username)}/edit` }}
-          >
-            Éditer
-          </Button>
-        ) : null}
+        {/* Le bouton reste, même inerte : absent, il laissait chercher ce qui
+            n'existait pas. Sa raison est la même que celle de l'alerte, pour qu'on
+            ne l'apprenne pas deux fois différemment. */}
+        <Button
+          className={fr.cx("fr-mr-2w")}
+          priority="secondary"
+          size="small"
+          {...(editable
+            ? { linkProps: { href: `/personnes/${encodeURIComponent(username)}/edit` } }
+            : {
+                nativeButtonProps: {
+                  type: "button" as const,
+                  disabled: true,
+                  title: raisonNonEditable,
+                },
+              })}
+        >
+          Éditer
+        </Button>
 
         <div className={fr.cx("fr-mr-2w")}>
           <BoutonDepart username={username} />
@@ -48,7 +60,11 @@ export function ActionsDePage({
         <Button
           priority="tertiary no outline"
           size="small"
-          nativeButtonProps={modaleAppartenance.buttonProps}
+          nativeButtonProps={{
+            ...modaleAppartenance.buttonProps,
+            title:
+              "Décider à quel titre cette personne relève de l'incubateur, contre ou faute de rattachement constaté. Ne coupe aucun accès.",
+          }}
         >
           {surcharge ? "Changer l'appartenance" : "Forcer l'appartenance"}
         </Button>

@@ -8,6 +8,7 @@ import { Input } from "@codegouvfr/react-dsfr/Input";
 import { useActionState, useState } from "react";
 import { ChampAvecListe } from "@/ui/ChampAvecListe";
 import { useFermetureApresSucces } from "@/ui/modale";
+import { messageObligatoire } from "@/ui/validation";
 import { type EtatRattachementStartup, rattacherAStartup } from "./actions";
 
 export interface StartupProposable {
@@ -72,6 +73,7 @@ export function RattacherStartup({
               name: "jusquAu",
               type: "date",
               required: true,
+              ...messageObligatoire("Indiquez le dernier jour couvert."),
               value: jusquAu,
               onChange: (event) => setJusquAu(event.target.value),
             }}

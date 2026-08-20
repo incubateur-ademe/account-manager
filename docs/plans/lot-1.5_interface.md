@@ -58,9 +58,13 @@ simplification.
 
 **R3. Modifier est une vue, pas une section.** « Corriger la fiche » cesse d'être un pavé sur la
 fiche : un bouton « Éditer » mène à une vue d'édition qui porte les champs modifiables et la
-correction d'identifiant. La fiche redevient ce qu'elle doit être, un écran de lecture. Le corollaire
-tient tout seul : sur une fiche que la collecte réécrit, le bouton n'apparaît pas, et il n'y a plus
-de section expliquant qu'on ne peut rien faire.
+correction d'identifiant. La fiche redevient ce qu'elle doit être, un écran de lecture, et il n'y a
+plus de section expliquant qu'on ne peut rien faire.
+
+Sur une fiche que la collecte réécrit, le bouton reste mais devient inerte, et porte la raison au
+survol. Le faire disparaître laissait chercher ce qui n'existe pas : une action absente ne se
+distingue pas d'une action qu'on n'a pas trouvée. La même raison s'affiche en clair quand on arrive
+sur la fiche depuis l'adresse d'édition, que le serveur refuse sur les mêmes règles.
 
 **R3 bis. Une action rare est discrète, pas cachée.** Elle reste sur la même ligne que les autres,
 en priorité tertiaire, ce que le DSFR sait faire sans dépliant ni menu. Forcer une appartenance
