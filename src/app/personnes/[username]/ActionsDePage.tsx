@@ -44,7 +44,7 @@ export function ActionsDePage({
             n'existait pas. Son infobulle porte la raison, la même que celle de
             l'alerte, pour qu'on ne l'apprenne pas deux fois différemment. */}
           <Button
-            className={fr.cx("fr-ml-2w", "fr-mr-1v")}
+            className={fr.cx("fr-mr-1v")}
             priority="secondary"
             size="small"
             {...(editable
@@ -62,7 +62,7 @@ export function ActionsDePage({
 
         <span className={style["geste"]}>
           <Button
-            className={fr.cx("fr-ml-2w", "fr-mr-1v")}
+            className={fr.cx("fr-mr-1v")}
             priority="tertiary no outline"
             size="small"
             nativeButtonProps={modaleAppartenance.buttonProps}

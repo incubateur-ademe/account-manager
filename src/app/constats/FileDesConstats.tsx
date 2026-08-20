@@ -6,7 +6,8 @@ import { Button } from "@codegouvfr/react-dsfr/Button";
 import { createModal } from "@codegouvfr/react-dsfr/Modal";
 import Link from "next/link";
 import { useState } from "react";
-
+import styleActions from "@/ui/Actions.module.css";
+import { Aide } from "@/ui/Aide";
 import { TableCustom } from "@/ui/TableCustom";
 import style from "@/ui/TableCustom.module.css";
 
@@ -100,9 +101,17 @@ export function FileDesConstats({
                 </span>
               ),
             },
-            // La consigne complète vit en bas de page, une fois par type. Au survol,
-            // elle est là sans qu'on ait à descendre la chercher.
-            { children: <span title={ligne.explication}>{ligne.titre}</span> },
+            {
+              // La consigne complète vit en bas de page, une fois par type. Ici, le
+              // point d'interrogation la donne sans qu'on ait à descendre la
+              // chercher, et le mode d'aide décide s'il paraît.
+              children: (
+                <span className={styleActions["geste"]}>
+                  {ligne.titre}
+                  <Aide>{`${ligne.explication} Ce qu'il y a à faire : ${ligne.action}`}</Aide>
+                </span>
+              ),
+            },
             { children: ligne.ouvertLe },
             {
               children: (

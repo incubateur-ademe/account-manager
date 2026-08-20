@@ -259,7 +259,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
       ) : null}
 
       <div className={fr.cx("fr-grid-row", "fr-grid-row--top")}>
-        <div className={fr.cx("fr-col-12", "fr-col-md-7")}>
+        <div className={fr.cx("fr-col-12", "fr-col-md-6")}>
           <h1 className={fr.cx("fr-mb-1v")}>{personne.fullname}</h1>
           <p className={fr.cx("fr-text--sm", "fr-mb-1w")}>{personne.username}</p>
           <Badge severity={SEVERITE_STATUT[statut]} noIcon>
@@ -271,7 +271,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
             </p>
           )}
         </div>
-        <div className={fr.cx("fr-col-12", "fr-col-md-5")}>
+        <div className={fr.cx("fr-col-12", "fr-col-md-6")}>
           <ActionsDePage
             username={personne.username}
             editable={editabilite.editable}
