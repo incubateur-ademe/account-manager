@@ -51,7 +51,7 @@ function sortieDuPerimetre(personne: PersonneConstatable): Constat | null {
     username: personne.username,
     dedupKey: `SCOPE_EXIT:${personne.username}`,
     severity: "HIGH",
-    detail: `${personne.fullname} a quitté le référentiel de l'incubateur sans traitement`,
+    detail: `${personne.fullname} a quitté le référentiel de l'incubateur`,
   };
 }
 

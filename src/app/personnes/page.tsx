@@ -1,6 +1,5 @@
 import { fr } from "@codegouvfr/react-dsfr";
 import { Badge } from "@codegouvfr/react-dsfr/Badge";
-import { Table } from "@codegouvfr/react-dsfr/Table";
 import type { Metadata } from "next";
 import Link from "next/link";
 
@@ -21,6 +20,7 @@ import { appartenanceDeLaLigne, phasesDesStartups } from "@/lib/appartenance";
 import { prisma } from "@/lib/db";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
+import { TableCustom } from "@/ui/TableCustom";
 
 import { EnteteTri } from "./EnteteTri";
 import { Filtres } from "./Filtres";
@@ -134,59 +134,84 @@ export default async function PersonnesPage(props: {
       {visibles.length === 0 ? (
         <p className={fr.cx("fr-text--lead")}>Aucune personne ne correspond à ces critères.</p>
       ) : (
-        <Table
-          fixed
-          headers={[
-            <EnteteTri
-              key="h-nom"
-              libelle="Personne"
-              colonne="nom"
-              colonneActive={tri}
-              sens={sens}
-              parametres={parametresConserves}
-            />,
-            <EnteteTri
-              key="h-echeance"
-              libelle="Échéance"
-              colonne="echeance"
-              colonneActive={tri}
-              sens={sens}
-              parametres={parametresConserves}
-            />,
-            <EnteteTri
-              key="h-statut"
-              libelle="Statut"
-              colonne="statut"
-              colonneActive={tri}
-              sens={sens}
-              parametres={parametresConserves}
-            />,
-            "Appartenance",
-            "Startups",
+        <TableCustom
+          header={[
+            {
+              children: (
+                <EnteteTri
+                  libelle="Personne"
+                  colonne="nom"
+                  colonneActive={tri}
+                  sens={sens}
+                  parametres={parametresConserves}
+                />
+              ),
+            },
+            {
+              children: (
+                <EnteteTri
+                  libelle="Échéance"
+                  colonne="echeance"
+                  colonneActive={tri}
+                  sens={sens}
+                  parametres={parametresConserves}
+                />
+              ),
+            },
+            {
+              children: (
+                <EnteteTri
+                  libelle="Statut"
+                  colonne="statut"
+                  colonneActive={tri}
+                  sens={sens}
+                  parametres={parametresConserves}
+                />
+              ),
+            },
+            { children: "Appartenance" },
+            { children: "Startups" },
           ]}
-          data={visibles.map((personne) => [
-            <span key="p">
-              <Link href={`/personnes/${encodeURIComponent(personne.username)}`}>
-                {personne.fullname}
-              </Link>
-              <br />
-              <span className={fr.cx("fr-text--sm")}>{personne.username}</span>
-            </span>,
-            <span key="e">
-              {personne.missionEnd ? dateFr.format(personne.missionEnd) : "aucune"}
-              {personne.prolongee ? (
-                <>
-                  <br />
-                  <span className={fr.cx("fr-text--sm")}>rattachement manuel</span>
-                </>
-              ) : null}
-            </span>,
-            <Badge key="s" severity={SEVERITE[personne.statut]} noIcon>
-              {LIBELLE_STATUT[personne.statut]}
-            </Badge>,
-            LIBELLE_APPARTENANCE[personne.appartenance.motif].libelleCourt,
-            personne.startups.length > 0 ? personne.startups.join(", ") : "aucune",
-          ])}
+          body={visibles.map((personne) => ({
+            key: personne.username,
+            row: [
+              {
+                children: (
+                  <span>
+                    <Link href={`/personnes/${encodeURIComponent(personne.username)}`}>
+                      {personne.fullname}
+                    </Link>
+                    <br />
+                    <span className={fr.cx("fr-text--sm")}>{personne.username}</span>
+                  </span>
+                ),
+              },
+              {
+                children: (
+                  <span>
+                    {personne.missionEnd ? dateFr.format(personne.missionEnd) : "aucune"}
+                    {personne.prolongee ? (
+                      <>
+                        <br />
+                        <span className={fr.cx("fr-text--sm")}>rattachement manuel</span>
+                      </>
+                    ) : null}
+                  </span>
+                ),
+              },
+              {
+                children: (
+                  <Badge severity={SEVERITE[personne.statut]} noIcon>
+                    {LIBELLE_STATUT[personne.statut]}
+                  </Badge>
+                ),
+              },
+              { children: LIBELLE_APPARTENANCE[personne.appartenance.motif].libelleCourt },
+              {
+                children: personne.startups.length > 0 ? personne.startups.join(", ") : "aucune",
+              },
+            ],
+          }))}
         />
       )}
     </main>

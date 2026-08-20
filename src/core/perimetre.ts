@@ -1,7 +1,7 @@
 /**
- * Un membre déclaré transverse mais que l'espace-membre ne connaît pas ne doit pas
- * disparaître en silence : c'est soit une faute de frappe dans la politique, soit une
- * fiche à créer.
+ * Un membre déclaré transverse que ce passage n'a pas résolu ne doit pas disparaître
+ * en silence : faute de frappe dans la politique, fiche à créer, ou fiche que la
+ * lecture n'a pas su charger cette fois-là.
  */
 export function declaresManquants(
   resolus: readonly string[],

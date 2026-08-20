@@ -19,32 +19,31 @@ export default async function AccueilPage() {
   const { thresholds } = policy();
   const today = new Date();
 
-  const [personnes, dernierRun, constatsOuverts, sortiesSansTraitement, relevesSystemes] =
-    await Promise.all([
-      prisma.person.findMany({
-        select: {
-          missionEnd: true,
-          vanishedAt: true,
-          startupAssignments: {
-            where: { endedAt: null },
-            select: { startupGhid: true, until: true, endedAt: true },
-          },
+  const [personnes, dernierRun, constatsOuverts, sorties, relevesSystemes] = await Promise.all([
+    prisma.person.findMany({
+      select: {
+        missionEnd: true,
+        vanishedAt: true,
+        startupAssignments: {
+          where: { endedAt: null },
+          select: { startupGhid: true, until: true, endedAt: true },
         },
-      }),
-      prisma.syncRun.findFirst({
-        where: { provider: "espace-membre" },
-        orderBy: { startedAt: "desc" },
-        select: { startedAt: true, status: true, itemsSeen: true },
-      }),
-      prisma.finding.count({ where: { closedAt: null } }),
-      prisma.finding.count({ where: { closedAt: null, kind: "SCOPE_EXIT" } }),
-      prisma.syncRun.findMany({
-        where: { capability: "list", provider: { not: "espace-membre" } },
-        distinct: ["provider"],
-        orderBy: { startedAt: "desc" },
-        select: { provider: true, startedAt: true, status: true },
-      }),
-    ]);
+      },
+    }),
+    prisma.syncRun.findFirst({
+      where: { provider: "espace-membre" },
+      orderBy: { startedAt: "desc" },
+      select: { startedAt: true, status: true, itemsSeen: true },
+    }),
+    prisma.finding.count({ where: { closedAt: null } }),
+    prisma.finding.count({ where: { closedAt: null, kind: "SCOPE_EXIT" } }),
+    prisma.syncRun.findMany({
+      where: { capability: "list", provider: { not: "espace-membre" } },
+      distinct: ["provider"],
+      orderBy: { startedAt: "desc" },
+      select: { provider: true, startedAt: true, status: true },
+    }),
+  ]);
 
   const statuts = personnes.map((personne) =>
     statutDePersonne(
@@ -85,7 +84,7 @@ export default async function AccueilPage() {
           description={
             fraicheur.heures === null
               ? "Aucune collecte n'a jamais eu lieu : les écrans sont vides faute d'observation, ce qui ne dit rien de l'état réel des accès."
-              : `La dernière collecte remonte à ${fraicheur.heures} heures, au-delà des ${thresholds.collectStaleHours} heures admises. Les échéances et les constats affichés sont ceux de ce moment-là : quelqu'un a pu partir depuis sans que rien ici ne le signale.`
+              : `La dernière collecte lancée remonte à ${fraicheur.heures} heures, au-delà des ${thresholds.collectStaleHours} heures admises. Les échéances et les constats affichés sont ceux de ce moment-là : quelqu'un a pu partir depuis sans que rien ici ne le signale.`
           }
         />
       ) : null}
@@ -96,8 +95,8 @@ export default async function AccueilPage() {
           className={fr.cx("fr-mb-3w")}
           title={
             muets.length === 1
-              ? "Un système cible n'est plus observé"
-              : `${muets.length} systèmes cibles ne sont plus observés`
+              ? "Un système cible n'est pas observé"
+              : `${muets.length} systèmes cibles ne sont pas observés`
           }
           description={
             <>
@@ -138,7 +137,7 @@ export default async function AccueilPage() {
         <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
           <Tile
             title={`${constatsOuverts} constat${constatsOuverts > 1 ? "s" : ""}`}
-            desc={`Dont ${sortiesSansTraitement} sortie${sortiesSansTraitement > 1 ? "s" : ""} du référentiel sans traitement.`}
+            desc={`Dont ${sorties} sortie${sorties > 1 ? "s" : ""} du référentiel.`}
             linkProps={{ href: "/constats" }}
             orientation="horizontal"
           />

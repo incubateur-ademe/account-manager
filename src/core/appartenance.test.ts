@@ -4,9 +4,12 @@ import {
   type Appartenance,
   appartenanceDe,
   type EtatAppartenance,
+  LIBELLE_APPARTENANCE,
   libelleAppartenance,
+  type MotifAppartenance,
   surchargeSuperflue,
 } from "./appartenance";
+import { echeanceEffective } from "./rattachement-startup";
 
 const TERMINALES = ["abandon", "abandon-investigation", "transfere", "alumni"];
 
@@ -204,5 +207,93 @@ describe("une surcharge que la collecte a rattrapée se signale comme superflue"
     });
     expect(surchargeSuperflue(inclusionRattrapee)).toBe(true);
     expect(surchargeSuperflue(derive())).toBe(false);
+  });
+});
+
+describe("une précision de motif n'affirme que ce que son calcul établit", () => {
+  const le = (iso: string) => new Date(`${iso}T00:00:00Z`);
+  const MAINTENANT = new Date(le("2026-08-19").getTime() + 15 * 60 * 60 * 1000);
+
+  it("ne dit rien de l'échéance quand celle-ci vient d'un rattachement manuel", () => {
+    // camille.exemple est collectée sur produit-alpha, mission jusqu'au 30 septembre.
+    // Un opérateur pose un rattachement manuel sur cette même startup jusqu'au
+    // 31 décembre : l'échéance affichée devient la sienne, sans que rien du côté
+    // des startups n'ait bougé.
+    const manuels = [{ startupGhid: "produit-alpha", until: le("2026-12-31"), endedAt: null }];
+    const echeance = echeanceEffective(le("2026-09-30"), manuels, MAINTENANT);
+
+    expect(echeance).toEqual(le("2026-12-31"));
+
+    const appartenance = derive({
+      attachment: "STARTUPS",
+      startupsCollectees: ["produit-alpha"],
+      startupsManuelles: ["produit-alpha"],
+    });
+    expect(appartenance.motif).toBe("STARTUP");
+
+    // La fiche affiche cette précision juste au-dessus de la phrase qui dit d'où
+    // vient la date. Elle ne peut donc pas prétendre le savoir : le motif est
+    // dérivé des seules voies de rattachement, aucune date n'entre dans son calcul.
+    const { precision } = libelleAppartenance(appartenance);
+    expect(precision).toBe(
+      "Elle relève d'au moins une startup de l'incubateur, et d'aucune équipe transverse.",
+    );
+  });
+
+  it("ne fait porter à aucun des sept motifs une origine que le motif ignore", () => {
+    const motifs = Object.keys(LIBELLE_APPARTENANCE) as MotifAppartenance[];
+    expect(motifs).toHaveLength(7);
+
+    for (const motif of motifs) {
+      const { precision } = LIBELLE_APPARTENANCE[motif];
+      // Aucune date n'est lue par le calcul du motif : une précision qui parle
+      // d'échéance affirme ce qu'elle ne sait pas.
+      expect(precision).not.toMatch(/échéance|fin de mission|date de fin/i);
+    }
+  });
+
+  it("ne jure de rien sur la collecte là où le calcul lit aussi les décisions prises ici", () => {
+    // Une fiche que la collecte ne rattache à rien, portée par le seul rattachement
+    // manuel qu'un opérateur a posé, puis déclarée hors incubateur par un autre.
+    const exclue = derive({
+      startupsManuelles: ["produit-delta"],
+      surcharge: {
+        sens: "EXCLUDE",
+        par: "camille.roux",
+        depuis: le("2026-08-01"),
+        raison: "prestataire arrivé au terme de son marché",
+      },
+    });
+
+    expect(exclue.motif).toBe("EXCLUSION_FORCEE");
+    expect(exclue.sansSurcharge).toBe("STARTUP_MANUELLE");
+    expect(surchargeSuperflue(exclue)).toBe(false);
+
+    // Le repli se calcule sur les rattachements en cours, collectés comme manuels :
+    // l'attribuer à la collecte contredirait la ligne « Source : saisie locale ».
+    const { precision } = libelleAppartenance(exclue);
+    expect(precision).toContain(
+      "Sans cette décision, elle serait « Par rattachement manuel » d'après ses rattachements en cours.",
+    );
+    expect(precision).not.toContain("la collecte constate");
+
+    // Symétrique : une inclusion forcée que la collecte porte désormais elle aussi.
+    // Son encart annonce une décision devenue superflue, la précision ne peut donc
+    // pas jurer qu'aucun rattachement ne la porte.
+    const inclusionRattrapee = derive({
+      attachment: "STARTUPS",
+      startupsCollectees: ["produit-alpha"],
+      surcharge: {
+        sens: "INCLUDE",
+        par: "camille.roux",
+        depuis: le("2026-08-01"),
+        raison: "coach sans produit, le temps que la fiche amont suive",
+      },
+    });
+
+    expect(surchargeSuperflue(inclusionRattrapee)).toBe(true);
+    expect(libelleAppartenance(inclusionRattrapee).precision).not.toContain(
+      "aucun rattachement constaté",
+    );
   });
 });

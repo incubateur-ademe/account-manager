@@ -40,9 +40,16 @@ function marche(valeur: unknown): MarcheASuivre {
   return valeur && typeof valeur === "object" ? (valeur as MarcheASuivre) : {};
 }
 
-export default async function DepartPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function DepartPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   await requireOperateur();
   const { id } = await params;
+  const { deja } = await searchParams;
 
   const dossier = await prisma.departureCase.findUnique({
     where: { id },
@@ -113,10 +120,19 @@ export default async function DepartPage({ params }: { params: Promise<{ id: str
       </h1>
       <p className={fr.cx("fr-text--sm")}>
         <Link href={`/personnes/${dossier.person.username}`}>{dossier.person.username}</Link>
-        {" — ouvert le "}
+        {", ouvert le "}
         {dateFr.format(dossier.firstSignalAt)}
         {dossier.effectiveDate ? `, fin de mission au ${dateFr.format(dossier.effectiveDate)}` : ""}
       </p>
+
+      {deja ? (
+        <Alert
+          severity="info"
+          className={fr.cx("fr-mt-3w")}
+          small
+          description="Ce dossier était déjà ouvert : vous êtes revenu dessus, aucun second dossier n'a été créé. Un départ ne s'ouvre qu'une fois par personne tant qu'il n'est pas clos."
+        />
+      ) : null}
 
       <Alert
         severity="info"
@@ -133,8 +149,8 @@ export default async function DepartPage({ params }: { params: Promise<{ id: str
           description={
             <>
               <p className={fr.cx("fr-mb-1w")}>
-                Une collecte est passée depuis son calcul : cette personne a gagné ou perdu un
-                compte. Il ne peut plus être confirmé en l'état.
+                Les accès observés ont changé depuis son calcul : il ne peut plus être confirmé en
+                l'état.
               </p>
               {plan ? <BoutonRecalculer planId={plan.id} /> : null}
             </>
@@ -196,7 +212,8 @@ export default async function DepartPage({ params }: { params: Promise<{ id: str
 
       {!plan || plan.steps.length === 0 ? (
         <p>
-          Aucune étape : cette personne n'a de compte sur aucun système que l'outil sait traiter.
+          Aucune étape : aucun compte rattaché de façon sûre n'a été trouvé sur les systèmes que
+          l'outil sait traiter.
         </p>
       ) : (
         <>
