@@ -4,10 +4,10 @@ import { fr } from "@codegouvfr/react-dsfr";
 import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import { Button } from "@codegouvfr/react-dsfr/Button";
 import { createModal } from "@codegouvfr/react-dsfr/Modal";
-import { Table } from "@codegouvfr/react-dsfr/Table";
 import { useState } from "react";
 
 import type { Suggestion } from "@/ui/ChampAvecListe";
+import { TableCustom } from "@/ui/TableCustom";
 
 import { Rattacher } from "./Rattacher";
 
@@ -44,44 +44,63 @@ export function FileDesComptesIsoles({
 
   return (
     <>
-      <Table
-        caption="Comptes observés qu'aucune personne suivie ne réclame"
-        noCaption
-        headers={["Système", "Compte", "Accès constatés", "Vu", ""]}
-        data={lignes.map((ligne) => [
-          ligne.provider,
-          <span key="c">
-            <strong>{ligne.handle}</strong>
-            {ligne.ressemblance ? (
-              <>
+      <TableCustom
+        header={[
+          { children: "Système" },
+          { children: "Compte" },
+          { children: "Accès constatés" },
+          { children: "Vu" },
+          { children: "" },
+        ]}
+        body={lignes.map((ligne) => [
+          { children: ligne.provider },
+          {
+            children: (
+              <span>
+                <strong>{ligne.handle}</strong>
+                {ligne.ressemblance ? (
+                  <>
+                    <br />
+                    <Badge severity="warning" small noIcon>
+                      Ressemblance non confirmée
+                    </Badge>
+                  </>
+                ) : null}
+              </span>
+            ),
+          },
+          {
+            children: (
+              <span className={fr.cx("fr-text--sm")}>
+                {ligne.acces.length === 0 ? "aucun" : ligne.acces.join(", ")}
+              </span>
+            ),
+          },
+          {
+            children: (
+              <span className={fr.cx("fr-text--sm")}>
+                depuis le {ligne.vuDepuis}
                 <br />
-                <Badge severity="warning" small noIcon>
-                  Ressemblance non confirmée
-                </Badge>
-              </>
-            ) : null}
-          </span>,
-          <span key="a" className={fr.cx("fr-text--sm")}>
-            {ligne.acces.length === 0 ? "aucun" : ligne.acces.join(", ")}
-          </span>,
-          <span key="v" className={fr.cx("fr-text--sm")}>
-            depuis le {ligne.vuDepuis}
-            <br />
-            encore le {ligne.vuEncore}
-          </span>,
-          <Button
-            key="t"
-            priority="secondary"
-            size="small"
-            nativeButtonProps={{
-              ...modale.buttonProps,
-              onClick: () => {
-                setChoisi(ligne);
-              },
-            }}
-          >
-            Traiter
-          </Button>,
+                encore le {ligne.vuEncore}
+              </span>
+            ),
+          },
+          {
+            children: (
+              <Button
+                priority="secondary"
+                size="small"
+                nativeButtonProps={{
+                  ...modale.buttonProps,
+                  onClick: () => {
+                    setChoisi(ligne);
+                  },
+                }}
+              >
+                Traiter
+              </Button>
+            ),
+          },
         ])}
       />
 

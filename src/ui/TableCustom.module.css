@@ -1,0 +1,55 @@
+.table {
+  overflow: auto;
+}
+
+.tableCompact tbody tr td {
+  padding: 0.1rem 0.25rem;
+}
+
+.table table {
+  table-layout: fixed;
+  min-width: 100%;
+  border-collapse: collapse;
+  border-spacing: 0;
+  text-align: left;
+}
+
+.tableHeadCol {
+  line-height: 1.25;
+  font-weight: 700;
+  padding: 0.625rem 0.5rem;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  border-bottom: 2px solid var(--border-plain-grey);
+  cursor: default;
+}
+
+.tableHeadColClickable {
+  cursor: pointer;
+}
+
+/* Le DSFR stampille le thème choisi sur la racine : s'en remettre à
+   prefers-color-scheme ferait mentir les lignes alternées dès qu'un opérateur force
+   le clair sur un système sombre, ou l'inverse. Sa variable de fond suit le thème
+   toute seule, ce qui rend les deux règles inutiles. */
+.tableBodyRow:nth-child(even) {
+  background: var(--background-alt-grey);
+}
+
+.tableBodyRowCol {
+  font-weight: 400;
+  padding: 1rem 0.5rem;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.colShrink {
+  width: 1%;
+  white-space: nowrap;
+}
+
+/* Reset DSFR ButtonsGroup margin on buttons inside table cells */
+.tableBodyRowCol :global(.fr-btns-group) :global(.fr-btn) {
+  margin-bottom: 0;
+}

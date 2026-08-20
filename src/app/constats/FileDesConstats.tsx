@@ -4,9 +4,10 @@ import { fr } from "@codegouvfr/react-dsfr";
 import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import { Button } from "@codegouvfr/react-dsfr/Button";
 import { createModal } from "@codegouvfr/react-dsfr/Modal";
-import { Table } from "@codegouvfr/react-dsfr/Table";
 import Link from "next/link";
 import { useState } from "react";
+
+import { TableCustom } from "@/ui/TableCustom";
 
 import { ClotureConstat } from "./ClotureConstat";
 
@@ -41,53 +42,68 @@ export function FileDesConstats({ lignes }: { lignes: readonly LigneConstat[] })
 
   return (
     <>
-      <Table
-        headers={["Gravité", "Concerne", "Constat", "Ouvert le", ""]}
-        data={lignes.map((ligne) => [
-          <Badge key="g" severity={SEVERITE[ligne.severity]} noIcon>
-            {LIBELLE_SEVERITE[ligne.severity]}
-          </Badge>,
+      <TableCustom
+        header={[
+          { children: "Gravité" },
+          { children: "Concerne" },
+          { children: "Constat" },
+          { children: "Ouvert le" },
+          { children: "" },
+        ]}
+        body={lignes.map((ligne) => [
+          {
+            children: (
+              <Badge severity={SEVERITE[ligne.severity]} noIcon>
+                {LIBELLE_SEVERITE[ligne.severity]}
+              </Badge>
+            ),
+          },
           // Un constat porte sur quelqu'un, sur un compte, ou sur les deux quand un
           // compte survit à son détenteur. Sans le compte, treize lignes d'affilée
           // diraient la même chose sans dire de quoi.
-          <span key="p">
-            {ligne.personne ? (
-              <Link href={`/personnes/${ligne.personne.username}`} className={fr.cx("fr-link")}>
-                {ligne.personne.fullname}
-              </Link>
-            ) : ligne.compte ? (
-              <Link href="/comptes-isoles" className={fr.cx("fr-link")}>
-                {ligne.compte.handle}
-              </Link>
-            ) : (
-              "inconnue"
-            )}
-            <br />
-            <span className={fr.cx("fr-text--sm")}>
-              {ligne.compte
-                ? `${ligne.compte.provider} : ${ligne.compte.handle}`
-                : (ligne.personne?.username ?? "")}
-            </span>
-          </span>,
+          {
+            children: (
+              <span>
+                {ligne.personne ? (
+                  <Link href={`/personnes/${ligne.personne.username}`} className={fr.cx("fr-link")}>
+                    {ligne.personne.fullname}
+                  </Link>
+                ) : ligne.compte ? (
+                  <Link href="/comptes-isoles" className={fr.cx("fr-link")}>
+                    {ligne.compte.handle}
+                  </Link>
+                ) : (
+                  "inconnue"
+                )}
+                <br />
+                <span className={fr.cx("fr-text--sm")}>
+                  {ligne.compte
+                    ? `${ligne.compte.provider} : ${ligne.compte.handle}`
+                    : (ligne.personne?.username ?? "")}
+                </span>
+              </span>
+            ),
+          },
           // La consigne complète vit en bas de page, une fois par type. Au survol,
           // elle est là sans qu'on ait à descendre la chercher.
-          <span key="c" title={ligne.explication}>
-            {ligne.titre}
-          </span>,
-          ligne.ouvertLe,
-          <Button
-            key="t"
-            priority="secondary"
-            size="small"
-            nativeButtonProps={{
-              ...modale.buttonProps,
-              onClick: () => {
-                setChoisi(ligne);
-              },
-            }}
-          >
-            Clore
-          </Button>,
+          { children: <span title={ligne.explication}>{ligne.titre}</span> },
+          { children: ligne.ouvertLe },
+          {
+            children: (
+              <Button
+                priority="secondary"
+                size="small"
+                nativeButtonProps={{
+                  ...modale.buttonProps,
+                  onClick: () => {
+                    setChoisi(ligne);
+                  },
+                }}
+              >
+                Clore
+              </Button>
+            ),
+          },
         ])}
       />
 

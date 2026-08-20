@@ -3,7 +3,6 @@ import { Accordion } from "@codegouvfr/react-dsfr/Accordion";
 import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import { Breadcrumb } from "@codegouvfr/react-dsfr/Breadcrumb";
-import { Table } from "@codegouvfr/react-dsfr/Table";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -19,6 +18,7 @@ import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
+import { TableCustom } from "@/ui/TableCustom";
 
 import { ActionsDePage } from "./ActionsDePage";
 import { CeQuiAppelleUneAction } from "./CeQuiAppelleUneAction";
@@ -441,11 +441,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
         inconnues={inconnues}
       />
 
-      <SectionComptesExternes
-        fullname={personne.fullname}
-        comptes={personne.identities}
-        systemesCollectes={systemesCollectes}
-      />
+      <SectionComptesExternes comptes={personne.identities} systemesCollectes={systemesCollectes} />
 
       {fermes.length > 0 ? (
         <Accordion
@@ -453,17 +449,23 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
           titleAs="h2"
           label={`Constats fermés (${fermes.length})`}
         >
-          <Table
-            caption={`Constats fermés sur ${personne.fullname}`}
-            noCaption
-            headers={["Constat", "Ouvert le", "Fermé le", "Raison"]}
-            data={fermes.map((constat) => {
+          <TableCustom
+            compact
+            header={[
+              { children: "Constat" },
+              { children: "Ouvert le" },
+              { children: "Fermé le" },
+              { children: "Raison" },
+            ]}
+            body={fermes.map((constat) => {
               const libelle = LIBELLE_CONSTAT[constat.kind as ConstatKind];
               return [
-                libelle?.titre ?? constat.kind,
-                dateFr.format(constat.openedAt),
-                constat.closedAt ? dateFr.format(constat.closedAt) : <Absent key="f" />,
-                constat.closeReason ?? <Absent key="r" mention="réconcilié par une collecte" />,
+                { children: libelle?.titre ?? constat.kind },
+                { children: dateFr.format(constat.openedAt) },
+                { children: constat.closedAt ? dateFr.format(constat.closedAt) : <Absent /> },
+                {
+                  children: constat.closeReason ?? <Absent mention="réconcilié par une collecte" />,
+                },
               ];
             })}
           />

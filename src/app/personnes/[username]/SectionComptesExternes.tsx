@@ -1,9 +1,9 @@
 import { fr } from "@codegouvfr/react-dsfr";
 import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Badge } from "@codegouvfr/react-dsfr/Badge";
-import { Table } from "@codegouvfr/react-dsfr/Table";
 
 import type { MatchMethod } from "@/generated/prisma/enums";
+import { TableCustom } from "@/ui/TableCustom";
 
 import { Detacher } from "./Detacher";
 import { dateFr, RATTACHEMENT_IDENTITE } from "./libelles";
@@ -18,11 +18,9 @@ export interface CompteExterne {
 }
 
 export function SectionComptesExternes({
-  fullname,
   comptes,
   systemesCollectes,
 }: {
-  fullname: string;
   comptes: readonly CompteExterne[];
   systemesCollectes: readonly string[];
 }) {
@@ -42,30 +40,42 @@ export function SectionComptesExternes({
         />
       ) : (
         <>
-          <Table
-            caption={`Comptes externes rattachés à ${fullname}`}
-            noCaption
-            headers={["Système", "Compte", "Rattachement", "Vu pour la dernière fois", ""]}
-            data={comptes.map((identite) => {
+          <TableCustom
+            header={[
+              { children: "Système" },
+              { children: "Compte" },
+              { children: "Rattachement" },
+              { children: "Vu pour la dernière fois" },
+              { children: "" },
+            ]}
+            body={comptes.map((identite) => {
               const methode = RATTACHEMENT_IDENTITE[identite.matchMethod];
               return [
-                identite.provider,
-                <span key="c">
-                  {identite.handle}
-                  {identite.vanishedAt ? (
-                    <>
-                      <br />
-                      <Badge severity="info" small noIcon>
-                        Disparu le {dateFr.format(identite.vanishedAt)}
-                      </Badge>
-                    </>
-                  ) : null}
-                </span>,
-                <Badge key="r" severity={methode.sur ? "success" : "warning"} noIcon>
-                  {methode.libelle}
-                </Badge>,
-                dateFr.format(identite.lastSeenAt),
-                <Detacher key="d" id={identite.id} compte={identite.handle} />,
+                { children: identite.provider },
+                {
+                  children: (
+                    <span>
+                      {identite.handle}
+                      {identite.vanishedAt ? (
+                        <>
+                          <br />
+                          <Badge severity="info" small noIcon>
+                            Disparu le {dateFr.format(identite.vanishedAt)}
+                          </Badge>
+                        </>
+                      ) : null}
+                    </span>
+                  ),
+                },
+                {
+                  children: (
+                    <Badge severity={methode.sur ? "success" : "warning"} noIcon>
+                      {methode.libelle}
+                    </Badge>
+                  ),
+                },
+                { children: dateFr.format(identite.lastSeenAt) },
+                { children: <Detacher id={identite.id} compte={identite.handle} /> },
               ];
             })}
           />

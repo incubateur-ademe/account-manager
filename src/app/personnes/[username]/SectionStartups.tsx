@@ -2,7 +2,8 @@ import { fr } from "@codegouvfr/react-dsfr";
 import { Accordion } from "@codegouvfr/react-dsfr/Accordion";
 import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Badge } from "@codegouvfr/react-dsfr/Badge";
-import { Table } from "@codegouvfr/react-dsfr/Table";
+
+import { TableCustom } from "@/ui/TableCustom";
 
 import { Absent } from "./Champs";
 import { dateFr, LIBELLE_PHASE } from "./libelles";
@@ -71,52 +72,68 @@ export function SectionStartups({
         <p className={fr.cx("fr-mt-2w")}>Aucune startup ne lui est rattachée.</p>
       ) : (
         <>
-          <Table
+          <TableCustom
             className={fr.cx("fr-mt-2w")}
-            caption={`Startups de ${personne.fullname} et phase de chacune`}
-            noCaption
-            headers={["Startup", "Phase", "Depuis", "Justifie des accès", "Origine", ""]}
-            data={lignes.map((ligne) => [
-              <span key="s">
-                {ligne.nom ?? ligne.ghid}
-                <br />
-                <span className={fr.cx("fr-text--sm")}>{ligne.ghid}</span>
-              </span>,
-              ligne.phase === null ? (
-                <Absent key="p" mention="phase inconnue" />
-              ) : (
-                (LIBELLE_PHASE[ligne.phase] ?? ligne.phase)
-              ),
-              ligne.phaseStart ? dateFr.format(ligne.phaseStart) : <Absent key="d" />,
-              ligne.connue ? (
-                <Badge key="j" severity={ligne.terminale ? "error" : "success"} noIcon>
-                  {ligne.terminale ? "Non, phase terminale" : "Oui"}
-                </Badge>
-              ) : (
-                <Badge key="j" severity="info" noIcon>
-                  On ne sait pas
-                </Badge>
-              ),
-              <span key="o">
-                {ligne.collectee ? "Collecté" : null}
-                {ligne.collectee && ligne.manuel ? <br /> : null}
-                {ligne.manuel ? (
-                  <>
-                    Manuel, jusqu'au {dateFr.format(ligne.manuel.until)}
+            header={[
+              { children: "Startup" },
+              { children: "Phase" },
+              { children: "Depuis" },
+              { children: "Justifie des accès" },
+              { children: "Origine" },
+              { children: "" },
+            ]}
+            body={lignes.map((ligne) => [
+              {
+                children: (
+                  <span>
+                    {ligne.nom ?? ligne.ghid}
                     <br />
-                    <span className={fr.cx("fr-text--sm")}>posé par {ligne.manuel.createdBy}</span>
-                  </>
-                ) : null}
-              </span>,
-              ligne.manuel ? (
-                <RetirerRattachement
-                  key="r"
-                  id={ligne.manuel.id}
-                  startup={ligne.nom ?? ligne.ghid}
-                />
-              ) : (
-                <span key="r" />
-              ),
+                    <span className={fr.cx("fr-text--sm")}>{ligne.ghid}</span>
+                  </span>
+                ),
+              },
+              {
+                children:
+                  ligne.phase === null ? (
+                    <Absent mention="phase inconnue" />
+                  ) : (
+                    (LIBELLE_PHASE[ligne.phase] ?? ligne.phase)
+                  ),
+              },
+              { children: ligne.phaseStart ? dateFr.format(ligne.phaseStart) : <Absent /> },
+              {
+                children: ligne.connue ? (
+                  <Badge severity={ligne.terminale ? "error" : "success"} noIcon>
+                    {ligne.terminale ? "Non, phase terminale" : "Oui"}
+                  </Badge>
+                ) : (
+                  <Badge severity="info" noIcon>
+                    On ne sait pas
+                  </Badge>
+                ),
+              },
+              {
+                children: (
+                  <span>
+                    {ligne.collectee ? "Collecté" : null}
+                    {ligne.collectee && ligne.manuel ? <br /> : null}
+                    {ligne.manuel ? (
+                      <>
+                        Manuel, jusqu'au {dateFr.format(ligne.manuel.until)}
+                        <br />
+                        <span className={fr.cx("fr-text--sm")}>
+                          posé par {ligne.manuel.createdBy}
+                        </span>
+                      </>
+                    ) : null}
+                  </span>
+                ),
+              },
+              {
+                children: ligne.manuel ? (
+                  <RetirerRattachement id={ligne.manuel.id} startup={ligne.nom ?? ligne.ghid} />
+                ) : null,
+              },
             ])}
           />
 
@@ -150,20 +167,25 @@ export function SectionStartups({
           titleAs="h3"
           label={`Rattachements manuels clos ou expirés (${clos.length})`}
         >
-          <Table
-            caption={`Rattachements manuels passés de ${personne.fullname}`}
-            noCaption
-            headers={["Startup", "Jusqu'au", "Posé par", "Fin", "Motif"]}
-            data={clos.map((rattachement) => [
-              rattachement.startup,
-              dateFr.format(rattachement.until),
-              rattachement.createdBy,
-              rattachement.endedAt ? (
-                `retiré le ${dateFr.format(rattachement.endedAt)} par ${rattachement.endedBy ?? "?"}`
-              ) : (
-                <span key="f">expiré</span>
-              ),
-              rattachement.reason ?? <Absent key="m" />,
+          <TableCustom
+            compact
+            header={[
+              { children: "Startup" },
+              { children: "Jusqu'au" },
+              { children: "Posé par" },
+              { children: "Fin" },
+              { children: "Motif" },
+            ]}
+            body={clos.map((rattachement) => [
+              { children: rattachement.startup },
+              { children: dateFr.format(rattachement.until) },
+              { children: rattachement.createdBy },
+              {
+                children: rattachement.endedAt
+                  ? `retiré le ${dateFr.format(rattachement.endedAt)} par ${rattachement.endedBy ?? "?"}`
+                  : "expiré",
+              },
+              { children: rattachement.reason ?? <Absent /> },
             ])}
           />
         </Accordion>
