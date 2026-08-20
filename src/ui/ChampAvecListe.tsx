@@ -93,11 +93,20 @@ export function ChampAvecListe({
           </li>
         )}
         slotProps={{
+          popper: {
+            modifiers: [
+              // Le menu s'ouvre vers le haut quand le champ est bas dans la modale,
+              // et venait alors coller son bord supérieur. Popper garde désormais
+              // ses distances avec les bords, quel que soit le côté où il bascule.
+              { name: "preventOverflow", options: { padding: 16 } },
+            ],
+          },
           // Le menu défile en lui-même, jamais la modale : au-delà, celle-ci
           // déborde, une barre de défilement y apparaît et tout son contenu se
-          // décale sur sa largeur. Mesuré : 21rem la fait déborder de 112 pixels,
-          // MUI repositionnant alors le menu hors d'elle.
-          listbox: { style: { maxHeight: "20rem" } },
+          // décale sur sa largeur. La hauteur est le seul levier fiable, le
+          // `preventOverflow` de Popper prenant la fenêtre pour borne et non la
+          // modale : à 20rem, le menu ouvert vers le haut la dépassait de 64 pixels.
+          listbox: { style: { maxHeight: "13rem" } },
         }}
         renderInput={({ slotProps }) => (
           <div ref={slotProps.input.ref}>
