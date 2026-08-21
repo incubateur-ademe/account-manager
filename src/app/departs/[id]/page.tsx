@@ -4,12 +4,18 @@ import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { dossierSoldable, type EtatEtape, estSoldee } from "@/core/depart";
+import { dossierSoldable, type EtatEtape, estSoldee, peutAnnuler } from "@/core/depart";
 import { peremptionDuPlan } from "@/core/plan";
 import { prisma } from "@/lib/db";
 import { calculerPlanDeDepart } from "@/lib/depart";
 import { requireOperateur } from "@/lib/session";
-import { BoutonClore, BoutonConfirmer, BoutonRecalculer, Pointage } from "./Pointage";
+import {
+  BoutonAnnuler,
+  BoutonClore,
+  BoutonConfirmer,
+  BoutonRecalculer,
+  Pointage,
+} from "./Pointage";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +62,7 @@ export default async function DepartPage({
     select: {
       id: true,
       state: true,
+      cancelledReason: true,
       effectiveDate: true,
       firstSignalAt: true,
       person: { select: { id: true, username: true, fullname: true } },
@@ -96,16 +103,23 @@ export default async function DepartPage({
 
   const maintenant = new Date();
   const plan = dossier.plans[0];
+  const annule = dossier.state === "CANCELLED";
 
   // Recalculé à l'affichage et comparé à ce qui est figé : c'est la seule façon de
   // savoir qu'une collecte est passée depuis. Le plan affiché reste celui qui a été
   // enregistré, jamais le recalcul.
-  const actuel = await calculerPlanDeDepart(dossier.person.id, dossier.person.username, maintenant);
+  //
+  // Sauf sur un dossier annulé : rien ne s'y compare plus, et sonder les connecteurs
+  // pour afficher une dérive sans issue serait un appel sortant pour rien.
+  const actuel = annule
+    ? null
+    : await calculerPlanDeDepart(dossier.person.id, dossier.person.username, maintenant);
 
-  const etat = plan ? peremptionDuPlan(plan, actuel.empreinte, maintenant) : null;
-  const brouillon = plan?.state === "DRAFT";
-  const enCours = plan?.state === "EXECUTING";
+  const etat = plan && actuel ? peremptionDuPlan(plan, actuel.empreinte, maintenant) : null;
+  const brouillon = !annule && plan?.state === "DRAFT";
+  const enCours = !annule && plan?.state === "EXECUTING";
   const clos = dossier.state === "DONE";
+  const remplace = plan?.state === "EXPIRED" || plan?.state === "STALE";
   const restantes = plan?.steps.filter((etape) => !estSoldee(etape.state as EtatEtape)).length ?? 0;
 
   return (
@@ -115,6 +129,11 @@ export default async function DepartPage({
         {clos ? (
           <Badge severity="success" noIcon>
             dossier clos
+          </Badge>
+        ) : null}
+        {annule ? (
+          <Badge severity="info" noIcon>
+            départ annulé
           </Badge>
         ) : null}
       </h1>
@@ -175,7 +194,7 @@ export default async function DepartPage({
         />
       ) : null}
 
-      {actuel.nonConfirmes.length > 0 ? (
+      {actuel && actuel.nonConfirmes.length > 0 ? (
         <Alert
           severity="warning"
           className={fr.cx("fr-mb-3w")}
@@ -197,7 +216,7 @@ export default async function DepartPage({
         />
       ) : null}
 
-      {actuel.sansConnecteur.length > 0 ? (
+      {actuel && actuel.sansConnecteur.length > 0 ? (
         <Alert
           severity="warning"
           className={fr.cx("fr-mb-3w")}
@@ -206,11 +225,35 @@ export default async function DepartPage({
         />
       ) : null}
 
+      {annule ? (
+        <Alert
+          severity="info"
+          className={fr.cx("fr-mb-3w")}
+          title="Ce départ a été annulé"
+          description={
+            dossier.cancelledReason
+              ? `${dossier.cancelledReason} Aucun accès n'a été coupé par ce dossier, et un nouveau départ reste ouvrable.`
+              : "Aucun accès n'a été coupé par ce dossier, et un nouveau départ reste ouvrable."
+          }
+        />
+      ) : null}
+
       <h2 className={fr.cx("fr-h4")}>
-        {brouillon ? "Ce qui sera à faire" : "Ce qu'il reste à faire"}
+        {annule
+          ? "Ce qui n'aura pas lieu"
+          : remplace
+            ? "Ce que ce plan proposait"
+            : brouillon
+              ? "Ce qui sera à faire"
+              : "Ce qu'il reste à faire"}
       </h2>
 
-      {!plan || plan.steps.length === 0 ? (
+      {!plan ? (
+        <p>
+          Aucun plan n'a été enregistré pour ce dossier : son calcul n'a pas abouti. L'annuler est
+          la seule issue, un nouveau départ restant ouvrable ensuite.
+        </p>
+      ) : plan.steps.length === 0 ? (
         <p>
           Aucune étape : aucun compte rattaché de façon sûre n'a été trouvé sur les systèmes que
           l'outil sait traiter.
@@ -301,13 +344,23 @@ export default async function DepartPage({
         </>
       )}
 
-      <p className={fr.cx("fr-text--sm", "fr-mt-3w")}>
-        Plan calculé le {dateFr.format(plan?.createdAt ?? maintenant)} par {plan?.createdBy}
-        {plan?.confirmedBy
-          ? `, confirmé le ${dateFr.format(plan.confirmedAt ?? maintenant)} par ${plan.confirmedBy}`
-          : `, valable jusqu'au ${dateFr.format(plan?.expiresAt ?? maintenant)}`}
-        .
-      </p>
+      <BoutonAnnuler
+        dossierId={dossier.id}
+        etapes={plan?.steps.length ?? 0}
+        annulable={peutAnnuler(dossier.state, plan?.state ?? null).possible}
+      />
+
+      {plan ? (
+        <p className={fr.cx("fr-text--sm", "fr-mt-3w")}>
+          Plan calculé le {dateFr.format(plan.createdAt)} par {plan.createdBy}
+          {plan.confirmedBy
+            ? `, confirmé le ${dateFr.format(plan.confirmedAt ?? maintenant)} par ${plan.confirmedBy}`
+            : annule || remplace
+              ? ""
+              : `, valable jusqu'au ${dateFr.format(plan.expiresAt)}`}
+          .
+        </p>
+      ) : null}
     </main>
   );
 }

@@ -134,11 +134,17 @@ describe("les gestes que porte le bloc d'action d'une fiche", () => {
       }),
     );
 
-    expect(nomsDesGestes(avecDossier[0]?.gestes)).toEqual(["clore"]);
-    expect(avecDossier[0]?.lien).toEqual({
+    const constatAvecDossier = avecDossier.find((motif) => motif.cle.startsWith("constat-"));
+    expect(nomsDesGestes(constatAvecDossier?.gestes)).toEqual(["clore"]);
+    expect(constatAvecDossier?.lien).toEqual({
       href: "/departs/dossier-abc",
       libelle: "Ouvrir le dossier de départ en cours",
     });
+
+    // Le dossier vivant se dit une fois de plus, en tête, et sans geste : il n'est pas
+    // un écart, c'est un travail commencé.
+    expect(avecDossier[0]?.cle).toBe("depart-en-cours");
+    expect(avecDossier[0]?.gestes).toBeUndefined();
 
     const sansDossier = motifsDAction(
       fiche({ ouverts: [constat({ kind: "OVERDUE_MANUAL_ACTION", severity: "HIGH" })] }),

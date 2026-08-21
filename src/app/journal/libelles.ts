@@ -20,6 +20,7 @@ const LIBELLE_ACTION: Record<string, string> = {
   "depart.pointage": "Pointage d'une étape de départ",
   "depart.cloture": "Clôture d'un dossier de départ",
   "depart.recalcul": "Recalcul d'un plan de départ",
+  "depart.annulation": "Annulation d'un dossier de départ",
   "identite.rattachement": "Rattachement d'un compte à une personne",
   "identite.detachement": "Détachement d'un compte",
   "identite.rapprochement": "Rapprochement automatique d'un compte",

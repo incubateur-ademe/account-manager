@@ -9,6 +9,7 @@ import { notFound } from "next/navigation";
 import { LIBELLE_APPARTENANCE, libelleAppartenance, surchargeSuperflue } from "@/core/appartenance";
 import { fraicheurDe } from "@/core/collecte";
 import type { ConstatKind } from "@/core/constat";
+import { ETATS_VIVANTS } from "@/core/depart";
 import { ficheEditable, RAISON_NON_EDITABLE } from "@/core/fiche-manuelle";
 import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
 import { echeanceEffective, enCours, startupsEffectives } from "@/core/rattachement-startup";
@@ -140,7 +141,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
     // Filtrée par la relation plutôt que par l'identifiant de la personne, que cette
     // requête ne connaît pas encore : elle part en même temps que celle qui le lit.
     prisma.departureCase.findFirst({
-      where: { person: { username }, state: { in: ["WATCH", "CANDIDATE", "CONFIRMED"] } },
+      where: { person: { username }, state: { in: [...ETATS_VIVANTS] } },
       select: { id: true },
     }),
   ]);

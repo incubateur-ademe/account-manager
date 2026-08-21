@@ -3,6 +3,8 @@ import { autoriseUneRevocation } from "@/core/rapprochement";
 
 export type EtatEtape = "PENDING" | "SKIPPED" | "SUCCEEDED" | "ALREADY_ABSENT" | "STALE" | "FAILED";
 
+export type EtatDossier = "WATCH" | "CANDIDATE" | "CONFIRMED" | "CANCELLED" | "DONE";
+
 export type EtatPlan =
   | "DRAFT"
   | "CONFIRMABLE"
@@ -93,6 +95,91 @@ export function etatApresPointage(etapes: readonly EtatEtape[]): EtatPlan {
  */
 export function dossierSoldable(etatPlan: EtatPlan): boolean {
   return etatPlan === "EXECUTED";
+}
+
+/**
+ * Ce qu'est un dossier vivant, dit une fois. La règle vivait en deux exemplaires
+ * littéraux, dans l'ouverture d'un dossier et dans le blocage de la fusion : un
+ * dictionnaire exhaustif fait tomber le typecheck le jour où une valeur s'ajoute à
+ * l'énum, là où un tableau littéral aurait continué de mentir en silence.
+ */
+const VIVANT: Record<EtatDossier, boolean> = {
+  WATCH: true,
+  CANDIDATE: true,
+  CONFIRMED: true,
+  CANCELLED: false,
+  DONE: false,
+};
+
+export function dossierVivant(etat: EtatDossier): boolean {
+  return VIVANT[etat];
+}
+
+export const ETATS_VIVANTS: readonly EtatDossier[] = (Object.keys(VIVANT) as EtatDossier[]).filter(
+  dossierVivant,
+);
+
+/**
+ * Un plan qui tombe avec son dossier. Un brouillon n'engage personne, et un plan
+ * qui attend d'être confirmé pas davantage. Un plan remplacé garde en revanche ce
+ * qui l'a écarté : `EXPIRED` et `STALE` disent pourquoi il ne vaut plus, et les
+ * écraser perdrait cette raison.
+ */
+export function planAAnnuler(plan: EtatPlan | null): boolean {
+  return plan === "DRAFT" || plan === "CONFIRMABLE";
+}
+
+/**
+ * Un plan que quelqu'un a confirmé, et dont les étapes ont pu être pointées. Un plan
+ * remplacé n'en est pas : `EXPIRED` et `STALE` disent qu'il a cessé de valoir avant
+ * que personne n'en réponde.
+ */
+function planEngage(plan: EtatPlan): boolean {
+  return plan === "EXECUTING" || plan === "EXECUTED" || plan === "PARTIALLY_EXECUTED";
+}
+
+/**
+ * Annuler, c'est dire qu'un départ n'aura pas lieu. Le geste s'arrête là où
+ * commence l'engagement : dès qu'un plan est confirmé, des étapes ont pu être
+ * pointées, et défaire le dossier ferait disparaître des paroles que la collecte
+ * doit encore vérifier. Il n'y a pas de fenêtre de rétractation ici, il y a la
+ * clôture.
+ */
+export function peutAnnuler(dossier: EtatDossier, plan: EtatPlan | null): Verdict {
+  if (dossier === "CANCELLED") {
+    return { possible: false, raison: "Ce dossier est déjà annulé." };
+  }
+  if (dossier === "DONE") {
+    return { possible: false, raison: "Ce dossier est clos : il ne s'annule plus." };
+  }
+  if (plan !== null && planEngage(plan)) {
+    return {
+      possible: false,
+      raison: "Ce plan est engagé : reprenez ses étapes, puis clôturez le dossier.",
+    };
+  }
+  return { possible: true };
+}
+
+/**
+ * Clore, c'est constater que tout est soldé. Les trois refus vivaient en dur dans
+ * l'action, dont celui qui parlait d'accès restés ouverts sur un dossier annulé, où
+ * il n'y en avait aucun.
+ */
+export function peutClore(dossier: EtatDossier, plan: EtatPlan | null): Verdict {
+  if (dossier === "DONE") {
+    return { possible: false, raison: "Ce dossier est déjà clos." };
+  }
+  if (dossier === "CANCELLED") {
+    return { possible: false, raison: "Ce dossier est annulé : il n'y a rien à clore." };
+  }
+  if (plan === null || !dossierSoldable(plan)) {
+    return {
+      possible: false,
+      raison: "Toutes les étapes ne sont pas soldées : des accès restent ouverts.",
+    };
+  }
+  return { possible: true };
 }
 
 export interface CompteConstate {
