@@ -67,13 +67,13 @@ describe("pointage des étapes", () => {
 
     const apresEchec: EtatEtape[] = ["SUCCEEDED", "FAILED", "SKIPPED"];
     expect(etatApresPointage(apresEchec)).toBe("PARTIALLY_EXECUTED");
-    expect(peutClore("CANDIDATE", etatApresPointage(apresEchec)).possible).toBe(false);
+    expect(peutClore("CANDIDATE", etatApresPointage(apresEchec), 3).possible).toBe(false);
 
     // La reprise de la seule étape en échec suffit à tout solder, donc à rouvrir la
     // clôture : la sortie existe, elle passe par le geste que l'écran nommait déjà.
     const apresReprise: EtatEtape[] = ["SUCCEEDED", "SUCCEEDED", "SKIPPED"];
     expect(etatApresPointage(apresReprise)).toBe("EXECUTED");
-    expect(peutClore("CANDIDATE", etatApresPointage(apresReprise)).possible).toBe(true);
+    expect(peutClore("CANDIDATE", etatApresPointage(apresReprise), 3).possible).toBe(true);
 
     // « Déjà absent » solde aussi, et c'est le cas nominal quand une autre
     // automatisation est passée entre-temps.
@@ -291,10 +291,10 @@ describe("annulation d'un dossier de départ", () => {
   });
 
   it("fait nommer à la clôture ce qui la bloque, plutôt que d'inventer des accès ouverts", () => {
-    expect(peutClore("CANDIDATE", "EXECUTED").possible).toBe(true);
+    expect(peutClore("CANDIDATE", "EXECUTED", 3).possible).toBe(true);
 
-    const surUnDossierAnnule = peutClore("CANCELLED", "CANCELLED");
-    const surUnDossierClos = peutClore("DONE", "EXECUTED");
+    const surUnDossierAnnule = peutClore("CANCELLED", "CANCELLED", 3);
+    const surUnDossierClos = peutClore("DONE", "EXECUTED", 3);
 
     expect(surUnDossierAnnule.possible).toBe(false);
     expect(surUnDossierAnnule.possible === false && surUnDossierAnnule.raison).toContain("annulé");
@@ -304,10 +304,34 @@ describe("annulation d'un dossier de départ", () => {
     // Un dossier annulé n'a aucun accès resté ouvert : le lui dire était faux.
     const accesOuverts = "Toutes les étapes ne sont pas soldées : des accès restent ouverts.";
 
-    for (const plan of ["EXECUTING", "PARTIALLY_EXECUTED", null] as const) {
-      const verdict = peutClore("CANDIDATE", plan);
+    for (const plan of ["EXECUTING", "PARTIALLY_EXECUTED"] as const) {
+      const verdict = peutClore("CANDIDATE", plan, 3);
       expect(verdict.possible).toBe(false);
       expect(verdict.possible === false && verdict.raison).toBe(accesOuverts);
     }
+
+    // Un dossier sans aucun plan n'a rien à solder, et le dire ainsi le distingue
+    // d'un plan dont les étapes attendent : deux situations, deux issues.
+    const sansPlan = peutClore("CANDIDATE", null, 0);
+    expect(sansPlan.possible).toBe(false);
+    expect(sansPlan.possible === false && sansPlan.raison).not.toBe(accesOuverts);
+  });
+
+  it("clôt un dossier dont le plan ne demande rien", () => {
+    // La confirmation refuse une liste vide, à raison, si bien qu'un plan sans étape
+    // n'atteint jamais l'état exécuté. Sans cette sortie, la seule restante était
+    // l'annulation, qui inscrit « ce départ n'aura pas lieu » alors qu'il a bien lieu
+    // et que l'outil n'avait rien à faire.
+    expect(peutConfirmer("DRAFT", FRAIS, 0).possible).toBe(false);
+    expect(peutClore("CANDIDATE", "DRAFT", 0).possible).toBe(true);
+
+    // Le cas naît d'une personne dont aucun compte n'est rattaché de façon sûre :
+    // le plan ne peut viser personne, et le dossier restait ouvert pour toujours.
+    expect(systemesDuDepart([{ provider: "github", methode: "HEURISTIC" }]).revocables).toEqual([]);
+
+    // Ce qui reste fermé le reste : un dossier clos ou annulé ne se clôt pas, même
+    // avec un plan vide.
+    expect(peutClore("DONE", "DRAFT", 0).possible).toBe(false);
+    expect(peutClore("CANCELLED", "DRAFT", 0).possible).toBe(false);
   });
 });

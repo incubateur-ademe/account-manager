@@ -230,7 +230,11 @@ export async function cloreDossier(
       id: true,
       state: true,
       person: { select: { username: true } },
-      plans: { orderBy: { createdAt: "desc" }, take: 1, select: { state: true } },
+      plans: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { state: true, _count: { select: { steps: true } } },
+      },
     },
   });
 
@@ -238,7 +242,8 @@ export async function cloreDossier(
     return { erreur: "Ce dossier n'existe plus." };
   }
 
-  const verdict = peutClore(dossier.state, dossier.plans[0]?.state ?? null);
+  const dernier = dossier.plans[0] ?? null;
+  const verdict = peutClore(dossier.state, dernier?.state ?? null, dernier?._count.steps ?? 0);
   if (!verdict.possible) {
     return { erreur: verdict.raison };
   }

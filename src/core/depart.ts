@@ -174,14 +174,30 @@ export function peutAnnuler(dossier: EtatDossier, plan: EtatPlan | null): Verdic
  * l'action, dont celui qui parlait d'accès restés ouverts sur un dossier annulé, où
  * il n'y en avait aucun.
  */
-export function peutClore(dossier: EtatDossier, plan: EtatPlan | null): Verdict {
+export function peutClore(dossier: EtatDossier, plan: EtatPlan | null, etapes: number): Verdict {
   if (dossier === "DONE") {
     return { possible: false, raison: "Ce dossier est déjà clos." };
   }
   if (dossier === "CANCELLED") {
     return { possible: false, raison: "Ce dossier est annulé : il n'y a rien à clore." };
   }
-  if (plan === null || !dossierSoldable(plan)) {
+  if (plan === null) {
+    return {
+      possible: false,
+      raison: "Aucun plan n'a été enregistré pour ce dossier : il n'y a rien à solder.",
+    };
+  }
+
+  // Un plan qui ne demande rien est soldé par construction, et il faut le dire :
+  // la confirmation refuse une liste vide, à raison, si bien que ce plan n'atteindra
+  // jamais l'état exécuté. Sans cette ligne, la seule sortie restait l'annulation,
+  // qui inscrit « ce départ n'aura pas lieu » alors qu'il a bien lieu et que l'outil
+  // n'avait simplement rien à faire.
+  if (etapes === 0) {
+    return { possible: true };
+  }
+
+  if (!dossierSoldable(plan)) {
     return {
       possible: false,
       raison: "Toutes les étapes ne sont pas soldées : des accès restent ouverts.",
