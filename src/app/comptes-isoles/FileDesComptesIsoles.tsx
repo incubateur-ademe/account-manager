@@ -149,7 +149,9 @@ export function FileDesComptesIsoles({
             {choisi.metadonnees.length > 0 ? (
               <ul className={fr.cx("fr-text--sm", "fr-mb-1w")}>
                 {choisi.metadonnees.map((metadonnee) => (
-                  <li key={metadonnee.libelle}>
+                  // La valeur entre dans la clé : le connecteur écrit ce qu'il veut, et
+                  // rien ne lui interdit de répéter un libellé pour deux valeurs.
+                  <li key={`${metadonnee.libelle}:${metadonnee.valeur}`}>
                     {metadonnee.libelle} : {metadonnee.valeur}
                   </li>
                 ))}
