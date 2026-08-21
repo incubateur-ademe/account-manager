@@ -182,4 +182,16 @@ describe("ce qu'une identité collectée laisse en base", () => {
 
     expect(sansRien.details).toBeNull();
   });
+
+  it("tient une chute de ressources pour aussi suspecte qu'une chute de comptes", () => {
+    // Un accès porte sur une ressource : une liste d'équipes rendue vide par un
+    // incident du fournisseur emporterait tous les accès qu'elles portaient, sur un
+    // run par ailleurs vert, et le décompte des comptes ne verrait rien.
+    expect(chuteExcessive(20, 1, 0.2)).toBe(true);
+    expect(chuteExcessive(20, 0, 0.2)).toBe(true);
+    expect(chuteExcessive(20, 19, 0.2)).toBe(false);
+
+    // Une première collecte n'est pas une chute, ici comme pour les comptes.
+    expect(chuteExcessive(0, 0, 0.2)).toBe(false);
+  });
 });

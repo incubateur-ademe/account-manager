@@ -57,6 +57,16 @@ interface InvitationApi {
 const DATE_FR = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "UTC" });
 
 /**
+ * Une date que le fournisseur rend mal formée ne coûte pas la collecte entière :
+ * `Intl` lève sur une date invalide, et rien n'attrape ici, si bien qu'une seule
+ * invitation malformée ferait échouer le système au complet et ne daterait plus rien.
+ */
+function dateLisible(valeur: string): string | null {
+  const date = new Date(valeur);
+  return Number.isNaN(date.getTime()) ? null : DATE_FR.format(date);
+}
+
+/**
  * La lecture d'une organisation, séparée de son assemblage : ce qui appelle le réseau
  * d'un côté, ce qui décide de l'autre, faute de quoi le coût en requêtes ne s'observe
  * qu'en production.
@@ -216,8 +226,9 @@ function detailsDuMembre(membre: MembreApi): readonly ObservedDetail[] | undefin
 function detailsDeLInvitation(invitation: InvitationApi): readonly ObservedDetail[] {
   const details: ObservedDetail[] = [];
 
-  if (invitation.created_at) {
-    details.push({ label: "Invitée le", value: DATE_FR.format(new Date(invitation.created_at)) });
+  const creee = invitation.created_at ? dateLisible(invitation.created_at) : null;
+  if (creee) {
+    details.push({ label: "Invitée le", value: creee });
   }
   if (invitation.inviter?.login) {
     details.push({ label: "Invitée par", value: invitation.inviter.login });
@@ -226,10 +237,8 @@ function detailsDeLInvitation(invitation: InvitationApi): readonly ObservedDetai
     details.push({ label: "Équipes visées", value: String(invitation.team_count) });
   }
   if (invitation.failed_at) {
-    details.push({
-      label: "Invitation en échec",
-      value: invitation.failed_reason ?? DATE_FR.format(new Date(invitation.failed_at)),
-    });
+    const echec = invitation.failed_reason || dateLisible(invitation.failed_at);
+    details.push({ label: "Invitation en échec", value: echec || "raison inconnue" });
   }
 
   return details;
@@ -264,10 +273,12 @@ export function assemblerOrganisation(
   }
 
   for (const { equipe, membres } of lecture.equipes) {
-    // Ni un slug ni un nom d'organisation ne contient de barre oblique : la clé ne
-    // peut collisionner ni avec celle de l'organisation ni avec la ressource
+    // Sur l'identifiant et non sur le slug : renommer une équipe change son slug,
+    // donc la clé, donc l'identité de la ressource, et tous les accès qu'elle portait
+    // se feraient dater disparus sans que personne n'ait rien perdu. Le dièse écarte
+    // toute collision avec la clé de l'organisation comme avec la ressource
     // synthétique du socle.
-    const cle = `${org}/${equipe.slug}`;
+    const cle = `${org}#${equipe.id}`;
     ressources.push({
       externalId: cle,
       label: `Équipe ${equipe.name}`,

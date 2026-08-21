@@ -76,7 +76,7 @@ describe("ce que le connecteur GitHub remonte d'une organisation", () => {
         url: "https://github.com/incubateur-ademe",
       },
       {
-        externalId: "incubateur-ademe/produit-alpha",
+        externalId: "incubateur-ademe#10",
         label: "Équipe produit-alpha",
         url: "https://github.com/orgs/incubateur-ademe/teams/produit-alpha",
       },
@@ -85,7 +85,7 @@ describe("ce que le connecteur GitHub remonte d'une organisation", () => {
     expect(assemblee.acces).toHaveLength(3);
     expect(assemblee.acces).toContainEqual({
       identityExternalId: "1",
-      resourceExternalId: "incubateur-ademe/produit-alpha",
+      resourceExternalId: "incubateur-ademe#10",
       role: "member",
     });
     expect(assemblee.acces.filter((acces) => acces.identityExternalId === "2")).toHaveLength(1);
@@ -168,7 +168,7 @@ describe("ce que le connecteur GitHub remonte d'une organisation", () => {
     // Aucun accès vers l'équipe illisible : le silence ne doit jamais valoir absence.
     const versBeta =
       partiel.status !== "failed" &&
-      partiel.grants.filter((acces) => acces.resourceExternalId?.endsWith("produit-beta"));
+      partiel.grants.filter((acces) => acces.resourceExternalId === "incubateur-ademe#11");
     expect(versBeta).toHaveLength(0);
 
     const sansListeDEquipes = await collecter(

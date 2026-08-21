@@ -216,6 +216,18 @@ async function identitesTenuesPourVivantes(provider: string): Promise<number> {
 }
 
 /**
+ * Le même point de comparaison, pour les ressources.
+ *
+ * Un accès porte sur une ressource, et une ressource qui cesse d'être lue emporte
+ * tous les accès qu'elle portait : une liste d'équipes rendue vide par un incident du
+ * fournisseur date tout le monde disparu sur un run par ailleurs vert. Le décompte
+ * des identités ne voit pas ce trou, les comptes étant lus ailleurs et intacts.
+ */
+async function ressourcesTenuesPourVivantes(provider: string): Promise<number> {
+  return prisma.resource.count({ where: { provider } });
+}
+
+/**
  * Ce que tout connecteur partage : ouvrir une trace, lire, écrire ce qui a été vu,
  * dater ce qui a disparu, refermer la trace. Écrit une fois ici, ce socle garantit
  * que la discipline du constaté ne dépend pas de la vigilance de chaque connecteur,
@@ -295,10 +307,17 @@ export async function executerCollecte(
 
   if (status === "OK") {
     const reference = await identitesTenuesPourVivantes(provider);
+    const referenceRessources = await ressourcesTenuesPourVivantes(provider);
+    const seuil = policy().thresholds.maxScopeDrop;
 
-    if (chuteExcessive(reference, lu.itemsSeen, policy().thresholds.maxScopeDrop)) {
+    if (chuteExcessive(reference, lu.itemsSeen, seuil)) {
       erreurs.push(
         `chute de la collecte : ${lu.itemsSeen} éléments contre ${reference} tenus pour vivants, aucune disparition datée`,
+      );
+      status = "PARTIAL";
+    } else if (chuteExcessive(referenceRessources, lu.resources.length, seuil)) {
+      erreurs.push(
+        `chute des ressources : ${lu.resources.length} contre ${referenceRessources} connues, aucune disparition datée`,
       );
       status = "PARTIAL";
     } else {
