@@ -4,6 +4,7 @@ import { CONNECTEURS } from "@/connectors";
 import type { PlannedStep, RunContext } from "@/core/connector";
 import { ETATS_VIVANTS, type SystemesDuDepart, systemesDuDepart } from "@/core/depart";
 import { empreinteDuPlan } from "@/core/plan";
+import type { Prisma } from "@/generated/prisma/client";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -152,6 +153,13 @@ export async function enregistrerPlan(
   calcule: PlanCalcule,
   createdBy: string,
   maintenant: Date,
+  /**
+   * Le client d'une transaction en cours, quand l'appelant en ouvre une. Le recalcul
+   * remplace un plan puis en enregistre un neuf : séparées, une panne entre les deux
+   * laisse le plan remplacé comme plan le plus récent, et le dossier sans autre issue
+   * que l'annulation.
+   */
+  client: Prisma.TransactionClient | typeof prisma = prisma,
 ): Promise<string> {
   const expiresAt = new Date(maintenant.getTime() + VALIDITE_JOURS * 24 * 60 * 60_000);
 
@@ -160,7 +168,7 @@ export async function enregistrerPlan(
   // du même dossier, ce qui interdirait d'en recalculer un après péremption.
   const planId = randomUUID();
 
-  const plan = await prisma.plan.create({
+  const plan = await client.plan.create({
     data: {
       id: planId,
       departureCaseId,
