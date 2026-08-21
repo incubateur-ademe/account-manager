@@ -2,11 +2,17 @@ import { describe, expect, it } from "vitest";
 
 import {
   dossierSoldable,
+  dossierVivant,
+  ETATS_VIVANTS,
+  type EtatDossier,
   etatApresPointage,
   etatDUnPlanRemplace,
+  peutAnnuler,
+  peutClore,
   peutConfirmer,
   peutPointer,
   peutRecalculer,
+  planAAnnuler,
   systemesDuDepart,
 } from "./depart";
 
@@ -176,5 +182,105 @@ describe("recalcul d'un plan", () => {
     expect(peutRecalculer("EXECUTED", perime).possible).toBe(false);
     expect(peutRecalculer("PARTIALLY_EXECUTED", perime).possible).toBe(false);
     expect(peutRecalculer("CANCELLED", perime).possible).toBe(false);
+  });
+});
+
+/**
+ * Annuler dit qu'un départ n'aura pas lieu. Ce qui compte ici est la frontière : le
+ * geste s'arrête là où commence l'engagement, et ses refus doivent nommer chacun leur
+ * propre sortie, sans quoi on cherche la mauvaise.
+ */
+describe("annulation d'un dossier de départ", () => {
+  it("annule un départ que personne n'a confirmé, et rouvre la porte à un dossier neuf", () => {
+    // Un brouillon n'engage personne : le dossier et son plan tombent ensemble, sans
+    // quoi la confirmation resterait offerte sur un départ abandonné.
+    expect(peutAnnuler("CANDIDATE", "DRAFT").possible).toBe(true);
+    expect(planAAnnuler("DRAFT")).toBe(true);
+    expect(dossierVivant("CANCELLED")).toBe(false);
+
+    const surUnDossierAnnule = peutAnnuler("CANCELLED", "CANCELLED");
+
+    expect(surUnDossierAnnule.possible).toBe(false);
+    expect(surUnDossierAnnule.possible === false && surUnDossierAnnule.raison).toContain("annulé");
+  });
+
+  it("refuse d'annuler un plan engagé, et ne confond pas ses trois refus", () => {
+    const engages = ["EXECUTING", "EXECUTED", "PARTIALLY_EXECUTED"] as const;
+
+    for (const plan of engages) {
+      const verdict = peutAnnuler("CANDIDATE", plan);
+      expect(verdict.possible).toBe(false);
+      expect(verdict.possible === false && verdict.raison).toContain("engagé");
+      expect(planAAnnuler(plan)).toBe(false);
+    }
+
+    const raison = (dossier: EtatDossier, plan: "DRAFT" | "EXECUTING") => {
+      const verdict = peutAnnuler(dossier, plan);
+      return verdict.possible === false ? verdict.raison : "";
+    };
+
+    // Trois sorties différentes : reprendre les étapes, constater que c'est déjà fait,
+    // ou constater que le dossier est clos. Une seule phrase pour les trois enverrait
+    // chercher la mauvaise.
+    const phrases = new Set([
+      raison("CANDIDATE", "EXECUTING"),
+      raison("CANCELLED", "DRAFT"),
+      raison("DONE", "DRAFT"),
+    ]);
+
+    expect(phrases.size).toBe(3);
+
+    // Ce qu'un plan annulé ne permet plus, et que rien de neuf ne doit défaire.
+    expect(peutConfirmer("CANCELLED", FRAIS, 3).possible).toBe(false);
+    expect(peutPointer("CANCELLED").possible).toBe(false);
+  });
+
+  it("annule un dossier sans plan, et laisse un plan remplacé porter ce qui l'a écarté", () => {
+    // Un calcul interrompu laisse un dossier sans plan : l'annuler est sa seule issue.
+    expect(peutAnnuler("CANDIDATE", null).possible).toBe(true);
+    expect(planAAnnuler(null)).toBe(false);
+
+    for (const remplace of ["EXPIRED", "STALE"] as const) {
+      expect(peutAnnuler("CANDIDATE", remplace).possible).toBe(true);
+      expect(planAAnnuler(remplace)).toBe(false);
+    }
+
+    // `CONFIRMABLE` n'est écrit par personne aujourd'hui, et rien d'autre ne le
+    // couvrirait le jour où un plan naîtra en attente plutôt qu'en brouillon.
+    expect(peutAnnuler("CANDIDATE", "CONFIRMABLE").possible).toBe(true);
+    expect(planAAnnuler("CONFIRMABLE")).toBe(true);
+  });
+
+  it("range les cinq états de dossier en un seul endroit", () => {
+    // La règle vivait en deux littéraux recopiés, dans l'ouverture d'un dossier et
+    // dans le blocage de la fusion. Elle se lit désormais ici, et une seule fois.
+    expect(dossierVivant("WATCH")).toBe(true);
+    expect(dossierVivant("CANDIDATE")).toBe(true);
+    expect(dossierVivant("CONFIRMED")).toBe(true);
+    expect(dossierVivant("CANCELLED")).toBe(false);
+    expect(dossierVivant("DONE")).toBe(false);
+
+    expect([...ETATS_VIVANTS].sort()).toEqual(["CANDIDATE", "CONFIRMED", "WATCH"]);
+  });
+
+  it("fait nommer à la clôture ce qui la bloque, plutôt que d'inventer des accès ouverts", () => {
+    expect(peutClore("CANDIDATE", "EXECUTED").possible).toBe(true);
+
+    const surUnDossierAnnule = peutClore("CANCELLED", "CANCELLED");
+    const surUnDossierClos = peutClore("DONE", "EXECUTED");
+
+    expect(surUnDossierAnnule.possible).toBe(false);
+    expect(surUnDossierAnnule.possible === false && surUnDossierAnnule.raison).toContain("annulé");
+    expect(surUnDossierClos.possible).toBe(false);
+    expect(surUnDossierClos.possible === false && surUnDossierClos.raison).toContain("clos");
+
+    // Un dossier annulé n'a aucun accès resté ouvert : le lui dire était faux.
+    const accesOuverts = "Toutes les étapes ne sont pas soldées : des accès restent ouverts.";
+
+    for (const plan of ["EXECUTING", "PARTIALLY_EXECUTED", null] as const) {
+      const verdict = peutClore("CANDIDATE", plan);
+      expect(verdict.possible).toBe(false);
+      expect(verdict.possible === false && verdict.raison).toBe(accesOuverts);
+    }
   });
 });

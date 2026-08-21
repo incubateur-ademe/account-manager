@@ -2,7 +2,10 @@
 
 import { fr } from "@codegouvfr/react-dsfr";
 import { Button } from "@codegouvfr/react-dsfr/Button";
+import { createModal } from "@codegouvfr/react-dsfr/Modal";
 import { useActionState, useState } from "react";
+
+import { AnnulationDossier } from "./AnnulationDossier";
 
 import {
   cloreDossier,
@@ -11,6 +14,73 @@ import {
   pointerEtape,
   recalculerPlan,
 } from "./actions";
+
+// Hors du composant, comme partout ailleurs dans ce dépôt : `createModal` enregistre
+// la modale une fois pour toutes, et un écran de dossier n'en porte qu'une.
+const modaleAnnulation = createModal({ id: "annuler-depart", isOpenedByDefault: false });
+
+/**
+ * Le geste qui dit qu'un départ n'aura pas lieu.
+ *
+ * La modale se rend toujours, et seul son contenu dépend du verdict. Après
+ * l'annulation, le chemin du dossier est revalidé et la page se re-rend avec un
+ * verdict devenu défavorable : un composant qui disparaîtrait à ce moment emporterait
+ * le dialogue ouvert avant qu'il ne se ferme, et laisserait le verrou de défilement du
+ * système de design posé sur la page.
+ */
+export function BoutonAnnuler({
+  dossierId,
+  etapes,
+  annulable,
+}: {
+  dossierId: string;
+  etapes: number;
+  annulable: boolean;
+}) {
+  return (
+    <>
+      {annulable ? (
+        <Button
+          className={fr.cx("fr-mt-1w")}
+          priority="secondary"
+          size="small"
+          nativeButtonProps={modaleAnnulation.buttonProps}
+        >
+          Annuler ce départ
+        </Button>
+      ) : null}
+
+      <modaleAnnulation.Component title="Annuler ce départ">
+        {/* Le formulaire reste monté quoi qu'il arrive : l'annulation fait basculer
+            `annulable` à faux avant que son effet de fermeture n'ait eu son tour, et
+            un formulaire démonté à cet instant emporte le dialogue ouvert avec lui,
+            laissant le verrou de défilement du système de design posé sur la page. */}
+        {annulable ? (
+          <>
+            <p className={fr.cx("fr-text--sm")}>
+              {etapes === 0
+                ? "Ce dossier n'a aucune étape : rien n'a été proposé, et rien ne sera abandonné."
+                : `${etapes} étape${etapes > 1 ? "s" : ""} proposée${etapes > 1 ? "s" : ""} ${etapes > 1 ? "seront abandonnées" : "sera abandonnée"}.`}{" "}
+              Aucun accès n'est coupé ni rouvert par ce geste : l'outil n'a rien exécuté, il a
+              seulement dit ce qu'il faudrait faire.
+            </p>
+            <p className={fr.cx("fr-text--sm", "fr-mb-1w")}>
+              Un nouveau départ restera ouvrable ensuite, et la fiche de la personne cessera
+              d'annoncer celui-ci.
+            </p>
+          </>
+        ) : (
+          <p className={fr.cx("fr-text--sm")}>Ce dossier ne s'annule plus.</p>
+        )}
+        <AnnulationDossier
+          dossierId={dossierId}
+          visible={annulable}
+          onSucces={modaleAnnulation.close}
+        />
+      </modaleAnnulation.Component>
+    </>
+  );
+}
 
 export function BoutonConfirmer({ planId }: { planId: string }) {
   const [etat, formAction, pending] = useActionState<EtatAction | null, FormData>(
