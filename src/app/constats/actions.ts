@@ -23,7 +23,7 @@ export async function cloreConstat(_etat: EtatCloture, formData: FormData): Prom
 
   const constat = await prisma.finding.findUnique({
     where: { dedupKey },
-    select: { id: true, closedAt: true },
+    select: { id: true, closedAt: true, person: { select: { username: true } } },
   });
 
   if (!constat) {
@@ -38,7 +38,14 @@ export async function cloreConstat(_etat: EtatCloture, formData: FormData): Prom
     targetType: "finding",
     targetId: dedupKey,
     after: { raison },
-    revalider: ["/constats", "/"],
+    // La fiche de la personne aussi, quand le constat en porte une : c'est de là que
+    // le geste peut partir. L'identifiant vient du constat relu, jamais du
+    // formulaire, qui se poste sans passer par l'écran qui l'a rendu.
+    revalider: [
+      "/constats",
+      "/",
+      ...(constat.person ? [`/personnes/${constat.person.username}`] : []),
+    ],
     ecrire: async (operateur) => {
       await prisma.finding.update({
         where: { id: constat.id },

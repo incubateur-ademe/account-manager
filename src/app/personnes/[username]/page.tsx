@@ -67,7 +67,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
   const { thresholds, startups: reglesStartups, scope } = policy();
   const today = new Date();
 
-  const [personne, collectes, dernierePasse] = await Promise.all([
+  const [personne, collectes, dernierePasse, dossierVivant] = await Promise.all([
     prisma.person.findUnique({
       where: { username },
       select: {
@@ -121,6 +121,8 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
             openedAt: true,
             closedAt: true,
             closeReason: true,
+            closedBy: true,
+            externalIdentity: { select: { provider: true, handle: true } },
           },
         },
       },
@@ -134,6 +136,12 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
       where: { provider: FOURNISSEUR_PERIMETRE },
       orderBy: { startedAt: "desc" },
       select: { startedAt: true },
+    }),
+    // Filtrée par la relation plutôt que par l'identifiant de la personne, que cette
+    // requête ne connaît pas encore : elle part en même temps que celle qui le lit.
+    prisma.departureCase.findFirst({
+      where: { person: { username }, state: { in: ["WATCH", "CANDIDATE", "CONFIRMED"] } },
+      select: { id: true },
     }),
   ]);
 
@@ -218,7 +226,15 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
   // On arrive de la vue d'édition, qui a refusé : le dire ici plutôt que de rendre
   // la fiche comme si de rien n'était.
   const refusALEdition = edition === "refusee" && !editabilite.editable ? editabilite.raison : null;
-  const ouverts = personne.findings.filter((constat) => constat.closedAt === null);
+  const ouverts = personne.findings
+    .filter((constat) => constat.closedAt === null)
+    .map((constat) => ({
+      id: constat.id,
+      kind: constat.kind,
+      dedupKey: constat.dedupKey,
+      severity: constat.severity,
+      compte: constat.externalIdentity,
+    }));
   const fermes = personne.findings.filter((constat) => constat.closedAt !== null);
   const systemesCollectes = collectes
     .map((collecte) => collecte.provider)
@@ -237,8 +253,10 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
     libelleSansSurcharge: LIBELLE_APPARTENANCE[appartenance.sansSurcharge].libelle,
     ouverts,
     fraicheur,
+    fermes,
     toutesStartupsTerminees: toutesTerminees,
     parEquipe,
+    dossierVivant: dossierVivant?.id ?? null,
   });
 
   return (

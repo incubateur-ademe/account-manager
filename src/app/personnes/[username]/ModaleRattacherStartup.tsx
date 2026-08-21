@@ -8,7 +8,15 @@ import { Aide } from "@/ui/Aide";
 
 import { RattacherStartup, type StartupProposable } from "./RattacherStartup";
 
-const modale = createModal({ id: "rattacher-startup", isOpenedByDefault: false });
+/**
+ * Exportée : le bloc « Ce qu'il y a à faire » ouvre cette modale plutôt que d'en
+ * déclarer une seconde, sans quoi le formulaire et son explication vivraient en deux
+ * exemplaires sur le même écran.
+ */
+export const modaleRattacherStartup = createModal({
+  id: "rattacher-startup",
+  isOpenedByDefault: false,
+});
 
 /**
  * Rattacher est une action de section, pas de page : son bouton vit dans l'en-tête de
@@ -31,7 +39,7 @@ export function ModaleRattacherStartup({
           className={fr.cx("fr-mr-1v")}
           priority="secondary"
           size="small"
-          nativeButtonProps={modale.buttonProps}
+          nativeButtonProps={modaleRattacherStartup.buttonProps}
         >
           Rattacher à une startup
         </Button>
@@ -42,7 +50,7 @@ export function ModaleRattacherStartup({
         </Aide>
       </span>
 
-      <modale.Component title="Rattacher à une startup" size="large">
+      <modaleRattacherStartup.Component title="Rattacher à une startup" size="large">
         <p className={fr.cx("fr-text--sm")}>
           Un rattachement manuel porte obligatoirement une date de fin et le nom de qui l'a posé. Il
           survit aux collectes, contrairement aux startups collectées, que l'espace-membre réécrit à
@@ -52,9 +60,9 @@ export function ModaleRattacherStartup({
           username={username}
           missionEnd={missionEnd}
           startups={startups}
-          onSucces={modale.close}
+          onSucces={modaleRattacherStartup.close}
         />
-      </modale.Component>
+      </modaleRattacherStartup.Component>
     </>
   );
 }
