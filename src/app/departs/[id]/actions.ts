@@ -297,7 +297,10 @@ export async function annulerDossier(
     before: { etat: dossier.state, plan: plan?.state ?? null },
     after: {
       etat: "CANCELLED",
-      plan: planAAnnuler(plan?.state ?? null) ? "CANCELLED" : null,
+      // L'état réel du plan après le geste : « null » pour les deux cas, plan absent
+      // et plan laissé intact parce qu'il était déjà remplacé, aurait rendu la trace
+      // incapable de les distinguer.
+      plan: planAAnnuler(plan?.state ?? null) ? "CANCELLED" : (plan?.state ?? null),
       motif,
     },
     revalider: [`/departs/${dossier.id}`, `/personnes/${dossier.person.username}`],
