@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { chuteExcessive } from "@/core/collecte";
+import { champsConstates, chuteExcessive } from "@/core/collecte";
 import type {
   CollectResult,
   Connector,
@@ -9,7 +9,8 @@ import type {
   ObservedResource,
   RunContext,
 } from "@/core/connector";
-import type { IdKind, SyncStatus } from "@/generated/prisma/enums";
+import { Prisma } from "@/generated/prisma/client";
+import type { SyncStatus } from "@/generated/prisma/enums";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -31,17 +32,6 @@ const STATUT: Record<CollectResult["status"], SyncStatus> = {
   failed: "FAILED",
 };
 
-/**
- * Le contrat parle en minuscules, la base en majuscules. La conversion est explicite
- * plutôt que castée : deux vocabulaires qui se ressemblent sont exactement ce qui
- * finit par diverger sans que rien ne le dise.
- */
-const KIND: Record<ObservedIdentity["idKind"], IdKind> = {
-  opaque: "OPAQUE",
-  email: "EMAIL",
-  upn: "UPN",
-};
-
 async function enregistrerIdentites(
   provider: string,
   identites: readonly ObservedIdentity[],
@@ -51,11 +41,17 @@ async function enregistrerIdentites(
   let revues = 0;
 
   for (const identite of identites) {
+    const { details, ...constates } = champsConstates(identite, now);
+
+    // `DbNull` et non `null` : le type d'entrée d'une colonne Json ne l'accepte pas, et
+    // omettre la clé conserverait l'ancienne valeur, ce qui ferait survivre une
+    // métadonnée que le connecteur ne remonte plus.
     const commun = {
-      handle: identite.handle,
-      idKind: KIND[identite.idKind],
-      lastSeenAt: now,
-      vanishedAt: null,
+      ...constates,
+      details:
+        details === null
+          ? Prisma.DbNull
+          : details.map((detail) => ({ label: detail.label, value: detail.value })),
     };
 
     // Le rattachement à une personne n'est jamais touché ici : il relève du
@@ -220,6 +216,25 @@ async function identitesTenuesPourVivantes(provider: string): Promise<number> {
 }
 
 /**
+ * Le même point de comparaison, pour les ressources.
+ *
+ * Un accès porte sur une ressource, et une ressource qui cesse d'être lue emporte
+ * tous les accès qu'elle portait : une liste d'équipes rendue vide par un incident du
+ * fournisseur date tout le monde disparu sur un run par ailleurs vert. Le décompte
+ * des identités ne voit pas ce trou, les comptes étant lus ailleurs et intacts.
+ *
+ * Comptées par les accès qu'elles portent encore, et non par leur seule existence :
+ * `Resource` n'a pas de date de disparition, ses lignes ne s'effacent jamais, et les
+ * compter toutes ferait grossir la référence à chaque équipe supprimée ou renommée
+ * jusqu'à ce que le garde-fou se déclenche sur une collecte parfaitement saine.
+ */
+async function ressourcesTenuesPourVivantes(provider: string): Promise<number> {
+  return prisma.resource.count({
+    where: { provider, grants: { some: { vanishedAt: null } } },
+  });
+}
+
+/**
  * Ce que tout connecteur partage : ouvrir une trace, lire, écrire ce qui a été vu,
  * dater ce qui a disparu, refermer la trace. Écrit une fois ici, ce socle garantit
  * que la discipline du constaté ne dépend pas de la vigilance de chaque connecteur,
@@ -299,10 +314,17 @@ export async function executerCollecte(
 
   if (status === "OK") {
     const reference = await identitesTenuesPourVivantes(provider);
+    const referenceRessources = await ressourcesTenuesPourVivantes(provider);
+    const seuil = policy().thresholds.maxScopeDrop;
 
-    if (chuteExcessive(reference, lu.itemsSeen, policy().thresholds.maxScopeDrop)) {
+    if (chuteExcessive(reference, lu.itemsSeen, seuil)) {
       erreurs.push(
         `chute de la collecte : ${lu.itemsSeen} éléments contre ${reference} tenus pour vivants, aucune disparition datée`,
+      );
+      status = "PARTIAL";
+    } else if (chuteExcessive(referenceRessources, lu.resources.length, seuil)) {
+      erreurs.push(
+        `chute des ressources : ${lu.resources.length} contre ${referenceRessources} connues, aucune disparition datée`,
       );
       status = "PARTIAL";
     } else {

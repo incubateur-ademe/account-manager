@@ -1,3 +1,6 @@
+import type { ObservedDetail, ObservedIdentity } from "@/core/connector";
+import type { IdKind } from "@/generated/prisma/enums";
+
 /**
  * Une collecte qui rapporte beaucoup moins que la précédente n'est pas distinguable
  * d'un départ collectif : les deux se ressemblent trait pour trait, seule l'ampleur
@@ -7,6 +10,49 @@
  * Sans point de comparaison, il n'y a rien à soupçonner : une première collecte n'est
  * pas une chute.
  */
+/**
+ * Le contrat parle en minuscules, la base en majuscules. La conversion est explicite
+ * plutôt que castée : deux vocabulaires qui se ressemblent sont exactement ce qui
+ * finit par diverger sans que rien ne le dise.
+ */
+const KIND: Record<ObservedIdentity["idKind"], IdKind> = {
+  opaque: "OPAQUE",
+  email: "EMAIL",
+  upn: "UPN",
+};
+
+/**
+ * Ce qu'une identité collectée laisse en base, et rien de plus.
+ *
+ * La liste est courte et elle est délibérée : ce qui sert de clé, ce qui sert au
+ * rapprochement, ce qui déclenche, et ce qui sert à décider à qui un compte
+ * appartient. `emails` et `lastActivityAt` sont collectés et ne sont pas persistés :
+ * écrire `emails` changerait l'issue du rapprochement sur le parc existant, une
+ * ressemblance devenant une correspondance d'adresse, donc une identité révocable.
+ * Ce n'est pas un oubli, c'est un autre ticket.
+ *
+ * `details` suit le dernier état constaté, absence comprise : un connecteur qui
+ * cesse de savoir quelque chose d'un compte doit cesser de l'afficher.
+ */
+export function champsConstates(
+  identite: ObservedIdentity,
+  now: Date,
+): {
+  handle: string;
+  idKind: IdKind;
+  details: readonly ObservedDetail[] | null;
+  lastSeenAt: Date;
+  vanishedAt: null;
+} {
+  return {
+    handle: identite.handle,
+    idKind: KIND[identite.idKind],
+    details: identite.details ?? null,
+    lastSeenAt: now,
+    vanishedAt: null,
+  };
+}
+
 export function chuteExcessive(reference: number, observe: number, partMax: number): boolean {
   if (reference <= 0) {
     return false;
