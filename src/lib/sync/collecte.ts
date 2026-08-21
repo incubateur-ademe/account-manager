@@ -222,9 +222,16 @@ async function identitesTenuesPourVivantes(provider: string): Promise<number> {
  * tous les accès qu'elle portait : une liste d'équipes rendue vide par un incident du
  * fournisseur date tout le monde disparu sur un run par ailleurs vert. Le décompte
  * des identités ne voit pas ce trou, les comptes étant lus ailleurs et intacts.
+ *
+ * Comptées par les accès qu'elles portent encore, et non par leur seule existence :
+ * `Resource` n'a pas de date de disparition, ses lignes ne s'effacent jamais, et les
+ * compter toutes ferait grossir la référence à chaque équipe supprimée ou renommée
+ * jusqu'à ce que le garde-fou se déclenche sur une collecte parfaitement saine.
  */
 async function ressourcesTenuesPourVivantes(provider: string): Promise<number> {
-  return prisma.resource.count({ where: { provider } });
+  return prisma.resource.count({
+    where: { provider, grants: { some: { vanishedAt: null } } },
+  });
 }
 
 /**

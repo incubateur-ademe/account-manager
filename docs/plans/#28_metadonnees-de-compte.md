@@ -426,10 +426,12 @@ export async function collecter(lire: Lecteur): Promise<CollectResult>;
   changement, ajouter des équipes revient à multiplier les façons de perdre une nuit entière.
 - `/orgs/{org}/teams` puis `/orgs/{org}/teams/{slug}/members`, une séquence chacune, jamais une
   requête par compte (D5). Une équipe illisible remplit `erreurs` et n'interrompt pas les autres.
-- Une équipe devient une ressource d'`externalId` `` `${org}/${slug}` ``, de libellé `Équipe <nom>`
-  et d'adresse `https://github.com/orgs/<org>/teams/<slug>`. Ni un slug ni un nom d'organisation ne
-  contient de barre oblique : la clé ne peut collisionner ni avec celle de l'organisation
-  (`github.ts:188`) ni avec la clé réservée `(systeme)` (`src/lib/sync/collecte.ts:117`).
+- Une équipe devient une ressource d'`externalId` `` `${org}#${id}` ``, de libellé `Équipe <nom>` et
+  d'adresse `https://github.com/orgs/<org>/teams/<slug>`. Sur l'identifiant et non sur le slug :
+  renommer une équipe change son slug, donc la clé, donc l'identité de la ressource, et tous les
+  accès qu'elle portait se feraient dater disparus sans que personne n'ait rien perdu. Le dièse
+  écarte toute collision avec la clé de l'organisation (`github.ts:188`) comme avec la clé réservée
+  `(systeme)` (`src/lib/sync/collecte.ts:117`).
 - Chaque membre d'équipe produit un `ObservedGrant` de rôle `member` vers cette ressource, et son
   identité est adoptée au passage. `/orgs/{org}/teams/{slug}/members` rend des `simple-user`, donc un
   `id` et un `login`, exactement la matière d'une `ObservedIdentity`. Un membre d'équipe absent des
