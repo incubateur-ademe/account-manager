@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-
+import { dossierVivant } from "@/core/depart";
 import {
   type ChampsFiche,
   type FicheAFusionner,
@@ -173,7 +173,7 @@ async function inventaireDe(
     constats,
     dossiers: dossiers.map((dossier) => ({
       id: dossier.id,
-      vivant: ["WATCH", "CANDIDATE", "CONFIRMED"].includes(dossier.state),
+      vivant: dossierVivant(dossier.state),
     })),
     references,
     rattachements,

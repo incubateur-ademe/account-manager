@@ -122,6 +122,19 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
   const motifs: MotifDAction[] = [];
   const graviteStatut = STATUT_A_TRAITER[etat.statut];
 
+  // En tête, et sans gravité : un départ en cours n'est pas un écart, c'est un
+  // travail commencé. Le taire ferait rouvrir le même dossier sans savoir qu'on y
+  // revient, et préparer un départ deux fois est le geste que cet écran doit éviter.
+  if (etat.dossierVivant !== null) {
+    motifs.push({
+      cle: "depart-en-cours",
+      severite: "info",
+      titre: "Un départ est en cours",
+      description: "Ses étapes et leur pointage vivent dans le dossier.",
+      lien: { href: `/departs/${etat.dossierVivant}`, libelle: "Ouvrir le dossier" },
+    });
+  }
+
   // Le statut « Sorti du référentiel » et le constat de sortie naissent du même
   // `vanishedAt`. Les afficher tous les deux mettrait deux lignes presque
   // identiques en tête de bloc, là où le constat dit déjà tout et dit en plus quoi

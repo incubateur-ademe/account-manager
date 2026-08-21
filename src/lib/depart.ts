@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { CONNECTEURS } from "@/connectors";
 import type { PlannedStep, RunContext } from "@/core/connector";
-import { type SystemesDuDepart, systemesDuDepart } from "@/core/depart";
+import { ETATS_VIVANTS, type SystemesDuDepart, systemesDuDepart } from "@/core/depart";
 import { empreinteDuPlan } from "@/core/plan";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
@@ -120,7 +120,7 @@ export async function ouvrirDossierDeDepart(
   effectiveDate: Date | null,
 ): Promise<{ id: string; deja: boolean }> {
   const ouvert = await prisma.departureCase.findFirst({
-    where: { personId, state: { in: ["WATCH", "CANDIDATE", "CONFIRMED"] } },
+    where: { personId, state: { in: [...ETATS_VIVANTS] } },
     select: { id: true },
   });
 

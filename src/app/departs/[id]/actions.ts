@@ -2,12 +2,16 @@
 
 import type { EtatEtape } from "@/core/depart";
 import {
-  dossierSoldable,
+  dossierVivant,
+  ETATS_VIVANTS,
   etatApresPointage,
   etatDUnPlanRemplace,
+  peutAnnuler,
+  peutClore,
   peutConfirmer,
   peutPointer,
   peutRecalculer,
+  planAAnnuler,
 } from "@/core/depart";
 import { peremptionDuPlan } from "@/core/plan";
 import { actionTracee } from "@/lib/actions";
@@ -34,7 +38,9 @@ async function planDuDossier(planId: string) {
       planDigest: true,
       expiresAt: true,
       departureCaseId: true,
-      departureCase: { select: { person: { select: { id: true, username: true } } } },
+      departureCase: {
+        select: { state: true, person: { select: { id: true, username: true } } },
+      },
       steps: { select: { id: true, state: true, label: true, systemKey: true } },
     },
   });
@@ -62,6 +68,12 @@ export async function confirmerPlan(
     maintenant,
   );
 
+  // L'état du dossier d'abord : sa garde ne portait que sur le plan, si bien qu'un
+  // dossier annulé entre deux clics laissait son brouillon confirmable.
+  if (!dossierVivant(plan.departureCase.state)) {
+    return { erreur: "Ce dossier n'est plus ouvert." };
+  }
+
   const verdict = peutConfirmer(
     plan.state,
     peremptionDuPlan(plan, actuel.empreinte, maintenant),
@@ -79,8 +91,15 @@ export async function confirmerPlan(
     after: { etapes: plan.steps.length, empreinte: plan.planDigest },
     revalider: [`/departs/${plan.departureCaseId}`],
     ecrire: async (operateur) => {
-      await prisma.plan.update({
-        where: { id: plan.id },
+      // Conditionnée sur ce qui a été lu, plan et dossier : la garde seule laisse
+      // passer une annulation arrivée entre la lecture et l'écriture, et un plan
+      // confirmé sous un dossier annulé n'a plus personne pour le contredire.
+      const { count } = await prisma.plan.updateMany({
+        where: {
+          id: plan.id,
+          state: "DRAFT",
+          departureCase: { state: { in: [...ETATS_VIVANTS] } },
+        },
         data: {
           state: "EXECUTING",
           confirmedDigest: plan.planDigest,
@@ -88,6 +107,10 @@ export async function confirmerPlan(
           confirmedAt: maintenant,
         },
       });
+
+      if (count === 0) {
+        throw new Error("Ce plan ou son dossier a changé d'état pendant la confirmation.");
+      }
     },
   });
 
@@ -206,15 +229,10 @@ export async function cloreDossier(
   if (!dossier) {
     return { erreur: "Ce dossier n'existe plus." };
   }
-  if (dossier.state === "DONE") {
-    return { erreur: "Ce dossier est déjà clos." };
-  }
 
-  const plan = dossier.plans[0];
-  if (!plan || !dossierSoldable(plan.state)) {
-    return {
-      erreur: "Toutes les étapes ne sont pas soldées : des accès restent ouverts.",
-    };
+  const verdict = peutClore(dossier.state, dossier.plans[0]?.state ?? null);
+  if (!verdict.possible) {
+    return { erreur: verdict.raison };
   }
 
   await actionTracee({
@@ -225,6 +243,88 @@ export async function cloreDossier(
     revalider: [`/departs/${dossier.id}`, `/personnes/${dossier.person.username}`],
     ecrire: async () => {
       await prisma.departureCase.update({ where: { id: dossier.id }, data: { state: "DONE" } });
+    },
+  });
+
+  return {};
+}
+
+/**
+ * Annule un dossier, et le brouillon qui l'accompagne.
+ *
+ * Un départ qui n'aura pas lieu doit pouvoir se dire, sinon son dossier reste ouvert
+ * et le bloque : la fusion de deux fiches le refuse, et la fiche continue d'annoncer
+ * un départ que personne ne prépare plus.
+ *
+ * Le plan tombe dans la même transaction que le dossier. Séparés, un brouillon
+ * survivrait sous un dossier annulé, et sa confirmation resterait offerte.
+ */
+export async function annulerDossier(
+  _etat: EtatAction | null,
+  formData: FormData,
+): Promise<EtatAction> {
+  const dossierId = String(formData.get("dossierId") ?? "").trim();
+  const motif = String(formData.get("motif") ?? "").trim();
+
+  if (motif.length < 3) {
+    return { erreur: "Dites pourquoi ce départ n'aura pas lieu." };
+  }
+
+  const dossier = await prisma.departureCase.findUnique({
+    where: { id: dossierId },
+    select: {
+      id: true,
+      state: true,
+      person: { select: { username: true } },
+      plans: { orderBy: { createdAt: "desc" }, take: 1, select: { id: true, state: true } },
+    },
+  });
+
+  if (!dossier) {
+    return { erreur: "Ce dossier n'existe plus." };
+  }
+
+  const plan = dossier.plans[0] ?? null;
+  const verdict = peutAnnuler(dossier.state, plan?.state ?? null);
+  if (!verdict.possible) {
+    return { erreur: verdict.raison };
+  }
+
+  await actionTracee({
+    action: "depart.annulation",
+    targetType: "personne",
+    targetId: dossier.person.username,
+    before: { etat: dossier.state, plan: plan?.state ?? null },
+    after: {
+      etat: "CANCELLED",
+      // L'état réel du plan après le geste : « null » pour les deux cas, plan absent
+      // et plan laissé intact parce qu'il était déjà remplacé, aurait rendu la trace
+      // incapable de les distinguer.
+      plan: planAAnnuler(plan?.state ?? null) ? "CANCELLED" : (plan?.state ?? null),
+      motif,
+    },
+    revalider: [`/departs/${dossier.id}`, `/personnes/${dossier.person.username}`],
+    ecrire: async () => {
+      await prisma.$transaction(async (transaction) => {
+        // Conditionné sur l'état lu : entre la lecture et l'écriture, quelqu'un a pu
+        // clore ou annuler ce dossier, et un `update` par identifiant seul écraserait
+        // sa décision sans que rien ne le dise.
+        const { count } = await transaction.departureCase.updateMany({
+          where: { id: dossier.id, state: { in: [...ETATS_VIVANTS] } },
+          data: { state: "CANCELLED", cancelledReason: motif },
+        });
+
+        if (count === 0) {
+          throw new Error("Ce dossier a changé d'état pendant l'annulation.");
+        }
+
+        if (plan && planAAnnuler(plan.state)) {
+          await transaction.plan.updateMany({
+            where: { id: plan.id, state: plan.state },
+            data: { state: "CANCELLED" },
+          });
+        }
+      });
     },
   });
 
@@ -260,6 +360,10 @@ export async function recalculerPlan(
     maintenant,
   );
 
+  if (!dossierVivant(plan.departureCase.state)) {
+    return { erreur: "Ce dossier n'est plus ouvert." };
+  }
+
   const peremption = peremptionDuPlan(plan, actuel.empreinte, maintenant);
   const verdict = peutRecalculer(plan.state, peremption);
 
@@ -275,10 +379,21 @@ export async function recalculerPlan(
     after: { empreinte: actuel.empreinte, etapes: actuel.etapes.length },
     revalider: [`/departs/${dossierId}`],
     ecrire: async (operateur) => {
-      await prisma.plan.update({
-        where: { id: plan.id },
+      // Le remplacement d'abord, et sous condition : sans elle, un dossier annulé
+      // entre la lecture et l'écriture recevrait un brouillon neuf que plus rien
+      // n'irait contredire.
+      const { count } = await prisma.plan.updateMany({
+        where: {
+          id: plan.id,
+          state: "DRAFT",
+          departureCase: { state: { in: [...ETATS_VIVANTS] } },
+        },
         data: { state: etatDUnPlanRemplace(peremption) },
       });
+
+      if (count === 0) {
+        throw new Error("Ce plan ou son dossier a changé d'état pendant le recalcul.");
+      }
 
       await enregistrerPlan(dossierId, actuel, operateur.username, maintenant);
     },
