@@ -213,7 +213,7 @@ dossier annulé existe déjà, mais il passe par `dossierSoldable` (`[id]/action
 un fait qu'elle ne connaît pas, ce que R7 du lot 1.5 interdit, et elle envoie pointer des étapes sur
 un plan qui n'est plus pointable. Écrire le nouveau refus à côté du test sur `DONE` (`:209-211`)
 tomberait sur la contrainte que D3 vient de poser : rien ne teste la base, donc rien ne vérifierait
-la seule règle non facultative de ce ticket. `peutClore(dossier, plan)` rejoint donc `peutAnnuler`
+la seule règle non facultative de ce ticket. `peutClore` rejoint donc `peutAnnuler`
 dans le noyau et absorbe les trois refus, dossier clos, dossier annulé, plan non soldé. Bénéfice de
 bord : la tautologie `dossierSoldable("EXECUTED")` (`src/app/departs/[id]/page.tsx:282`), un appel
 dont l'argument porte déjà la réponse, disparaît avec elle.
@@ -385,7 +385,7 @@ export type EtatDossier = "WATCH" | "CANDIDATE" | "CONFIRMED" | "CANCELLED" | "D
 export const ETATS_VIVANTS: readonly EtatDossier[];
 export function dossierVivant(etat: EtatDossier): boolean;
 export function peutAnnuler(dossier: EtatDossier, plan: EtatPlan | null): Verdict;
-export function peutClore(dossier: EtatDossier, plan: EtatPlan | null): Verdict;
+export function peutClore(dossier: EtatDossier, plan: EtatPlan | null, etapes: number): Verdict;
 export function planAAnnuler(plan: EtatPlan | null): boolean;
 ```
 
@@ -438,7 +438,8 @@ libellé avec le motif dans la charge utile, et la trace précède l'écriture m
 Fichier : `src/app/departs/[id]/actions.ts`.
 
 `cloreDossier` remplace ses deux refus écrits en dur (`:209-211`, `:214-218`) par un appel unique à
-`peutClore(dossier.state, dossier.plans[0]?.state ?? null)` et rend sa raison telle quelle, comme
+`peutClore(dossier.state, dernier?.state ?? null, dernier?._count.steps ?? 0)` et rend sa raison
+telle quelle, comme
 ses trois voisines (D6). Le bouton de clôture disparaît de l'écran à l'étape 6, mais une action
 serveur ne se protège pas par l'absence d'un bouton.
 
