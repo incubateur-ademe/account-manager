@@ -56,7 +56,12 @@ export function peutConfirmer(etat: EtatPlan, peremption: Peremption, etapes: nu
  * on consignerait des gestes faits d'après un brouillon que personne n'a approuvé.
  */
 export function peutPointer(etat: EtatPlan): Verdict {
-  if (etat === "EXECUTING") {
+  // `PARTIALLY_EXECUTED` autant qu'`EXECUTING` : c'est l'état d'un plan dont une
+  // étape a échoué, et le refuser murait le dossier. Plus rien ne se pointait, donc
+  // plus rien ne se soldait, donc la clôture restait hors d'atteinte, l'annulation
+  // aussi puisque le plan porte des pointages, et le dossier restait vivant pour
+  // toujours en bloquant jusqu'à la fusion des fiches de la personne.
+  if (etat === "EXECUTING" || etat === "PARTIALLY_EXECUTED") {
     return { possible: true };
   }
   if (etat === "DRAFT") {

@@ -4,7 +4,7 @@ import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { type EtatEtape, estSoldee, peutAnnuler } from "@/core/depart";
+import { type EtatEtape, estSoldee, peutAnnuler, peutPointer } from "@/core/depart";
 import { peremptionDuPlan } from "@/core/plan";
 import { prisma } from "@/lib/db";
 import { calculerPlanDeDepart } from "@/lib/depart";
@@ -117,7 +117,9 @@ export default async function DepartPage({
 
   const etat = plan && actuel ? peremptionDuPlan(plan, actuel.empreinte, maintenant) : null;
   const brouillon = !annule && plan?.state === "DRAFT";
-  const enCours = !annule && plan?.state === "EXECUTING";
+  // Adossé à la garde plutôt que recopié : l'écran connaissait la règle de son côté,
+  // et c'est cet écart qui a muré le dossier le jour où une étape a échoué.
+  const pointable = plan !== undefined && !annule && peutPointer(plan.state).possible;
   const clos = dossier.state === "DONE";
   const remplace = plan?.state === "EXPIRED" || plan?.state === "STALE";
   const restantes = plan?.steps.filter((etape) => !estSoldee(etape.state as EtatEtape)).length ?? 0;
@@ -312,7 +314,7 @@ export default async function DepartPage({
                       Pointée le {dateFr.format(etape.executedAt)}.
                     </p>
                   ) : null}
-                  {enCours ? <Pointage etapeId={etape.id} faite={soldee} /> : null}
+                  {pointable ? <Pointage etapeId={etape.id} faite={soldee} /> : null}
                 </li>
               );
             })}
@@ -334,7 +336,7 @@ export default async function DepartPage({
               se cloturait. */}
           {!annule && plan.state === "EXECUTED" ? <BoutonClore dossierId={dossier.id} /> : null}
 
-          {enCours && restantes > 0 ? (
+          {pointable && restantes > 0 ? (
             <p className={fr.cx("fr-text--sm")}>
               {restantes} étape{restantes > 1 ? "s" : ""} en attente. Le dossier se clôt quand il
               n'en reste aucune.
