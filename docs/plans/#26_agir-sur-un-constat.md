@@ -437,9 +437,13 @@ Fichiers : `src/app/personnes/[username]/CeQuiAppelleUneAction.tsx`,
   passé par les cinq appels du dépôt. L'identifiant diffère de celui de la file pour qu'aucun partage
   de chunk ne puisse enregistrer deux fois le même.
 - Le geste choisi est retenu dans un `useState`, comme la file retient sa ligne
-  (`FileDesConstats.tsx:50`), et le bouton fait les deux d'un coup,
-  `onClick={() => { setChoisi(geste); modale.open(); }}`. Étaler `modale.buttonProps` sur N boutons
-  répandrait N fois le même attribut `id`, que le type porte (`Modal.d.ts:38-41`).
+  (`FileDesConstats.tsx:50`), et le bouton étale `modale.buttonProps` en réécrivant son `id`, son
+  `onClick` ne servant plus qu'à poser le geste choisi. Appeler `modale.open()` à la place laisse le
+  système de design sans déclencheur connu : il ne connaît alors que le bouton caché que la modale
+  monte elle-même (`Modal.d.ts:38-41`), et rend le focus à un élément invisible à la fermeture. Le
+  `id` se réécrit parce que sans cela N boutons porteraient celui de la modale, et le commentaire du
+  type l'y invite. Le bloc étant rendu avant la section Startups, son bouton est le premier
+  déclencheur du document, donc celui à qui le focus revient.
 - La modale monte `ClotureConstat` avec `dedupKey={choisi.dedupKey}` et `onSucces={modale.close}`,
   sous `key={choisi.dedupKey}`. La clé est la clé de déduplication et non un identifiant de constat,
   que le geste ne porte pas ; la file, qui dispose des deux, prend le sien (`:160`). Elle sert la même
