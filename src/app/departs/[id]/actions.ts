@@ -146,6 +146,7 @@ export async function pointerEtape(
           id: true,
           state: true,
           departureCaseId: true,
+          departureCase: { select: { state: true } },
           steps: { select: { id: true, state: true } },
         },
       },
@@ -154,6 +155,13 @@ export async function pointerEtape(
 
   if (!etape) {
     return { erreur: "Cette étape n'existe plus." };
+  }
+
+  // L'état du dossier avant celui du plan, comme la confirmation et le recalcul le
+  // font déjà : cette action était la seule des trois à ne regarder que le plan, et
+  // consignait donc un geste sur un dossier que quelqu'un venait d'abandonner.
+  if (etape.plan.departureCase && !dossierVivant(etape.plan.departureCase.state)) {
+    return { erreur: "Ce dossier n'est plus ouvert." };
   }
 
   const verdict = peutPointer(etape.plan.state);
