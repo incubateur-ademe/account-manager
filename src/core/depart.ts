@@ -158,9 +158,9 @@ export function peutAnnuler(dossier: EtatDossier, plan: EtatPlan | null): Verdic
     return { possible: false, raison: "Ce dossier est clos : il ne s'annule plus." };
   }
   if (plan !== null && planEngage(plan)) {
-    // La phrase ne nomme aucun geste : sur un plan partiellement exécuté, l'écran
-    // n'offre ni de reprendre les étapes ni de clore, et promettre l'un ou l'autre
-    // enverrait chercher ce qui n'existe pas.
+    // La phrase dit ce que l'annulation ne fait pas, et n'envoie nulle part : la
+    // sortie d'un plan engagé est de reprendre ses étapes puis de clore le dossier,
+    // ce que l'écran offre, et le redire ici en ferait la deuxième fois.
     return {
       possible: false,
       raison: "Ce plan est engagé : l'annulation ne défait pas ce qui a été déclaré fait.",

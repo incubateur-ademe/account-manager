@@ -334,7 +334,9 @@ export default async function DepartPage({
               porte par construction au moins une étape en attente, si bien que la
               condition d'avant ne pouvait jamais être vraie et qu'aucun dossier ne
               se cloturait. */}
-          {!annule && plan.state === "EXECUTED" ? <BoutonClore dossierId={dossier.id} /> : null}
+          {!annule && !clos && plan.state === "EXECUTED" ? (
+            <BoutonClore dossierId={dossier.id} />
+          ) : null}
 
           {pointable && restantes > 0 ? (
             <p className={fr.cx("fr-text--sm")}>
