@@ -4,7 +4,7 @@ import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { type EtatEtape, estSoldee, peutAnnuler, peutPointer } from "@/core/depart";
+import { type EtatEtape, estSoldee, peutAnnuler, peutClore, peutPointer } from "@/core/depart";
 import { peremptionDuPlan } from "@/core/plan";
 import { prisma } from "@/lib/db";
 import { calculerPlanDeDepart } from "@/lib/depart";
@@ -334,10 +334,6 @@ export default async function DepartPage({
               porte par construction au moins une étape en attente, si bien que la
               condition d'avant ne pouvait jamais être vraie et qu'aucun dossier ne
               se cloturait. */}
-          {!annule && !clos && plan.state === "EXECUTED" ? (
-            <BoutonClore dossierId={dossier.id} />
-          ) : null}
-
           {pointable && restantes > 0 ? (
             <p className={fr.cx("fr-text--sm")}>
               {restantes} étape{restantes > 1 ? "s" : ""} en attente. Le dossier se clôt quand il
@@ -355,6 +351,13 @@ export default async function DepartPage({
           ) : null}
         </>
       )}
+
+      {/* Hors du bloc des étapes, comme l'annulation : un plan qui n'en porte aucune
+          est soldé par construction, et le bouton vivait dans une branche que ce
+          cas-là n'atteint jamais. */}
+      {plan && peutClore(dossier.state, plan.state, plan.steps.length).possible ? (
+        <BoutonClore dossierId={dossier.id} />
+      ) : null}
 
       <BoutonAnnuler
         dossierId={dossier.id}
