@@ -216,6 +216,12 @@ model ExternalIdentity {
   lastSeenAt  DateTime  @default(now())
   vanishedAt  DateTime?
 
+  /// Ce que le connecteur sait du compte et qu'aucune ressource ni aucun acces ne
+  /// dit : type de compte, invitation en attente et son auteur. Une liste ordonnee
+  /// de couples libelle et valeur, deja redigee pour etre lue par un humain, rendue
+  /// telle quelle et jamais interpretee. Nulle quand il n'a rien a en dire.
+  details Json?
+
   person         Person?         @relation(fields: [personId], references: [id], onDelete: SetNull)
   serviceAccount ServiceAccount? @relation(fields: [serviceAccountId], references: [id], onDelete: SetNull)
 
