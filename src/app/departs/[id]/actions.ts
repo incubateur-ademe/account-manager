@@ -91,8 +91,15 @@ export async function confirmerPlan(
     after: { etapes: plan.steps.length, empreinte: plan.planDigest },
     revalider: [`/departs/${plan.departureCaseId}`],
     ecrire: async (operateur) => {
-      await prisma.plan.update({
-        where: { id: plan.id },
+      // Conditionnée sur ce qui a été lu, plan et dossier : la garde seule laisse
+      // passer une annulation arrivée entre la lecture et l'écriture, et un plan
+      // confirmé sous un dossier annulé n'a plus personne pour le contredire.
+      const { count } = await prisma.plan.updateMany({
+        where: {
+          id: plan.id,
+          state: "DRAFT",
+          departureCase: { state: { in: [...ETATS_VIVANTS] } },
+        },
         data: {
           state: "EXECUTING",
           confirmedDigest: plan.planDigest,
@@ -100,6 +107,10 @@ export async function confirmerPlan(
           confirmedAt: maintenant,
         },
       });
+
+      if (count === 0) {
+        throw new Error("Ce plan ou son dossier a changé d'état pendant la confirmation.");
+      }
     },
   });
 
@@ -365,10 +376,21 @@ export async function recalculerPlan(
     after: { empreinte: actuel.empreinte, etapes: actuel.etapes.length },
     revalider: [`/departs/${dossierId}`],
     ecrire: async (operateur) => {
-      await prisma.plan.update({
-        where: { id: plan.id },
+      // Le remplacement d'abord, et sous condition : sans elle, un dossier annulé
+      // entre la lecture et l'écriture recevrait un brouillon neuf que plus rien
+      // n'irait contredire.
+      const { count } = await prisma.plan.updateMany({
+        where: {
+          id: plan.id,
+          state: "DRAFT",
+          departureCase: { state: { in: [...ETATS_VIVANTS] } },
+        },
         data: { state: etatDUnPlanRemplace(peremption) },
       });
+
+      if (count === 0) {
+        throw new Error("Ce plan ou son dossier a changé d'état pendant le recalcul.");
+      }
 
       await enregistrerPlan(dossierId, actuel, operateur.username, maintenant);
     },
