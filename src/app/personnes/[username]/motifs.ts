@@ -1,11 +1,100 @@
 import type { Appartenance } from "@/core/appartenance";
 import { surchargeSuperflue } from "@/core/appartenance";
 import type { Fraicheur } from "@/core/collecte";
+import type { ConstatKind } from "@/core/constat";
+import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
 import { LIBELLE_STATUT, type Statut } from "@/core/statut";
 
-import type { ConstatOuvert, MotifDAction } from "./CeQuiAppelleUneAction";
-import { motifsDesConstats } from "./CeQuiAppelleUneAction";
 import { expliquerStatut, type Seuils, STATUT_A_TRAITER } from "./libelles";
+
+/**
+ * Un geste que la consigne nomme et que cet écran sait faire. Il se nomme ici et se
+ * rend ailleurs : un motif reste une donnée, sans quoi ce module cesserait d'être
+ * calculable sans rendu.
+ */
+export type Geste =
+  | { nom: "rattacher-startup" }
+  | {
+      nom: "clore";
+      dedupKey: string;
+      /** Les trois textes que la modale de clôture rappelle, portés une seule fois. */
+      titre: string;
+      explication: string;
+      consigne: string;
+    };
+
+export interface ConstatOuvert {
+  id: string;
+  kind: string;
+  dedupKey: string;
+  severity: "HIGH" | "MEDIUM" | "LOW";
+  /** Le compte que le constat désigne, quand il en désigne un. */
+  compte: { provider: string; handle: string } | null;
+}
+
+export interface ConstatFerme {
+  kind: string;
+  /** Renseigné quand un humain a clos, laissé nul par une réconciliation. */
+  closedBy: string | null;
+}
+
+export interface MotifDAction {
+  cle: string;
+  severite: "error" | "warning" | "info";
+  titre: string;
+  description: string;
+  /** Ce que la consigne nomme et que cet écran sait faire, dans l'ordre de lecture. */
+  gestes?: readonly Geste[];
+  /** Où le geste se fait, quand il ne se fait pas ici. */
+  lien?: { href: string; libelle: string };
+}
+
+const SEVERITE_CONSTAT = { HIGH: "error", MEDIUM: "warning", LOW: "info" } as const;
+
+export function motifsDesConstats(
+  ouverts: readonly ConstatOuvert[],
+  dossierVivant: string | null,
+): MotifDAction[] {
+  return ouverts.map((constat) => {
+    const libelle = LIBELLE_CONSTAT[constat.kind as ConstatKind];
+    const titre = libelle?.titre ?? constat.kind;
+    const consigne = libelle?.action ?? "";
+
+    const gestes: Geste[] = [];
+    if (constat.kind === "INACTIVE_STARTUP") {
+      gestes.push({ nom: "rattacher-startup" });
+    }
+    gestes.push({
+      nom: "clore",
+      dedupKey: constat.dedupKey,
+      titre,
+      explication: libelle?.explication ?? "",
+      consigne,
+    });
+
+    // Le lien ne mène plus à la file, qui n'offrait que ce que le bloc offre
+    // désormais. Il ne reste que pour le constat dont le geste vit dans un dossier,
+    // et seulement quand ce dossier existe : une action déclarée sans effet se
+    // reprend là où elle a été pointée.
+    const versLeDossier =
+      constat.kind === "OVERDUE_MANUAL_ACTION" && dossierVivant !== null
+        ? { href: `/departs/${dossierVivant}`, libelle: "Ouvrir le dossier de départ en cours" }
+        : null;
+
+    return {
+      cle: `constat-${constat.id}`,
+      severite: SEVERITE_CONSTAT[constat.severity],
+      titre,
+      // Nommer le compte, et seulement quand le constat en désigne un : un libellé
+      // calculé n'affirme que ce que son calcul établit.
+      description: constat.compte
+        ? `${consigne} Il s'agit du compte ${constat.compte.handle} sur ${constat.compte.provider}.`
+        : consigne,
+      gestes,
+      ...(versLeDossier ? { lien: versLeDossier } : {}),
+    };
+  });
+}
 
 export interface EtatDeLaFiche {
   statut: Statut;
@@ -13,10 +102,14 @@ export interface EtatDeLaFiche {
   appartenance: Appartenance;
   libelleSansSurcharge: string;
   ouverts: readonly ConstatOuvert[];
+  /** Ce qui a déjà été traité, et qui ne doit pas revenir sous un autre nom. */
+  fermes: readonly ConstatFerme[];
   fraicheur: Fraicheur;
   toutesStartupsTerminees: boolean;
   /** Rattachée par une équipe : un titre qui ne passe par aucune startup. */
   parEquipe: boolean;
+  /** Le dossier de départ ouvert sur cette personne, unique par construction. */
+  dossierVivant: string | null;
 }
 
 /**
@@ -33,8 +126,16 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
   // `vanishedAt`. Les afficher tous les deux mettrait deux lignes presque
   // identiques en tête de bloc, là où le constat dit déjà tout et dit en plus quoi
   // faire. Le constat prime, comme partout ailleurs ici.
+  //
+  // Une sortie close à la main compte autant qu'une sortie constatée. Sans elle, clore
+  // depuis cette page ferait paraître à la place du constat une alerte qui affirme que
+  // rien ne dit ce que ses accès sont devenus, au moment précis où quelqu'un vient de
+  // l'écrire et de le signer. Le verrou de clôture dit que la situation est traitée,
+  // et un libellé n'affirme que ce que son calcul établit.
   const sortieDejaConstatee =
-    etat.statut === "SORTI" && etat.ouverts.some((constat) => constat.kind === "SCOPE_EXIT");
+    etat.statut === "SORTI" &&
+    (etat.ouverts.some((constat) => constat.kind === "SCOPE_EXIT") ||
+      etat.fermes.some((constat) => constat.kind === "SCOPE_EXIT" && constat.closedBy !== null));
 
   if (graviteStatut && !sortieDejaConstatee) {
     motifs.push({
@@ -45,7 +146,7 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
     });
   }
 
-  motifs.push(...motifsDesConstats(etat.ouverts));
+  motifs.push(...motifsDesConstats(etat.ouverts, etat.dossierVivant));
 
   if (etat.fraicheur.perimee) {
     motifs.push({
@@ -69,6 +170,9 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
       titre: "Toutes ses startups sont dans une phase terminale",
       description:
         "Plus aucune startup vivante de l'incubateur ne porte son rattachement. Confirmer son rattachement réel, ou retirer les accès devenus sans objet.",
+      // Le même geste que le constat qui dit la même chose : deux routes, une seule
+      // destination. Pas de clôture, celui-ci n'est pas un constat.
+      gestes: [{ nom: "rattacher-startup" }],
     });
   }
 
