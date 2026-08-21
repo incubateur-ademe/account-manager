@@ -146,6 +146,7 @@ export async function pointerEtape(
           id: true,
           state: true,
           departureCaseId: true,
+          departureCase: { select: { state: true } },
           steps: { select: { id: true, state: true } },
         },
       },
@@ -154,6 +155,13 @@ export async function pointerEtape(
 
   if (!etape) {
     return { erreur: "Cette étape n'existe plus." };
+  }
+
+  // L'état du dossier avant celui du plan, comme la confirmation et le recalcul le
+  // font déjà : cette action était la seule des trois à ne regarder que le plan, et
+  // consignait donc un geste sur un dossier que quelqu'un venait d'abandonner.
+  if (etape.plan.departureCase && !dossierVivant(etape.plan.departureCase.state)) {
+    return { erreur: "Ce dossier n'est plus ouvert." };
   }
 
   const verdict = peutPointer(etape.plan.state);
@@ -319,10 +327,17 @@ export async function annulerDossier(
         }
 
         if (plan && planAAnnuler(plan.state)) {
-          await transaction.plan.updateMany({
+          const remplace = await transaction.plan.updateMany({
             where: { id: plan.id, state: plan.state },
             data: { state: "CANCELLED" },
           });
+
+          // Le silence ici laissait un plan confirmé sous un dossier annulé, que plus
+          // aucun geste n'atteint : ni pointage, le dossier étant mort, ni clôture,
+          // ni annulation. La transaction se défait plutôt que de murer le dossier.
+          if (remplace.count === 0) {
+            throw new Error("Ce plan a changé d'état pendant l'annulation de son dossier.");
+          }
         }
       });
     },
@@ -379,23 +394,28 @@ export async function recalculerPlan(
     after: { empreinte: actuel.empreinte, etapes: actuel.etapes.length },
     revalider: [`/departs/${dossierId}`],
     ecrire: async (operateur) => {
-      // Le remplacement d'abord, et sous condition : sans elle, un dossier annulé
-      // entre la lecture et l'écriture recevrait un brouillon neuf que plus rien
-      // n'irait contredire.
-      const { count } = await prisma.plan.updateMany({
-        where: {
-          id: plan.id,
-          state: "DRAFT",
-          departureCase: { state: { in: [...ETATS_VIVANTS] } },
-        },
-        data: { state: etatDUnPlanRemplace(peremption) },
+      // Les deux écritures dans la même transaction : séparées, une panne entre les
+      // deux laissait le plan remplacé comme plan le plus récent, et `peutRecalculer`
+      // exigeant un brouillon, le dossier n'avait plus que l'annulation pour sortie.
+      await prisma.$transaction(async (transaction) => {
+        // Le remplacement d'abord, et sous condition : sans elle, un dossier annulé
+        // entre la lecture et l'écriture recevrait un brouillon neuf que plus rien
+        // n'irait contredire.
+        const { count } = await transaction.plan.updateMany({
+          where: {
+            id: plan.id,
+            state: "DRAFT",
+            departureCase: { state: { in: [...ETATS_VIVANTS] } },
+          },
+          data: { state: etatDUnPlanRemplace(peremption) },
+        });
+
+        if (count === 0) {
+          throw new Error("Ce plan ou son dossier a changé d'état pendant le recalcul.");
+        }
+
+        await enregistrerPlan(dossierId, actuel, operateur.username, maintenant, transaction);
       });
-
-      if (count === 0) {
-        throw new Error("Ce plan ou son dossier a changé d'état pendant le recalcul.");
-      }
-
-      await enregistrerPlan(dossierId, actuel, operateur.username, maintenant);
     },
   });
 

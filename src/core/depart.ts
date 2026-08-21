@@ -56,7 +56,12 @@ export function peutConfirmer(etat: EtatPlan, peremption: Peremption, etapes: nu
  * on consignerait des gestes faits d'après un brouillon que personne n'a approuvé.
  */
 export function peutPointer(etat: EtatPlan): Verdict {
-  if (etat === "EXECUTING") {
+  // `PARTIALLY_EXECUTED` autant qu'`EXECUTING` : c'est l'état d'un plan dont une
+  // étape a échoué, et le refuser murait le dossier. Plus rien ne se pointait, donc
+  // plus rien ne se soldait, donc la clôture restait hors d'atteinte, l'annulation
+  // aussi puisque le plan porte des pointages, et le dossier restait vivant pour
+  // toujours en bloquant jusqu'à la fusion des fiches de la personne.
+  if (etat === "EXECUTING" || etat === "PARTIALLY_EXECUTED") {
     return { possible: true };
   }
   if (etat === "DRAFT") {
@@ -153,9 +158,9 @@ export function peutAnnuler(dossier: EtatDossier, plan: EtatPlan | null): Verdic
     return { possible: false, raison: "Ce dossier est clos : il ne s'annule plus." };
   }
   if (plan !== null && planEngage(plan)) {
-    // La phrase ne nomme aucun geste : sur un plan partiellement exécuté, l'écran
-    // n'offre ni de reprendre les étapes ni de clore, et promettre l'un ou l'autre
-    // enverrait chercher ce qui n'existe pas.
+    // La phrase dit ce que l'annulation ne fait pas, et n'envoie nulle part : la
+    // sortie d'un plan engagé est de reprendre ses étapes puis de clore le dossier,
+    // ce que l'écran offre, et le redire ici en ferait la deuxième fois.
     return {
       possible: false,
       raison: "Ce plan est engagé : l'annulation ne défait pas ce qui a été déclaré fait.",

@@ -5,6 +5,7 @@ import {
   dossierVivant,
   ETATS_VIVANTS,
   type EtatDossier,
+  type EtatEtape,
   etatApresPointage,
   etatDUnPlanRemplace,
   peutAnnuler,
@@ -56,6 +57,32 @@ describe("pointage des étapes", () => {
     expect(peutPointer("EXECUTING")).toEqual({ possible: true });
     expect(peutPointer("DRAFT").possible).toBe(false);
     expect(peutPointer("EXECUTED").possible).toBe(false);
+  });
+
+  it("laisse reprendre une étape qui a échoué, et rouvre la sortie du dossier", () => {
+    // Un plan dont une étape a échoué n'avait plus aucune sortie : il ne se pointait
+    // plus, donc ne se soldait plus, donc ne se clôturait pas, et son dossier restait
+    // vivant pour toujours en bloquant jusqu'à la fusion des fiches de la personne.
+    expect(peutPointer("PARTIALLY_EXECUTED")).toEqual({ possible: true });
+
+    const apresEchec: EtatEtape[] = ["SUCCEEDED", "FAILED", "SKIPPED"];
+    expect(etatApresPointage(apresEchec)).toBe("PARTIALLY_EXECUTED");
+    expect(peutClore("CANDIDATE", etatApresPointage(apresEchec)).possible).toBe(false);
+
+    // La reprise de la seule étape en échec suffit à tout solder, donc à rouvrir la
+    // clôture : la sortie existe, elle passe par le geste que l'écran nommait déjà.
+    const apresReprise: EtatEtape[] = ["SUCCEEDED", "SUCCEEDED", "SKIPPED"];
+    expect(etatApresPointage(apresReprise)).toBe("EXECUTED");
+    expect(peutClore("CANDIDATE", etatApresPointage(apresReprise)).possible).toBe(true);
+
+    // « Déjà absent » solde aussi, et c'est le cas nominal quand une autre
+    // automatisation est passée entre-temps.
+    expect(etatApresPointage(["ALREADY_ABSENT", "SUCCEEDED"])).toBe("EXECUTED");
+
+    // Ce qui reste fermé le reste : un plan annulé, remplacé ou soldé ne se pointe pas.
+    for (const clos of ["CANCELLED", "EXPIRED", "STALE", "EXECUTED"] as const) {
+      expect(peutPointer(clos).possible).toBe(false);
+    }
   });
 });
 
