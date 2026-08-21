@@ -51,12 +51,16 @@ export function BoutonAnnuler({
       ) : null}
 
       <modaleAnnulation.Component title="Annuler ce départ">
+        {/* Le formulaire reste monté quoi qu'il arrive : l'annulation fait basculer
+            `annulable` à faux avant que son effet de fermeture n'ait eu son tour, et
+            un formulaire démonté à cet instant emporte le dialogue ouvert avec lui,
+            laissant le verrou de défilement du système de design posé sur la page. */}
         {annulable ? (
           <>
             <p className={fr.cx("fr-text--sm")}>
               {etapes === 0
                 ? "Ce dossier n'a aucune étape : rien n'a été proposé, et rien ne sera abandonné."
-                : `Les ${etapes} étapes proposées seront abandonnées.`}{" "}
+                : `${etapes} étape${etapes > 1 ? "s" : ""} proposée${etapes > 1 ? "s" : ""} ${etapes > 1 ? "seront abandonnées" : "sera abandonnée"}.`}{" "}
               Aucun accès n'est coupé ni rouvert par ce geste : l'outil n'a rien exécuté, il a
               seulement dit ce qu'il faudrait faire.
             </p>
@@ -64,11 +68,15 @@ export function BoutonAnnuler({
               Un nouveau départ restera ouvrable ensuite, et la fiche de la personne cessera
               d'annoncer celui-ci.
             </p>
-            <AnnulationDossier dossierId={dossierId} onSucces={modaleAnnulation.close} />
           </>
         ) : (
           <p className={fr.cx("fr-text--sm")}>Ce dossier ne s'annule plus.</p>
         )}
+        <AnnulationDossier
+          dossierId={dossierId}
+          visible={annulable}
+          onSucces={modaleAnnulation.close}
+        />
       </modaleAnnulation.Component>
     </>
   );

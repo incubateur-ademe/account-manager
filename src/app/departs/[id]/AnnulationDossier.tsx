@@ -15,9 +15,15 @@ import { annulerDossier, type EtatAction } from "./actions";
  */
 export function AnnulationDossier({
   dossierId,
+  visible,
   onSucces,
 }: {
   dossierId: string;
+  /**
+   * Monté même quand il ne se montre pas : c'est son effet de fermeture qui referme
+   * la modale, et il doit survivre à la revalidation qui suit l'annulation.
+   */
+  visible: boolean;
   onSucces?: () => void;
 }) {
   const [etat, formAction, pending] = useActionState<EtatAction | null, FormData>(
@@ -26,6 +32,10 @@ export function AnnulationDossier({
   );
 
   useFermetureApresSucces(pending, etat?.erreur, onSucces);
+
+  if (!visible) {
+    return null;
+  }
 
   return (
     <form action={formAction}>

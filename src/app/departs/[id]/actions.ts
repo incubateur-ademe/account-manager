@@ -3,6 +3,7 @@
 import type { EtatEtape } from "@/core/depart";
 import {
   dossierVivant,
+  ETATS_VIVANTS,
   etatApresPointage,
   etatDUnPlanRemplace,
   peutAnnuler,
@@ -291,13 +292,23 @@ export async function annulerDossier(
     revalider: [`/departs/${dossier.id}`, `/personnes/${dossier.person.username}`],
     ecrire: async () => {
       await prisma.$transaction(async (transaction) => {
-        await transaction.departureCase.update({
-          where: { id: dossier.id },
+        // Conditionné sur l'état lu : entre la lecture et l'écriture, quelqu'un a pu
+        // clore ou annuler ce dossier, et un `update` par identifiant seul écraserait
+        // sa décision sans que rien ne le dise.
+        const { count } = await transaction.departureCase.updateMany({
+          where: { id: dossier.id, state: { in: [...ETATS_VIVANTS] } },
           data: { state: "CANCELLED", cancelledReason: motif },
         });
 
+        if (count === 0) {
+          throw new Error("Ce dossier a changé d'état pendant l'annulation.");
+        }
+
         if (plan && planAAnnuler(plan.state)) {
-          await transaction.plan.update({ where: { id: plan.id }, data: { state: "CANCELLED" } });
+          await transaction.plan.updateMany({
+            where: { id: plan.id, state: plan.state },
+            data: { state: "CANCELLED" },
+          });
         }
       });
     },

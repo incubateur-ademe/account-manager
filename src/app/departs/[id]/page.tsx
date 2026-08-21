@@ -4,7 +4,7 @@ import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { dossierSoldable, type EtatEtape, estSoldee, peutAnnuler } from "@/core/depart";
+import { type EtatEtape, estSoldee, peutAnnuler } from "@/core/depart";
 import { peremptionDuPlan } from "@/core/plan";
 import { prisma } from "@/lib/db";
 import { calculerPlanDeDepart } from "@/lib/depart";
@@ -153,12 +153,16 @@ export default async function DepartPage({
         />
       ) : null}
 
-      <Alert
-        severity="info"
-        className={fr.cx("fr-my-3w")}
-        small
-        description="Cocher une étape n'exécute rien : l'outil consigne ce que vous déclarez avoir fait, il ne coupe aucun accès lui-même. La collecte suivante dira si le compte a réellement disparu."
-      />
+      {/* Rien à cocher sur un dossier annulé ou clos : la dire quand même ferait
+          promettre un geste que l'écran n'offre plus. */}
+      {annule || clos ? null : (
+        <Alert
+          severity="info"
+          className={fr.cx("fr-my-3w")}
+          small
+          description="Cocher une étape n'exécute rien : l'outil consigne ce que vous déclarez avoir fait, il ne coupe aucun accès lui-même. La collecte suivante dira si le compte a réellement disparu."
+        />
+      )}
 
       {etat?.obsolete && brouillon ? (
         <Alert
@@ -232,7 +236,7 @@ export default async function DepartPage({
           title="Ce départ a été annulé"
           description={
             dossier.cancelledReason
-              ? `${dossier.cancelledReason} Aucun accès n'a été coupé par ce dossier, et un nouveau départ reste ouvrable.`
+              ? `${dossier.cancelledReason.replace(/[.!?]?$/, ".")} Aucun accès n'a été coupé par ce dossier, et un nouveau départ reste ouvrable.`
               : "Aucun accès n'a été coupé par ce dossier, et un nouveau départ reste ouvrable."
           }
         />
@@ -250,8 +254,10 @@ export default async function DepartPage({
 
       {!plan ? (
         <p>
-          Aucun plan n'a été enregistré pour ce dossier : son calcul n'a pas abouti. L'annuler est
-          la seule issue, un nouveau départ restant ouvrable ensuite.
+          Aucun plan n'a été enregistré pour ce dossier : son calcul n'a pas abouti.
+          {annule || clos
+            ? ""
+            : " L'annuler est la seule issue, un nouveau départ restant ouvrable ensuite."}
         </p>
       ) : plan.steps.length === 0 ? (
         <p>
@@ -322,9 +328,11 @@ export default async function DepartPage({
             </>
           ) : null}
 
-          {enCours && restantes === 0 && dossierSoldable("EXECUTED") ? (
-            <BoutonClore dossierId={dossier.id} />
-          ) : null}
+          {/* Sur l'état du plan, et non sur un décompte d'étapes : un plan `EXECUTING`
+              porte par construction au moins une étape en attente, si bien que la
+              condition d'avant ne pouvait jamais être vraie et qu'aucun dossier ne
+              se cloturait. */}
+          {!annule && plan.state === "EXECUTED" ? <BoutonClore dossierId={dossier.id} /> : null}
 
           {enCours && restantes > 0 ? (
             <p className={fr.cx("fr-text--sm")}>
@@ -355,7 +363,7 @@ export default async function DepartPage({
           Plan calculé le {dateFr.format(plan.createdAt)} par {plan.createdBy}
           {plan.confirmedBy
             ? `, confirmé le ${dateFr.format(plan.confirmedAt ?? maintenant)} par ${plan.confirmedBy}`
-            : annule || remplace
+            : annule || remplace || etat?.perime
               ? ""
               : `, valable jusqu'au ${dateFr.format(plan.expiresAt)}`}
           .
