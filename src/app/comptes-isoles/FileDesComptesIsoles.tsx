@@ -17,6 +17,8 @@ export interface LigneCompteIsole {
   handle: string;
   ressemblance: boolean;
   acces: readonly string[];
+  /** Ce que le connecteur sait du compte, rendu tel quel et jamais interprété. */
+  metadonnees: readonly { libelle: string; valeur: string }[];
   vuDepuis: string;
   vuEncore: string;
 }
@@ -74,7 +76,13 @@ export function FileDesComptesIsoles({
             {
               children: (
                 <span className={fr.cx("fr-text--sm")}>
-                  {ligne.acces.length === 0 ? "aucun" : ligne.acces.join(", ")}
+                  {ligne.acces.length === 0
+                    ? "aucun"
+                    : ligne.acces.length === 1
+                      ? ligne.acces[0]
+                      : `${ligne.acces[0]}, et ${ligne.acces.length - 1} autre${
+                          ligne.acces.length > 2 ? "s" : ""
+                        }`}
                 </span>
               ),
             },
@@ -123,10 +131,30 @@ export function FileDesComptesIsoles({
                 </>
               ) : null}
             </p>
-            <p className={fr.cx("fr-text--sm", "fr-mb-1w")}>
-              Accès constatés : {choisi.acces.length === 0 ? "aucun" : choisi.acces.join(", ")}.
+            <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
               Observé depuis le {choisi.vuDepuis}, encore le {choisi.vuEncore}.
             </p>
+            <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
+              <strong>Accès constatés</strong>
+            </p>
+            {choisi.acces.length === 0 ? (
+              <p className={fr.cx("fr-text--sm", "fr-mb-1w")}>aucun</p>
+            ) : (
+              <ul className={fr.cx("fr-text--sm", "fr-mb-1w")}>
+                {choisi.acces.map((acces) => (
+                  <li key={acces}>{acces}</li>
+                ))}
+              </ul>
+            )}
+            {choisi.metadonnees.length > 0 ? (
+              <ul className={fr.cx("fr-text--sm", "fr-mb-1w")}>
+                {choisi.metadonnees.map((metadonnee) => (
+                  <li key={metadonnee.libelle}>
+                    {metadonnee.libelle} : {metadonnee.valeur}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             <p className={fr.cx("fr-text--sm")}>
               Un compte rattaché à la main l'est de façon sûre, et pourra donc justifier une
               révocation : c'est un jugement, il est journalisé avec votre nom. Le plus souvent il

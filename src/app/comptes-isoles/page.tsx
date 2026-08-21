@@ -14,6 +14,31 @@ export const dynamic = "force-dynamic";
 
 const dateFr = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "UTC" });
 
+/**
+ * Ce que le connecteur a écrit, relu sans confiance : la colonne est libre, et une
+ * forme écrite par une version antérieure ne doit pas faire tomber la page. Tout ce
+ * qui n'est pas un couple de deux chaînes est écarté sans bruit.
+ */
+function metadonnees(details: unknown): { libelle: string; valeur: string }[] {
+  if (!Array.isArray(details)) {
+    return [];
+  }
+
+  return details.flatMap((detail) =>
+    typeof detail === "object" &&
+    detail !== null &&
+    typeof (detail as { label?: unknown }).label === "string" &&
+    typeof (detail as { value?: unknown }).value === "string"
+      ? [
+          {
+            libelle: (detail as { label: string }).label,
+            valeur: (detail as { value: string }).value,
+          },
+        ]
+      : [],
+  );
+}
+
 export default async function ComptesIsolesPage() {
   await requireOperateur();
 
@@ -34,8 +59,12 @@ export default async function ComptesIsolesPage() {
         matchMethod: true,
         firstSeenAt: true,
         lastSeenAt: true,
+        details: true,
         grants: {
           where: { vanishedAt: null },
+          // Ordonnés, sans quoi « le premier accès » de la cellule change d'un jour à
+          // l'autre pour la même situation.
+          orderBy: [{ resource: { externalId: "asc" } }, { role: "asc" }],
           select: { role: true, resource: { select: { label: true } } },
         },
       },
@@ -65,6 +94,7 @@ export default async function ComptesIsolesPage() {
     handle: identite.handle,
     ressemblance: identite.matchMethod === "HEURISTIC",
     acces: identite.grants.map((acces) => `${acces.role} sur ${acces.resource.label}`),
+    metadonnees: metadonnees(identite.details),
     vuDepuis: dateFr.format(identite.firstSeenAt),
     vuEncore: dateFr.format(identite.lastSeenAt),
   }));

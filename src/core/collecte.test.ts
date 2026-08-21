@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { chuteExcessive, fraicheurDe, type ReleveSysteme, systemesMuets } from "./collecte";
+import {
+  champsConstates,
+  chuteExcessive,
+  fraicheurDe,
+  type ReleveSysteme,
+  systemesMuets,
+} from "./collecte";
 
 const SEUIL = 48;
 const MAINTENANT = new Date("2026-08-11T09:00:00.000Z");
@@ -125,5 +131,55 @@ describe("systèmes cibles dont on ne peut plus dire qu'on les regarde", () => {
     expect(systemesMuets([releve({ status: "PARTIAL" })], ["github"], MAINTENANT, SEUIL)).toEqual(
       [],
     );
+  });
+});
+
+/**
+ * Ce qu'une identité laisse en base est une liste courte et délibérée. Ce test la
+ * fixe, y compris ce qu'elle ne contient pas : sans lui, un champ collecté puis jeté
+ * se découvre le jour où quelqu'un compte dessus.
+ */
+describe("ce qu'une identité collectée laisse en base", () => {
+  const MAINTENANT = new Date("2026-08-21T09:00:00Z");
+
+  it("garde les métadonnées dans leur ordre, et laisse dehors ce qui n'est pas persisté", () => {
+    const constates = champsConstates(
+      {
+        externalId: "42",
+        idKind: "opaque",
+        handle: "camille.rivet",
+        emails: ["camille.rivet@exemple.org"],
+        lastActivityAt: new Date("2026-08-01T00:00:00Z"),
+        details: [
+          { label: "Type de compte", value: "robot" },
+          { label: "Invitée par", value: "alex.dupuis" },
+        ],
+      },
+      MAINTENANT,
+    );
+
+    expect(constates.details).toEqual([
+      { label: "Type de compte", value: "robot" },
+      { label: "Invitée par", value: "alex.dupuis" },
+    ]);
+    expect(constates.handle).toBe("camille.rivet");
+    expect(constates.idKind).toBe("OPAQUE");
+    expect(constates.lastSeenAt).toBe(MAINTENANT);
+    expect(constates.vanishedAt).toBeNull();
+
+    // Collectés et non persistés, délibérément : écrire les adresses changerait
+    // l'issue du rapprochement sur le parc, une ressemblance devenant une
+    // correspondance, donc une identité révocable.
+    expect(constates).not.toHaveProperty("emails");
+    expect(constates).not.toHaveProperty("lastActivityAt");
+
+    // Le dernier état constaté écrase, absence comprise : une métadonnée que le
+    // connecteur ne sait plus écrire ne survit pas à la collecte qui l'a tue.
+    const sansRien = champsConstates(
+      { externalId: "42", idKind: "opaque", handle: "camille.rivet" },
+      MAINTENANT,
+    );
+
+    expect(sansRien.details).toBeNull();
   });
 });

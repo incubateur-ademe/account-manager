@@ -120,6 +120,19 @@ export function resolveCapability(
 // Collecte
 // ---------------------------------------------------------------------------
 
+/**
+ * Ce qu'un connecteur sait d'un compte et qu'aucune ressource ni aucun accès ne dit,
+ * déjà rédigé pour être lu par un humain.
+ *
+ * Le socle ne l'interprète pas : il ne choisit ni l'ordre, ni le libellé, ni le
+ * format, faute de quoi il faudrait qu'il connaisse chaque clé de chaque système,
+ * c'est-à-dire qu'il interprète.
+ */
+export interface ObservedDetail {
+  label: string;
+  value: string;
+}
+
 export interface ObservedIdentity {
   externalId: string;
   idKind: "opaque" | "email" | "upn";
@@ -127,6 +140,8 @@ export interface ObservedIdentity {
   /** Sert au rapprochement initial. Une personne porte souvent plusieurs adresses. */
   emails?: readonly string[];
   lastActivityAt?: Date;
+  /** Rendu tel quel, dans cet ordre, jamais interprété. Ce qui est un accès n'entre pas ici. */
+  details?: readonly ObservedDetail[];
 }
 
 export interface ObservedResource {

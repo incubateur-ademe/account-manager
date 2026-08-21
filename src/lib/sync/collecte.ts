@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { chuteExcessive } from "@/core/collecte";
+import { champsConstates, chuteExcessive } from "@/core/collecte";
 import type {
   CollectResult,
   Connector,
@@ -9,7 +9,8 @@ import type {
   ObservedResource,
   RunContext,
 } from "@/core/connector";
-import type { IdKind, SyncStatus } from "@/generated/prisma/enums";
+import { Prisma } from "@/generated/prisma/client";
+import type { SyncStatus } from "@/generated/prisma/enums";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -31,17 +32,6 @@ const STATUT: Record<CollectResult["status"], SyncStatus> = {
   failed: "FAILED",
 };
 
-/**
- * Le contrat parle en minuscules, la base en majuscules. La conversion est explicite
- * plutôt que castée : deux vocabulaires qui se ressemblent sont exactement ce qui
- * finit par diverger sans que rien ne le dise.
- */
-const KIND: Record<ObservedIdentity["idKind"], IdKind> = {
-  opaque: "OPAQUE",
-  email: "EMAIL",
-  upn: "UPN",
-};
-
 async function enregistrerIdentites(
   provider: string,
   identites: readonly ObservedIdentity[],
@@ -51,11 +41,17 @@ async function enregistrerIdentites(
   let revues = 0;
 
   for (const identite of identites) {
+    const { details, ...constates } = champsConstates(identite, now);
+
+    // `DbNull` et non `null` : le type d'entrée d'une colonne Json ne l'accepte pas, et
+    // omettre la clé conserverait l'ancienne valeur, ce qui ferait survivre une
+    // métadonnée que le connecteur ne remonte plus.
     const commun = {
-      handle: identite.handle,
-      idKind: KIND[identite.idKind],
-      lastSeenAt: now,
-      vanishedAt: null,
+      ...constates,
+      details:
+        details === null
+          ? Prisma.DbNull
+          : details.map((detail) => ({ label: detail.label, value: detail.value })),
     };
 
     // Le rattachement à une personne n'est jamais touché ici : il relève du
