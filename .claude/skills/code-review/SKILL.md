@@ -101,10 +101,14 @@ compris. Les anciennes formes `-t all`, `-t committed` et `-t uncommitted` n'exi
 
 `cr` est un alias de `coderabbit`.
 
-**Le quota compte.** Ce depot n'est rattache a aucune organisation CodeRabbit, la revue passe donc
-par l'allocation gratuite du CLI, de l'ordre de trois par heure. Ne relance pas une revue complete
-pour verifier une correction d'une ligne : cible avec `--base-commit` ce qui a bouge depuis la
-derniere passe. `coderabbit usage` donne l'etat de la periode et sa date de remise a zero.
+**Le quota compte, et il ne se devine pas.** Deux choses distinctes s'affichent : le plan du compte
+authentifie, que donne `coderabbit auth status`, et le rattachement du depot a une organisation, qui
+decide seulement si la revue est facturee a cette organisation. Un depot non rattache ne dit rien du
+plan, et l'inverse non plus.
+
+`coderabbit usage` fait foi sur ce qui reste et sur la remise a zero. Consulte-le plutot que de
+supposer une allocation. Dans tous les cas, ne relance pas une revue complete pour verifier une
+correction d'une ligne : cible avec `--base-commit` ce qui a bouge depuis la derniere passe.
 
 ## 3. Presenter les resultats
 
