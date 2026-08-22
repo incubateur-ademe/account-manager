@@ -126,7 +126,10 @@ export function ChampAvecListe({
                 type="text"
                 required={requis}
                 {...(requis
-                  ? messageObligatoire("Indiquez une cible, même hors de la liste.")
+                  ? messageObligatoire(
+                      "Indiquez une cible, même hors de la liste.",
+                      slotProps.htmlInput.onChange,
+                    )
                   : {})}
                 placeholder={placeholder}
                 autoComplete="off"
