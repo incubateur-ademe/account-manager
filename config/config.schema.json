@@ -13,6 +13,7 @@
     },
     "startups": {
       "description": "Ce que l'incubateur tient pour une startup finie.",
+      "default": {},
       "type": "object",
       "properties": {
         "terminalPhases": {
@@ -38,13 +39,11 @@
           }
         }
       },
-      "required": [
-        "terminalPhases"
-      ],
       "additionalProperties": false
     },
     "thresholds": {
       "description": "Les délais et les proportions qui gouvernent les décisions.",
+      "default": {},
       "type": "object",
       "properties": {
         "graceDays": {
@@ -98,13 +97,6 @@
           "maximum": 9007199254740991
         }
       },
-      "required": [
-        "graceDays",
-        "soonDays",
-        "staleDays",
-        "maxScopeDrop",
-        "collectStaleHours"
-      ],
       "additionalProperties": false
     },
     "systems": {
@@ -165,7 +157,6 @@
         "required": [
           "key",
           "label",
-          "criticality",
           "runbook"
         ],
         "additionalProperties": false,
@@ -198,9 +189,6 @@
               }
             }
           },
-          "required": [
-            "organisations"
-          ],
           "additionalProperties": false
         }
       },
@@ -269,12 +257,7 @@
     }
   },
   "required": [
-    "version",
-    "startups",
-    "thresholds",
-    "systems",
-    "connectors",
-    "permanentDerogations"
+    "version"
   ],
   "additionalProperties": false,
   "description": "Règles du produit : seuils, vocabulaire, catalogues. Rien n'y désigne personne et tout y a un défaut raisonnable."

@@ -14,6 +14,11 @@ import { accountsSchema, configSchema } from "@/core/policy";
  *
  * Ils servent la saisie assistée dans l'éditeur, et surtout ils rendent ces fichiers
  * validables depuis un dépôt qui n'a pas le code sous la main.
+ *
+ * `io: "input"` décrit ce qu'un fichier a le droit de contenir, et non ce que le parseur
+ * rend une fois les défauts appliqués. Sans lui, tout champ pourvu d'un `.default()`
+ * ressort obligatoire : l'éditeur refusait alors des fichiers que le démarrage accepte,
+ * ce qui est exactement l'inverse du service attendu d'un schéma.
  */
 const FICHIERS = [
   { nom: "accounts", titre: "Personnes suivies et comptes de service", schema: accountsSchema },
@@ -48,6 +53,7 @@ function composerConnecteurs(): Record<string, unknown> {
         // apparent avec le connecteur fautif : le contrat l'interdit pour cette raison.
         const { $schema: _dialecte, ...sousSchema } = z.toJSONSchema(
           contrat.configSchema as z.ZodType,
+          { io: "input" },
         );
         return [contrat.key, sousSchema];
       }),
@@ -61,7 +67,7 @@ for (const { nom, titre, schema } of FICHIERS) {
   const rendu = {
     $schema: "https://json-schema.org/draft/2020-12/schema",
     title: titre,
-    ...z.toJSONSchema(schema),
+    ...z.toJSONSchema(schema, { io: "input" }),
   } as { properties?: Record<string, unknown> };
 
   if (nom === "config" && rendu.properties) {

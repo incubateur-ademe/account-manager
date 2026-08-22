@@ -283,11 +283,13 @@ Deux points mesurés et non supposés :
 - `z.toJSONSchema` lève `Transforms cannot be represented in JSON Schema` dès qu'un schéma contient
   un `.transform()`. Un `configSchema` de connecteur doit donc rester déclaratif. C'est une
   contrainte à écrire dans le commentaire du contrat, pas à découvrir en régénérant.
-- En mode de sortie (le défaut, et ce qu'utilise déjà le fichier existant), un champ pourvu d'un
-  `.default()` ressort en `required`. Le `config.schema.json` actuel a déjà cette caractéristique
-  pour `systems`, `thresholds` et les autres. On ne change rien à ce comportement dans ce ticket :
-  y toucher réécrirait tout le fichier existant pour un confort d'éditeur, ce qui n'a rien à faire
-  ici.
+- En mode de sortie, qui est le défaut, un champ pourvu d'un `.default()` ressort en `required` :
+  le schéma décrit alors ce que le parseur **rend**, et non ce qu'un fichier a le droit de contenir.
+  Ce plan avait choisi de ne pas y toucher, pour ne pas réécrire tout le fichier au nom d'un confort
+  d'éditeur. La décision a été retournée en relecture, trois relecteurs indépendants ayant pointé
+  qu'un éditeur refusait ainsi des fichiers que le démarrage accepte, ce qui est l'inverse du
+  service attendu d'un schéma. Les deux générations passent donc `io: "input"`, pour trente-deux
+  lignes de diff sur les deux fichiers, et `version` redevient le seul champ réellement requis.
 
 `config/config.exemple.yaml` gagne un bloc `connectors` commenté sur le modèle des blocs réservés
 existants (`config/config.exemple.yaml:52-67`), montrant la configuration GitHub avec sa valeur par
