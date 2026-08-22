@@ -709,9 +709,11 @@ d'ajouter `execute`.
 
 1. **Sans jeton**, `pnpm sync` imprime `[sync] notion non lu : notion:scim`, laisse un `SyncRun` en
 `SKIPPED` en base, et la commande sort en 0. Un système non lu n'est pas une panne.
-2. **Avec le jeton réel**, `pnpm sync` laisse un `SyncRun` en `OK` avec `itemsSeen` à **120**,
-chiffre relevé à l'étape 1 et confirmé par les paramètres du workspace. C'est la seule preuve que la
-pagination est complète, et elle porte sur deux pages : aucun test ne peut l'établir.
+2. **Avec le jeton réel**, `pnpm sync` laisse un `SyncRun` en `OK` dont l'`itemsSeen` égale le
+nombre de membres que les paramètres du workspace affichent au même moment. C'est la seule preuve
+que la pagination est complète, et aucun test ne peut l'établir. Le parc valait 120 le 22 août 2026,
+sur deux pages : c'est un repère historique, pas le critère, qui est l'égalité avec l'inventaire
+distant du jour.
 3. **Deux `pnpm sync` consécutifs** donnent, au second, zéro identité créée, N revues, zéro
 disparue. Une identité recréée à chaque passage signale un `externalId` instable.
 4. L'écran Systèmes montre Notion avec `Lire` en automatique et `Retirer` en manuel, la marche à

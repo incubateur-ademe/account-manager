@@ -407,7 +407,7 @@ export const CONTRAT_GITHUB: ConnectorContract = {
       id: CREDENTIAL,
       source: "env",
       scopeNote:
-        "Jeton fine-grained restreint aux organisations incubateur-ademe et incubateur-ademe-admin, en lecture seule. Seul système du catalogue dont le fournisseur sait émettre un credential nativement restreint, donc sans proxy.",
+        "Jeton fine-grained restreint, en lecture seule, aux organisations déclarées sous connectors.github.organisations. Seul système du catalogue dont le fournisseur sait émettre un credential nativement restreint, donc sans proxy.",
       nominative: false,
     },
   ],

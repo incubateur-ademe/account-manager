@@ -28,21 +28,83 @@ interface Reference {
   typePur: boolean;
 }
 
+/** Ce qui, juste avant un `/`, en fait le début d'une expression régulière et non une division. */
+const AVANT_UNE_REGEX = new Set([
+  "=",
+  "(",
+  ",",
+  ":",
+  "[",
+  "!",
+  "&",
+  "|",
+  "?",
+  "{",
+  "}",
+  ";",
+  "+",
+  "-",
+  "*",
+  "%",
+  "<",
+  ">",
+  "~",
+  "^",
+]);
+
 /**
- * Retire les commentaires en préservant les chaînes.
+ * Retire les commentaires en préservant les chaînes et les expressions régulières.
  *
  * Un simple remplacement de `/* ... *​/` traiterait le `/*` d'une chaîne comme une
  * ouverture de commentaire et effacerait tous les imports jusqu'au prochain `*​/` :
  * le parcours ne verrait plus rien et le test passerait au vert sans rien garder,
- * ce qui est exactement la panne que ce garde-fou existe pour empêcher.
+ * ce qui est exactement la panne que ce garde-fou existe pour empêcher. Une expression
+ * régulière comme `/[/*]/` tend le même piège, d'où la distinction entre le `/` qui
+ * divise et celui qui ouvre un motif, faite sur le dernier caractère significatif.
  */
 function sansCommentaires(source: string): string {
   let sortie = "";
   let rang = 0;
+  let precedent = "";
+
+  const memoriser = (caractere: string) => {
+    if (caractere.trim()) {
+      precedent = caractere;
+    }
+  };
 
   while (rang < source.length) {
     const caractere = source[rang];
     const suivant = source[rang + 1];
+
+    // Une expression régulière se recopie telle quelle : son contenu peut porter
+    // n'importe quoi, `/*` compris.
+    if (
+      caractere === "/" &&
+      suivant !== "/" &&
+      suivant !== "*" &&
+      (precedent === "" || AVANT_UNE_REGEX.has(precedent))
+    ) {
+      const debut = rang;
+      rang += 1;
+      let dansUneClasse = false;
+      while (rang < source.length && (dansUneClasse || source[rang] !== "/")) {
+        if (source[rang] === "\\") {
+          rang += 1;
+        } else if (source[rang] === "[") {
+          dansUneClasse = true;
+        } else if (source[rang] === "]") {
+          dansUneClasse = false;
+        } else if (source[rang] === "\n") {
+          break;
+        }
+        rang += 1;
+      }
+      rang += 1;
+      sortie += source.slice(debut, rang);
+      precedent = "/";
+      continue;
+    }
 
     if (caractere === "/" && suivant === "*") {
       const fin = source.indexOf("*/", rang + 2);
@@ -65,10 +127,12 @@ function sansCommentaires(source: string): string {
       }
       rang += 1;
       sortie += source.slice(debut, rang);
+      precedent = caractere;
       continue;
     }
 
     sortie += caractere;
+    memoriser(caractere ?? "");
     rang += 1;
   }
 
@@ -262,6 +326,20 @@ describe("la ligne de commande n'embarque aucune interface", () => {
     // Un commentaire de fin de ligne ne doit pas non plus fabriquer d'arête fantôme.
     const fantome = sansCommentaires('const a = 1; // import { y } from "@/ui/Navigation";');
     expect(fantome).not.toContain("@/ui/Navigation");
+
+    // Une expression régulière tend le même piège qu'une chaîne : son contenu peut
+    // porter `/*` sans ouvrir de commentaire.
+    const motifRegulier = sansCommentaires(
+      ["const motif = /[/*]/;", 'import { x } from "@/core/connector";'].join("\n"),
+    );
+    expect(motifRegulier).toContain('from "@/core/connector"');
+
+    // Et une vraie division ne doit pas être prise pour une expression régulière, sans
+    // quoi le scanner avalerait le code qui suit jusqu'au prochain slash.
+    const division = sansCommentaires(
+      ["const moitie = total / 2;", 'import { y } from "@/core/lecture";'].join("\n"),
+    );
+    expect(division).toContain('from "@/core/lecture"');
 
     // Une remontée qui sort du code généré redevient visible du parcours.
     expect(resoudre("@/generated/../ui/connecteurs/registre", depuis)?.parcourir).toBe(true);

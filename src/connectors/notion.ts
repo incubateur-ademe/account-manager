@@ -30,6 +30,9 @@ const RUNBOOK =
 
 const PAR_PAGE = 100;
 
+/** Large pour une page de cent fiches, court devant une nuit de collecte bloquée. */
+const DELAI_MS = 15_000;
+
 /**
  * Dix pages valent mille sièges, bien au-delà du parc réel. La borne existe parce
  * qu'un `totalResults` menteur ferait boucler sans fin, et signaler l'anomalie vaut
@@ -101,6 +104,10 @@ async function lireTout(startIndex: number, count: number): Promise<unknown> {
 
   const reponse = await fetch(`${HOTE}/Users?startIndex=${startIndex}&count=${count}`, {
     headers: { authorization: `Bearer ${jeton}`, accept: "application/scim+json" },
+    // `fetch` n'a aucun délai par défaut : une réponse qui ne vient jamais gèlerait la
+    // collecte entière, qui tourne la nuit sans personne pour la relancer. Un abandon
+    // remonte comme n'importe quelle erreur de lecture, donc en run non `ok`.
+    signal: AbortSignal.timeout(DELAI_MS),
   });
 
   if (!reponse.ok) {

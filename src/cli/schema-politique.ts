@@ -36,6 +36,10 @@ function composerConnecteurs(): Record<string, unknown> {
 
   return {
     type: "object",
+    // Le noeud est reconstruit a la main, il faut donc lui redonner ce que
+    // `z.toJSONSchema` aurait pose : sans ce defaut, `connectors` serait le seul champ
+    // du fichier a etre requis sans que l'editeur sache quoi proposer.
+    default: {},
     description:
       "Réglages propres à chaque connecteur, sous sa clé. Une clé qu'aucun connecteur ne porte fait refuser le démarrage.",
     properties: Object.fromEntries(
