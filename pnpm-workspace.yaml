@@ -16,3 +16,11 @@ allowBuilds:
   # Surveillance de fichiers en mode natif, pour le watch de vitest. Il existe un
   # repli en JavaScript pur, et aucune commande de ce depot n'en a besoin.
   '@parcel/watcher': false
+
+# `@prisma/config` epingle deepmerge-ts en 7.1.5, une version exacte, et Prisma 7.9.1
+# est la derniere publiee : il n'y a pas de correctif a attendre en amont pour
+# CVE-2026-40345. La 8 corrige l'epuisement de pile sur les graphes recursifs et ne
+# change rien a l'export `deepmerge` que @prisma/config utilise comme fusionneur de
+# configuration.
+overrides:
+  deepmerge-ts: ^8.0.0
