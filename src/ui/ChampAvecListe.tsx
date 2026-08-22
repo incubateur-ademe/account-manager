@@ -28,6 +28,20 @@ export interface Suggestion {
  * message qui dit laquelle, et c'est lui qui fait foi. L'empêcher ici transformerait
  * une aide à la frappe en verrou.
  */
+/**
+ * `valeur` fait passer le champ sous la conduite du parent, qui doit alors répercuter
+ * chaque frappe par `onValeur`. Les deux ne se séparent pas : une valeur posée sans
+ * son retour fige `inputValue` sur une constante, et le champ n'accepte plus rien,
+ * exactement comme un `onChange` perdu. Le type l'interdit plutôt que de laisser
+ * découvrir un champ muet à l'exécution.
+ *
+ * `onValeur` seul reste permis : c'est le formulaire qui réagit à la saisie sans
+ * prétendre la détenir.
+ */
+type ConduiteDeLaValeur =
+  | { valeur: string; onValeur: (valeur: string) => void }
+  | { valeur?: undefined; onValeur?: (valeur: string) => void };
+
 export function ChampAvecListe({
   nom,
   label,
@@ -36,6 +50,7 @@ export function ChampAvecListe({
   requis = false,
   erreur,
   placeholder,
+  valeur,
   onValeur,
 }: {
   nom: string;
@@ -45,10 +60,9 @@ export function ChampAvecListe({
   requis?: boolean;
   erreur?: string;
   placeholder?: string;
-  /** Pour les formulaires qui réagissent à la saisie avant même l'envoi. */
-  onValeur?: (valeur: string) => void;
-}) {
-  const [valeur, setValeur] = useState("");
+} & ConduiteDeLaValeur) {
+  const [saisie, setSaisie] = useState("");
+  const affichee = valeur ?? saisie;
   const id = useId();
 
   return (
@@ -66,10 +80,10 @@ export function ChampAvecListe({
           // ailleurs, il serait hors d'atteinte au clavier.
           disablePortal
           options={[...suggestions]}
-          inputValue={valeur}
-          onInputChange={(_evenement, saisie) => {
-            setValeur(saisie);
-            onValeur?.(saisie);
+          inputValue={affichee}
+          onInputChange={(_evenement, frappee) => {
+            setSaisie(frappee);
+            onValeur?.(frappee);
           }}
           getOptionLabel={(option) => (typeof option === "string" ? option : option.valeur)}
           // La liste entière, filtrée au fil de la frappe, et jamais tronquée : borner

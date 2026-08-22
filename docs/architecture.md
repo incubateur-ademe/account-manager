@@ -277,7 +277,10 @@ définition même de l'écart**. Elle ne se jette ni ne se force vers une person
 déclarée plutôt que masquée.
 
 Règle dure : une identité dont `matchMethod` vaut `HEURISTIC` ou `NONE` **ne peut
-jamais produire une étape de révocation**. Elle alimente une file de rattachement.
+jamais produire une étape de révocation**. Elle alimente une file de rattachement, où
+l'écran propose des détenteurs possibles, recalculés à chaque affichage et jamais
+persistés : accepter une proposition est un geste d'opérateur, qui pose `DECLARED` et
+rend donc le compte révocable.
 
 **`Resource`** : `provider`, `externalId`, `label`, `url`. Les métadonnées vivent ici
 et pas sur l'accès : une page partagée avec N personnes ne duplique pas son titre N
