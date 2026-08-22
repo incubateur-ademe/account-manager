@@ -94,10 +94,11 @@ export function Identifiant({ username }: { username: string }) {
         nativeInputProps={{
           name: "nouveau",
           required: true,
-          ...messageObligatoire("Indiquez le nouvel identifiant."),
+          ...messageObligatoire("Indiquez le nouvel identifiant.", (evenement) => {
+            setNouveau(evenement.target.value);
+          }),
           autoComplete: "off",
           value: nouveau,
-          onChange: (event) => setNouveau(event.target.value),
         }}
         state={erreur ? "error" : "default"}
         stateRelatedMessage={erreur}

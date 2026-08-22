@@ -73,9 +73,10 @@ export function RattacherStartup({
               name: "jusquAu",
               type: "date",
               required: true,
-              ...messageObligatoire("Indiquez le dernier jour couvert."),
+              ...messageObligatoire("Indiquez le dernier jour couvert.", (evenement) => {
+                setJusquAu(evenement.target.value);
+              }),
               value: jusquAu,
-              onChange: (event) => setJusquAu(event.target.value),
             }}
           />
         </div>
