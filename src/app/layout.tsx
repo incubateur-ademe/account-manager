@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
-import { type ReactNode, Suspense } from "react";
+import type { ReactNode } from "react";
 import { operateurCourant } from "@/lib/session";
 import { Deconnexion } from "@/ui/Deconnexion";
 import { DsfrProvider, StartDsfrOnHydration } from "@/ui/dsfr/client";
 import { DsfrHead, getHtmlAttributes } from "@/ui/dsfr/server";
-import { ModeAideProvider } from "@/ui/ModeAide";
 import { Navigation } from "@/ui/Navigation";
 
 export const metadata: Metadata = {
@@ -24,22 +23,22 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       </head>
       <body>
         <DsfrProvider lang={lang}>
-          <ModeAideProvider>
-            <Navigation
-              deconnexion={operateur ? <Deconnexion username={operateur.username} /> : undefined}
-            />
-            {/* Le démarrage du DSFR vit dans la même frontière que la page, et après
-              elle. Placé dehors, il s'hydrate avec la coque et lâche son JS sur des
-              tableaux, des modales et un fil d'Ariane que React n'a pas encore
-              hydratés : il y pose ses `data-fr-js-*`, écart que React signale en
-              annonçant qu'il ne le rattrapera pas. Ici, il part une fois la page
-              hydratée, et les composants montés avant lui sont rejoués par
-              `registerEffectAction`. */}
-            <Suspense>
-              {children}
-              <StartDsfrOnHydration />
-            </Suspense>
-          </ModeAideProvider>
+          <Navigation
+            deconnexion={operateur ? <Deconnexion username={operateur.username} /> : undefined}
+          />
+          {/* Pas de frontière de suspension autour de la page. Elle a existé pour
+            que le démarrage du DSFR parte après l'hydratation, mais elle empêchait
+            cette hydratation d'avoir lieu : le contenu partait en flux dans un
+              conteneur caché, la frontière restait en attente dans le HTML final, et
+            React n'hydratait jamais ce qu'elle portait. Aucune interaction de page
+            ne fonctionnait, sur aucun écran.
+
+            Le démarrage du DSFR n'y était pour rien, vérifié en le sortant de la
+            frontière sans que l'hydratation revienne. Il reste donc ici, après la
+            page, et `registerEffectAction` continue de rejouer les composants
+            montés avant lui. */}
+          {children}
+          <StartDsfrOnHydration />
         </DsfrProvider>
       </body>
     </html>
