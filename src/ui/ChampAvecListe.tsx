@@ -36,6 +36,7 @@ export function ChampAvecListe({
   requis = false,
   erreur,
   placeholder,
+  valeur,
   onValeur,
 }: {
   nom: string;
@@ -45,10 +46,17 @@ export function ChampAvecListe({
   requis?: boolean;
   erreur?: string;
   placeholder?: string;
+  /**
+   * Pose la valeur depuis le parent, qui la détient alors et doit la maintenir par
+   * `onValeur`. Sans cela, un choix fait ailleurs dans le formulaire laisserait le
+   * champ vide, et la soumission suivante repartirait sans lui.
+   */
+  valeur?: string;
   /** Pour les formulaires qui réagissent à la saisie avant même l'envoi. */
   onValeur?: (valeur: string) => void;
 }) {
-  const [valeur, setValeur] = useState("");
+  const [saisie, setSaisie] = useState("");
+  const affichee = valeur ?? saisie;
   const id = useId();
 
   return (
@@ -66,10 +74,10 @@ export function ChampAvecListe({
           // ailleurs, il serait hors d'atteinte au clavier.
           disablePortal
           options={[...suggestions]}
-          inputValue={valeur}
-          onInputChange={(_evenement, saisie) => {
-            setValeur(saisie);
-            onValeur?.(saisie);
+          inputValue={affichee}
+          onInputChange={(_evenement, frappee) => {
+            setSaisie(frappee);
+            onValeur?.(frappee);
           }}
           getOptionLabel={(option) => (typeof option === "string" ? option : option.valeur)}
           // La liste entière, filtrée au fil de la frappe, et jamais tronquée : borner

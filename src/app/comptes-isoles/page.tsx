@@ -1,6 +1,7 @@
 import { fr } from "@codegouvfr/react-dsfr";
 import type { Metadata } from "next";
 
+import { type SuggestionRattachement, suggererRattachements } from "@/core/suggestion-rattachement";
 import { prisma } from "@/lib/db";
 import { requireOperateur } from "@/lib/session";
 
@@ -39,6 +40,36 @@ function metadonnees(details: unknown): { libelle: string; valeur: string }[] {
   );
 }
 
+/**
+ * Ce que l'écran propose de rattacher, du plus sûr au plus faible.
+ *
+ * La collecte suppose déjà un détenteur pour les identités rapprochées par
+ * ressemblance, et cet écran ne l'a jamais dit : il affichait un badge sans nom,
+ * laissant retrouver à la main ce que la base savait. Cette supposition passe devant
+ * les autres, seule à reposer sur une égalité d'identifiant plutôt que sur un
+ * fragment d'adresse, et ne se répète pas si la comparaison la retrouve.
+ */
+function propositions(
+  handle: string,
+  supposee: { username: string; fullname: string } | null,
+  personnes: readonly { username: string; fullname: string }[],
+): readonly SuggestionRattachement[] {
+  const devinees = suggererRattachements(handle, personnes);
+  if (supposee === null) {
+    return devinees;
+  }
+
+  return [
+    {
+      username: supposee.username,
+      fullname: supposee.fullname,
+      niveau: "forte",
+      motif: "Reconnu par la collecte",
+    },
+    ...devinees.filter((devinee) => devinee.username !== supposee.username),
+  ];
+}
+
 export default async function ComptesIsolesPage() {
   await requireOperateur();
 
@@ -57,6 +88,7 @@ export default async function ComptesIsolesPage() {
         provider: true,
         handle: true,
         matchMethod: true,
+        person: { select: { username: true, fullname: true } },
         firstSeenAt: true,
         lastSeenAt: true,
         details: true,
@@ -93,6 +125,7 @@ export default async function ComptesIsolesPage() {
     provider: identite.provider,
     handle: identite.handle,
     ressemblance: identite.matchMethod === "HEURISTIC",
+    propositions: propositions(identite.handle, identite.person, personnes),
     acces: identite.grants.map((acces) => `${acces.role} sur ${acces.resource.label}`),
     metadonnees: metadonnees(identite.details),
     vuDepuis: dateFr.format(identite.firstSeenAt),

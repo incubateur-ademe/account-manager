@@ -6,6 +6,7 @@ import { Button } from "@codegouvfr/react-dsfr/Button";
 import { createModal } from "@codegouvfr/react-dsfr/Modal";
 import { useState } from "react";
 
+import type { SuggestionRattachement } from "@/core/suggestion-rattachement";
 import type { Suggestion } from "@/ui/ChampAvecListe";
 import { TableCustom } from "@/ui/TableCustom";
 
@@ -16,6 +17,8 @@ export interface LigneCompteIsole {
   provider: string;
   handle: string;
   ressemblance: boolean;
+  /** Qui pourrait détenir ce compte, recalculé à chaque affichage et jamais écrit. */
+  propositions: readonly SuggestionRattachement[];
   acces: readonly string[];
   /** Ce que le connecteur sait du compte, rendu tel quel et jamais interprété. */
   metadonnees: readonly { libelle: string; valeur: string }[];
@@ -162,7 +165,13 @@ export function FileDesComptesIsoles({
               révocation : c'est un jugement, il est journalisé avec votre nom. Le plus souvent il
               manque une fiche, plutôt qu'il ne faut retirer un accès.
             </p>
-            <Rattacher key={choisi.id} id={choisi.id} cibles={cibles} onSucces={modale.close} />
+            <Rattacher
+              key={choisi.id}
+              id={choisi.id}
+              cibles={cibles}
+              propositions={choisi.propositions}
+              onSucces={modale.close}
+            />
           </>
         )}
       </modale.Component>
