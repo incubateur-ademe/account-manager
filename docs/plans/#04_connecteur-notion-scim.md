@@ -5,37 +5,54 @@
 
 ## Ce qui existe aujourd'hui
 
-**Le contrat est complet et n'a pas besoin d'évoluer.** `src/core/connector.ts:159-162` porte
-l'invariant de collecte dans le type : `status: "ok"` implique `errors?: undefined`, donc seul un
-cast peut rendre un `ok` menteur. `src/core/connector.ts:84-117` résout le tier effectif à partir des
-sondes de credentials, et `src/core/connector.ts:218-232` ne rend obligatoire que `plan`.
+**Le contrat couvre ce cas, mais il n'est pas figé.** Il a bougé depuis la rédaction de ce plan :
+`ObservedDetail` et le champ `details` de `ObservedIdentity` (`src/core/connector.ts:131-145`) y ont
+été ajoutés pour porter ce qu'un connecteur sait d'un compte et qu'aucun accès ne dit, rendu tel quel
+et jamais interprété. Ce connecteur-ci n'a rien de neuf à réclamer au contrat, ce qui n'est pas la
+même chose que de le tenir pour définitif. L'invariant de collecte, lui, est resté intact et porté
+par le type : `src/core/connector.ts:173-177` fait que `status: "ok"` implique `errors?: undefined`,
+donc seul un cast peut rendre un `ok` menteur. `src/core/connector.ts:84-117` résout le tier effectif
+à partir des sondes de credentials, et `src/core/connector.ts:233-247` ne rend obligatoire que
+`plan`.
 
-**Le socle de collecte fait déjà tout le travail commun.** `src/lib/sync/collecte.ts:251-253` ouvre
-le `SyncRun` en `FAILED` et ne le promeut qu'à la fin. `src/lib/sync/collecte.ts:300-326` ne date une
+**Le socle de collecte fait déjà tout le travail commun.** `src/lib/sync/collecte.ts:266-268` ouvre
+le `SyncRun` en `FAILED` et ne le promeut qu'à la fin. `src/lib/sync/collecte.ts:315-347` ne date une
 disparition que si le statut final vaut `OK`, après le garde-fou de chute
-(`src/core/collecte.ts:10-15`). `src/lib/sync/collecte.ts:117-131` prévoit le cas d'un accès sans
-ressource nommée : le système devient lui-même une ressource sous la clé réservée `(systeme)`.
-`src/lib/sync/collecte.ts:363-394` écrit un run `SKIPPED` pour un système non lu, et
-`src/lib/sync/collecte.ts:343-354` journalise chaque passage.
+(`src/core/collecte.ts:56-61`), qui porte désormais aussi sur les ressources.
+`src/lib/sync/collecte.ts:113-127` prévoit le cas d'un accès sans ressource nommée : le système
+devient lui-même une ressource sous la clé réservée `(systeme)`.
+`src/lib/sync/collecte.ts:385-416` écrit un run `SKIPPED` pour un système non lu, et
+`src/lib/sync/collecte.ts:365-376` journalise chaque passage. C'est aussi lui qui décide de ce qu'une
+identité laisse en base : `champsConstates` (`src/core/collecte.ts:37-54`) écrit `handle`, `idKind`,
+`details`, `lastSeenAt` et `vanishedAt`, et rien d'autre.
 
 **L'orchestration sait déjà quoi faire d'un connecteur sans credential.**
-`src/lib/sync/executer.ts:109-125` résout `list`, et bascule sur `noterSystemeNonLu` dès que le tier
-vaut `none`, sans compter cela comme un échec (`src/lib/sync/executer.ts:227-231`). Rien à écrire de
+`src/lib/sync/executer.ts:110-126` résout `list`, et bascule sur `noterSystemeNonLu` dès que le tier
+vaut `none`, sans compter cela comme un échec (`src/lib/sync/executer.ts:239-243`). Rien à écrire de
 ce côté.
 
 **Les écrans se peuplent tout seuls à partir de `CONNECTEURS`.**
 `src/connectors/index.ts:10` est la seule liste. `src/app/systemes/page.tsx:33-57` sonde et affiche
-le tier effectif, `src/app/page.tsx:54-59` déduit les systèmes muets de cette même liste,
-`src/lib/depart.ts:69-89` interroge chaque connecteur pour le plan de départ et signale les systèmes
-sans connecteur (`src/app/departs/[id]/page.tsx:146-152`), et
-`src/app/comptes-isoles/page.tsx:26-33` remonte tout compte non rattaché, plus tout rattachement
+le tier effectif, `src/app/page.tsx:68-73` déduit les systèmes muets de cette même liste,
+`src/lib/depart.ts:84-96` interroge chaque connecteur pour le plan de départ et signale les systèmes
+sans connecteur (`src/app/departs/[id]/page.tsx:225-232`), et
+`src/app/comptes-isoles/page.tsx:45-53` remonte tout compte non rattaché, plus tout rattachement
 `HEURISTIC`.
 
-**Le seul connecteur existant sert de patron.** `src/connectors/github.ts` : constante d'API en dur
-(`:25`), pagination bornée avec refus explicite d'un inventaire tronqué (`:57-101`), sonde sans le
-moindre appel réseau (`:166-176`), promotion `ok` / `partial` / `failed` calculée à partir des
-erreurs accumulées (`:203-221`), et un `plan` qui rend une tâche manuelle avec lien et critère de
-complétion (`:223-249`).
+**Le seul connecteur existant sert de patron, et il a été refondu depuis.**
+`src/connectors/github.ts` a éclaté sa lecture en trois exports : `lireOrganisation` (`:158-209`)
+appelle le réseau, `assemblerOrganisation` (`:252-331`) décide, et `collecter` (`:341-379`) enchaîne
+les deux. Le réseau lui-même passe par un type `Lecteur` injecté (`:74`), si bien que `list` se
+réduit à `collecter(lireTout)` (`:417`) et que le connecteur se teste sans une seule requête. Restent
+en l'état : constante d'API en dur (`:26`), pagination bornée avec refus explicite d'un inventaire
+tronqué (`:100-144`), sonde sans le moindre appel réseau (`:405-415`), et un `plan` qui rend une
+tâche manuelle avec lien et critère de complétion (`:419-445`).
+
+Le calcul du statut, lui, a changé de principe (`:333-340` pour le raisonnement, `:365-378` pour le
+code). Il comptait les organisations en erreur et les comparait à leur nombre ; il compte désormais
+celles qui ont rendu quelque chose : `failed` quand aucune n'a rien rendu, `partial` dès qu'il reste
+une charge et au moins une erreur, `ok` sinon. Le statut se lit sur ce qui a été rendu, jamais sur un
+décompte d'erreurs.
 
 **Ce qui manque.** Aucun fichier `src/connectors/notion.ts`, aucune variable `NOTION_*` lue par le
 code : `src/lib/env.ts:14-37` ne connaît que `GITHUB_TOKEN`, facultatif à dessein.
@@ -46,30 +63,33 @@ nominatif contre non nominatif déjà écrite.
 **Ce qui est déjà écrit comme si le connecteur existait.** `src/core/connector.test.ts:17-21` prend
 Notion comme cas d'école de la résolution de tier, avec les identifiants `notion:scim` et
 `notion:session` : ce plan reprend ces identifiants tels quels plutôt que d'en inventer d'autres.
-`src/core/collecte.test.ts:79` et `docs/deploiement.md:341` citent déjà `notion` en exemple de
+`src/core/collecte.test.ts:85` et `docs/deploiement.md:341` citent déjà `notion` en exemple de
 système non lu.
 
 **Les pièges, vérifiés dans le code.**
 
 1. **Il n'existe aucun moteur d'exécution.** `execute` et `precheck` ne sont appelés nulle part
-   (aucune occurrence hors `src/core/connector.ts:228`). Les étapes d'un plan se pointent à la main,
-   et l'écran le dit en toutes lettres (`src/app/departs/[id]/page.tsx:125`). Déclarer une capacité
-   `auto` que rien n'exécute afficherait un tier théorique, ce que `docs/architecture.md` §5.1
-   interdit explicitement.
+   (aucune occurrence hors leur déclaration, `src/core/connector.ts:243` et `:246`). Les étapes d'un
+   plan se pointent à la main, et l'écran le dit en toutes lettres
+   (`src/app/departs/[id]/page.tsx:165`). Déclarer une capacité `auto` que rien n'exécute afficherait
+   un tier théorique, ce que `docs/architecture.md` §5.1 interdit explicitement.
 2. **`env` est un proxy paresseux qui met en cache tout le schéma au premier accès**
    (`src/lib/env.ts:107-115`). Deux conséquences en test : lire une seule variable exige que
    `DATABASE_URL` et `ESPACE_MEMBRE_API_KEY` soient présentes, sinon l'accès jette ; et un même
    fichier de test ne peut pas observer successivement un jeton présent puis absent sans
    `vi.resetModules()` suivi d'un import dynamique.
-3. **Aucun test du dépôt ne simule aujourd'hui ni `fetch` ni Prisma** : tous les fichiers `*.test.ts`
-   portent sur des fonctions pures de `src/core`. L'infrastructure de simulation est donc à poser
-   dans ce ticket, et c'est un argument de plus pour tester le connecteur, et non le socle qui
-   l'appelle.
-4. **`criticality` et `scopeSchema` sont déclarés mais lus par personne** : seuls le type et
-   `src/connectors/github.ts:146,163` les mentionnent. Les renseigner correctement est une question
-   d'honnêteté du contrat, pas un effet visible.
+3. **Aucun test du dépôt ne simule aujourd'hui ni `fetch` ni Prisma.** Un connecteur y est pourtant
+   couvert depuis : `src/connectors/github.test.ts` fabrique un `Lecteur` factice
+   (`src/connectors/github.test.ts:19-53`) et vérifie l'assemblage sans réseau. La simulation de
+   `fetch` reste donc à poser dans ce ticket, mais le patron à suivre existe, et c'est un argument de
+   plus pour tester le connecteur plutôt que le socle qui l'appelle.
+4. **`criticality` et `scopeSchema` sont déclarés mais lus par personne** : le type et
+   `src/connectors/github.ts:385,402` les portent, et le schéma de catalogue de
+   `src/core/policy.ts:144` déclare le premier dans une entrée que rien ne lit non plus, son propre
+   `.meta()` le disant. Les renseigner correctement est une question d'honnêteté du contrat, pas un
+   effet visible.
 5. **Il n'existe pas de dossier `docs/runbooks/`** : un runbook est une chaîne en prose portée par le
-   contrat (`src/connectors/github.ts:27-28`), pas un chemin de fichier.
+   contrat (`src/connectors/github.ts:28-29`), pas un chemin de fichier.
 
 ## Décisions de conception
 
@@ -82,22 +102,24 @@ fonctionnalité propre envisagée, la gestion des invités, exigerait `notion:se
 fonctionnalité dont le credential appartient à l'autre connecteur reviendrait exactement à ce que le
 ticket interdit.
 
-**Tension à signaler avec `docs/architecture.md`.** La ligne 518 rattache la gestion des invités au
-connecteur `notion`, celui-ci, alors que SCIM ne sait pas gérer les invités (limitation documentée
-par Notion, à confirmer à l'étape 1) et que le ticket range cette fonctionnalité hors périmètre. Le
-ticket tranche pour ce plan. Le document ne se modifie pas ici : la reformulation de §5.9 se propose
-au moment où le connecteur à jeton de session arrivera, et elle demande une validation explicite.
+**Tension à signaler avec `docs/architecture.md`.** Les lignes 594 à 596, en §5.9, rattachent la
+gestion des invités au connecteur `notion`, celui-ci, et §5.3 la donne en exemple de fonctionnalité
+propre (`docs/architecture.md:485-487`), alors que SCIM ne sait pas gérer les invités (limitation
+documentée par Notion, à confirmer à l'étape 1) et que le ticket range cette fonctionnalité hors
+périmètre. Le ticket tranche pour ce plan. Le document ne se modifie pas ici : la reformulation de
+§5.9 se propose au moment où le connecteur à jeton de session arrivera, et elle demande une
+validation explicite.
 
 ### `list` en `auto`, `revoke` en `manual`, sans regret
 
 `list` se déclare `{ requires: ["notion:scim"], tier: "auto" }`, ce que le ticket vise.
 
 `revoke` se déclare `{ requires: [], tier: "manual", runbook }`, inconditionnel, comme
-`src/connectors/github.ts:161`. Ce n'est pas un aveu de faiblesse du credential : SCIM sait très
+`src/connectors/github.ts:400`. Ce n'est pas un aveu de faiblesse du credential : SCIM sait très
 probablement supprimer un membre par `DELETE /Users/{id}` (à établir à l'étape 1). C'est un constat
 sur **l'outil** : aucun moteur n'appelle `execute`, donc une étape `auto` ne serait exécutée par
 personne et ne porterait même pas la tâche manuelle qui permet de la pointer
-(`src/core/connector.ts:196-197`). Le tier affiché doit être celui qui a lieu aujourd'hui.
+(`src/core/connector.ts:191-197`). Le tier affiché doit être celui qui a lieu aujourd'hui.
 
 Ce que le credential permet réellement se dit quand même, à l'endroit prévu pour ça : le `scopeNote`
 du `CredentialRef`. Le jour où le moteur d'exécution existera, il suffira d'insérer
@@ -107,7 +129,7 @@ choisira la meilleure voie praticable et affichera la dégradation toute seule.
 ### La sonde ne fait aucun appel réseau
 
 `probe` se contente de constater la présence de la variable, comme
-`src/connectors/github.ts:166-176`. L'écran Systèmes sonde à chaque affichage
+`src/connectors/github.ts:405-415`. L'écran Systèmes sonde à chaque affichage
 (`src/app/systemes/page.tsx:36`) : une sonde qui appellerait Notion transformerait un rafraîchissement
 de page en appel distant, et une panne d'affichage en panne de credential.
 
@@ -117,31 +139,43 @@ de page en appel distant, et une panne d'affichage en panne de credential.
 qui est l'adresse de courriel chez Notion, et `emails` reçoit `userName` plus les `emails[].value`
 non vides.
 
-Conséquence assumée sur le rapprochement : `src/core/rapprochement.ts:113-121` ne connaît de voie par
+Une précision qui compte sur ce dernier point : le socle collecte `emails` et ne le persiste pas, et
+`champsConstates` le dit désormais en toutes lettres (`src/core/collecte.ts:24-36`), au même titre
+que `lastActivityAt`. Le rapprochement relit la base et ne voit donc que le `handle`
+(`src/lib/sync/rapprochement.ts:24-27`). Le renseigner reste juste : c'est ce que le contrat demande,
+et le jour où la colonne existera le connecteur n'aura rien à changer. Ce qui fait effectivement le
+rattachement d'un compte Notion aujourd'hui, c'est que son `handle` **est** l'adresse.
+
+Conséquence assumée sur le rapprochement : `src/core/rapprochement.ts:147-156` ne connaît de voie par
 login que pour `github`. Un compte Notion se rattache donc par `EMAIL_EXACT`
-(`src/core/rapprochement.ts:123-141`) quand une adresse correspond, sinon par `HEURISTIC` sur la
-partie locale de l'adresse (`src/core/rapprochement.ts:146-159`), et une identité `HEURISTIC` ne
-produit jamais de révocation : elle atterrit dans la file de rattachement
-(`src/app/comptes-isoles/page.tsx:29`). C'est le comportement voulu, pas un défaut à contourner.
+(`src/core/rapprochement.ts:158-176`, où le `handle` entre dans les adresses observées) quand une
+adresse correspond, sinon par `HEURISTIC` sur la partie locale de l'adresse
+(`src/core/rapprochement.ts:178-194`), et une identité `HEURISTIC` ne produit jamais de révocation :
+elle atterrit dans la file de rattachement (`src/app/comptes-isoles/page.tsx:52`). C'est le
+comportement voulu, pas un défaut à contourner.
 
 ### Pas de ressource propre, pas de groupes en v1
 
 Un membre du workspace détient un accès au système entier et à rien de plus précis :
 `resourceExternalId` reste indéfini, et le socle rattache l'accès à la ressource réservée
-`(systeme)` (`src/lib/sync/collecte.ts:117-131`). Aucune ressource n'est donc émise par le
+`(systeme)` (`src/lib/sync/collecte.ts:113-127`). Aucune ressource n'est donc émise par le
 connecteur.
 
 Les groupes SCIM (`/Groups`) sont écartés de la v1 en connaissance de cause : ils feraient de bonnes
 `Resource`, mais retirer quelqu'un du workspace le retire de tous ses groupes, donc le chemin de
 révocation ne perd rien à les ignorer. Ils relèvent d'un incrément ultérieur, motivé par un besoin de
-finesse et non par la couverture.
+finesse et non par la couverture. Le ticket 28 a depuis fait des équipes GitHub des `ObservedResource`
+et des `ObservedGrant` sous la clé `org#id` (`src/connectors/github.ts:275-307`) : le chemin est donc
+balisé le jour où les groupes vaudront la peine, ce qui ne le rend pas plus urgent ici. Corollaire à
+connaître : le garde-fou de chute porte désormais aussi sur les ressources
+(`src/lib/sync/collecte.ts:231-235`), sans effet pour un connecteur qui n'en émet aucune.
 
 ### Un membre désactivé reste un compte observé
 
 Un utilisateur SCIM `active: false` est rendu comme identité, avec un rôle qui le dit :
 `role: "membre"` quand il est actif, `role: "membre-desactive"` sinon. Deux raisons. Un compte
 désactivé se réactive d'un clic, exactement comme une invitation GitHub en attente, que le connecteur
-existant remonte pour cette raison précise (`src/connectors/github.ts:118-119`). Et le filtrer
+existant remonte pour cette raison précise (`src/connectors/github.ts:175-178`). Et le filtrer
 silencieusement le ferait dater comme disparu par le socle au run suivant, c'est-à-dire affirmer
 qu'il n'existe plus alors que Notion le connaît toujours.
 
@@ -153,12 +187,12 @@ d'espace (propriétaire contre membre), ce rôle remplacera `membre`, pas avant.
 
 SCIM rend une enveloppe `ListResponse` avec `totalResults`, `startIndex` et `itemsPerPage`. La
 collecte compare le nombre d'éléments accumulés à `totalResults` et refuse de rendre `ok` en cas
-d'écart. C'est strictement mieux que l'heuristique de `src/connectors/github.ts:93-95`, qui ne peut
+d'écart. C'est strictement mieux que l'heuristique de `src/connectors/github.ts:136-138`, qui ne peut
 que déduire la fin d'une page incomplète.
 
 ### Aucune URL de base en variable d'environnement
 
-L'hôte SCIM est une constante du connecteur, comme `src/connectors/github.ts:25`. Un endpoint
+L'hôte SCIM est une constante du connecteur, comme `src/connectors/github.ts:26`. Un endpoint
 configurable depuis l'environnement rend le déploiement invérifiable : deux instances peuvent alors
 lire deux systèmes différents en affichant le même écran.
 
@@ -168,13 +202,19 @@ Tout tient dans `src/connectors/notion.ts`, comme pour GitHub, mais la fonction 
 est exportée : c'est ce qui permet au test de contrat d'interroger l'API sans passer par la collecte,
 comme l'exige `docs/architecture.md` §5.7.
 
+Cette décision est celle que la refonte de GitHub a validée entre-temps : son type `Lecteur`
+(`src/connectors/github.ts:74`) sépare l'appel réseau de l'assemblage, ce qui est exactement ce que
+`lireMembres` doit faire ici. Le patron est donc établi, il n'est plus à inventer.
+
 ## Modèle de données
 
 **Aucune migration Prisma. Aucune.** Le connecteur n'ajoute ni modèle, ni champ, ni valeur d'énumération :
 `ExternalIdentity`, `Resource`, `AccessGrant` et `SyncRun` couvrent le cas entier avec
-`provider = "notion"` (`prisma/schema.prisma:159-187`, `:189-201`, `:203-222`, `:271-288`). La seule
+`provider = "notion"` (`prisma/schema.prisma:201-235`, `:237-249`, `:251-269`, `:320-333`). La seule
 ligne nouvelle créée à l'exécution est la ressource réservée `(systeme)` du provider `notion`, posée
-par le socle.
+par le socle. `ExternalIdentity` a gagné entre-temps une colonne `details Json?`
+(`prisma/schema.prisma:219-223`), déjà migrée : ce plan n'en fait rien, et son existence ne change
+donc rien à ce paragraphe.
 
 Si une migration devait malgré tout apparaître, ce serait le signe que la conception a dérivé, et il
 faudrait alors lancer `pnpm db:generate` **puis redémarrer `pnpm dev`** : le client généré et le
@@ -226,7 +266,7 @@ livraison.
 
 Fichiers : `src/lib/env.ts` (ajout dans `coreSchema`, à côté de `GITHUB_TOKEN`), `.env.example`
 (décommenter `NOTION_SCIM_TOKEN`, réécrire le commentaire avec la portée réelle établie à l'étape 1),
-`docs/deploiement.md:390-403` (une ligne dans le tableau des variables de déploiement).
+`docs/deploiement.md:391-403` (une ligne dans le tableau des variables de déploiement).
 
 Vérifiable : `pnpm typecheck` passe, et `pnpm sync` se comporte exactement comme avant, la variable
 n'étant encore lue par personne.
@@ -261,8 +301,15 @@ Contenu, dans l'ordre :
   membres du workspace, `manual.doneWhen` explicite, et une clé d'idempotence de la forme
   `notion:revoke:<username>`.
 
+Cette règle de statut est la même que celle de GitHub depuis sa refonte
+(`src/connectors/github.ts:333-340`), formulée sur l'autre unité : ce qui décide est qu'il reste
+quelque chose à écrire, jamais un décompte d'erreurs. `failed` quand rien n'a été rendu, `partial`
+quand il reste une charge et qu'au moins une erreur a été avalée, `ok` sinon. La condition propre à
+SCIM, l'écart avec `totalResults`, s'ajoute à la liste des erreurs unitaires plutôt qu'elle ne
+constitue un troisième régime.
+
 Le statut ne se construit jamais par un cast : la forme du retour suit
-`src/connectors/github.ts:203-221`, où le premier élément d'erreur est extrait pour satisfaire
+`src/connectors/github.ts:365-378`, où le premier élément d'erreur est extrait pour satisfaire
 `NonEmptyArray`.
 
 ### 5. Déclarer le connecteur et vérifier les écrans
@@ -312,7 +359,7 @@ Given une première page correcte annonçant plus d'éléments qu'elle n'en cont
 requête qui échoue. When `list` s'exécute. Then le statut n'est jamais `ok`, `errors` porte au moins
 une entrée qui nomme la pagination, et les éléments déjà lus sont conservés. Le même scénario couvre
 le cas où toutes les pages échouent : statut `failed`, aucun élément rendu, ce qui interdit au socle
-de dater la moindre disparition (`src/lib/sync/collecte.ts:300`).
+de dater la moindre disparition (`src/lib/sync/collecte.ts:295-300`).
 
 ### Scénario 3 : un membre illisible est écarté seul et l'écart remonte
 
@@ -327,7 +374,7 @@ monde pour absent.
 Given un environnement sans `NOTION_SCIM_TOKEN`. When on sonde le connecteur et qu'on résout `list`.
 Then la sonde rend `available: false` avec une raison lisible, `resolveCapability` rend le tier
 `none` avec `degradedFrom.missing` valant `["notion:scim"]`, ce qui est exactement la condition qui
-fait écrire un run `SKIPPED` par `src/lib/sync/executer.ts:119-125`. And un appel direct à `list`
+fait écrire un run `SKIPPED` par `src/lib/sync/executer.ts:120-126`. And un appel direct à `list`
 rendrait `failed`, jamais `ok` vide, pour qu'une régression de l'orchestration ne se traduise pas par
 un inventaire vide pris pour un inventaire complet.
 
@@ -344,7 +391,7 @@ Given un jeton SCIM réel, et rien à faire s'il est absent. When on interroge l
 l'enveloppe porte les champs attendus, au moins un membre actif est rendu, chaque membre a un `id`
 non vide et une adresse exploitable. Cette dernière assertion est le seul filet contre une
 disparition de champ facultatif, que la validation de la collecte ne peut pas voir, exactement comme
-le raisonne `docs/architecture.md` lignes 602 à 606.
+le raisonne `docs/architecture.md` §5.7, lignes 547 à 551.
 
 ### Écarté volontairement
 
@@ -357,7 +404,7 @@ Notion.
 ## Risques et pièges
 
 **Le cast qui rendrait `ok` avec des erreurs.** C'est la seule façon de contourner
-`src/core/connector.ts:159-162`, et c'est un blocage, pas un détail de revue. Un `ok` menteur produit
+`src/core/connector.ts:173-177`, et c'est un blocage, pas un détail de revue. Un `ok` menteur produit
 des `vanishedAt`, donc des propositions de révocation sur des gens en poste.
 
 **La troncature silencieuse.** Si `totalResults` s'avère absent ou faux sur l'instance réelle, la
@@ -370,14 +417,14 @@ un opérateur est alors perdu sans bruit, puisqu'il vit sur la ligne devenue dis
 mais à savoir avant de conclure qu'un rattachement s'est défait tout seul.
 
 **Le premier run ne déclenche aucun garde-fou.** `chuteExcessive` rend faux quand la référence est
-nulle (`src/core/collecte.ts:10-15`) : la première collecte Notion crée tout et ne peut rien perdre.
+nulle (`src/core/collecte.ts:56-61`) : la première collecte Notion crée tout et ne peut rien perdre.
 C'est voulu, mais cela signifie qu'une première collecte tronquée passe pour complète si le statut
 est `ok`. D'où la sévérité du scénario 2.
 
 **Le jeton porte l'écriture même si l'outil ne lit pas.** Un jeton SCIM permet de supprimer des
 membres. L'outil n'exécutera rien, mais le secret est en environnement, à portée du processus. Le
 `scopeNote` doit le dire mot pour mot, et la rotation du jeton doit précéder toute mise en service
-d'un chemin d'écriture, au même titre que le triplet OVH (`docs/architecture.md:623`).
+d'un chemin d'écriture, au même titre que le triplet OVH (`docs/architecture.md:701`).
 
 **Les invités n'apparaissent pas dans SCIM.** Une fiche sans compte Notion ne veut donc pas dire sans
 accès à Notion. C'est précisément le genre d'affirmation implicite qui trompe sur l'écran où se décide
@@ -395,7 +442,7 @@ aussi en intégration continue sur chaque contribution quand le secret est dispo
 
 **L'invariant du journal avant l'action est respecté par construction, et pas par chance.** Ce
 connecteur n'écrit sur aucun système tiers : la seule trace le concernant est celle que le socle pose
-autour de la collecte (`src/lib/sync/collecte.ts:343-354`). La règle à tenir dans la revue est
+autour de la collecte (`src/lib/sync/collecte.ts:365-376`). La règle à tenir dans la revue est
 qu'aucun appel d'écriture ne doit apparaître dans `probe`, `list` ou `plan`. Le jour où `execute`
 arrivera, il passera par `actionTracee` (`src/lib/actions.ts:30-56`), qui journalise avant d'écrire.
 

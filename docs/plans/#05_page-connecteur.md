@@ -10,32 +10,37 @@
 sont leurs seules occurrences dans tout le dépôt. `ConnectorFeature.entrypoint`
 (`src/core/connector.ts:53`) est une chaîne dont rien ne dit ce qu'elle désigne. Le même sort frappe
 `ConnectorContract.scopeSchema` (`src/core/connector.ts:66`) : hors du contrat, sa seule occurrence
-est sa déclaration dans le connecteur GitHub (`src/connectors/github.ts:163`). Il faudra y toucher
-(voir la décision D8), autant le savoir avant.
+est sa déclaration dans le connecteur GitHub (`src/connectors/github.ts:402`). Il faudra y toucher
+(voir la décision D8), autant le savoir avant. Le contrat a bougé depuis, mais ailleurs : les
+métadonnées de compte y ont ajouté `ObservedDetail` (`src/core/connector.ts:131-134`) et
+`ObservedIdentity.details` (`src/core/connector.ts:144`), tous deux du côté collecte, sans toucher
+à ces crochets.
 
 **Un seul registre, en Node pur.** `CONNECTEURS` (`src/connectors/index.ts:10`) est importé par la
 collecte (`src/lib/sync/executer.ts:1`), le calcul de plan de départ (`src/lib/depart.ts`), le
 tableau de bord (`src/app/page.tsx:4`) et l'écran Systèmes (`src/app/systemes/page.tsx:6`). Le CLI
-de collecte (`src/cli/sync.ts`) fait trente lignes et n'importe aujourd'hui que `@next/env` et
-`@/lib/sync/executer`. La propriété visée par la Definition of Done est donc déjà vraie, mais rien
-ne la tient : le jour où un connecteur importera un composant, personne ne le verra avant que le
-conteneur de collecte ne grossisse ou ne casse.
+de collecte (`src/cli/sync.ts`) fait trente-quatre lignes et n'importe aujourd'hui que
+`node:crypto`, `@next/env`, `@/lib/db` et `@/lib/sync/executer`. La propriété visée par la
+Definition of Done est donc déjà vraie, mais rien ne la tient : le jour où un connecteur importera
+un composant, personne ne le verra avant que le conteneur de collecte ne grossisse ou ne casse.
 
 **Le connecteur GitHub porte ses sources en dur.** `ORGANISATIONS`
-(`src/connectors/github.ts:22`) est une constante, assortie d'un commentaire
-(`src/connectors/github.ts:13-21`) qui affirme qu'elle relève de la définition du système et non de
-la configuration. Elle est lue à trois endroits : la validation de scope
-(`src/connectors/github.ts:163`), la boucle de collecte (`src/connectors/github.ts:184`) et la
-production du plan de révocation (`src/connectors/github.ts:231`). Le connecteur est un objet
-littéral exporté, sans fabrique : il n'y a aujourd'hui aucune couture par où lui passer quoi que ce
-soit.
+(`src/connectors/github.ts:23`) est une constante, assortie d'un commentaire
+(`src/connectors/github.ts:14-22`) qui affirme qu'elle relève de la définition du système et non de
+la configuration. Elle est lue à trois endroits : la boucle de collecte
+(`src/connectors/github.ts:348`), la validation de scope (`src/connectors/github.ts:402`) et la
+production du plan de révocation (`src/connectors/github.ts:427`). Le connecteur reste un objet
+littéral exporté (`src/connectors/github.ts:381`), sans fabrique : rien ne permet de lui passer une
+configuration. Sa collecte, elle, a déjà sa couture depuis les métadonnées de compte :
+`collecter(lire: Lecteur)` (`src/connectors/github.ts:341`) reçoit son lecteur en paramètre, et
+`list` se réduit à `collecter(lireTout)` (`src/connectors/github.ts:417`).
 
 **La couche déclarée est complète et éprouvée.** `src/core/policy.ts` porte deux schémas Zod,
 `accountsSchema` (ce qui nomme) et `configSchema` (ce qui règle, `src/core/policy.ts:243`).
-`src/lib/policy.ts` les charge depuis `POLICY_DIR` (`src/lib/policy.ts:20`), rend des messages
+`src/lib/policy.ts` les charge depuis `POLICY_DIR` (`src/lib/policy.ts:25-27`), rend des messages
 d'erreur destinés à quelqu'un qui édite un YAML sans avoir le code sous les yeux
-(`src/lib/policy.ts:34-56`) et met la politique en cache au premier appel
-(`src/lib/policy.ts:68-71`). Deux commandes s'appuient dessus : `pnpm policy:check`
+(`src/lib/policy.ts:41-62`) et met la politique en cache au premier appel
+(`src/lib/policy.ts:75-78`). Deux commandes s'appuient dessus : `pnpm policy:check`
 (`src/cli/verifier-politique.ts`) et `pnpm policy:schema`, qui dérive les JSON Schema des schémas
 Zod et refuse qu'ils deviennent une seconde vérité (`src/cli/schema-politique.ts:8-16`).
 
@@ -48,25 +53,29 @@ résolues, credentials sondés, dernier relevé. Aucun lien sortant. La page est
 `dynamic = "force-dynamic"` et appelle `requireOperateur()`, comme toutes les autres.
 
 **Ce qui manque, concrètement** : aucune route sous `/systemes/`, aucun endroit où un connecteur
-puisse poser un écran, aucun mécanisme de configuration par connecteur, aucun test sur
-`src/connectors/github.ts`, et aucune barrière entre le monde Node et le monde React.
+puisse poser un écran, aucun mécanisme de configuration par connecteur, et aucune barrière entre le
+monde Node et le monde React. `src/connectors/github.test.ts` existe désormais et couvre
+l'assemblage, la dégradation et le coût en requêtes, mais rien n'y touche à la liste des
+organisations ni au plan de révocation.
 
 **Pièges déjà en place.**
 
-- `src/app/systemes/page.tsx:110` contient un tiret cadratin en dur dans la cellule vide de la
-  colonne « ce qui manque pour faire mieux ». Les conventions du dépôt l'interdisent. On touche ce
-  fichier à l'étape 6, autant le remplacer par un tiret simple au passage.
+- Le tiret cadratin qui remplissait la cellule vide de la colonne « ce qui manque pour faire mieux »
+  a disparu depuis : `src/app/systemes/page.tsx:108-112` affiche « sans objet ». Il n'y a plus rien
+  à corriger là à l'étape 6, mais la règle tient pour tout ce qu'on écrira sur la page du connecteur.
 - `POLICY_DIR` est la seule variable lue hors du schéma Zod de `src/lib/env.ts`, et c'est délibéré
-  (`src/lib/policy.ts:9-19`). Une configuration de connecteur ne doit surtout pas ajouter une
+  (`src/lib/policy.ts:9-24`). Une configuration de connecteur ne doit surtout pas ajouter une
   seconde exception.
-- La collecte protège déjà contre l'effondrement : `chuteExcessive`
-  (`src/lib/sync/collecte.ts:300-308`) refuse de dater la moindre disparition quand un run rapporte
-  beaucoup moins que ce que la base tient pour vivant. Ce garde-fou devient un acteur du ticket dès
-  lors que la liste des sources collectées devient éditable.
-- `src/ui/Navigation.tsx:42` marque l'onglet actif avec `pathname.startsWith`, donc une route
+- La collecte protège déjà contre l'effondrement : `chuteExcessive` (`src/core/collecte.ts:56-61`)
+  refuse de dater la moindre disparition quand un run rapporte beaucoup moins que ce que la base
+  tient pour vivant. Le socle l'applique deux fois (`src/lib/sync/collecte.ts:320-329`), aux
+  identités puis aux ressources, et seulement sur un run `OK`. Ce garde-fou devient un acteur du
+  ticket dès lors que la liste des sources collectées devient éditable.
+- `src/ui/Navigation.tsx:45` marque l'onglet actif avec `pathname.startsWith`, donc une route
   `/systemes/<cle>` gardera l'onglet Systèmes allumé sans rien changer à la navigation.
 - Les routes dynamiques reçoivent `params` sous forme de promesse
-  (`src/app/personnes/[username]/page.tsx:25-27`), c'est le modèle à recopier.
+  (`src/app/personnes/[username]/page.tsx:41-44` pour le type, `:66` pour l'attente), c'est le
+  modèle à recopier.
 
 ## Décisions de conception
 
@@ -102,8 +111,11 @@ configurable est produit par une fabrique qui prend un accesseur paresseux :
 `creerGithub(lireConfig: () => ConfigGithub)`. Le registre l'instancie avec la lecture réelle,
 `src/connectors/index.ts` reste un tableau, `CONNECTEURS` ne change pas de forme et aucun appelant
 n'est touché. L'alternative (le connecteur importe un `configurationDe()` comme il importe `env`)
-est écartée : elle le coupe de tout test sans système de fichiers, ce qui coûterait exactement le
-test qui manque le plus aujourd'hui. L'autre alternative (passer la configuration dans
+est écartée : elle le coupe de tout test sans système de fichiers, et prendrait le contre-pied de la
+couture que ce connecteur a déjà. `collecter` reçoit son `Lecteur` en paramètre
+(`src/connectors/github.ts:341`), et c'est exactement ce dont `src/connectors/github.test.ts` se
+sert pour collecter sans réseau : l'injection est le sens dans lequel il va déjà, la configuration
+n'a qu'à l'emprunter. L'autre alternative (passer la configuration dans
 `RunContext`) est écartée aussi : `probe()` ne reçoit pas de contexte, et typer la configuration
 obligerait à rendre `Connector` générique, donc à contaminer tous les appelants pour un besoin que
 deux connecteurs sur dix auront.
@@ -126,9 +138,9 @@ comptes sans double authentification), pas le fait de rendre les sources déclar
 mécanisme sans qu'aucun connecteur ne le lise reproduirait exactement le crochet mort que ce ticket
 vient réveiller. Les organisations passent donc en configuration, avec pour défaut la valeur
 actuelle : un déploiement sans clé `connectors` collecte à l'identique. Le commentaire
-`src/connectors/github.ts:13-21` disait que ces organisations font partie de la définition du
+`src/connectors/github.ts:14-22` disait que ces organisations font partie de la définition du
 système ; il devient faux et se réécrit. Conséquence à assumer : `scopeSchema`
-(`src/connectors/github.ts:163`) ne peut plus s'appuyer sur `z.enum(ORGANISATIONS)` et devient une
+(`src/connectors/github.ts:402`) ne peut plus s'appuyer sur `z.enum(ORGANISATIONS)` et devient une
 chaîne non vide. On perd une contrainte, sur un champ que personne ne lit encore. Si cette perte
 gêne, la parade est de valider le scope contre la configuration résolue au moment où quelqu'un
 commencera à le lire, pas maintenant.
@@ -163,9 +175,11 @@ prévu, une fonction de plus à côté du chargeur d'écran.
 
 **D14. Pas de `capacitor`.** Repris tel quel du ticket : rien ne le modélise, rien ne l'empêche.
 
-**D15. Le fichier `src/core/connector.ts` reste en anglais.** Il décalque les extraits de
-`docs/architecture.md` §5.1 et §5.4. `resolveFeatures` y rejoint `resolveCapability`. Tout ce qui
-est ajouté ailleurs est en français, conformément aux conventions.
+**D15. Le fichier `src/core/connector.ts` reste en anglais.** Ses identifiants décalquent les
+extraits de `docs/architecture.md` §5.1 et §5.4, ses commentaires étant en français ;
+`ObservedDetail`, ajouté depuis par les métadonnées de compte, suit déjà cette règle.
+`resolveFeatures` y rejoint `resolveCapability`. Tout ce qui est ajouté ailleurs est en français,
+conformément aux conventions.
 
 ### Tensions avec `docs/architecture.md`
 
@@ -222,7 +236,7 @@ export function resoudreConfigurations(
 
 Elle applique, pour chaque contrat porteur d'un `configSchema`, le schéma à `brut[key] ?? {}`, ce
 qui fait jouer les défauts en l'absence d'entrée ; elle rend toutes les erreurs d'un coup, au format
-`  connectors.<cle>.<chemin> : <message>` déjà employé par `src/lib/policy.ts:45-47` et
+`  connectors.<cle>.<chemin> : <message>` déjà employé par `src/lib/policy.ts:52-54` et
 `src/lib/env.ts:94-97` ; elle refuse une clé sans connecteur correspondant en nommant les clés
 connues ; elle refuse une clé visant un connecteur sans `configSchema` (« ce connecteur ne se
 configure pas »).
@@ -235,17 +249,17 @@ Fichiers : **nouveau** `src/lib/configuration-connecteur.ts`, `src/lib/sync/exec
 `src/cli/verifier-politique.ts`.
 
 - `src/lib/configuration-connecteur.ts` lit `policy().connectors`, appelle `resoudreConfigurations`,
-  met le résultat en cache comme `src/lib/policy.ts:68-71`, et expose deux fonctions :
+  met le résultat en cache comme `src/lib/policy.ts:75-78`, et expose deux fonctions :
   `verifierConfigurations(contrats)` qui lève avec le message assemblé, et
   `configurationDe<T>(contrat)` qui rend la valeur validée. Ce module ne doit **jamais** importer
   `@/connectors` : les contrats lui sont passés, faute de quoi on crée un cycle avec les connecteurs
   qui l'utilisent.
 - `executerSync` appelle `verifierConfigurations(CONNECTEURS.map((c) => c.contract))` juste après le
-  `policy()` de tête (`src/lib/sync/executer.ts:41-46`), dans le même `try` : une configuration
+  `policy()` de tête (`src/lib/sync/executer.ts:42-47`), dans le même `try` : une configuration
   fausse doit sortir comme une politique fausse, par un message et un code de retour, pas par une
   pile d'appels au milieu de la collecte.
 - `pnpm policy:check` ajoute la même vérification et une ligne au résumé
-  (`src/cli/verifier-politique.ts:11-27`), du genre `connecteurs configures  2`. C'est la commande
+  (`src/cli/verifier-politique.ts:11-28`), du genre `connecteurs configures  2`. C'est la commande
   qui tourne dans le dépôt de configuration, donc le vrai « avant démarrage » de la Definition of
   Done.
 
@@ -291,12 +305,14 @@ Fichiers : `src/connectors/github.ts`, `src/connectors/index.ts`.
   collecte réussie et vide.
 - `github` devient `creerGithub(lireConfig)` et l'export nommé reste, instancié dans
   `src/connectors/index.ts` avec `() => configurationDe(CONTRAT_GITHUB)`. Les trois lectures de
-  `ORGANISATIONS` (`:163`, `:184`, `:231`) passent par l'accesseur, sauf `scopeSchema` qui devient
-  une chaîne non vide (D8). Le commentaire `:13-21` est réécrit : les organisations sont désormais
-  déclarées, et un connecteur GitHub visant d'autres organisations est le même connecteur autrement
-  configuré.
+  `ORGANISATIONS` (`:348`, `:402`, `:427`) passent par l'accesseur, sauf `scopeSchema` qui devient
+  une chaîne non vide (D8). La boucle vit dans `collecter` (`src/connectors/github.ts:341-379`), qui
+  reçoit déjà son `Lecteur` en paramètre : les organisations lui arrivent de la même façon, et
+  `list` continue de n'être que l'appel de `collecter` avec le lecteur réel. Le commentaire `:14-22`
+  est réécrit : les organisations sont désormais déclarées, et un connecteur GitHub visant d'autres
+  organisations est le même connecteur autrement configuré.
 - `plan` lit la configuration à chaque appel, comme `list`. Il est appelé par
-  `src/lib/depart.ts:76` : rien à changer côté appelant.
+  `src/lib/depart.ts:91` : rien à changer côté appelant.
 
 Vérifiable par le test T4, et par `pnpm sync` sur une base locale sans clé `connectors`, dont la
 sortie doit être identique à celle d'avant l'étape.
@@ -340,9 +356,9 @@ allumé.
 Fichiers : `src/app/systemes/page.tsx`.
 
 Un lien par section, posé seulement quand `aUnePage(contrat)` est vrai, et rien d'autre : ni badge,
-ni colonne, ni bloc spécifique. Au passage, le tiret cadratin de la ligne 110 devient un tiret
-simple, et le texte de l'alerte de bas de page (`src/app/systemes/page.tsx:133-138`) est ajusté si
-la mention du catalogue devient trompeuse une fois que du code lit `connectors`.
+ni colonne, ni bloc spécifique. Le texte de l'alerte de bas de page
+(`src/app/systemes/page.tsx:133-138`) est ajusté si la mention du catalogue devient trompeuse une
+fois que du code lit `connectors`.
 
 Vérifiable à l'oeil : un connecteur sans page ne montre aucune différence avec aujourd'hui.
 
@@ -397,15 +413,20 @@ plusieurs fautes dans le même fichier remontent toutes ensemble, parce qu'un YA
 passe et non en cinq allers-retours.
 
 **T2. GitHub collecte les organisations qu'on lui déclare, et rien d'autre.**
-`src/connectors/github.test.ts`
-*Given* un connecteur construit avec deux organisations et `fetch` simulé. *When* on collecte.
+`src/connectors/github.test.ts`, qui existe déjà et porte quatre scénarios sur l'assemblage, la
+dégradation et le coût en requêtes : c'est un `describe` de plus, pas un fichier neuf. Aucun double
+de `fetch` à écrire non plus, le fichier a déjà son faux `Lecteur`, qui retient les chemins demandés
+(`src/connectors/github.test.ts:19-53`).
+*Given* un connecteur construit avec deux organisations et ce lecteur. *When* on collecte.
 *Then* les deux organisations sont interrogées et aucune autre ; membres, invitations en attente et
 accès portent la bonne ressource ; le statut est `ok` sans erreurs. *When* une organisation répond
 en erreur, *Then* le statut est `partial`, les erreurs nomment l'organisation fautive, et les
 identités de l'autre sont intactes. *When* les deux échouent, *Then* le statut est `failed` et
-aucune identité n'est rendue. Aucun cas ne doit produire `ok` avec des erreurs : c'est l'invariant
-de collecte, et c'est ce qui décide si des `vanishedAt` seront posés. Le plan de révocation est
-vérifié dans la foulée : une étape par organisation configurée, avec sa clé d'idempotence.
+aucune identité n'est rendue. Ces trois issues sont bien celles de la règle de statut en vigueur,
+qui compte les organisations ayant rendu quelque chose (`src/connectors/github.ts:365-378`) et non
+les erreurs. Aucun cas ne doit produire `ok` avec des erreurs : c'est l'invariant de collecte, et
+c'est ce qui décide si des `vanishedAt` seront posés. Le plan de révocation est vérifié dans la
+foulée : une étape par organisation configurée, avec sa clé d'idempotence.
 
 **T3. La collecte en ligne de commande n'embarque aucune interface.** `src/cli/frontiere.test.ts`
 *Given* le graphe d'imports issu de `src/cli/sync.ts`. *Then* aucun fichier `.tsx`, aucun module
@@ -432,17 +453,21 @@ les capacités.
 
 ## Risques et pièges
 
-**Une configuration vide qui vide la base.** C'est le risque principal. Si `organisations` pouvait
-valoir `[]`, la collecte GitHub rendrait `status: "ok"` avec zéro élément, ce qui est un run réussi :
-le socle daterait alors les `vanishedAt` de toutes les identités GitHub, et les plans de départ
-suivants s'appuieraient sur un parc vide. Le garde-fou `chuteExcessive`
-(`src/lib/sync/collecte.ts:300-308`) rattraperait la chute totale, mais compter dessus reviendrait à
-laisser le filet décider à la place du schéma. Le `.min(1)` sur le tableau est obligatoire, et le
-test T2 doit couvrir le refus.
+**Une configuration vide qui vide la base.** C'est le risque principal, et la règle de statut
+actuelle n'a fait que déplacer sa forme. Une liste vide ne rend plus `status: "ok"` avec zéro
+élément : aucune organisation n'ayant rendu quoi que ce soit, `collecter` prend la branche
+`rendues === 0` (`src/connectors/github.ts:365-367`) et rend `failed` avec une liste d'erreurs elle
+aussi vide, dont le premier élément est un `undefined` sous un cast. Le socle la parcourt aussitôt
+(`src/lib/sync/collecte.ts:289-293`) et casse sur une erreur qui n'a aucun rapport apparent avec la
+configuration. Le garde-fou `chuteExcessive` (`src/core/collecte.ts:56-61`) n'est même pas consulté,
+il ne joue que sur un run `OK` ; compter dessus reviendrait de toute façon à laisser le filet
+décider à la place du schéma. Le `.min(1)` sur le tableau est obligatoire, et le test T2 doit
+couvrir le refus.
 
 **Retirer une organisation de la configuration est un geste à conséquence.** Sous le seuil de
 `maxScopeDrop`, la collecte suivante datera légitimement les disparitions des comptes qui n'y sont
-plus vus, et l'écran des constats les fera remonter. Ce n'est pas un bug, c'est le comportement
+plus vus, ainsi que celles de ses équipes, devenues des ressources depuis les métadonnées de compte,
+et l'écran des constats les fera remonter. Ce n'est pas un bug, c'est le comportement
 attendu, mais l'écran du connecteur doit le dire en toutes lettres : c'est le genre de réglage qui
 paraît anodin dans un YAML et coupe des accès deux jours plus tard.
 
