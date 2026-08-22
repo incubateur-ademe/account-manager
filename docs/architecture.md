@@ -516,6 +516,8 @@ pourra poser des tuiles : c'est un chiffre, pas une fonctionnalité.
 interface Connector {
   readonly contract: ConnectorContract;
   probe: () => Promise<readonly CredentialProbe[]>;
+  /** Ausculte le système distant avant de le lire. Un écart interdit la lecture. */
+  diagnose?: (ctx: RunContext) => Promise<Diagnosis>;
   list?: (ctx: RunContext) => Promise<CollectResult>;
   plan: (intent: Intent, ctx: RunContext) => Promise<readonly PlannedStep[]>;
   precheck?: (step: PlannedStep, ctx: RunContext) => Promise<PrecheckResult>;
@@ -565,11 +567,32 @@ code.
 
 ### 5.7 Tests de contrat
 
-Chaque connecteur porte un test exécuté quotidiennement, indépendant de la collecte,
-qui vérifie que la forme de la réponse distante n'a pas changé. L'API de
-l'espace-membre n'a ni versionnement ni revalidation de sortie, et les API Notion, SCIM
-comprise, ne sont pas documentées : sans ce test, la panne est silencieuse et se
-découvre au moment d'agir.
+La forme d'une réponse distante change sans prévenir. L'API de l'espace-membre n'a ni
+versionnement ni revalidation de sortie, et les API Notion, SCIM comprise, ne sont pas
+documentées : sans garde, la panne est silencieuse et se découvre au moment d'agir.
+
+**Ce que la collecte voit seule.** Un champ **requis** qui disparaît fait écarter les
+fiches par le schéma, donc rend un run non `ok`, donc n'efface personne. Aucun
+dispositif supplémentaire n'est nécessaire pour ce cas.
+
+**Ce qu'elle ne voit pas.** Un champ **facultatif** qui disparaît ne casse rien. Il
+dérive en silence et ne laisse pour signe qu'un rattachement qui cesse lentement de se
+faire, ou un rôle qui devient uniforme sans que personne ne le relie au fournisseur.
+
+**D'où le diagnostic, porté par le connecteur et appelé par le socle avant toute
+lecture.** `diagnose` est facultatif : chaque connecteur choisit à sa conception de
+l'implémenter, quand ce qu'il lit est trop peu spécifié pour s'en remettre au hasard, ou
+de s'en passer et laisser la collecte échouer d'elle-même quand elle suffit. Un
+diagnostic qui rapporte quoi que ce soit **interdit la lecture** : le système répondrait
+peut-être encore, mais ce qu'on en tirerait n'aurait plus le sens qu'on lui prête. Un
+diagnostic qui échoue lui-même compte comme un écart, ne pas savoir dire si la forme a
+changé n'autorisant pas à supposer qu'elle n'a pas changé.
+
+**Un test de contrat existe en plus, et ne s'exécute automatiquement nulle part.** Il
+vérifie la même chose plus finement, à la main, par quelqu'un qui détient déjà le
+credential. Le mettre sur un déclencheur demanderait de confier ce credential à un
+runner : sur un dépôt public, quiconque peut pousser un workflow l'exfiltre ; en
+production, une suite de tests n'a pas sa place dans un environnement d'exécution.
 
 ### 5.8 Catalogue
 

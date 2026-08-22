@@ -5,6 +5,7 @@ import type {
   CollectResult,
   Connector,
   ConnectorContract,
+  Diagnosis,
   NonEmptyArray,
   ObservedGrant,
   ObservedIdentity,
@@ -309,6 +310,76 @@ export async function collecter(lire: LecteurScim): Promise<CollectResult> {
     : { status: "ok", ...payload };
 }
 
+/**
+ * Ce que la collecte ne peut pas voir, et que le diagnostic va chercher.
+ *
+ * Un champ requis qui disparaît fait écarter les fiches, donc rend un run non `ok` :
+ * la collecte s'en charge seule. Ceux-ci sont facultatifs, si bien que leur
+ * disparition ne casserait rien et ne se lirait que des mois plus tard, sur une
+ * dérive des rattachements que personne ne rapporterait à Notion.
+ */
+const ATTENDUS: readonly { quoi: string; present: (membre: UtilisateurScim) => boolean }[] = [
+  {
+    quoi: "une adresse exploitable",
+    // Sans elle, plus aucun compte neuf ne se rattache : les anciens restent liés et
+    // la file des comptes isolés grossit sans que rien ne dise pourquoi.
+    present: (membre) => adressesDe(membre).some((adresse) => adresse.includes("@")),
+  },
+  {
+    quoi: `le rôle d'espace sous ${EXTENSION}`,
+    // Une extension renommée est indistinguable d'une extension absente : tout le
+    // monde deviendrait « membre » sur une collecte parfaitement verte.
+    present: (membre) => membre[EXTENSION]?.role != null,
+  },
+];
+
+/**
+ * Notion ne publie pour SCIM ni schéma, ni journal des changements, ni exemple de
+ * réponse : sa seule documentation est une page d'aide. Ce connecteur porte donc un
+ * diagnostic, là où un connecteur lisant une API spécifiée pourrait s'en passer et
+ * laisser la collecte échouer d'elle-même.
+ *
+ * Une page suffit : ce qu'on cherche est une disparition de champ, qui frappe tout le
+ * monde à la fois, pas une anomalie sur une fiche.
+ */
+export async function diagnostiquer(lire: LecteurScim): Promise<Diagnosis> {
+  const ecart = (texte: string): Diagnosis => ({
+    findings: [{ scope: "diagnostic", message: texte }],
+  });
+
+  // Une seule page, et non tout l'inventaire : ce qu'on cherche est une disparition
+  // de champ, qui frappe tout le monde a la fois. Paginer deux fois le workspace pour
+  // la trouver doublerait le cout de chaque collecte sans rien apprendre de plus.
+  let brut: unknown;
+  try {
+    brut = await lire(1, PAR_PAGE);
+  } catch (cause: unknown) {
+    return ecart(
+      `le workspace n'a pas répondu, sa forme ne peut pas être constatée (${message(cause)})`,
+    );
+  }
+
+  const enveloppe = enveloppeSchema.safeParse(brut);
+  if (!enveloppe.success) {
+    return ecart("l'enveloppe de la réponse n'a plus la forme attendue");
+  }
+
+  const membres = lireChaque(enveloppe.data.Resources ?? [], utilisateurSchema, "membre").items;
+  if (membres.length === 0) {
+    return ecart("aucun membre lisible, la forme a changé ou le workspace est vide");
+  }
+
+  // Qu'aucun membre ne porte le champ, et non qu'un seul lui manque : c'est ce qui
+  // distingue une disparition de champ d'un compte incomplet, lequel est déjà le
+  // travail de la collecte.
+  return {
+    findings: ATTENDUS.filter((attendu) => !membres.some(attendu.present)).map((attendu) => ({
+      scope: "diagnostic",
+      message: `${attendu.quoi} : aucun des ${membres.length} membres lus ne le porte, la forme de la réponse a changé`,
+    })),
+  };
+}
+
 export const CONTRAT_NOTION: ConnectorContract = {
   key: "notion",
   label: "Notion",
@@ -349,6 +420,8 @@ export const notion: Connector = {
         checkedAt: new Date(),
       },
     ]),
+
+  diagnose: (): Promise<Diagnosis> => diagnostiquer(lireTout),
 
   list: (): Promise<CollectResult> => collecter(lireTout),
 

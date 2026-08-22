@@ -6,10 +6,12 @@ import {
   type RunContext,
   resolveCapability,
 } from "@/core/connector";
-import { CONTRAT_NOTION, collecter, type LecteurScim, notion } from "./notion";
+import { CONTRAT_NOTION, collecter, diagnostiquer, type LecteurScim, notion } from "./notion";
 import fixture from "./notion-scim.fixture.json";
 
 const PAGES = fixture.pages;
+
+const EXTENSION = "urn:ietf:params:scim:schemas:extension:notion:2.0:User";
 
 /**
  * Un lecteur factice qui retient ce qu'on lui a demandé : c'est ce qui rend observable
@@ -212,6 +214,60 @@ describe("ce que le connecteur Notion remonte du workspace", () => {
         (droit) => droit.identityExternalId === "922f3d9b-20be-461f-9b69-90928701ce93",
       );
     expect(doublons).toHaveLength(1);
+  });
+
+  it("refuse de collecter quand un champ facultatif a disparu de toutes les fiches", async () => {
+    // La collecte ne voit que ce qui la casse. Un champ requis absent fait écarter la
+    // fiche et rend le run non `ok` ; un champ facultatif absent ne casse rien et
+    // dérive en silence, en laissant pour seul signe des rattachements qui cessent
+    // lentement de se faire. C'est ce trou que le diagnostic ferme.
+    const sansAdresse = copie(PAGES[0]) as {
+      totalResults: number;
+      Resources: Record<string, unknown>[];
+    };
+    sansAdresse.totalResults = 4;
+    sansAdresse.Resources = sansAdresse.Resources.map((entree, rang) => ({
+      ...entree,
+      userName: `compte-${rang}`,
+      emails: [],
+    }));
+
+    const perdue = await diagnostiquer(lecteur([sansAdresse]).lire);
+    expect(perdue.findings).toHaveLength(1);
+    expect(perdue.findings[0]?.message).toContain("une adresse exploitable");
+
+    // Une extension renommée est indistinguable d'une extension absente : sans ce
+    // diagnostic, tout le monde deviendrait « membre » sur une collecte verte.
+    const sansRole = copie(PAGES[0]) as {
+      totalResults: number;
+      Resources: Record<string, unknown>[];
+    };
+    sansRole.totalResults = 4;
+    sansRole.Resources = sansRole.Resources.map((entree) => {
+      const { [EXTENSION]: _partie, ...reste } = entree;
+      return reste;
+    });
+
+    const muette = await diagnostiquer(lecteur([sansRole]).lire);
+    expect(muette.findings).toHaveLength(1);
+    expect(muette.findings[0]?.message).toContain("rôle d'espace");
+
+    // Une seule fiche qui porte le champ suffit : un compte incomplet est le travail
+    // de la collecte, pas celui du diagnostic.
+    const uneSeule = copie(sansRole) as { Resources: Record<string, unknown>[] };
+    uneSeule.Resources[0] = { ...uneSeule.Resources[0], [EXTENSION]: { role: "member" } };
+    expect((await diagnostiquer(lecteur([uneSeule]).lire)).findings).toEqual([]);
+
+    // Et une réponse conforme ne dit rien, en une seule requête : paginer tout le
+    // workspace pour chercher une disparition de champ doublerait le coût de chaque
+    // collecte sans rien apprendre de plus.
+    const conforme = lecteur(PAGES);
+    expect((await diagnostiquer(conforme.lire)).findings).toEqual([]);
+    expect(conforme.appels).toEqual([{ startIndex: 1, count: 100 }]);
+
+    // Un système muet ne se diagnostique pas : ne pas savoir dire si la forme a changé
+    // n'autorise pas à supposer qu'elle n'a pas changé.
+    expect((await diagnostiquer(lecteur(["echec"]).lire)).findings).toHaveLength(1);
   });
 
   it("s'annonce non lu plutôt qu'en échec quand le jeton manque", () => {

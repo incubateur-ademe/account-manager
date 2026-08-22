@@ -2,8 +2,10 @@ import { randomUUID } from "node:crypto";
 
 import { champsConstates, chuteExcessive } from "@/core/collecte";
 import type {
+  CollectError,
   CollectResult,
   Connector,
+  NonEmptyArray,
   ObservedGrant,
   ObservedIdentity,
   ObservedResource,
@@ -240,6 +242,37 @@ async function ressourcesTenuesPourVivantes(provider: string): Promise<number> {
  * que la discipline du constaté ne dépend pas de la vigilance de chaque connecteur,
  * et notamment qu'une collecte incomplète ne fasse jamais disparaître personne.
  */
+/**
+ * Rend les écarts constatés par le diagnostic du connecteur, ou `undefined` quand il
+ * n'en porte pas ou que tout est conforme.
+ *
+ * Un diagnostic qui échoue de lui-même compte comme un écart : ne pas savoir dire si
+ * la forme a changé n'autorise pas à supposer qu'elle n'a pas changé.
+ */
+async function ausculter(
+  connector: Connector,
+  ctx: RunContext,
+): Promise<NonEmptyArray<CollectError> | undefined> {
+  if (!connector.diagnose) {
+    return undefined;
+  }
+
+  let constats: readonly CollectError[];
+  try {
+    constats = (await connector.diagnose(ctx)).findings;
+  } catch (error: unknown) {
+    constats = [
+      {
+        scope: "diagnostic",
+        message: `diagnostic impraticable : ${error instanceof Error ? error.message : String(error)}`,
+      },
+    ];
+  }
+
+  const [premier, ...suivants] = constats;
+  return premier ? [premier, ...suivants] : undefined;
+}
+
 export async function executerCollecte(
   connector: Connector,
   now: Date,
@@ -276,14 +309,26 @@ export async function executerCollecte(
     audit,
   };
 
+  // Le diagnostic, quand le connecteur en porte un, décide si la lecture a lieu. Un
+  // système dont la forme a changé se lit peut-être encore, mais ce qu'on en tirerait
+  // n'aurait plus le sens qu'on lui prête : ne rien écrire vaut mieux qu'écrire ce
+  // qu'on ne sait plus interpréter.
+  const ecarts = await ausculter(connector, ctx);
+
   let lu: CollectResult;
-  try {
-    lu = await connector.list(ctx);
-  } catch (error: unknown) {
-    lu = {
-      status: "failed",
-      errors: [{ scope: "list", message: error instanceof Error ? error.message : String(error) }],
-    };
+  if (ecarts) {
+    lu = { status: "failed", errors: ecarts };
+  } else {
+    try {
+      lu = await connector.list(ctx);
+    } catch (error: unknown) {
+      lu = {
+        status: "failed",
+        errors: [
+          { scope: "list", message: error instanceof Error ? error.message : String(error) },
+        ],
+      };
+    }
   }
 
   const erreurs = (lu.errors ?? []).map((erreur) =>

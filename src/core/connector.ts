@@ -270,10 +270,35 @@ export interface RunContext {
   audit: (event: AuditInput) => void;
 }
 
+/**
+ * Ce qu'un connecteur constate du système distant avant de le lire, et qui n'est ni
+ * un credential ni un compte : la forme de la réponse.
+ */
+export interface Diagnosis {
+  /** Vide quand tout est conforme. Non vide, la lecture n'a pas lieu. */
+  findings: readonly CollectError[];
+}
+
 export interface Connector {
   readonly contract: ConnectorContract;
 
   probe: () => Promise<readonly CredentialProbe[]>;
+
+  /**
+   * Ausculte le système distant avant de le lire, et décide si la lecture a lieu.
+   *
+   * Une collecte ne voit que ce qui la casse : un champ requis qui disparaît fait
+   * écarter les fiches, donc rend un run non `ok`, donc n'efface personne. Un champ
+   * facultatif qui disparaît, lui, ne casse rien et dérive en silence, en laissant
+   * pour seul signe des rattachements qui cessent lentement de se faire.
+   *
+   * Chaque connecteur choisit donc à sa conception : porter un diagnostic quand ce
+   * qu'il lit est trop peu spécifié pour se fier au hasard, ou laisser la collecte
+   * échouer d'elle-même quand elle suffit. Un diagnostic qui rapporte quoi que ce
+   * soit interdit la lecture plutôt que de la laisser conclure sur une forme dont on
+   * ne sait plus ce qu'elle veut dire.
+   */
+  diagnose?: (ctx: RunContext) => Promise<Diagnosis>;
 
   list?: (ctx: RunContext) => Promise<CollectResult>;
 

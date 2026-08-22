@@ -468,6 +468,12 @@ Contenu, dans l'ordre :
   le contrat attend des objets. `scope` vaut une constante du connecteur, `itemRef` porte le rang
   global de l'entrée dans l'inventaire, et `message` reprend le texte tel quel ;
 - `probe`, sans appel réseau ;
+- `diagnose`, qui lit **une** page et vérifie qu'au moins un membre porte une adresse
+  exploitable et le rôle d'espace. Ces deux champs sont facultatifs, donc leur
+  disparition ne casserait pas la collecte : elle ferait cesser les rattachements et
+  rendrait tout le monde membre ordinaire, sur des runs parfaitement verts. Une page
+  suffit puisqu'une disparition de champ frappe tout le monde à la fois, et qu'un compte
+  incomplet relève de la collecte et non du diagnostic ;
 - `list`, qui mappe vers `ObservedIdentity` et `ObservedGrant` et calcule le statut : `failed` si
   aucune page n'a pu être lue, `partial` dès qu'une erreur unitaire existe ou que le total collecté
   diffère de `totalResults`, `ok` seulement sinon. Le rôle de l'accès est celui que rend l'extension,
@@ -532,12 +538,16 @@ dans un environnement d'exécution, et l'image y vide de toute façon ses `devDe
 Le test se lance donc à la main, par quelqu'un qui détient déjà le jeton, quand il en a besoin :
 avant une mise en service, ou quand une collecte se met à rendre `partial` sans raison apparente.
 
-Ce qui reste découvert, et qu'il faut nommer : la collecte détecte d'elle-même la disparition d'un
-champ **requis**, puisque le schéma écarte alors les fiches et refuse de conclure. Elle ne voit pas
-celle d'un champ **facultatif**. Si `emails` disparaissait, les comptes déjà rattachés le
-resteraient, les nouveaux tomberaient en file manuelle, et le seul signe serait une hausse
-inexpliquée des comptes isolés. C'est le trou que le déclencheur quotidien devait fermer ; il reste
-ouvert, et le fermer autrement relève d'un autre ticket.
+Ce que le déclencheur devait fermer est fermé autrement, et mieux. La collecte détecte d'elle-même
+la disparition d'un champ **requis**, puisque le schéma écarte alors les fiches et refuse de
+conclure. Elle ne voyait pas celle d'un champ **facultatif** : si `emails` disparaissait, les comptes
+déjà rattachés le resteraient, les nouveaux tomberaient en file manuelle, et le seul signe serait une
+hausse inexpliquée des comptes isolés.
+
+C'est désormais le rôle du `diagnose` de l'étape 4, que le socle appelle avant toute lecture et dont
+un écart interdit la collecte. Il tourne à chaque passage, avec le credential que la collecte a déjà,
+sans confier quoi que ce soit à un runner. Le test de contrat garde sa raison d'être en
+investigation, où il va plus loin que le diagnostic, mais il n'est plus le seul filet.
 
 **C'est l'étape la plus importante de ce ticket, et l'étape 1 en a fait la démonstration.** Notion ne
 publie ni schéma OpenAPI, ni changelog, ni le moindre exemple de corps de réponse pour SCIM : la
