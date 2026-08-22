@@ -254,6 +254,12 @@ rapprochement, ce qui déclenche. Filtrage à l'ingestion, non négociable : `bi
 mapper. Un registre d'accès n'a aucun besoin de la biographie ni du statut légal des
 gens, et les stocker constituerait un second fichier de personnel.
 
+S'y ajoute ce qui sert à décider sans servir à calculer. Un connecteur peut remonter ce
+qu'il sait d'un compte et qu'aucune ressource ni aucun accès ne dit, sous trois
+conditions : la donnée est déjà rédigée pour être lue par un humain, le socle ne
+l'interprète jamais, et rien de ce qui est un accès n'y entre. Elle se rend telle quelle,
+et sa disparition suit celle du compte.
+
 **`Startup`** : `ghid`, `name`, `incubatorGhid`, `currentPhase`, `phaseStart`, plus
 les horodatages de constat. La phase dit si une startup est vivante ou terminée.
 
@@ -404,10 +410,20 @@ la dit mieux ; la comparaison tronque au jour UTC, si bien que le dernier jour t
 compte encore comme travaillé. Et une **phase inconnue interdit de conclure** : on ne
 propose pas une coupure sur une supposition.
 
+`OVERDUE_MANUAL_ACTION`, gravité haute : une étape de départ a été pointée comme faite,
+et le compte est toujours là quand le système a été relu. Une case cochée vaut parole,
+pas preuve, et c'est la collecte qui tranche. C'est le seul constat qui naisse d'une
+déclaration humaine plutôt que d'un écart entre le collecté et le périmètre.
+
 Poser ou retirer un rattachement manuel ne lève ni ne ferme ce constat sur le champ, et
 c'est délibéré : il dépend des phases de toutes les startups et d'une date qui passe
 toute seule. Le recalculer dans le geste créerait une seconde vérité, et resterait
 incomplet le jour où un rattachement expire sans que personne n'ait cliqué.
+
+Les gestes offerts sur un constat sont ceux qui existent déjà, atteignables là où la
+consigne est lue. Aucun ne coupe un accès hors d'un dossier de départ, et aucun ne ferme
+le constat en passant : la clôture reste un geste séparé, avec sa raison et le nom de son
+auteur.
 
 ---
 
