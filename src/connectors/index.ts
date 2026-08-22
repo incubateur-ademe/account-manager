@@ -2,6 +2,7 @@ import type { Connector } from "@/core/connector";
 import { configurationDe } from "@/lib/configuration-connecteur";
 
 import { CONTRAT_GITHUB, type ConfigGithub, creerGithub } from "./github";
+import { notion } from "./notion";
 
 /**
  * Les connecteurs se déclarent ici et nulle part ailleurs. La valeur de cet outil
@@ -13,6 +14,7 @@ import { CONTRAT_GITHUB, type ConfigGithub, creerGithub } from "./github";
  */
 export const CONNECTEURS: readonly Connector[] = [
   creerGithub(() => configurationDe<ConfigGithub>(CONTRAT_GITHUB)),
+  notion,
 ];
 
 export function connecteur(key: string): Connector | undefined {

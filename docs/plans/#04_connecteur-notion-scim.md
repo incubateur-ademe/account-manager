@@ -247,14 +247,25 @@ d'écart. C'est strictement mieux que l'heuristique de `src/connectors/github.ts
 peut que déduire la fin d'une page incomplète. L'étape 1 a vérifié l'enveloppe sur l'instance réelle
 : `totalResults` vaut 120, et deux pages en rendent 120.
 
-**Un angle mort demeure, et il n'a pas de parade.** `GET /ServiceProviderConfig` déclare
-`sort: false` : l'ordre des pages n'est garanti par rien. Le workspace dépassant les 100 éléments
-par page, la collecte en demande deux, et un compte ajouté ou retiré entre les deux requêtes peut
-faire sauter ou dupliquer une fiche sans que `totalResults` ne bouge d'assez pour le trahir. Un
-doublon est sans conséquence, les identités étant indexées par `externalId`. Un saut, lui, produit
-un écart avec `totalResults`, donc un `partial`, donc aucun `vanishedAt` : le garde-fou joue. La
-collecte tournant la nuit, la fenêtre est étroite. Rien à coder, mais à savoir avant d'accuser le
-connecteur.
+**Le désordre de pagination, qui demande du code et non de la résignation.**
+`GET /ServiceProviderConfig` déclare `sort: false` : l'ordre des pages n'est garanti par rien. Le
+workspace dépassant les 100 éléments par page, la collecte en demande deux, et il suffit qu'une
+fiche glisse de la seconde vers la première entre les deux requêtes pour qu'elle soit rendue deux
+fois pendant qu'une autre n'est jamais rendue.
+
+Il serait tentant de traiter les deux séparément, en se disant qu'un doublon est absorbé par
+l'indexation sur `externalId` et qu'un saut produit un écart avec `totalResults`. C'est faux, et
+c'est le piège : sur une pagination par décalage au-dessus d'un ordre instable, le saut et le
+doublon arrivent **ensemble et en nombre égal**, donc ils s'annulent exactement dans le décompte
+des entrées reçues. Le total tombe juste, aucune erreur n'est levée, la collecte se déclare `ok`, et
+le socle date comme disparue une personne toujours membre. Le garde-fou de chute ne joue pas non
+plus : trois sièges perdus sur cent vingt restent très en deçà du seuil.
+
+La parade est le doublon lui-même, seul signe observable de ce désordre. Le connecteur tient
+l'ensemble des identifiants déjà rendus et lève une erreur dès qu'un identifiant revient, ce qui
+force la collecte en `partial`, donc interdit toute disparition datée. Corollaire à ne pas oublier :
+l'accès se pose par identité et non par entrée, sans quoi deux entrées de même identifiant
+créeraient deux accès vivants pour un seul siège.
 
 ### Aucune URL de base en variable d'environnement
 
@@ -597,11 +608,11 @@ pour ce ticket ajouterait une dépendance à l'exécution des tests sans révél
 produit des `vanishedAt`, donc des propositions de révocation sur des gens en poste.
 
 **La troncature silencieuse.** `totalResults` existe et s'avère exact, l'étape 1 l'a vérifié : la
-détection tient. Ce qui subsiste est plus fin et sans parade : le serveur déclare `sort: false`,
-donc rien ne garantit l'ordre entre les deux pages que le workspace impose. Un saut se traduit par
-un écart avec `totalResults`, donc par un `partial`, donc par aucune disparition datée ; un doublon
-est absorbé par l'indexation sur `externalId`. Le filet fonctionne, mais il transforme une course en
-collecte partielle, pas en collecte juste.
+détection d'un inventaire tronqué tient. Ce qui subsiste est plus fin, et une première rédaction de
+ce plan s'y est laissé prendre : sur un serveur qui déclare `sort: false`, un saut et un doublon
+naissent du même désordre, arrivent en nombre égal et s'annulent dans le décompte des entrées
+reçues. Comparer ce décompte au total annoncé ne suffit donc pas, et laisserait passer un `ok`
+menteur. C'est la détection du doublon qui ferme le cas, en forçant la collecte en `partial`.
 
 **Un `id` SCIM qui changerait.** Si Notion réattribue un identifiant à un membre supprimé puis
 recréé, le socle voit une identité neuve et fait disparaître l'ancienne : le rattachement décidé par
