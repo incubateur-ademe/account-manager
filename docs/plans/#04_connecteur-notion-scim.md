@@ -357,9 +357,16 @@ l'écriture, y compris la déconnexion de toutes les sessions d'un membre.
 sur `email`, `given_name` et `family_name` seulement.
 
 **Un utilisateur rend** `id` (UUID opaque), `userName` (l'adresse), `emails[]`, `displayName`,
-`active`, `photos[]`, un `name` dont **seul `formatted` est garanti**, `givenName` et `familyName`
-manquant sur une partie des fiches, et l'extension de rôle. Les rendre obligatoires ferait écarter
-des membres comme illisibles, donc les ferait passer pour disparus.
+`active`, `photos[]`, un `name` et l'extension de rôle. Les rendre obligatoires ferait écarter des
+membres comme illisibles, donc les ferait passer pour disparus.
+
+**Rien de `name` n'est garanti, et ce n'est pas ce que deux fiches laissaient croire.** Une première
+lecture avait conclu que `formatted` était toujours présent, `givenName` et `familyName` manquant
+seulement parfois. Le test de contrat, lancé sur cent fiches, a démenti : il existe des comptes dont
+le `name` existe sans `formatted`. Le connecteur ne lit donc aucun sous-champ de `name`, ce qui ne
+lui coûte rien puisque le nom d'affichage se lit sur la fiche de la personne et non sur le compte.
+C'est la première fois que ce test attrape une affirmation fausse, et il l'a fait avant que la
+collecte ne tourne.
 
 **`meta.created` et `meta.lastModified` ne veulent rien dire.** Ce sont des timestamps en
 millisecondes rendus sous forme de chaîne, non conformes à la RFC 7643, qui exige un format ISO 8601, et la
@@ -395,8 +402,9 @@ vidé, `meta.location` réécrit sur les identifiants inventés.
 **Deux pages et non une**, parce qu'une enveloppe qui se boucle sur elle-même ne prouve rien de la
 règle d'arrêt : six entrées annoncées, quatre puis deux, avec le `startIndex` que la seconde requête
 doit porter. Les six couvrent les cas qui ont décidé du schéma, et aucune n'est redondante : une
-adresse secondaire distincte du `userName`, un `name` réduit à `formatted`, un propriétaire, une
-entrée sans extension de rôle, un compte inactif, un membre restreint.
+adresse secondaire distincte du `userName`, un propriétaire, une entrée sans extension de rôle, un
+compte inactif, un membre restreint. L'entrée au `name` réduit y figure encore mais ne discrimine
+plus rien, le connecteur ayant cessé de lire ce champ.
 
 Ce que la fixture ne porte **pas**, délibérément : aucune entrée illisible. Elle décrit ce que Notion
 rend, et le scénario 3 fabrique ses fiches sans `id` ni `userName` en mutant une copie. La charge
@@ -436,8 +444,9 @@ Contenu, dans l'ordre :
   tort fait écarter la fiche, donc la fait dater comme disparue au run suivant. Ce qui donne, requis,
   `id` non vide et `userName` non vide ; facultatifs, `emails[]`, `displayName`, `active`, `name` et
   chacun de ses sous-champs, `photos[]` et `meta`. Trois points où le réel s'écarte du standard et où
-  un schéma écrit de mémoire casserait : seul `name.formatted` est garanti, `givenName` et
-  `familyName` manquants sur une partie des fiches ; `meta.created` et `meta.lastModified` sont des
+  un schéma écrit de mémoire casserait : aucun sous-champ de `name` n'est garanti, pas même
+  `formatted`, si bien que le connecteur ne déclare pas ce champ du tout ; `meta.created` et
+  `meta.lastModified` sont des
   chaînes de chiffres et non des dates ISO 8601, et ne se lisent de toute façon pas ; l'extension de
   rôle vit sous la clé littérale `urn:ietf:params:scim:schemas:extension:notion:2.0:User`, se lit
   sans refuser les clés inconnues plutôt qu'en strict, et son champ `role` accepte les quatre
@@ -519,7 +528,8 @@ publie ni schéma OpenAPI, ni changelog, ni le moindre exemple de corps de répo
 seule source est une page d'aide. Tout ce que ce connecteur analyse est donc non spécifié, et un champ
 qui disparaîtrait ne se signalerait par aucune annonce. Le test doit vérifier nommément ce que
 l'étape 1 a constaté et qui n'est écrit nulle part chez Notion : la présence de l'enveloppe et de
-`totalResults`, le fait que `name.formatted` suffise, la clé de l'extension de rôle, et que les
+`totalResults`, la présence de `id` et `userName` sur chaque fiche, la clé de l'extension de rôle,
+et que les
 horodatages restent des chaînes que personne ne lit. Chacun de ces points est un endroit où Notion
 peut bouger sans prévenir, et où le silence coûterait des `vanishedAt` sur des gens en poste.
 
@@ -545,7 +555,7 @@ contrat, touche le vrai réseau, et c'est son objet.
 
 Given deux pages SCIM annonçant `totalResults` cohérent, contenant un membre dont l'adresse est
 celle d'une personne du périmètre, un propriétaire, et un membre dont l'adresse n'est connue de
-personne et dont le `name` ne porte que `formatted`. When `list` s'exécute. Then le statut vaut
+personne. When `list` s'exécute. Then le statut vaut
 `ok`, `errors` est absent, `itemsSeen` compte les trois, chaque identité porte l'`id` SCIM en
 `externalId` et l'adresse en `handle` et dans `emails`, l'accès du propriétaire porte le rôle
 `owner` et les autres `member`, la fiche au `name` incomplet est rendue sans être écartée, aucun

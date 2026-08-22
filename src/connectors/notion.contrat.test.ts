@@ -54,12 +54,10 @@ describe.skipIf(!JETON)("la forme de la réponse SCIM de Notion n'a pas changé"
       expect(typeof membre["userName"]).toBe("string");
       expect(membre["userName"]).toContain("@");
 
-      // Seul `formatted` est garanti, et le connecteur en dépend : le jour où même
-      // lui disparaîtrait, c'est le schéma qui devrait bouger, pas la collecte.
-      const nom = membre["name"] as Record<string, unknown> | undefined;
-      if (nom) {
-        expect(typeof nom["formatted"]).toBe("string");
-      }
+      // `name` n'est surveillé par rien, et c'est délibéré : ce test a établi qu'aucun
+      // de ses sous-champs n'est garanti, pas même `formatted`, contrairement à ce que
+      // deux fiches laissaient croire. Le connecteur ne le lit donc pas du tout, et il
+      // n'y a rien à protéger ici.
 
       // L'extension porte le rôle d'espace, sous une clé propre à Notion qu'aucune
       // spécification ne protège.

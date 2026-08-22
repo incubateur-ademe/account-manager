@@ -43,10 +43,11 @@ const EXTENSION = "urn:ietf:params:scim:schemas:extension:notion:2.0:User";
  * seuls champs sans lesquels l'identité n'existe pas : un champ exigé à tort ferait
  * écarter la fiche, donc la ferait dater comme disparue au passage suivant.
  *
- * En particulier `name` ne garantit que `formatted`, `givenName` et `familyName`
- * manquant sur une partie des fiches. `meta` et `photos` ne sont pas déclarés parce
- * que rien ici ne les lit : leurs horodatages sont des chaînes de chiffres que Notion
- * annonce lui-même comme dénuées de sens.
+ * `name` n'est pas déclaré du tout : le test de contrat a établi que sur le parc réel,
+ * aucun de ses sous-champs n'est garanti, pas même `formatted`. Le nom d'affichage se
+ * lit de toute façon sur la fiche de la personne, pas sur le compte. `meta` et
+ * `photos` ne sont pas déclarés non plus, leurs horodatages étant des chaînes de
+ * chiffres que Notion annonce lui-même comme dénuées de sens.
  */
 const utilisateurSchema = z.object({
   id: z.string().min(1),
