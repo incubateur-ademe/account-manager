@@ -49,12 +49,20 @@ describe("suggestion de rattachement d'un compte isolé", () => {
     expect(usernames(partielle)).toEqual(["samir.benali"]);
     expect(partielle[0]).toMatchObject({
       niveau: "faible",
-      motif: "Fragment de nom retrouvé dans ce compte",
+      motif: "Fragment de nom ou d'identifiant retrouvé dans ce compte",
     });
 
     // « roy » se retrouverait dans « royaume », « leroy » ou n'importe quel domaine :
     // trois lettres ne désignent personne.
     expect(suggererRattachements("roy@exemple.org", ANNUAIRE)).toEqual([]);
+
+    // Un nom qui tient en un seul fragment est couvert par le premier compte qui le
+    // porte : le proposer comme une certitude ferait de tous les homonymes de prénom
+    // autant de rattachements sûrs. Il reste proposé, mais sans cette assurance.
+    const mononyme: PersonneProposable[] = [{ username: "camille", fullname: "Camille" }];
+    expect(suggererRattachements("camille@exemple.org", mononyme)).toMatchObject([
+      { username: "camille", niveau: "faible" },
+    ]);
   });
 
   it("ne départage pas deux homonymes à la place de qui décide", () => {
@@ -126,7 +134,7 @@ describe("suggestion de rattachement d'un compte isolé", () => {
       ["rivet.exemple", "Identifiant entier retrouvé dans ce compte"],
       ["camille.exemple", "Nom entier retrouvé dans ce compte"],
       ["camille.rivet", "Nom entier retrouvé dans ce compte"],
-      ["noa.rivet", "Fragment de nom retrouvé dans ce compte"],
+      ["noa.rivet", "Fragment de nom ou d'identifiant retrouvé dans ce compte"],
     ]);
 
     // Un motif qui réapparaît après en avoir laissé passer un autre casserait le

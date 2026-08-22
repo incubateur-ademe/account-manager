@@ -64,7 +64,11 @@ function propositions(
       username: supposee.username,
       fullname: supposee.fullname,
       niveau: "forte",
-      motif: "Reconnu par la collecte",
+      // « Reconnu » serait trop dire : ces lignes portent `HEURISTIC`, c'est-à-dire une
+      // ressemblance que personne n'a confirmée, et la ligne du tableau les marque
+      // elle-même comme telles. Accepter la proposition pose `DECLARED` et rend le
+      // compte révocable : le titre ne doit pas donner l'assurance qui manque.
+      motif: "Ressemblance relevée par la collecte",
     },
     ...devinees.filter((devinee) => devinee.username !== supposee.username),
   ];

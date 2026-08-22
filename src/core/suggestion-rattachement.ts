@@ -18,7 +18,7 @@ export interface SuggestionRattachement {
 const MOTIF = {
   nom: "Nom entier retrouvé dans ce compte",
   identifiant: "Identifiant entier retrouvé dans ce compte",
-  fragment: "Fragment de nom retrouvé dans ce compte",
+  fragment: "Fragment de nom ou d'identifiant retrouvé dans ce compte",
 } as const;
 
 export interface PersonneProposable {
@@ -69,6 +69,13 @@ function fragmentsDuCompte(handle: string): readonly string[] {
   return [...fragments(handle.slice(0, arobase)), ...fragments(domaine.slice(0, -1).join("."))];
 }
 
+/**
+ * Deux fragments au moins, et c'est ce seuil qui donne son sens au mot « entier ».
+ * Un nom ou un identifiant qui se réduit à un seul fragment est couvert par le premier
+ * compte qui le porte, si bien que tous les Camille du parc deviendraient des
+ * certitudes sur `camille@exemple.org`. Un tel nom reste proposé, mais par la voie
+ * faible, qui dit ce qu'elle vaut.
+ */
 function toutCouvert(attendus: readonly string[], presents: ReadonlySet<string>): boolean {
   return attendus.length >= 2 && attendus.every((fragment) => presents.has(fragment));
 }

@@ -28,6 +28,20 @@ export interface Suggestion {
  * message qui dit laquelle, et c'est lui qui fait foi. L'empêcher ici transformerait
  * une aide à la frappe en verrou.
  */
+/**
+ * `valeur` fait passer le champ sous la conduite du parent, qui doit alors répercuter
+ * chaque frappe par `onValeur`. Les deux ne se séparent pas : une valeur posée sans
+ * son retour fige `inputValue` sur une constante, et le champ n'accepte plus rien,
+ * exactement comme un `onChange` perdu. Le type l'interdit plutôt que de laisser
+ * découvrir un champ muet à l'exécution.
+ *
+ * `onValeur` seul reste permis : c'est le formulaire qui réagit à la saisie sans
+ * prétendre la détenir.
+ */
+type ConduiteDeLaValeur =
+  | { valeur: string; onValeur: (valeur: string) => void }
+  | { valeur?: undefined; onValeur?: (valeur: string) => void };
+
 export function ChampAvecListe({
   nom,
   label,
@@ -46,15 +60,7 @@ export function ChampAvecListe({
   requis?: boolean;
   erreur?: string;
   placeholder?: string;
-  /**
-   * Pose la valeur depuis le parent, qui la détient alors et doit la maintenir par
-   * `onValeur`. Sans cela, un choix fait ailleurs dans le formulaire laisserait le
-   * champ vide, et la soumission suivante repartirait sans lui.
-   */
-  valeur?: string;
-  /** Pour les formulaires qui réagissent à la saisie avant même l'envoi. */
-  onValeur?: (valeur: string) => void;
-}) {
+} & ConduiteDeLaValeur) {
   const [saisie, setSaisie] = useState("");
   const affichee = valeur ?? saisie;
   const id = useId();
