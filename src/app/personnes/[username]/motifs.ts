@@ -4,6 +4,7 @@ import type { Fraicheur } from "@/core/collecte";
 import type { ConstatKind } from "@/core/constat";
 import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
 import { LIBELLE_STATUT, type Statut } from "@/core/statut";
+import type { RiskLevel } from "@/generated/prisma/enums";
 import { SEVERITE_CONSTAT } from "@/ui/severites";
 
 import { expliquerStatut, type Seuils, STATUT_A_TRAITER } from "./libelles";
@@ -28,7 +29,7 @@ export interface ConstatOuvert {
   id: string;
   kind: string;
   dedupKey: string;
-  severity: "HIGH" | "MEDIUM" | "LOW";
+  severity: RiskLevel;
   /** Le compte que le constat désigne, quand il en désigne un. */
   compte: { provider: string; handle: string } | null;
 }

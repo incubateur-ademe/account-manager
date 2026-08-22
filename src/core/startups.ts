@@ -236,17 +236,33 @@ export function assemblerMembres(
       }
     }
 
+    const collectee = personne.startups.includes(ghid);
+
     // Un rattachement fermé par quelqu'un n'est pas un rattachement que le temps a
     // rattrapé : le premier ne se raconte pas, le second se dit et se date, faute de
-    // quoi l'écran laisserait croire à un retrait que personne n'a décidé.
-    for (const rattachement of surCetteStartup) {
-      if (rattachement.endedAt === null && !enCours(rattachement, aujourdHui)) {
-        echus.push({ username: personne.username, fullname: personne.fullname, rattachement });
-      }
-    }
-
-    const collectee = personne.startups.includes(ghid);
+    // quoi l'écran laisserait croire à un retrait que personne n'a décidé. Encore
+    // faut-il que l'expiration ait bel et bien fait perdre la qualité de membre :
+    // tant que la collecte ou un autre rattachement porte la personne sur cette
+    // startup, rien n'a cessé, et annoncer une expiration à côté d'une ligne de
+    // membre active dirait le contraire. Une seule entrée par personne, la dernière
+    // à avoir porté quelque chose.
     if (!collectee && manuel === null) {
+      let echu: RattachementManuel | null = null;
+      for (const rattachement of surCetteStartup) {
+        if (rattachement.endedAt !== null) {
+          continue;
+        }
+        if (echu === null || jourUTC(rattachement.until) > jourUTC(echu.until)) {
+          echu = rattachement;
+        }
+      }
+      if (echu !== null) {
+        echus.push({
+          username: personne.username,
+          fullname: personne.fullname,
+          rattachement: echu,
+        });
+      }
       continue;
     }
 
@@ -279,9 +295,7 @@ export function assemblerMembres(
     a.fullname.localeCompare(b.fullname, "fr") || a.username.localeCompare(b.username, "fr");
 
   membres.sort(parNom);
-  echus.sort(
-    (a, b) => parNom(a, b) || jourUTC(a.rattachement.until) - jourUTC(b.rattachement.until),
-  );
+  echus.sort(parNom);
 
   return { membres, echus };
 }

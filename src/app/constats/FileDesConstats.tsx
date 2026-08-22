@@ -6,6 +6,7 @@ import { Button } from "@codegouvfr/react-dsfr/Button";
 import { createModal } from "@codegouvfr/react-dsfr/Modal";
 import Link from "next/link";
 import { useState } from "react";
+import type { RiskLevel } from "@/generated/prisma/enums";
 import styleActions from "@/ui/Actions.module.css";
 import { Aide } from "@/ui/Aide";
 import { LIBELLE_SEVERITE, SEVERITE_CONSTAT } from "@/ui/severites";
@@ -21,7 +22,7 @@ export interface LigneConstat {
   /** Ce que le calcul a constaté, pour que la modale n'oblige pas à le deviner. */
   explication: string;
   action: string;
-  severity: "HIGH" | "MEDIUM" | "LOW";
+  severity: RiskLevel;
   ouvertLe: string;
   personne: { username: string; fullname: string } | null;
   compte: { provider: string; handle: string } | null;
