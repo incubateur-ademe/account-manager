@@ -167,7 +167,21 @@ export async function lireMembres(lire: LecteurScim): Promise<LectureMembres> {
     }
 
     pagesLues += 1;
-    lecture.total ??= enveloppe.data.totalResults;
+
+    // Le total est fige sur la premiere enveloppe, mais chaque page reannonce le sien.
+    // Un total qui bouge en cours de pagination dit que l'inventaire a change sous nos
+    // pieds : sans ce controle, quatre membres ajoutes entre deux requetes feraient
+    // conclure `ok` sur un inventaire ampute d'autant, le compte des entrees recues
+    // tombant juste face a un total perime.
+    if (lecture.total === null) {
+      lecture.total = enveloppe.data.totalResults;
+    } else if (enveloppe.data.totalResults !== lecture.total) {
+      lecture.erreurs.push({
+        scope: "membres",
+        itemRef: `startIndex=${startIndex}`,
+        message: `le total annoncé est passé de ${lecture.total} à ${enveloppe.data.totalResults} en cours de pagination : l'inventaire a changé pendant la lecture`,
+      });
+    }
 
     const entrees = enveloppe.data.Resources ?? [];
     if (entrees.length === 0) {

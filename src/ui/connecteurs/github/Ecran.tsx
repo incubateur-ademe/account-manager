@@ -20,6 +20,7 @@ export default function EcranGithub({ configuration }: ProprietesEcran) {
               href={`https://github.com/orgs/${organisation}/people`}
               target="_blank"
               rel="noreferrer"
+              title={`Membres de ${organisation} sur GitHub, nouvelle fenêtre`}
             >
               {organisation}
             </a>

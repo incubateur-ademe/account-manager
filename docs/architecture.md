@@ -605,7 +605,7 @@ l'offboarding complet au lieu de partiel.
 | `notion` | membres du workspace, par SCIM | `auto` |
 | `notion-trombi` | page trombinoscope d'une personne | `manual` |
 | `espace-membre` | adresse `beta.gouv.fr` et son statut | `auto`, lecture seule |
-| `github` | organisations `incubateur-ademe` et `incubateur-ademe-admin` | `auto` |
+| `github` | organisations déclarées sous `connectors.github.organisations` | `auto` |
 | `email-list` | alias et redirections, implémentation OVH | à établir |
 | `vaultwarden` | collections et accès | à établir |
 | `scalingo` | collaborateurs par application | à établir |

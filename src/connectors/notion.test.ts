@@ -185,6 +185,27 @@ describe("ce que le connecteur Notion remonte du workspace", () => {
     expect(vide.status !== "failed" && vide.itemsSeen).toBe(0);
   });
 
+  it("refuse de conclure quand le total annoncé bouge en cours de pagination", async () => {
+    // Le parc grossit entre les deux requêtes. Les identifiants restent distincts, donc
+    // la détection de doublon ne dit rien, et le compte d'entrées reçues tombe juste
+    // face au total de la première page. Sans ce contrôle, la collecte conclurait `ok`
+    // sur un inventaire amputé de ce qui vient d'arriver.
+    const premiere = copie(PAGES[0]) as { totalResults: number };
+    const seconde = copie(PAGES[1]) as { totalResults: number };
+    seconde.totalResults = 10;
+
+    const mouvante = await collecter(lecteur([premiere, seconde]).lire);
+
+    expect(mouvante.status).toBe("partial");
+    expect(mouvante.errors?.map((erreur) => erreur.message).join(" ")).toContain(
+      "le total annoncé est passé de 6 à 10",
+    );
+
+    // Les six fiches lues restent rendues : ce qui manque n'autorise pas à jeter ce
+    // qu'on a vu, seulement à refuser de conclure.
+    expect(mouvante.status !== "failed" && mouvante.itemsSeen).toBe(6);
+  });
+
   it("refuse de conclure quand une fiche est rendue deux fois", async () => {
     // Le serveur ne trie pas : une fiche qui glisse d'une page à l'autre entre deux
     // requêtes est vue deux fois pendant qu'une autre n'est jamais vue. Les deux
