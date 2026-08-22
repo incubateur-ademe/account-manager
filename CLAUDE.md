@@ -61,6 +61,14 @@ refuse le champ, avec une erreur du genre `Unknown argument 'X'`. Et le client e
 survit aussi à `prisma generate` et sert des métadonnées périmées, d'où le redémarrage. Symptôme
 voisin : `Value 'X' not found in enum 'Y'` alors que la base et le client généré sont à jour.
 
+**Une erreur de console à ne pas chercher.** `Failed to execute 'measure' on 'Performance' : 'X'
+cannot have a negative time stamp` apparaît en développement, sur n'importe quel écran, et ne
+vient pas de ce dépôt. C'est l'instrumentation de performance de React qui mesure un rendu serveur
+interrompu par une redirection, ici celle de la barrière de session, avec un compteur laissé à
+l'infini négatif. Défaut amont ouvert (`vercel/next.js#86060`), absent de la production, non
+corrigé en 16.3.1 ni 16.3.2, et le correctif appartient à React : le patch côté Next a été
+refusé pour cette raison. Elle ne signale rien de l'application, et rien d'ici ne la fera taire.
+
 ## Tests
 
 > **Peu de tests, mais des gros. Soit du BDD, soit de gros tests d'intégration.
