@@ -123,20 +123,17 @@ trois accès qui survivent à un départ et que personne ne pense à couper : de
 ticket à part, et pour des fonctionnalités hors socle sur la page de ce connecteur. Rien de tout
 cela ne se livre ici.
 
-**Seconde tension, sur le credential.** `docs/architecture.md:614-615` décrit ce connecteur comme
-portant « un credential non nominatif ». L'étape 1 établit l'inverse, la documentation de Notion
-révoquant le jeton au départ **comme au changement de rôle** de la personne qui l'a créé. Le contrat
-déclarera donc `nominative: true`, ce qui est une information affichée à l'opérateur et pas un
-détail. La correction de §5.9 se propose avec celle sur les invités, et attend une validation
-explicite : le document ne se modifie pas depuis un plan.
+**Deux tensions avec `docs/architecture.md`, levées depuis.** §5.9 décrivait le credential comme non
+nominatif et rattachait la gestion des invités à ce connecteur. L'étape 1 a établi l'inverse des
+deux : Notion révoque le jeton au départ **comme au changement de rôle** de la personne qui l'a créé,
+et SCIM ne sait ni gérer ni même voir les invités. Le document a été corrigé après validation, et
+§8 porte désormais la question du porteur du jeton. Le contrat déclarera donc `nominative: true`,
+ce qui est une information affichée à l'opérateur et pas un détail.
 
-**Tension à signaler avec `docs/architecture.md`.** Les lignes 610 à 617, en §5.9, rattachent la
-gestion des invités au connecteur `notion`, celui-ci, et §5.3 la donne en exemple de fonctionnalité
-propre (`docs/architecture.md:485-490`), alors que SCIM ne sait ni gérer ni même voir les invités,
-ce que l'étape 1 a établi des deux façons possibles, et que le ticket range cette fonctionnalité
-hors périmètre. Le ticket tranche pour ce plan. Le document ne se modifie pas ici : la reformulation
-de §5.9 se propose au moment où le connecteur à jeton de session arrivera, et elle demande une
-validation explicite.
+§5.3 continue de citer la gestion des invités comme exemple de fonctionnalité hors socle, et ce
+n'est pas contradictoire : elle affirme qu'un invité ne se rattache jamais à une personne du
+périmètre, ce qui reste vrai, et elle ne l'attribue à aucun connecteur nommé. La fonctionnalité
+attend seulement une autre voie que SCIM.
 
 ### `list` en `auto`, `revoke` en `manual`, sans regret
 

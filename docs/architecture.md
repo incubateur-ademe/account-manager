@@ -567,9 +567,9 @@ code.
 
 Chaque connecteur porte un test exécuté quotidiennement, indépendant de la collecte,
 qui vérifie que la forme de la réponse distante n'a pas changé. L'API de
-l'espace-membre n'a ni versionnement ni revalidation de sortie, et l'API Notion v3
-n'est pas documentée : sans ce test, la panne est silencieuse et se découvre au
-moment d'agir.
+l'espace-membre n'a ni versionnement ni revalidation de sortie, et les API Notion, SCIM
+comprise, ne sont pas documentées : sans ce test, la panne est silencieuse et se
+découvre au moment d'agir.
 
 ### 5.8 Catalogue
 
@@ -612,9 +612,19 @@ sans jamais détenir les credentials Microsoft.
 Deux connecteurs éprouvent le contrat, à condition de tomber de part et d'autre de la
 ligne `auto` contre `manual`.
 
-**`notion`**, tier `auto` : membres du workspace par SCIM, avec un credential non
-nominatif. Un siège attribué sans identité en face est un compte isolé. En
-fonctionnalité propre, la gestion des invités, portée depuis `n8n-automations`.
+**`notion`**, tier `auto` : membres du workspace par SCIM. Un siège attribué sans
+identité en face est un compte isolé. Son credential est **nominatif** : Notion révoque
+le jeton au départ de la personne qui l'a créé comme à son simple changement de rôle, et
+n'importe quel propriétaire de workspace peut le retirer. Il porte l'écriture sur le
+workspace entier et ne se cloisonne pas côté fournisseur ; il reste en `env` tant
+qu'aucun chemin d'écriture n'est livré. Le propriétaire qui l'a créé est le seul compte
+que l'API ne sait pas retirer, trou permanent du chemin de révocation.
+
+La gestion des invités reste une fonctionnalité propre, portée depuis
+`n8n-automations`, mais elle ne peut pas reposer sur ce credential : SCIM ne sait ni les
+lire ni les gérer, et Notion les compte à part des membres. Conséquence à tenir partout
+où se décide une coupure : une fiche sans compte Notion ne signifie pas sans accès à
+Notion.
 
 **`notion-trombi`**, tier `manual` : créer ou mettre à jour la page d'une personne
 dans le trombinoscope à l'arrivée, l'archiver au départ. Le choix est délibéré : c'est
@@ -720,3 +730,5 @@ paquet est donc à suivre, et à relever avant ce retrait.
 - Ce que l'API de l'instance Vaultwarden expose réellement, avant de fixer son tier.
 - Frontière définitive avec `teams-auto` pour le volet Entra.
 - Rotation du triplet OVH avant toute mise en service d'un chemin d'écriture.
+- Porteur du jeton SCIM Notion : compte de service propriétaire de l'organisation, ou à
+  défaut rotation avant toute mutation de rôle de son porteur.
