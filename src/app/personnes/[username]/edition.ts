@@ -19,6 +19,7 @@ import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
+import { dateFr } from "@/ui/dates";
 
 export type EtatEdition = { erreur: string } | { modifie: true } | null;
 
@@ -188,8 +189,6 @@ async function inventaireDe(
           },
   };
 }
-
-const dateFr = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "UTC" });
 
 function apercuDe(plan: PlanFusion, aujourdHui: Date): ApercuFusion {
   return {

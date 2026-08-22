@@ -3,10 +3,11 @@ import { Accordion } from "@codegouvfr/react-dsfr/Accordion";
 import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Badge } from "@codegouvfr/react-dsfr/Badge";
 
+import { LIBELLE_PHASE } from "@/core/libelle-startup";
+import { dateFr } from "@/ui/dates";
 import { TableCustom } from "@/ui/TableCustom";
 
 import { Absent } from "./Champs";
-import { dateFr, LIBELLE_PHASE } from "./libelles";
 import { ModaleRattacherStartup } from "./ModaleRattacherStartup";
 import type { StartupProposable } from "./RattacherStartup";
 import { RetirerRattachement } from "./RetirerRattachement";

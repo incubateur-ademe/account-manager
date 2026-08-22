@@ -4,6 +4,7 @@ import type { Fraicheur } from "@/core/collecte";
 import type { ConstatKind } from "@/core/constat";
 import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
 import { LIBELLE_STATUT, type Statut } from "@/core/statut";
+import { SEVERITE_CONSTAT } from "@/ui/severites";
 
 import { expliquerStatut, type Seuils, STATUT_A_TRAITER } from "./libelles";
 
@@ -48,8 +49,6 @@ export interface MotifDAction {
   /** Où le geste se fait, quand il ne se fait pas ici. */
   lien?: { href: string; libelle: string };
 }
-
-const SEVERITE_CONSTAT = { HIGH: "error", MEDIUM: "warning", LOW: "info" } as const;
 
 export function motifsDesConstats(
   ouverts: readonly ConstatOuvert[],
