@@ -17,10 +17,11 @@ allowBuilds:
   # repli en JavaScript pur, et aucune commande de ce depot n'en a besoin.
   '@parcel/watcher': false
 
-# `@prisma/config` epingle deepmerge-ts en 7.1.5, une version exacte, et Prisma 7.9.1
-# est la derniere publiee : il n'y a pas de correctif a attendre en amont pour
-# CVE-2026-40345. La 8 corrige l'epuisement de pile sur les graphes recursifs et ne
-# change rien a l'export `deepmerge` que @prisma/config utilise comme fusionneur de
-# configuration.
+# `@prisma/config` epingle deepmerge-ts en version exacte plutot qu'en plage : tant
+# qu'il en designe une anterieure a la 8, rien de ce qu'on installe ne corrige
+# CVE-2026-40345, l'epuisement de pile sur les graphes recursifs, et l'override reste
+# le seul levier. Il devient inutile le jour ou ses dependances designent la 8 ou plus,
+# ce qui se lit dans le lock. Cette version laisse intact l'export `deepmerge`, seule
+# chose qu'il en tire pour fusionner la configuration.
 overrides:
   deepmerge-ts: ^8.0.0
