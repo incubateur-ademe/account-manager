@@ -12,7 +12,7 @@ quel et jamais interprété. Ce connecteur-ci n'a rien de neuf à réclamer au c
 la même chose que de le tenir pour définitif. L'invariant de collecte, lui, est resté intact et
 porté par le type : `src/core/connector.ts:214-217` fait que `status: "ok"` implique `errors?:
 undefined`, donc seul un cast peut rendre un `ok` menteur. `src/core/connector.ts:97-130` résout le
-tier effectif à partir des sondes de credentials, et `src/core/connector.ts:270-287` ne rend
+tier effectif à partir des sondes de credentials, et `src/core/connector.ts:273-287` ne rend
 obligatoire que `plan`.
 
 **Le socle de collecte fait déjà tout le travail commun.** `src/lib/sync/collecte.ts:266-268` ouvre
@@ -40,12 +40,12 @@ sans connecteur (`src/app/departs/[id]/page.tsx:225-232`), et
 `HEURISTIC`.
 
 **Un connecteur se configure et a une page, depuis le ticket 5.** `ConnectorContract.configSchema`
-(`src/core/connector.ts:75-87`) porte le contrat de la clé `connectors.<key>` du fichier de
+(`src/core/connector.ts:68-79`) porte le contrat de la clé `connectors.<key>` du fichier de
 politique, `src/core/configuration-connecteur.ts` croise les deux, et
 `src/lib/configuration-connecteur.ts` rend la valeur validée à un connecteur qui la reçoit sans
 aller la chercher. GitHub s'en sert déjà pour ses organisations (`src/connectors/github.ts:26-49`),
 avec une fabrique `creerGithub(lireConfig)` que `src/connectors/index.ts:14-16` instancie sur un
-accesseur paresseux. `resolveFeatures` (`src/core/connector.ts:118-146`) résout les fonctionnalités
+accesseur paresseux. `resolveFeatures` (`src/core/connector.ts:139-160`) résout les fonctionnalités
 hors socle contre les mêmes sondes que les capacités, et `src/ui/connecteurs/registre.ts` décide
 qu'un connecteur a une page. Ce plan hérite donc de deux choses qu'il n'a pas à inventer : un
 endroit déclaré où poser un réglage, et un écran où dire ce que le socle ne sait pas porter.
@@ -71,7 +71,7 @@ code : `src/lib/env.ts:14-37` ne connaît que `GITHUB_TOKEN`, facultatif à dess
 `NOTION_SESSION_TOKEN` et `NOTION_SESSION_SPACE_ID` de l'autre, commentés, avec la distinction
 nominatif contre non nominatif déjà écrite.
 
-**Ce qui est déjà écrit comme si le connecteur existait.** `src/core/connector.test.ts:17-21` prend
+**Ce qui est déjà écrit comme si le connecteur existait.** `src/core/connector.test.ts:23-27` prend
 Notion comme cas d'école de la résolution de tier, avec les identifiants `notion:scim` et
 `notion:session` : ce plan reprend ces identifiants tels quels plutôt que d'en inventer d'autres.
 `src/core/collecte.test.ts:85` et `docs/deploiement.md:341` citent déjà `notion` en exemple de
@@ -101,7 +101,7 @@ renseigner correctement est une question d'honnêteté du contrat, pas un effet 
 `scopeSchema` de GitHub a perdu son énumération au passage : les organisations étant désormais
 déclarées, elles sont inconnues à la compilation.
 5. **Il n'existe pas de dossier `docs/runbooks/`** : un runbook est une chaîne en prose portée par
-le contrat (`src/connectors/github.ts:28-29`), pas un chemin de fichier.
+le contrat (`src/connectors/github.ts:44-45`), pas un chemin de fichier.
 
 ## Décisions de conception
 
@@ -318,7 +318,7 @@ serait du décor.
 
 ## Découpage en étapes
 
-### 1. Établir la réalité de l'API et du credential (établie, sauf la fixture)
+### 1. Établir la réalité de l'API et du credential (faite)
 
 C'était la Definition of Ready du ticket, et elle est levée. Ce qui suit est le constat, relevé sur
 l'instance réelle en lecture seule, jamais un `DELETE`. Il remplace les suppositions que ce plan
@@ -379,14 +379,21 @@ Reste un seul point ouvert, mineur : le code rendu par un jeton révoqué, qui d
 peut distinguer un jeton mort d'un jeton absent. Elle ne le tentera pas de toute façon, faute
 d'appeler le réseau.
 
-Reste à produire, et c'est la seule chose qui manque à cette étape :
-`src/connectors/notion-scim.fixture.json`, une réponse réduite à trois ou quatre entrées, à écrire
-avant l'étape 4 puisque les scénarios 1 et 3 la chargent. Seule la forme est reprise du réel, et
+Livrable produit : `src/connectors/notion-scim.fixture.json`. Seule la forme est reprise du réel, et
 l'anonymisation est énumérative parce que ce dépôt est public : adresses en
-`prenom.nom@exemple.org`, `id` régénérés, `displayName`, `name.formatted`, `givenName` et
-`familyName` inventés, `photos[]` vidé, `meta.location` réécrit sur les identifiants inventés. Une
-entrée porte un `name` réduit à `formatted`, une autre le rôle `owner`, faute de quoi la fixture ne
-couvrirait pas les deux cas qui ont motivé le schéma.
+`prenom.nom@exemple.org`, `id` régénérés, `displayName` et les champs de `name` inventés, `photos[]`
+vidé, `meta.location` réécrit sur les identifiants inventés.
+
+**Deux pages et non une**, parce qu'une enveloppe qui se boucle sur elle-même ne prouve rien de la
+règle d'arrêt : six entrées annoncées, quatre puis deux, avec le `startIndex` que la seconde requête
+doit porter. Les six couvrent les cas qui ont décidé du schéma, et aucune n'est redondante : une
+adresse secondaire distincte du `userName`, un `name` réduit à `formatted`, un propriétaire, une
+entrée sans extension de rôle, un compte inactif, un membre restreint.
+
+Ce que la fixture ne porte **pas**, délibérément : aucune entrée illisible. Elle décrit ce que Notion
+rend, et le scénario 3 fabrique ses fiches sans `id` ni `userName` en mutant une copie. La charge
+vit sous une clé `pages` plutôt qu'à la racine, de sorte que chaque enveloppe reste un échantillon
+fidèle, comparable tel quel à une capture fraîche et validable aussi strictement qu'on voudra.
 
 ### 2. Ouvrir la variable d'environnement et la documenter
 

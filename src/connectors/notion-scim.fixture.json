@@ -1,0 +1,162 @@
+{
+  "_lisezMoi": [
+    "Forme d'une reponse GET /scim/v2/Users, relevee sur l'instance le 22 aout 2026.",
+    "Seule la forme vient du reel : identifiants regeneres, personnes inventees, photos videes.",
+    "Ce depot est public, aucune donnee d'une personne reelle ne doit apparaitre ici.",
+    "",
+    "Deux pages plutot qu'une : l'inventaire reel en compte deux, et la regle d'arret de la",
+    "pagination ne se verifie pas sur une enveloppe qui se boucle sur elle-meme.",
+    "",
+    "Les six entrees couvrent les cas qui ont decide du schema : une adresse secondaire",
+    "distincte du userName, un name reduit a formatted, un proprietaire, une entree sans",
+    "extension de role, un compte inactif, et un membre ordinaire.",
+    "",
+    "Les entrees illisibles ne sont pas ici : un test qui veut une fiche sans id ou sans",
+    "userName la fabrique en mutant une copie, ce fichier ne decrivant que ce que Notion rend.",
+    "",
+    "La charge est sous « pages » et non a la racine pour que chaque enveloppe reste un",
+    "echantillon fidele, comparable tel quel a une capture fraiche et validable strictement."
+  ],
+  "pages": [
+    {
+      "schemas": ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
+      "totalResults": 6,
+      "startIndex": 1,
+      "itemsPerPage": 4,
+      "Resources": [
+        {
+          "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+          "id": "922f3d9b-20be-461f-9b69-90928701ce93",
+          "userName": "camille.rivet@exemple.org",
+          "name": {
+            "formatted": "Camille Rivet",
+            "givenName": "Camille",
+            "familyName": "Rivet"
+          },
+          "emails": [
+            { "value": "camille.rivet@exemple.org", "primary": true },
+            { "value": "c.rivet@autre-exemple.org", "primary": false }
+          ],
+          "displayName": "Camille Rivet",
+          "active": true,
+          "meta": {
+            "resourceType": "User",
+            "created": "1787393411245",
+            "lastModified": "1787393411245",
+            "location": "https://app.notion.com/scim/v2/Users/922f3d9b-20be-461f-9b69-90928701ce93"
+          },
+          "photos": [],
+          "urn:ietf:params:scim:schemas:extension:notion:2.0:User": { "role": "member" }
+        },
+        {
+          "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+          "id": "2458e540-24e4-46e5-b2cf-6caac4b9c637",
+          "userName": "alex.dupuis@exemple.org",
+          "name": { "formatted": "Alex Dupuis" },
+          "emails": [{ "value": "alex.dupuis@exemple.org", "primary": true }],
+          "displayName": "Alex Dupuis",
+          "active": true,
+          "meta": {
+            "resourceType": "User",
+            "created": "1787393411245",
+            "lastModified": "1787393411245",
+            "location": "https://app.notion.com/scim/v2/Users/2458e540-24e4-46e5-b2cf-6caac4b9c637"
+          },
+          "photos": [],
+          "urn:ietf:params:scim:schemas:extension:notion:2.0:User": { "role": "member" }
+        },
+        {
+          "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+          "id": "a15919aa-5727-4fb9-84e9-2980007cfc58",
+          "userName": "claire.durand@exemple.org",
+          "name": {
+            "formatted": "Claire Durand",
+            "givenName": "Claire",
+            "familyName": "Durand"
+          },
+          "emails": [{ "value": "claire.durand@exemple.org", "primary": true }],
+          "displayName": "Claire Durand",
+          "active": true,
+          "meta": {
+            "resourceType": "User",
+            "created": "1787393411245",
+            "lastModified": "1787393411245",
+            "location": "https://app.notion.com/scim/v2/Users/a15919aa-5727-4fb9-84e9-2980007cfc58"
+          },
+          "photos": [],
+          "urn:ietf:params:scim:schemas:extension:notion:2.0:User": { "role": "owner" }
+        },
+        {
+          "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+          "id": "7ec7b7c3-126b-412a-babf-fd79d002e921",
+          "userName": "dominique.aubert@exemple.org",
+          "name": {
+            "formatted": "Dominique Aubert",
+            "givenName": "Dominique",
+            "familyName": "Aubert"
+          },
+          "emails": [{ "value": "dominique.aubert@exemple.org", "primary": true }],
+          "displayName": "Dominique Aubert",
+          "active": true,
+          "meta": {
+            "resourceType": "User",
+            "created": "1787393411245",
+            "lastModified": "1787393411245",
+            "location": "https://app.notion.com/scim/v2/Users/7ec7b7c3-126b-412a-babf-fd79d002e921"
+          },
+          "photos": []
+        }
+      ]
+    },
+    {
+      "schemas": ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
+      "totalResults": 6,
+      "startIndex": 5,
+      "itemsPerPage": 2,
+      "Resources": [
+        {
+          "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+          "id": "5b1c0a47-93f8-4c62-9d0e-3ab7215e8f40",
+          "userName": "samir.benali@exemple.org",
+          "name": {
+            "formatted": "Samir Benali",
+            "givenName": "Samir",
+            "familyName": "Benali"
+          },
+          "emails": [{ "value": "samir.benali@exemple.org", "primary": true }],
+          "displayName": "Samir Benali",
+          "active": false,
+          "meta": {
+            "resourceType": "User",
+            "created": "1787393411245",
+            "lastModified": "1787393411245",
+            "location": "https://app.notion.com/scim/v2/Users/5b1c0a47-93f8-4c62-9d0e-3ab7215e8f40"
+          },
+          "photos": [],
+          "urn:ietf:params:scim:schemas:extension:notion:2.0:User": { "role": "member" }
+        },
+        {
+          "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+          "id": "e04d8f16-7a25-4b93-8c51-df6290ab3e77",
+          "userName": "noa.lefevre@exemple.org",
+          "name": {
+            "formatted": "Noa Lefevre",
+            "givenName": "Noa",
+            "familyName": "Lefevre"
+          },
+          "emails": [{ "value": "noa.lefevre@exemple.org", "primary": true }],
+          "displayName": "Noa Lefevre",
+          "active": true,
+          "meta": {
+            "resourceType": "User",
+            "created": "1787393411245",
+            "lastModified": "1787393411245",
+            "location": "https://app.notion.com/scim/v2/Users/e04d8f16-7a25-4b93-8c51-df6290ab3e77"
+          },
+          "photos": [],
+          "urn:ietf:params:scim:schemas:extension:notion:2.0:User": { "role": "restricted_member" }
+        }
+      ]
+    }
+  ]
+}
