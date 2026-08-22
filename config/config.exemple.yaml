@@ -57,6 +57,22 @@ systems:
     criticality: medium
     runbook: https://exemple.org/procedures/mon-systeme
 
+# Reglages propres a chaque connecteur, sous sa cle. Chaque connecteur decide de la
+# forme de la sienne et la valide lui-meme : une cle qu'aucun connecteur ne porte fait
+# refuser le demarrage, plutot que de laisser croire a un reglage applique.
+#
+# Rien de secret n'a sa place ici : ce fichier est versionne et son contenu s'affiche
+# dans l'interface. Les credentials vivent dans l'environnement.
+#
+# Omettre ce bloc revient exactement a ecrire ce qui suit.
+connectors:
+  github:
+    # Organisations dont les comptes sont releves. En retirer une n'est pas anodin :
+    # la collecte suivante datera la disparition des comptes qui n'y sont plus vus, et
+    # l'offboarding suivra.
+    organisations:
+      - incubateur-ademe
+
 # Reserve : ecarts admis pour de bon, qu'aucune collecte ne doit plus signaler. Un
 # ecart tolere sans trace redevient un ecart oublie, d'ou la raison et le proprietaire
 # obligatoires. Aucun code ne le lit encore.

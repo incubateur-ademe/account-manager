@@ -85,11 +85,6 @@
           }
         }
       },
-      "required": [
-        "incubator",
-        "transverse",
-        "local"
-      ],
       "additionalProperties": false,
       "description": "Qui l'incubateur suit, et sous quelle autorité."
     },
@@ -200,9 +195,7 @@
           "key",
           "label",
           "purpose",
-          "ownerUsername",
-          "reviewEveryDays",
-          "identities"
+          "ownerUsername"
         ],
         "additionalProperties": false,
         "description": "Un compte non humain : bot, jeton d'intégration continue, clé d'API."
@@ -211,8 +204,7 @@
   },
   "required": [
     "version",
-    "scope",
-    "serviceAccounts"
+    "scope"
   ],
   "additionalProperties": false,
   "description": "Personnes suivies et comptes de service. Ce fichier nomme, il ne vit donc pas nécessairement dans le dépôt du code."

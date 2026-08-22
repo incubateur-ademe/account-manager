@@ -11,6 +11,16 @@ const csv = z
   );
 
 /** Ce dont toute exécution a besoin, y compris la collecte en ligne de commande. */
+/**
+ * Déclarée mais vide vaut absente. Un modèle d'environnement copié tel quel porte
+ * `JETON=` sans valeur, et refuser de démarrer là-dessus rendrait toute l'application
+ * otage d'un credential qui se veut précisément facultatif.
+ */
+const jetonFacultatif = z
+  .string()
+  .optional()
+  .transform((valeur) => (valeur === "" ? undefined : valeur));
+
 const coreSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 
@@ -33,7 +43,14 @@ const coreSchema = z.object({
    * résout au tier `none` et le dit, là où un démarrage refusé rendrait toute la
    * collecte otage d'un système parmi d'autres.
    */
-  GITHUB_TOKEN: z.string().min(1).optional(),
+  GITHUB_TOKEN: jetonFacultatif,
+
+  /**
+   * Facultatif pour la même raison. Nominatif malgré les apparences : Notion le
+   * révoque au départ de la personne qui l'a créé comme à son changement de rôle,
+   * et il porte l'écriture sur le workspace entier.
+   */
+  NOTION_SCIM_TOKEN: jetonFacultatif,
 });
 
 /**

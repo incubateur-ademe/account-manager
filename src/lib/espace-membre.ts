@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { type Lecture, lireChaque } from "@/core/lecture";
 import { jourParis, type MembreDetaille, type MembreIncubateur } from "@/core/membre";
 import { env } from "@/lib/env";
 
@@ -14,11 +15,19 @@ export class EspaceMembreError extends Error {
   }
 }
 
+/**
+ * `fetch` n'a aucun délai par défaut, et sans borne une réponse qui ne vient jamais
+ * gèlerait la collecte avant même qu'elle n'atteigne le moindre connecteur. Plus large
+ * qu'ailleurs parce que le périmètre arrive en un seul appel, qui ramène tout.
+ */
+const DELAI_MS = 30_000;
+
 async function get(path: string): Promise<unknown> {
   let response: Response;
   try {
     response = await fetch(`${env.ESPACE_MEMBRE_URL}${path}`, {
       headers: { "X-Api-Key": env.ESPACE_MEMBRE_API_KEY, accept: "application/json" },
+      signal: AbortSignal.timeout(DELAI_MS),
     });
   } catch (cause: unknown) {
     throw new EspaceMembreError(path, null, cause instanceof Error ? cause.message : String(cause));
@@ -68,41 +77,6 @@ const startupSchema = z.object({
   phases: z.array(phaseSchema).nullish(),
   current_phase: z.string().nullish(),
 });
-
-/** Ce qu'une collecte a pu lire, et ce qu'elle a dû écarter faute de le comprendre. */
-export interface Lecture<T> {
-  items: T[];
-  erreurs: string[];
-}
-
-/**
- * Une réponse dont un élément est illisible n'invalide pas les autres : écarter la
- * ligne fautive et signaler l'écart vaut mieux que de perdre tout le périmètre pour
- * un membre mal formé. L'erreur remonte, donc la collecte ne se dira pas complète,
- * donc elle ne datera aucune disparition.
- */
-function lireChaque<T>(valeurs: unknown, schema: z.ZodType<T>, quoi: string): Lecture<T> {
-  if (!Array.isArray(valeurs)) {
-    return { items: [], erreurs: [`${quoi} : une liste était attendue`] };
-  }
-
-  const items: T[] = [];
-  const erreurs: string[] = [];
-
-  for (const [index, valeur] of valeurs.entries()) {
-    const lu = schema.safeParse(valeur);
-    if (lu.success) {
-      items.push(lu.data);
-    } else {
-      const details = lu.error.issues
-        .map((issue) => `${issue.path.join(".") || "(racine)"} ${issue.message}`)
-        .join(", ");
-      erreurs.push(`${quoi} : élément ${index} illisible (${details})`);
-    }
-  }
-
-  return { items, erreurs };
-}
 
 export interface IncubatorStartup {
   ghid: string;

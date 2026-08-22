@@ -2,11 +2,13 @@ import { fr } from "@codegouvfr/react-dsfr";
 import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import { Table } from "@codegouvfr/react-dsfr/Table";
+import Link from "next/link";
 
 import { CONNECTEURS } from "@/connectors";
 import { type Capability, resolveCapability, type Tier } from "@/core/connector";
 import { prisma } from "@/lib/db";
 import { requireOperateur } from "@/lib/session";
+import { aUnePage } from "@/ui/connecteurs/registre";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +40,7 @@ export default async function SystemesPage() {
       return {
         contrat,
         sondes,
+        page: aUnePage(contrat),
         capacites: CAPACITES.map((capacite) => ({
           ...capacite,
           resolue: resolveCapability(
@@ -67,7 +70,7 @@ export default async function SystemesPage() {
         automatique.
       </p>
 
-      {systemes.map(({ contrat, sondes, capacites, dernierReleve }) => (
+      {systemes.map(({ contrat, sondes, capacites, dernierReleve, page }) => (
         <section key={contrat.key} className={fr.cx("fr-mt-4w")}>
           <h2 className={fr.cx("fr-h4", "fr-mb-1v")}>
             {contrat.label}{" "}
@@ -127,6 +130,14 @@ export default async function SystemesPage() {
                   )
                   .join(" / ")}
           </p>
+
+          {page ? (
+            <p className={fr.cx("fr-text--sm")}>
+              <Link href={`/systemes/${contrat.key}`}>
+                Ce que {contrat.label} regarde, et ce qu'il sait faire hors du socle
+              </Link>
+            </p>
+          ) : null}
         </section>
       ))}
 
@@ -134,7 +145,7 @@ export default async function SystemesPage() {
         severity="info"
         className={fr.cx("fr-mt-4w")}
         small
-        description="Un système absent de cette page n'est pas couvert : ni relevé, ni signalé. Le catalogue de la politique, lui, ne sert encore à rien, aucun code ne le lit."
+        description="Un système absent de cette page n'est pas couvert : ni relevé, ni signalé. Le catalogue systems[] de la politique, lui, ne sert encore à rien, aucun code ne le lit ; la clé connectors, elle, est lue par la collecte et par chaque connecteur qui s'en sert."
       />
     </main>
   );

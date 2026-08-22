@@ -319,6 +319,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
           href={`${env.ESPACE_MEMBRE_URL}/community/${encodeURIComponent(personne.username)}`}
           target="_blank"
           rel="noreferrer"
+          title="Fiche espace-membre, nouvelle fenêtre"
         >
           Fiche espace-membre
         </a>
@@ -408,6 +409,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
                 href={`https://github.com/${personne.githubLogin}`}
                 target="_blank"
                 rel="noreferrer"
+                title={`Compte GitHub de ${personne.githubLogin}, nouvelle fenêtre`}
               >
                 {personne.githubLogin}
               </a>

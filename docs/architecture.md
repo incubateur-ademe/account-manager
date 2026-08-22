@@ -88,7 +88,7 @@ est distinct de l'ingestion du périmètre décrite en section 2.
 
 | Couche | Où | Contenu | Changement |
 |---|---|---|---|
-| Le déclaré | git, YAML validé par un schéma | Périmètre transverse, catalogue des systèmes, seuils, dérogations permanentes | quelques fois par an |
+| Le déclaré | git, YAML validé par un schéma | Périmètre transverse, catalogue des systèmes, seuils, dérogations permanentes, configuration des connecteurs | quelques fois par an |
 | Le constaté | PostgreSQL | Ce que les connecteurs ont lu, et ce qu'un humain a décidé | tous les jours |
 
 L'écart n'est pas une couche, c'est une fonction pure des deux autres.
@@ -234,6 +234,9 @@ saisie localement.
   `collectStaleHours`
 - `serviceAccounts[]` : allowlist des comptes non humains
 - `permanentDerogations[]` : `owner` et `reason` obligatoires
+- `connectors.<clé>` : réglages propres à chaque connecteur, dont le connecteur visé
+  décide la forme et qu'il valide lui-même. Une clé qu'aucun connecteur ne porte fait
+  refuser le démarrage, et rien de secret n'y a sa place
 
 Qui peut ouvrir l'outil n'est **pas** déclaré ici mais dans l'environnement, par
 `OPERATORS` et `BREAK_GLASS_USERNAMES` : cela relève du déploiement, change sans
@@ -489,12 +492,32 @@ interne n'a pas d'accès invité.
 Règle : si une fonctionnalité oblige à assouplir une règle du socle pour exister,
 c'est qu'elle relève de cette section.
 
+**Où cela vit.** Un connecteur a une page à lui sous `/systemes/<clé>`, atteignable
+depuis l'écran Systèmes, qui porte sa configuration et ses fonctionnalités. Elle
+n'existe que quand il a quelque chose à montrer : un écran, une configuration ou au
+moins une fonctionnalité déclarée. Sinon pas de lien, et l'adresse rend 404.
+L'`entrypoint` d'une `ConnectorFeature` désigne un segment sous cette page.
+
+**Deux registres, un seul sens d'import.** Le contrat déclare la fonctionnalité, qui
+est de la donnée pure et se résout contre les mêmes sondes que les capacités : la
+ligne de commande doit pouvoir dire qu'une fonctionnalité est indisponible sans
+charger le moindre composant. Le rendu passe par un registre d'interface, qui associe
+une clé de connecteur à un chargeur d'écran. `src/ui/` connaît `src/connectors/`,
+jamais l'inverse, et un test parcourt le graphe d'imports depuis les entrées en ligne
+de commande pour tenir la propriété.
+
+**Rien de spécifique dans les écrans génériques.** Le socle ne pose qu'un lien vers
+cette page. La seule exception envisagée est le tableau de bord, où un connecteur
+pourra poser des tuiles : c'est un chiffre, pas une fonctionnalité.
+
 ### 5.4 Interface d'exécution
 
 ```ts
 interface Connector {
   readonly contract: ConnectorContract;
   probe: () => Promise<readonly CredentialProbe[]>;
+  /** Ausculte le système distant avant de le lire. Un écart interdit la lecture. */
+  diagnose?: (ctx: RunContext) => Promise<Diagnosis>;
   list?: (ctx: RunContext) => Promise<CollectResult>;
   plan: (intent: Intent, ctx: RunContext) => Promise<readonly PlannedStep[]>;
   precheck?: (step: PlannedStep, ctx: RunContext) => Promise<PrecheckResult>;
@@ -544,11 +567,32 @@ code.
 
 ### 5.7 Tests de contrat
 
-Chaque connecteur porte un test exécuté quotidiennement, indépendant de la collecte,
-qui vérifie que la forme de la réponse distante n'a pas changé. L'API de
-l'espace-membre n'a ni versionnement ni revalidation de sortie, et l'API Notion v3
-n'est pas documentée : sans ce test, la panne est silencieuse et se découvre au
-moment d'agir.
+La forme d'une réponse distante change sans prévenir. L'API de l'espace-membre n'a ni
+versionnement ni revalidation de sortie, et les API Notion, SCIM comprise, ne sont pas
+documentées : sans garde, la panne est silencieuse et se découvre au moment d'agir.
+
+**Ce que la collecte voit seule.** Un champ **requis** qui disparaît fait écarter les
+fiches par le schéma, donc rend un run non `ok`, donc n'efface personne. Aucun
+dispositif supplémentaire n'est nécessaire pour ce cas.
+
+**Ce qu'elle ne voit pas.** Un champ **facultatif** qui disparaît ne casse rien. Il
+dérive en silence et ne laisse pour signe qu'un rattachement qui cesse lentement de se
+faire, ou un rôle qui devient uniforme sans que personne ne le relie au fournisseur.
+
+**D'où le diagnostic, porté par le connecteur et appelé par le socle avant toute
+lecture.** `diagnose` est facultatif : chaque connecteur choisit à sa conception de
+l'implémenter, quand ce qu'il lit est trop peu spécifié pour s'en remettre au hasard, ou
+de s'en passer et laisser la collecte échouer d'elle-même quand elle suffit. Un
+diagnostic qui rapporte quoi que ce soit **interdit la lecture** : le système répondrait
+peut-être encore, mais ce qu'on en tirerait n'aurait plus le sens qu'on lui prête. Un
+diagnostic qui échoue lui-même compte comme un écart, ne pas savoir dire si la forme a
+changé n'autorisant pas à supposer qu'elle n'a pas changé.
+
+**Un test de contrat existe en plus, et ne s'exécute automatiquement nulle part.** Il
+vérifie la même chose plus finement, à la main, par quelqu'un qui détient déjà le
+credential. Le mettre sur un déclencheur demanderait de confier ce credential à un
+runner : sur un dépôt public, quiconque peut pousser un workflow l'exfiltre ; en
+production, une suite de tests n'a pas sa place dans un environnement d'exécution.
 
 ### 5.8 Catalogue
 
@@ -561,7 +605,7 @@ l'offboarding complet au lieu de partiel.
 | `notion` | membres du workspace, par SCIM | `auto` |
 | `notion-trombi` | page trombinoscope d'une personne | `manual` |
 | `espace-membre` | adresse `beta.gouv.fr` et son statut | `auto`, lecture seule |
-| `github` | organisations `incubateur-ademe` et `incubateur-ademe-admin` | `auto` |
+| `github` | organisations déclarées sous `connectors.github.organisations` | `auto` |
 | `email-list` | alias et redirections, implémentation OVH | à établir |
 | `vaultwarden` | collections et accès | à établir |
 | `scalingo` | collaborateurs par application | à établir |
@@ -591,9 +635,19 @@ sans jamais détenir les credentials Microsoft.
 Deux connecteurs éprouvent le contrat, à condition de tomber de part et d'autre de la
 ligne `auto` contre `manual`.
 
-**`notion`**, tier `auto` : membres du workspace par SCIM, avec un credential non
-nominatif. Un siège attribué sans identité en face est un compte isolé. En
-fonctionnalité propre, la gestion des invités, portée depuis `n8n-automations`.
+**`notion`**, tier `auto` : membres du workspace par SCIM. Un siège attribué sans
+identité en face est un compte isolé. Son credential est **nominatif** : Notion révoque
+le jeton au départ de la personne qui l'a créé comme à son simple changement de rôle, et
+n'importe quel propriétaire de workspace peut le retirer. Il porte l'écriture sur le
+workspace entier et ne se cloisonne pas côté fournisseur ; il reste en `env` tant
+qu'aucun chemin d'écriture n'est livré. Le propriétaire qui l'a créé est le seul compte
+que l'API ne sait pas retirer, trou permanent du chemin de révocation.
+
+La gestion des invités reste une fonctionnalité propre, portée depuis
+`n8n-automations`, mais elle ne peut pas reposer sur ce credential : SCIM ne sait ni les
+lire ni les gérer, et Notion les compte à part des membres. Conséquence à tenir partout
+où se décide une coupure : une fiche sans compte Notion ne signifie pas sans accès à
+Notion.
 
 **`notion-trombi`**, tier `manual` : créer ou mettre à jour la page d'une personne
 dans le trombinoscope à l'arrivée, l'archiver au départ. Le choix est délibéré : c'est
@@ -699,3 +753,5 @@ paquet est donc à suivre, et à relever avant ce retrait.
 - Ce que l'API de l'instance Vaultwarden expose réellement, avant de fixer son tier.
 - Frontière définitive avec `teams-auto` pour le volet Entra.
 - Rotation du triplet OVH avant toute mise en service d'un chemin d'écriture.
+- Porteur du jeton SCIM Notion : compte de service propriétaire de l'organisation, ou à
+  défaut rotation avant toute mutation de rôle de son porteur.
