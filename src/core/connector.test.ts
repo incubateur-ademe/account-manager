@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { type CapabilityDecl, type CredentialProbe, resolveCapability } from "./connector";
+import {
+  type CapabilityDecl,
+  type ConnectorFeature,
+  type CredentialProbe,
+  resolveCapability,
+  resolveFeatures,
+} from "./connector";
 
 const RUNBOOK = "docs/runbooks/notion.md";
 
@@ -79,5 +85,47 @@ describe("résolution du tier effectif d'une capability", () => {
     const resolved = resolveCapability("revoke", revokeDecls, [], RUNBOOK);
 
     expect(resolved.tier).not.toBe("auto");
+  });
+});
+
+/**
+ * La gestion des invités Notion, hors socle parce qu'un invité n'est jamais rattaché
+ * à une personne du périmètre, et dont le credential n'est pas celui de la collecte.
+ */
+const FONCTIONNALITES: ConnectorFeature[] = [
+  {
+    key: "invites",
+    label: "Invités du workspace",
+    requires: ["notion:session"],
+    entrypoint: "invites",
+  },
+  { key: "sieges", label: "Sièges facturés", requires: [], entrypoint: "sieges" },
+];
+
+describe("résolution des fonctionnalités hors socle", () => {
+  it("annonce ce qui manque plutôt que de faire disparaître la fonctionnalité", () => {
+    const resolues = resolveFeatures(FONCTIONNALITES, [probe("notion:session", false)]);
+
+    expect(resolues).toHaveLength(2);
+
+    const invites = resolues.find((resolue) => resolue.feature.key === "invites");
+    expect(invites?.available).toBe(false);
+    expect(invites?.missing).toEqual(["notion:session"]);
+
+    const sieges = resolues.find((resolue) => resolue.feature.key === "sieges");
+    expect(sieges?.available).toBe(true);
+    expect(sieges?.missing).toEqual([]);
+  });
+
+  it("traite un credential absent des sondes comme indisponible, jamais comme acquis", () => {
+    const sansSondes = resolveFeatures(FONCTIONNALITES, []);
+    expect(sansSondes.find((resolue) => resolue.feature.key === "invites")?.available).toBe(false);
+
+    const avecSonde = resolveFeatures(FONCTIONNALITES, [probe("notion:session", true)]);
+    expect(avecSonde.find((resolue) => resolue.feature.key === "invites")?.available).toBe(true);
+
+    // Un connecteur qui n'en déclare aucune rend une liste vide, pas undefined :
+    // l'écran boucle dessus sans avoir à connaître ce cas.
+    expect(resolveFeatures(undefined, [])).toEqual([]);
   });
 });

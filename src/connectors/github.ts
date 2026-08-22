@@ -4,6 +4,7 @@ import type {
   CollectError,
   CollectResult,
   Connector,
+  ConnectorContract,
   ObservedDetail,
   ObservedGrant,
   ObservedIdentity,
@@ -12,15 +13,30 @@ import type {
 import { env } from "@/lib/env";
 
 /**
- * Les organisations de l'incubateur. Elles vivent ici et non dans la politique parce
- * qu'elles font partie de la définition du système lui-même : un connecteur GitHub
- * qui viserait d'autres organisations serait un autre connecteur.
+ * Les organisations suivies sont déclarées dans la politique : un connecteur GitHub
+ * qui vise d'autres organisations est le même connecteur autrement configuré, pas un
+ * autre connecteur. Omettre la clé revient exactement à écrire ce défaut.
  *
  * `incubateur-ademe-admin` n'en fait pas partie malgré ce que laissait entendre le
  * catalogue : c'est un compte, pas une organisation, et il figure d'ailleurs parmi
  * les membres de celle-ci.
+ *
+ * Le `.min(1)` n'est pas décoratif : une liste vide ferait une collecte qui ne lit
+ * rien, et un inventaire vide se distingue mal d'un départ collectif.
  */
-const ORGANISATIONS = ["incubateur-ademe"] as const;
+const CONFIG = z.strictObject({
+  organisations: z
+    .array(z.string().min(1))
+    .min(1, "au moins une organisation, sinon la collecte ne lit rien")
+    .default(["incubateur-ademe"])
+    .meta({
+      description:
+        "Organisations GitHub dont les comptes sont relevés. En retirer une fait disparaître les comptes qui n'y sont plus vus, et l'offboarding suivra.",
+      examples: [["incubateur-ademe"]],
+    }),
+});
+
+export type ConfigGithub = z.infer<typeof CONFIG>;
 
 const CREDENTIAL = "github-token";
 const API = "https://api.github.com";
@@ -338,14 +354,17 @@ export function assemblerOrganisation(
  * en échec, donc à ne rien écrire et à ne rien faire disparaître. Ce qui décide est
  * qu'il reste quelque chose à écrire.
  */
-export async function collecter(lire: Lecteur): Promise<CollectResult> {
+export async function collecter(
+  lire: Lecteur,
+  organisations: readonly string[],
+): Promise<CollectResult> {
   const identites = new Map<string, ObservedIdentity>();
   const ressources: ObservedResource[] = [];
   const acces: ObservedGrant[] = [];
   const erreurs: CollectError[] = [];
   let rendues = 0;
 
-  for (const org of ORGANISATIONS) {
+  for (const org of organisations) {
     const lecture = await lireOrganisation(org, lire);
     erreurs.push(...lecture.erreurs);
 
@@ -378,69 +397,85 @@ export async function collecter(lire: Lecteur): Promise<CollectResult> {
     : { status: "partial", errors: [erreurs[0] as CollectError, ...erreurs.slice(1)], ...payload };
 }
 
-export const github: Connector = {
-  contract: {
-    key: "github",
-    label: "GitHub",
-    criticality: "high",
-    runbook: RUNBOOK,
-    credentials: [
-      {
-        id: CREDENTIAL,
-        source: "env",
-        scopeNote:
-          "Jeton fine-grained restreint aux organisations incubateur-ademe et incubateur-ademe-admin, en lecture seule. Seul système du catalogue dont le fournisseur sait émettre un credential nativement restreint, donc sans proxy.",
-        nominative: false,
-      },
-    ],
-    capabilities: {
-      list: [{ requires: [CREDENTIAL], tier: "auto" }],
-      // Aucune voie automatique en v1 : retirer quelqu'un d'une organisation se fait
-      // à la main, et le socle rend la tâche plutôt qu'un appel d'API.
-      revoke: [{ requires: [], tier: "manual", runbook: RUNBOOK }],
+export const CONTRAT_GITHUB: ConnectorContract = {
+  key: "github",
+  label: "GitHub",
+  criticality: "high",
+  runbook: RUNBOOK,
+  credentials: [
+    {
+      id: CREDENTIAL,
+      source: "env",
+      scopeNote:
+        "Jeton fine-grained restreint aux organisations incubateur-ademe et incubateur-ademe-admin, en lecture seule. Seul système du catalogue dont le fournisseur sait émettre un credential nativement restreint, donc sans proxy.",
+      nominative: false,
     },
-    scopeSchema: z.object({ organisation: z.enum(ORGANISATIONS).optional() }),
+  ],
+  capabilities: {
+    list: [{ requires: [CREDENTIAL], tier: "auto" }],
+    // Aucune voie automatique en v1 : retirer quelqu'un d'une organisation se fait
+    // à la main, et le socle rend la tâche plutôt qu'un appel d'API.
+    revoke: [{ requires: [], tier: "manual", runbook: RUNBOOK }],
   },
-
-  probe: () =>
-    Promise.resolve([
-      {
-        id: CREDENTIAL,
-        available: Boolean(env.GITHUB_TOKEN),
-        ...(env.GITHUB_TOKEN
-          ? {}
-          : { unavailableReason: "GITHUB_TOKEN absent de l'environnement" }),
-        checkedAt: new Date(),
-      },
-    ]),
-
-  list: (): Promise<CollectResult> => collecter(lireTout),
-
-  plan: (intent) => {
-    if (intent.kind !== "revoke" || intent.subject.kind !== "person") {
-      return Promise.resolve([]);
-    }
-
-    const username = intent.subject.username;
-
-    return Promise.resolve(
-      ORGANISATIONS.map((org) => ({
-        systemKey: "github",
-        capability: "revoke" as const,
-        tier: "manual" as const,
-        action: "retirer-de-l-organisation",
-        label: `Retirer ${username} de l'organisation ${org}`,
-        params: { organisation: org, username },
-        riskLevel: "high" as const,
-        expectedState: { membre: false },
-        idempotencyKey: `github:${org}:revoke:${username}`,
-        manual: {
-          title: `Retirer ${username} de ${org}`,
-          runbook: RUNBOOK,
-          deeplink: `https://github.com/orgs/${org}/people`,
-          doneWhen: `${username} n'apparaît plus dans les membres de ${org}, ni dans les invitations en attente.`,
-        },
-      })),
-    );
-  },
+  // Une chaîne et non l'énumération des organisations : celles-ci sont désormais
+  // déclarées, donc inconnues à la compilation. La contrainte se réintroduira contre
+  // la configuration résolue le jour où l'octroi lira ce schéma, ce que rien ne fait.
+  scopeSchema: z.object({ organisation: z.string().min(1).optional() }),
+  configSchema: CONFIG,
 };
+
+/**
+ * Le connecteur reçoit sa configuration, il ne va pas la chercher : c'est ce qui le
+ * laisse testable sans système de fichiers, dans le sens où sa lecture va déjà.
+ *
+ * L'accesseur est paresseux parce que ce module est importé par la collecte, par le
+ * web et par la génération de schéma : résoudre à l'import exigerait une politique
+ * valide du simple fait de charger le module.
+ */
+export function creerGithub(lireConfig: () => ConfigGithub): Connector {
+  return {
+    contract: CONTRAT_GITHUB,
+
+    probe: () =>
+      Promise.resolve([
+        {
+          id: CREDENTIAL,
+          available: Boolean(env.GITHUB_TOKEN),
+          ...(env.GITHUB_TOKEN
+            ? {}
+            : { unavailableReason: "GITHUB_TOKEN absent de l'environnement" }),
+          checkedAt: new Date(),
+        },
+      ]),
+
+    list: (): Promise<CollectResult> => collecter(lireTout, lireConfig().organisations),
+
+    plan: (intent) => {
+      if (intent.kind !== "revoke" || intent.subject.kind !== "person") {
+        return Promise.resolve([]);
+      }
+
+      const username = intent.subject.username;
+
+      return Promise.resolve(
+        lireConfig().organisations.map((org) => ({
+          systemKey: "github",
+          capability: "revoke" as const,
+          tier: "manual" as const,
+          action: "retirer-de-l-organisation",
+          label: `Retirer ${username} de l'organisation ${org}`,
+          params: { organisation: org, username },
+          riskLevel: "high" as const,
+          expectedState: { membre: false },
+          idempotencyKey: `github:${org}:revoke:${username}`,
+          manual: {
+            title: `Retirer ${username} de ${org}`,
+            runbook: RUNBOOK,
+            deeplink: `https://github.com/orgs/${org}/people`,
+            doneWhen: `${username} n'apparaît plus dans les membres de ${org}, ni dans les invitations en attente.`,
+          },
+        })),
+      );
+    },
+  };
+}

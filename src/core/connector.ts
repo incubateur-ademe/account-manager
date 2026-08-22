@@ -50,6 +50,7 @@ export interface ConnectorFeature {
   key: string;
   label: string;
   requires: readonly string[];
+  /** Segment de route sous `/systemes/<key>/`, où l'écran de la fonctionnalité vit. */
   entrypoint: string;
 }
 
@@ -64,6 +65,18 @@ export interface ConnectorContract {
   capabilities: Partial<Record<Capability, NonEmptyArray<CapabilityDecl>>>;
   /** Valide les scopes de grant. Converti en JSON Schema par z.toJSONSchema pour générer les formulaires. */
   scopeSchema: z.ZodType;
+  /**
+   * Contrat de la clé `connectors.<key>` du fichier de politique. Absent quand le
+   * connecteur ne se règle pas, auquel cas y poser une entrée est un refus.
+   *
+   * Aucun secret : ce fichier est versionné dans un dépôt lisible, et la page du
+   * connecteur affiche la configuration résolue telle quelle. Les credentials
+   * restent dans l'environnement.
+   *
+   * Déclaratif, sans `.transform()` : `z.toJSONSchema` lève dessus, et la saisie
+   * assistée du fichier de politique en dérive.
+   */
+  configSchema?: z.ZodType;
   /** Fonctionnalités hors socle, qui ne passent ni par Person ni par AccessGrant. */
   features?: readonly ConnectorFeature[];
 }
@@ -114,6 +127,33 @@ export function resolveCapability(
     runbook: contractRunbook,
     ...(best ? degradation(best) : {}),
   };
+}
+
+export interface ResolvedFeature {
+  feature: ConnectorFeature;
+  available: boolean;
+  /** Credentials qui manquent. Vide quand la fonctionnalité est praticable. */
+  missing: readonly string[];
+}
+
+/**
+ * Même règle que pour les capacités : ce qui est indisponible se dit, il ne se cache
+ * pas. Une fonctionnalité qu'on masque faute de credential laisse croire qu'elle
+ * n'existe pas, là où elle attend seulement un secret.
+ *
+ * De la donnée pure, sans le moindre composant : la ligne de commande doit pouvoir
+ * dire qu'une fonctionnalité est indisponible sans charger d'interface.
+ */
+export function resolveFeatures(
+  features: readonly ConnectorFeature[] | undefined,
+  probes: readonly CredentialProbe[],
+): readonly ResolvedFeature[] {
+  const available = new Set(probes.filter((probe) => probe.available).map((probe) => probe.id));
+
+  return (features ?? []).map((feature) => {
+    const missing = feature.requires.filter((id) => !available.has(id));
+    return { feature, available: missing.length === 0, missing };
+  });
 }
 
 // ---------------------------------------------------------------------------

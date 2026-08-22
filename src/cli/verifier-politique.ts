@@ -1,3 +1,5 @@
+import { CONNECTEURS } from "@/connectors";
+import { verifierConfigurations } from "@/lib/configuration-connecteur";
 import { loadPolicy } from "@/lib/policy";
 
 /**
@@ -10,6 +12,11 @@ import { loadPolicy } from "@/lib/policy";
  */
 function resume(): string[] {
   const politique = loadPolicy();
+  const contrats = CONNECTEURS.map((connecteur) => connecteur.contract);
+
+  // C'est la seule commande qui tourne dans le depot de configuration, donc le
+  // seul « avant demarrage » qui existe reellement : aucun conteneur ne la lance.
+  verifierConfigurations(contrats);
 
   return [
     `incubateur          ${politique.scope.incubator}`,
@@ -24,6 +31,7 @@ function resume(): string[] {
     `collecte perimee    ${politique.thresholds.collectStaleHours} h`,
     `systemes            ${politique.systems.length}`,
     `derogations         ${politique.permanentDerogations.length}`,
+    `connecteurs regles  ${contrats.filter((contrat) => contrat.configSchema).length}`,
   ];
 }
 

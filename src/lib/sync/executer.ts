@@ -1,6 +1,7 @@
 import { CONNECTEURS } from "@/connectors";
 import { resolveCapability } from "@/core/connector";
 import { autoriseUneRevocation } from "@/core/rapprochement";
+import { verifierConfigurations } from "@/lib/configuration-connecteur";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { policy } from "@/lib/policy";
@@ -41,6 +42,7 @@ export async function executerSync(
   // étapes plus loin. Autant le dire ici : sans politique, il n'y a pas de collecte.
   try {
     policy();
+    verifierConfigurations(CONNECTEURS.map((connecteur) => connecteur.contract));
   } catch (error: unknown) {
     journal(`[sync] ${error instanceof Error ? error.message : String(error)}`);
     return { correlationId, echec: true };

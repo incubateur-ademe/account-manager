@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 
 import { z } from "zod";
 
+import { CONNECTEURS } from "@/connectors";
 import { accountsSchema, configSchema } from "@/core/policy";
 
 /**
@@ -19,13 +20,49 @@ const FICHIERS = [
   { nom: "config", titre: "Règles du gestionnaire de comptes", schema: configSchema },
 ] as const;
 
+/**
+ * Le noeud `connectors` du schéma Zod est un dictionnaire libre : il ne peut pas
+ * connaître les connecteurs sans les importer, et l'importerait alors dans le socle
+ * de politique. Ici, la commande a le droit de les voir, et la saisie assistée
+ * devient réelle au lieu de proposer un objet vide.
+ *
+ * `additionalProperties: false` fait refuser par l'éditeur ce que le démarrage refuse
+ * déjà : une clé qu'aucun connecteur ne porte.
+ */
+function composerConnecteurs(): Record<string, unknown> {
+  const configurables = CONNECTEURS.map((connecteur) => connecteur.contract).filter(
+    (contrat) => contrat.configSchema,
+  );
+
+  return {
+    type: "object",
+    description:
+      "Réglages propres à chaque connecteur, sous sa clé. Une clé qu'aucun connecteur ne porte fait refuser le démarrage.",
+    properties: Object.fromEntries(
+      configurables.map((contrat) => {
+        // Un `.transform()` ferait lever ici, sur une commande qui n'a aucun rapport
+        // apparent avec le connecteur fautif : le contrat l'interdit pour cette raison.
+        const { $schema: _dialecte, ...sousSchema } = z.toJSONSchema(
+          contrat.configSchema as z.ZodType,
+        );
+        return [contrat.key, sousSchema];
+      }),
+    ),
+    additionalProperties: false,
+  };
+}
+
 for (const { nom, titre, schema } of FICHIERS) {
   const destination = resolve(process.cwd(), `config/${nom}.schema.json`);
   const rendu = {
     $schema: "https://json-schema.org/draft/2020-12/schema",
     title: titre,
     ...z.toJSONSchema(schema),
-  };
+  } as { properties?: Record<string, unknown> };
+
+  if (nom === "config" && rendu.properties) {
+    rendu.properties["connectors"] = composerConnecteurs();
+  }
 
   writeFileSync(destination, `${JSON.stringify(rendu, null, 2)}\n`);
   console.log(`[politique] ${nom} : schéma écrit dans ${destination}`);

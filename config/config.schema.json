@@ -172,6 +172,39 @@
         "description": "Un système couvert par le catalogue."
       }
     },
+    "connectors": {
+      "type": "object",
+      "description": "Réglages propres à chaque connecteur, sous sa clé. Une clé qu'aucun connecteur ne porte fait refuser le démarrage.",
+      "properties": {
+        "github": {
+          "type": "object",
+          "properties": {
+            "organisations": {
+              "default": [
+                "incubateur-ademe"
+              ],
+              "description": "Organisations GitHub dont les comptes sont relevés. En retirer une fait disparaître les comptes qui n'y sont plus vus, et l'offboarding suivra.",
+              "examples": [
+                [
+                  "incubateur-ademe"
+                ]
+              ],
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "required": [
+            "organisations"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "permanentDerogations": {
       "default": [],
       "description": "Réservé : écarts admis pour de bon, qu'aucune collecte ne doit plus signaler. Aucun code ne le lit encore.",
@@ -239,6 +272,7 @@
     "startups",
     "thresholds",
     "systems",
+    "connectors",
     "permanentDerogations"
   ],
   "additionalProperties": false,

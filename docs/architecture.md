@@ -88,7 +88,7 @@ est distinct de l'ingestion du périmètre décrite en section 2.
 
 | Couche | Où | Contenu | Changement |
 |---|---|---|---|
-| Le déclaré | git, YAML validé par un schéma | Périmètre transverse, catalogue des systèmes, seuils, dérogations permanentes | quelques fois par an |
+| Le déclaré | git, YAML validé par un schéma | Périmètre transverse, catalogue des systèmes, seuils, dérogations permanentes, configuration des connecteurs | quelques fois par an |
 | Le constaté | PostgreSQL | Ce que les connecteurs ont lu, et ce qu'un humain a décidé | tous les jours |
 
 L'écart n'est pas une couche, c'est une fonction pure des deux autres.
@@ -234,6 +234,9 @@ saisie localement.
   `collectStaleHours`
 - `serviceAccounts[]` : allowlist des comptes non humains
 - `permanentDerogations[]` : `owner` et `reason` obligatoires
+- `connectors.<clé>` : réglages propres à chaque connecteur, dont le connecteur visé
+  décide la forme et qu'il valide lui-même. Une clé qu'aucun connecteur ne porte fait
+  refuser le démarrage, et rien de secret n'y a sa place
 
 Qui peut ouvrir l'outil n'est **pas** déclaré ici mais dans l'environnement, par
 `OPERATORS` et `BREAK_GLASS_USERNAMES` : cela relève du déploiement, change sans
@@ -488,6 +491,24 @@ interne n'a pas d'accès invité.
 
 Règle : si une fonctionnalité oblige à assouplir une règle du socle pour exister,
 c'est qu'elle relève de cette section.
+
+**Où cela vit.** Un connecteur a une page à lui sous `/systemes/<clé>`, atteignable
+depuis l'écran Systèmes, qui porte sa configuration et ses fonctionnalités. Elle
+n'existe que quand il a quelque chose à montrer : un écran, une configuration ou au
+moins une fonctionnalité déclarée. Sinon pas de lien, et l'adresse rend 404.
+L'`entrypoint` d'une `ConnectorFeature` désigne un segment sous cette page.
+
+**Deux registres, un seul sens d'import.** Le contrat déclare la fonctionnalité, qui
+est de la donnée pure et se résout contre les mêmes sondes que les capacités : la
+ligne de commande doit pouvoir dire qu'une fonctionnalité est indisponible sans
+charger le moindre composant. Le rendu passe par un registre d'interface, qui associe
+une clé de connecteur à un chargeur d'écran. `src/ui/` connaît `src/connectors/`,
+jamais l'inverse, et un test parcourt le graphe d'imports depuis les entrées en ligne
+de commande pour tenir la propriété.
+
+**Rien de spécifique dans les écrans génériques.** Le socle ne pose qu'un lien vers
+cette page. La seule exception envisagée est le tableau de bord, où un connecteur
+pourra poser des tuiles : c'est un chiffre, pas une fonctionnalité.
 
 ### 5.4 Interface d'exécution
 
