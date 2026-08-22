@@ -50,6 +50,10 @@ coderabbit auth status 2>&1
 Le flag `--agent` exige le CLI en v0.4.0 ou plus. Si la version est anterieure, demande a
 l'utilisateur de mettre a jour plutot que de retomber sur un flag obsolete.
 
+Les options bougent d'une version a l'autre, et un flag disparu fait echouer la commande avant
+d'avoir rien revu. En cas de doute, `coderabbit review --help` fait foi sur la version installee,
+pas ce document.
+
 Si le CLI n'est pas installe, dis a l'utilisateur :
 
 ```text
@@ -69,26 +73,42 @@ Utilise la portee de token la plus etroite possible.
 ## 2. Lancer la revue
 
 ```bash
-coderabbit review --agent
+coderabbit review --agent --base main
 ```
 
-Ou, pour un retour detaille avec suggestions de correction :
+`--agent` rend des constats structures, un objet JSON par ligne, avec severite, fichier et
+suggestion de correction. C'est la forme a preferer ici : elle se lit sans ambiguite et evite de
+reinterpreter de la prose.
 
-```bash
-coderabbit review --plain
-```
+Sans `--agent`, la sortie est du texte lisible par un humain. C'est le comportement **par defaut**
+depuis la 0.7 : le flag `--plain` qui le demandait explicitement a ete retire, et le passer fait
+echouer la commande avec `unknown option`.
 
 | Flag | Effet |
 |---|---|
-| `-t all` | tous les changements (defaut) |
-| `-t committed` | changements commites seulement |
-| `-t uncommitted` | changements non commites seulement |
-| `--base main` | comparaison a une branche |
-| `--base-commit <sha>` | comparaison a un commit |
-| `--agent` | sortie minimale, optimisee pour un agent |
-| `--plain` | sortie detaillee avec suggestions |
+| `--base <branche>` | comparaison a une branche, le plus utile sur une PR |
+| `--base-commit <sha>` | comparaison a un commit, pour ne revoir que ce qui a bouge depuis |
+| `--agent` | constats structures, un JSON par ligne |
+| `--committed` | changements commites seulement |
+| `--uncommitted` | changements indexes et modifications suivies |
+| `--include-untracked` | inclut les fichiers non ajoutes a Git |
+| `--light` | revue allegee, moins de contexte |
+| `--dir <chemin>` | restreint aux changements sous ce repertoire |
+| `--usage` | consommation de la periode en cours, sans lancer de revue |
+
+Sans aucun de ces trois derniers filtres, la revue porte sur les changements suivis, commites
+compris. Les anciennes formes `-t all`, `-t committed` et `-t uncommitted` n'existent plus.
 
 `cr` est un alias de `coderabbit`.
+
+**Le quota compte, et il ne se devine pas.** Deux choses distinctes s'affichent : le plan du compte
+authentifie, que donne `coderabbit auth status`, et le rattachement du depot a une organisation, qui
+decide seulement si la revue est facturee a cette organisation. Un depot non rattache ne dit rien du
+plan, et l'inverse non plus.
+
+`coderabbit usage` fait foi sur ce qui reste et sur la remise a zero. Consulte-le plutot que de
+supposer une allocation. Dans tous les cas, ne relance pas une revue complete pour verifier une
+correction d'une ligne : cible avec `--base-commit` ce qui a bouge depuis la derniere passe.
 
 ## 3. Presenter les resultats
 

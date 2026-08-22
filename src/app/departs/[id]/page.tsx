@@ -294,7 +294,12 @@ export default async function DepartPage({
                   ) : null}
                   {aide.deeplink ? (
                     <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-                      <a href={aide.deeplink} target="_blank" rel="noreferrer">
+                      <a
+                        href={aide.deeplink}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Ouvrir la page concernée, nouvelle fenêtre"
+                      >
                         Ouvrir la page concernée
                       </a>
                     </p>

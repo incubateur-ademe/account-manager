@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { assemblerOrganisation, collecter, type Lecteur, lireOrganisation } from "./github";
+import type { Intent, RunContext } from "@/core/connector";
+
+import {
+  assemblerOrganisation,
+  CONTRAT_GITHUB,
+  collecter,
+  creerGithub,
+  type Lecteur,
+  lireOrganisation,
+} from "./github";
 
 interface Reponses {
   membresAdmin?: unknown[];
@@ -17,10 +26,27 @@ interface Reponses {
  * lecture de l'assemblage.
  */
 function lecteur(reponses: Reponses): { lire: Lecteur; chemins: string[] } {
+  return lecteurDOrganisations({ "incubateur-ademe": reponses });
+}
+
+/**
+ * Le même lecteur, mais qui sait à quelle organisation on s'adresse : c'est ce qui
+ * rend observable qu'aucune organisation non déclarée n'est interrogée.
+ */
+function lecteurDOrganisations(parOrganisation: Record<string, Reponses>): {
+  lire: Lecteur;
+  chemins: string[];
+} {
   const chemins: string[] = [];
 
   const lire = (async <T>(chemin: string): Promise<T[]> => {
     chemins.push(chemin);
+
+    const organisation = chemin.split("/")[2] ?? "";
+    const reponses = parOrganisation[organisation];
+    if (!reponses) {
+      throw new Error("404 Not Found");
+    }
 
     if (chemin.includes("/members?role=admin")) {
       if (reponses.membresEnEchec) {
@@ -159,7 +185,7 @@ describe("ce que le connecteur GitHub remonte d'une organisation", () => {
       membresDEquipe: { "produit-alpha": [CAMILLE], "produit-beta": "echec" },
     });
 
-    const partiel = await collecter(lire);
+    const partiel = await collecter(lire, ["incubateur-ademe"]);
 
     expect(partiel.status).toBe("partial");
     expect(partiel.errors?.[0]?.itemRef).toBe("incubateur-ademe/produit-beta");
@@ -173,12 +199,13 @@ describe("ce que le connecteur GitHub remonte d'une organisation", () => {
 
     const sansListeDEquipes = await collecter(
       lecteur({ membres: [CAMILLE], equipes: "echec" }).lire,
+      ["incubateur-ademe"],
     );
 
     expect(sansListeDEquipes.status).toBe("partial");
     expect(sansListeDEquipes.status !== "failed" && sansListeDEquipes.grants).toHaveLength(1);
 
-    const rien = await collecter(lecteur({ membresEnEchec: true }).lire);
+    const rien = await collecter(lecteur({ membresEnEchec: true }).lire, ["incubateur-ademe"]);
 
     expect(rien.status).toBe("failed");
     expect(rien).not.toHaveProperty("identities");
@@ -220,5 +247,121 @@ describe("ce que le connecteur GitHub remonte d'une organisation", () => {
     await lireOrganisation("incubateur-ademe", uneDePlus.lire);
 
     expect(uneDePlus.chemins).toHaveLength(24);
+  });
+});
+
+const CONTEXTE: RunContext = {
+  runId: "collecte-de-test",
+  now: new Date("2026-08-22T00:00:00Z"),
+  dryRun: true,
+  audit: () => undefined,
+};
+
+const REVOCATION: Intent = {
+  kind: "revoke",
+  subject: { kind: "person", username: "camille.rivet" },
+};
+
+describe("les organisations que le connecteur GitHub suit sont celles qu'on lui déclare", () => {
+  it("n'interroge que les organisations déclarées, et rend les sièges de chacune", async () => {
+    const { lire, chemins } = lecteurDOrganisations({
+      "incubateur-ademe": {
+        membres: [CAMILLE],
+        equipes: [{ id: 10, name: "produit-alpha", slug: "produit-alpha" }],
+        membresDEquipe: { "produit-alpha": [CAMILLE] },
+      },
+      "autre-incubateur": { membres: [ALEX] },
+      "jamais-declaree": { membres: [{ id: 9, login: "intruse" }] },
+    });
+
+    const collecte = await collecter(lire, ["incubateur-ademe", "autre-incubateur"]);
+
+    expect(collecte.status).toBe("ok");
+    expect(collecte.errors).toBeUndefined();
+    expect(collecte.status !== "failed" && collecte.identities).toHaveLength(2);
+
+    expect(chemins.some((chemin) => chemin.includes("/orgs/jamais-declaree/"))).toBe(false);
+    expect(
+      chemins.every((chemin) => /^\/orgs\/(incubateur-ademe|autre-incubateur)\//.test(chemin)),
+    ).toBe(true);
+
+    const ressources =
+      collecte.status !== "failed"
+        ? collecte.resources.map((ressource) => ressource.externalId)
+        : [];
+    expect(ressources).toContain("incubateur-ademe");
+    expect(ressources).toContain("autre-incubateur");
+
+    expect(collecte.status !== "failed" && collecte.grants).toContainEqual({
+      identityExternalId: "2",
+      resourceExternalId: "autre-incubateur",
+      role: "member",
+    });
+  });
+
+  it("dégrade sur une organisation muette, et n'écrit rien quand toutes le sont", async () => {
+    const partielle = await collecter(
+      lecteurDOrganisations({
+        "incubateur-ademe": { membres: [CAMILLE] },
+        "autre-incubateur": { membresEnEchec: true },
+      }).lire,
+      ["incubateur-ademe", "autre-incubateur"],
+    );
+
+    expect(partielle.status).toBe("partial");
+    expect(partielle.errors?.map((erreur) => erreur.itemRef)).toContain("autre-incubateur");
+    expect(partielle.status !== "failed" && partielle.identities).toHaveLength(1);
+
+    // L'organisation restée lisible garde ses accès : une panne chez la voisine ne
+    // doit jamais faire passer ses membres pour partis.
+    expect(partielle.status !== "failed" && partielle.grants).toContainEqual({
+      identityExternalId: "1",
+      resourceExternalId: "incubateur-ademe",
+      role: "member",
+    });
+
+    const rien = await collecter(
+      lecteurDOrganisations({
+        "incubateur-ademe": { membresEnEchec: true },
+        "autre-incubateur": { membresEnEchec: true },
+      }).lire,
+      ["incubateur-ademe", "autre-incubateur"],
+    );
+
+    expect(rien.status).toBe("failed");
+    expect(rien).not.toHaveProperty("identities");
+    expect(rien.errors).toHaveLength(2);
+  });
+
+  it("refuse une liste vide et produit une étape de retrait par organisation", async () => {
+    const vide = CONTRAT_GITHUB.configSchema?.safeParse({ organisations: [] });
+    expect(vide?.success).toBe(false);
+
+    const inconnue = CONTRAT_GITHUB.configSchema?.safeParse({ organisation: ["incubateur-ademe"] });
+    expect(inconnue?.success).toBe(false);
+
+    // Ne rien déclarer revient exactement à déclarer le défaut : sans ça, le
+    // mécanisme de configuration éteindrait la collecte le jour de son arrivée.
+    const absente = CONTRAT_GITHUB.configSchema?.safeParse({});
+    expect(absente?.success && absente.data).toEqual({ organisations: ["incubateur-ademe"] });
+
+    const connecteur = creerGithub(() => ({
+      organisations: ["incubateur-ademe", "autre-incubateur"],
+    }));
+
+    const etapes = await connecteur.plan(REVOCATION, CONTEXTE);
+
+    expect(etapes).toHaveLength(2);
+    expect(etapes.map((etape) => etape.idempotencyKey)).toEqual([
+      "github:incubateur-ademe:revoke:camille.rivet",
+      "github:autre-incubateur:revoke:camille.rivet",
+    ]);
+    expect(etapes.every((etape) => etape.tier === "manual" && etape.riskLevel === "high")).toBe(
+      true,
+    );
+    expect(etapes[1]?.manual?.deeplink).toBe("https://github.com/orgs/autre-incubateur/people");
+
+    const octroi = await connecteur.plan({ ...REVOCATION, kind: "grant" }, CONTEXTE);
+    expect(octroi).toHaveLength(0);
   });
 });

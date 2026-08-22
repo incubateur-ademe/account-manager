@@ -50,6 +50,7 @@ export interface ConnectorFeature {
   key: string;
   label: string;
   requires: readonly string[];
+  /** Segment de route sous `/systemes/<key>/`, où l'écran de la fonctionnalité vit. */
   entrypoint: string;
 }
 
@@ -64,6 +65,18 @@ export interface ConnectorContract {
   capabilities: Partial<Record<Capability, NonEmptyArray<CapabilityDecl>>>;
   /** Valide les scopes de grant. Converti en JSON Schema par z.toJSONSchema pour générer les formulaires. */
   scopeSchema: z.ZodType;
+  /**
+   * Contrat de la clé `connectors.<key>` du fichier de politique. Absent quand le
+   * connecteur ne se règle pas, auquel cas y poser une entrée est un refus.
+   *
+   * Aucun secret : ce fichier est versionné dans un dépôt lisible, et la page du
+   * connecteur affiche la configuration résolue telle quelle. Les credentials
+   * restent dans l'environnement.
+   *
+   * Déclaratif, sans `.transform()` : `z.toJSONSchema` lève dessus, et la saisie
+   * assistée du fichier de politique en dérive.
+   */
+  configSchema?: z.ZodType;
   /** Fonctionnalités hors socle, qui ne passent ni par Person ni par AccessGrant. */
   features?: readonly ConnectorFeature[];
 }
@@ -114,6 +127,33 @@ export function resolveCapability(
     runbook: contractRunbook,
     ...(best ? degradation(best) : {}),
   };
+}
+
+export interface ResolvedFeature {
+  feature: ConnectorFeature;
+  available: boolean;
+  /** Credentials qui manquent. Vide quand la fonctionnalité est praticable. */
+  missing: readonly string[];
+}
+
+/**
+ * Même règle que pour les capacités : ce qui est indisponible se dit, il ne se cache
+ * pas. Une fonctionnalité qu'on masque faute de credential laisse croire qu'elle
+ * n'existe pas, là où elle attend seulement un secret.
+ *
+ * De la donnée pure, sans le moindre composant : la ligne de commande doit pouvoir
+ * dire qu'une fonctionnalité est indisponible sans charger d'interface.
+ */
+export function resolveFeatures(
+  features: readonly ConnectorFeature[] | undefined,
+  probes: readonly CredentialProbe[],
+): readonly ResolvedFeature[] {
+  const available = new Set(probes.filter((probe) => probe.available).map((probe) => probe.id));
+
+  return (features ?? []).map((feature) => {
+    const missing = feature.requires.filter((id) => !available.has(id));
+    return { feature, available: missing.length === 0, missing };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -230,10 +270,35 @@ export interface RunContext {
   audit: (event: AuditInput) => void;
 }
 
+/**
+ * Ce qu'un connecteur constate du système distant avant de le lire, et qui n'est ni
+ * un credential ni un compte : la forme de la réponse.
+ */
+export interface Diagnosis {
+  /** Vide quand tout est conforme. Non vide, la lecture n'a pas lieu. */
+  findings: readonly CollectError[];
+}
+
 export interface Connector {
   readonly contract: ConnectorContract;
 
   probe: () => Promise<readonly CredentialProbe[]>;
+
+  /**
+   * Ausculte le système distant avant de le lire, et décide si la lecture a lieu.
+   *
+   * Une collecte ne voit que ce qui la casse : un champ requis qui disparaît fait
+   * écarter les fiches, donc rend un run non `ok`, donc n'efface personne. Un champ
+   * facultatif qui disparaît, lui, ne casse rien et dérive en silence, en laissant
+   * pour seul signe des rattachements qui cessent lentement de se faire.
+   *
+   * Chaque connecteur choisit donc à sa conception : porter un diagnostic quand ce
+   * qu'il lit est trop peu spécifié pour se fier au hasard, ou laisser la collecte
+   * échouer d'elle-même quand elle suffit. Un diagnostic qui rapporte quoi que ce
+   * soit interdit la lecture plutôt que de la laisser conclure sur une forme dont on
+   * ne sait plus ce qu'elle veut dire.
+   */
+  diagnose?: (ctx: RunContext) => Promise<Diagnosis>;
 
   list?: (ctx: RunContext) => Promise<CollectResult>;
 

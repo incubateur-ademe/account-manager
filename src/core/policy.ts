@@ -335,6 +335,15 @@ export const configSchema = z
         ],
       }),
 
+    connectors: z
+      .record(z.string(), z.unknown())
+      .default({})
+      .meta({
+        description:
+          "Réglages propres à chaque connecteur, sous sa clé. La forme de chaque valeur est décidée par le connecteur visé et validée par lui : une clé qu'aucun connecteur ne porte est refusée. Rien de secret n'y a sa place, ce fichier est versionné et son contenu s'affiche dans l'interface.",
+        examples: [{ github: { organisations: ["mon-organisation"] } }],
+      }),
+
     permanentDerogations: z
       .array(derogationSchema)
       .default([])

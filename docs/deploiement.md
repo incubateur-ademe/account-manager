@@ -401,6 +401,7 @@ ressource Coolify :
 | `OPERATORS` | usernames beta.gouv, séparés par des virgules |
 | `BREAK_GLASS_USERNAMES` | usernames de secours |
 | `GITHUB_TOKEN` | jeton fine-grained, organisation `incubateur-ademe`, lecture seule |
+| `NOTION_SCIM_TOKEN` | jeton SCIM du workspace Notion, nominatif, sans portée restreinte |
 
 `NODE_ENV`, `PORT` et `HOSTNAME` sont posés par l'image, ne pas les redéfinir.
 `ESPACE_MEMBRE_URL` a une valeur par défaut correcte.
