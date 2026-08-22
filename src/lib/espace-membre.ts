@@ -15,11 +15,19 @@ export class EspaceMembreError extends Error {
   }
 }
 
+/**
+ * `fetch` n'a aucun délai par défaut, et sans borne une réponse qui ne vient jamais
+ * gèlerait la collecte avant même qu'elle n'atteigne le moindre connecteur. Plus large
+ * qu'ailleurs parce que le périmètre arrive en un seul appel, qui ramène tout.
+ */
+const DELAI_MS = 30_000;
+
 async function get(path: string): Promise<unknown> {
   let response: Response;
   try {
     response = await fetch(`${env.ESPACE_MEMBRE_URL}${path}`, {
       headers: { "X-Api-Key": env.ESPACE_MEMBRE_API_KEY, accept: "application/json" },
+      signal: AbortSignal.timeout(DELAI_MS),
     });
   } catch (cause: unknown) {
     throw new EspaceMembreError(path, null, cause instanceof Error ? cause.message : String(cause));

@@ -41,6 +41,13 @@ export type ConfigGithub = z.infer<typeof CONFIG>;
 const CREDENTIAL = "github-token";
 const API = "https://api.github.com";
 
+/**
+ * `fetch` n'a aucun délai par défaut. Une réponse qui ne vient jamais gèlerait la
+ * collecte entière, qui tourne la nuit sans personne pour la relancer, et cette
+ * lecture-ci enchaîne une requête par équipe : une seule suffirait à tout bloquer.
+ */
+const DELAI_MS = 15_000;
+
 const RUNBOOK =
   "Retirer la personne dans Settings > People de l'organisation, puis vérifier qu'elle ne figure plus dans la liste des membres ni dans les invitations en attente.";
 
@@ -134,6 +141,7 @@ async function lireTout<T>(chemin: string): Promise<T[]> {
           accept: "application/vnd.github+json",
           "x-github-api-version": "2022-11-28",
         },
+        signal: AbortSignal.timeout(DELAI_MS),
       });
     } catch (cause: unknown) {
       throw new GithubError(chemin, cause instanceof Error ? cause.message : String(cause));
