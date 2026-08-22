@@ -23,3 +23,7 @@ coverage/
 # vit hors de ce depot. Seuls les modeles et les schemas sont versionnes ici.
 config/*.yaml
 !config/*.exemple.yaml
+
+# Choix de worktree et permissions inter-worktree, propres a une machine.
+.claude/.worktree-monitor-root
+.claude/.worktree-monitor-permissions
