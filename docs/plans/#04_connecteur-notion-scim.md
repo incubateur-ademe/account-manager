@@ -514,14 +514,30 @@ où il déclarerait une fonctionnalité hors socle, pas une page livrée ici.
 
 Fichier : `src/connectors/notion.test.ts`. Détail des scénarios en section suivante.
 
-### 7. Le test de contrat et son déclenchement quotidien
+### 7. Le test de contrat, sans déclencheur automatique
 
-Fichiers : `src/connectors/notion.contrat.test.ts`, `.github/workflows/` (un second workflow, sur
-`schedule`).
+Fichier : `src/connectors/notion.contrat.test.ts`, et lui seul.
 
 Le test lit `process.env` directement, jamais `env` : passer par le schéma exigerait une base de
 données pour vérifier la forme d'une réponse distante. Il s'ignore proprement quand le jeton manque,
 de sorte que `pnpm test` reste exécutable sans secret, en local comme sur une contribution externe.
+
+**Aucun déclencheur automatique, et c'est une décision.** Une première version posait un workflow
+`schedule` sur GitHub. Elle exigeait de confier à un dépôt **public** un jeton nominatif, sans
+portée, capable de retirer un membre du workspace et de le déconnecter de ses sessions : une surface
+d'attaque disproportionnée pour une vérification de forme, exfiltrable par quiconque peut pousser un
+workflow. Le déplacer vers la production ne règle rien de mieux : une suite de tests ne s'exécute pas
+dans un environnement d'exécution, et l'image y vide de toute façon ses `devDependencies`.
+
+Le test se lance donc à la main, par quelqu'un qui détient déjà le jeton, quand il en a besoin :
+avant une mise en service, ou quand une collecte se met à rendre `partial` sans raison apparente.
+
+Ce qui reste découvert, et qu'il faut nommer : la collecte détecte d'elle-même la disparition d'un
+champ **requis**, puisque le schéma écarte alors les fiches et refuse de conclure. Elle ne voit pas
+celle d'un champ **facultatif**. Si `emails` disparaissait, les comptes déjà rattachés le
+resteraient, les nouveaux tomberaient en file manuelle, et le seul signe serait une hausse
+inexpliquée des comptes isolés. C'est le trou que le déclencheur quotidien devait fermer ; il reste
+ouvert, et le fermer autrement relève d'un autre ticket.
 
 **C'est l'étape la plus importante de ce ticket, et l'étape 1 en a fait la démonstration.** Notion ne
 publie ni schéma OpenAPI, ni changelog, ni le moindre exemple de corps de réponse pour SCIM : la
@@ -661,11 +677,11 @@ documentation l'écrit. Le runbook doit le mentionner, sinon un opérateur coche
 étape que rien ne peut accomplir. Le retrait de cette personne-là passera toujours par l'interface,
 et révoquera au passage le jeton qu'elle avait créé.
 
-**Le déclencheur quotidien du test de contrat peut mourir sans bruit.** Un workflow `schedule`
-GitHub se désactive après soixante jours sans activité du dépôt, ce qui est le motif pour lequel
-`docs/architecture.md` §1.1 l'écarte pour la collecte. Le risque est ici accepté et nommé : un test
-de contrat qui cesse de tourner ne coupe l'accès de personne, contrairement à une collecte. Il
-tourne aussi en intégration continue sur chaque contribution quand le secret est disponible.
+**Le test de contrat ne tourne que si quelqu'un le lance.** C'est le prix de la décision de
+l'étape 7, et il faut le regarder en face plutôt que de s'en remettre à la bonne volonté : un
+contrôle qui dépend d'un geste humain n'a lieu que le jour où l'on soupçonne déjà quelque chose.
+Il reste que confier un jeton d'administration à un runner, sur un dépôt public ou dans un
+conteneur de production, coûtait plus cher que ce qu'il protégeait.
 
 **L'invariant du journal avant l'action est respecté par construction, et pas par chance.** Ce
 connecteur n'écrit sur aucun système tiers : la seule trace le concernant est celle que le socle
