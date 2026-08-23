@@ -3,10 +3,12 @@ import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import { Table } from "@codegouvfr/react-dsfr/Table";
 
+import { blocagesInstalles } from "@/core/collecte";
 import { prisma } from "@/lib/db";
 import { requireOperateur } from "@/lib/session";
 import { collecteEnCours } from "@/lib/sync/executer";
 import { BoutonCollecte } from "./BoutonCollecte";
+import { GardeFouBloque } from "./GardeFouBloque";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +70,11 @@ export default async function CollectesPage() {
     collecteEnCours(maintenant),
   ]);
 
+  // Sur les runs relus ci-dessus, du plus récent au plus ancien : un garde-fou qui
+  // refuse toujours la même chose ne se lit pas dans une ligne de journal parmi
+  // soixante, il se dit en tête d'écran.
+  const blocages = blocagesInstalles(runs);
+
   return (
     <main className={fr.cx("fr-container", "fr-my-6w")}>
       <h1>Collectes</h1>
@@ -77,6 +84,10 @@ export default async function CollectesPage() {
         constats. Elle ne modifie aucun accès. Le traitement quotidien la lance chaque nuit ; ce
         bouton sert quand on ne veut pas attendre la nuit.
       </p>
+
+      {blocages.map((blocage) => (
+        <GardeFouBloque key={`${blocage.provider}:${blocage.famille}`} blocage={blocage} />
+      ))}
 
       {enCours ? (
         <Alert

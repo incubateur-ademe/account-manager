@@ -5,7 +5,8 @@ import { randomUUID } from "node:crypto";
 import { after } from "next/server";
 
 import { actionTracee } from "@/lib/actions";
-import { deconnecter } from "@/lib/db";
+import { deconnecter, prisma } from "@/lib/db";
+import { requireOperateur } from "@/lib/session";
 import { collecteEnCours, executerSync } from "@/lib/sync/executer";
 
 export interface EtatLancement {
@@ -73,4 +74,66 @@ export async function lancerCollecte(): Promise<EtatLancement> {
   });
 
   return { message: "Collecte lancée. Rafraîchissez dans une minute." };
+}
+
+export type EtatAutorisation = { erreur: string } | null;
+
+/**
+ * Lève une fois le garde-fou de chute pour un fournisseur.
+ *
+ * Le garde-fou refuse de dater des disparitions quand une collecte perd une part
+ * excessive de ce qu'elle connaissait, et il a raison : sans lui, une lecture qui
+ * échoue à moitié ferait disparaître des gens. Mais quand la chute vient de données
+ * que ce refus empêche justement de nettoyer, il se maintient lui-même et plus aucune
+ * disparition n'est jamais datée pour ce système.
+ *
+ * L'autorisation ne vaut que pour un passage, et elle est nominative : c'est une
+ * décision, pas un réglage. Rien n'est écrit ici sur les accès eux-mêmes, c'est la
+ * prochaine collecte qui conclura, avec ce que ses propres yeux auront vu.
+ */
+export async function autoriserDatation(
+  _etat: EtatAutorisation,
+  formData: FormData,
+): Promise<EtatAutorisation> {
+  await requireOperateur();
+
+  const provider = String(formData.get("provider") ?? "").trim();
+  const famille = String(formData.get("famille") ?? "").trim();
+  const raison = String(formData.get("raison") ?? "").trim();
+
+  if (famille !== "identites" && famille !== "ressources") {
+    return { erreur: "Famille de garde-fou non reconnue." };
+  }
+  if (!provider) {
+    return { erreur: "Système introuvable." };
+  }
+  if (raison.length < 3) {
+    return {
+      erreur:
+        "Indiquez pourquoi cette chute est légitime : lever un garde-fou sans motif est une décision qu'on ne saura pas réexaminer.",
+    };
+  }
+
+  const dejaPosee = await prisma.scopeDropOverride.findFirst({
+    where: { provider, famille, consumedAt: null },
+    select: { id: true },
+  });
+  if (dejaPosee) {
+    return { erreur: "Une autorisation attend déjà la prochaine collecte pour ce système." };
+  }
+
+  await actionTracee({
+    action: "sync.gardefou.autorise",
+    targetType: "system",
+    targetId: provider,
+    after: { famille, raison },
+    revalider: ["/collectes"],
+    ecrire: async (operateur) => {
+      await prisma.scopeDropOverride.create({
+        data: { provider, famille, reason: raison, createdBy: operateur.username },
+      });
+    },
+  });
+
+  return null;
 }

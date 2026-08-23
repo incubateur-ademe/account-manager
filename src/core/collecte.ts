@@ -157,3 +157,148 @@ export function systemesMuets(
 
   return muets;
 }
+
+/**
+ * Ce qu'un garde-fou de chute a refusé de dater, dit assez précisément pour qu'un
+ * passage suivant reconnaisse le même refus.
+ *
+ * Deux familles, deux verrous distincts. Une chute des identités interdit de conclure
+ * sur qui a disparu, et donc aussi sur les accès qui en dépendent. Une chute des
+ * ressources n'interdit que les accès : qu'un connecteur cesse d'émettre une famille
+ * de ressources ne dit rien de la personne dont la fiche vient de s'éteindre.
+ */
+export type FamilleDeChute = "identites" | "ressources";
+
+export interface RefusDeDatation {
+  famille: FamilleDeChute;
+  observe: number;
+  reference: number;
+}
+
+/**
+ * Un garde-fou qui refuse la même chose, avec les mêmes nombres, passage après
+ * passage, ne décrit plus un incident : il décrit un état, et un état que son propre
+ * refus entretient. Les données périmées déclenchent le garde-fou, qui empêche de les
+ * nettoyer, qui les maintient périmées.
+ *
+ * Compter les répétitions est ce qui permet de le dire. Sans ce compte, la ligne de
+ * journal ressemble à un avertissement passager alors qu'elle annonce un blocage
+ * définitif, et un opérateur qui lit le même avertissement tous les jours cesse de le
+ * lire.
+ */
+export function refusRepete(
+  refus: RefusDeDatation,
+  precedents: readonly (RefusDeDatation | null)[],
+): number {
+  let repetitions = 1;
+
+  for (const precedent of precedents) {
+    if (
+      precedent === null ||
+      precedent.famille !== refus.famille ||
+      precedent.observe !== refus.observe ||
+      precedent.reference !== refus.reference
+    ) {
+      return repetitions;
+    }
+    repetitions += 1;
+  }
+
+  return repetitions;
+}
+
+/**
+ * En deçà, on ne sait pas encore : une collecte peut échouer deux fois de suite pour
+ * une raison qui passera. Au delà, le doute n'est plus raisonnable, et c'est à
+ * l'écran de le dire plutôt qu'à l'opérateur de le déduire d'une ligne de journal
+ * qu'il relit chaque matin.
+ */
+export const REPETITIONS_AVANT_BLOCAGE = 3;
+
+export function chuteInstallee(repetitions: number): boolean {
+  return repetitions >= REPETITIONS_AVANT_BLOCAGE;
+}
+
+/**
+ * Le refus qu'une trace de run porte pour une famille donnée, s'il y en a un.
+ *
+ * La trace est du JSON libre côté base : la lire ici plutôt que chez chaque appelant
+ * évite que l'écran et la collecte ne s'accordent plus sur ce qu'ils y cherchent.
+ */
+export function refusDeLaTrace(error: unknown, famille: FamilleDeChute): RefusDeDatation | null {
+  if (!error || typeof error !== "object" || !("refus" in error)) {
+    return null;
+  }
+
+  const brut = (error as { refus: unknown }).refus;
+  if (!Array.isArray(brut)) {
+    return null;
+  }
+
+  for (const entree of brut) {
+    if (
+      entree &&
+      typeof entree === "object" &&
+      (entree as RefusDeDatation).famille === famille &&
+      typeof (entree as RefusDeDatation).observe === "number" &&
+      typeof (entree as RefusDeDatation).reference === "number"
+    ) {
+      return entree as RefusDeDatation;
+    }
+  }
+
+  return null;
+}
+
+export interface TraceDeRun {
+  provider: string;
+  error: unknown;
+}
+
+export interface BlocageInstalle extends RefusDeDatation {
+  provider: string;
+  repetitions: number;
+}
+
+const FAMILLES: readonly FamilleDeChute[] = ["identites", "ressources"];
+
+/**
+ * Les garde-fous qui refusent la même chose depuis assez de passages pour qu'on cesse
+ * de parler d'incident.
+ *
+ * L'écran en a besoin parce que le journal seul ne suffit pas : la ligne qui annonce
+ * un blocage définitif ressemble mot pour mot à celle qui annonce un incident
+ * passager, et c'est ainsi qu'un opérateur finit par ne plus la lire.
+ *
+ * Les runs arrivent du plus récent au plus ancien, toutes capacités de lecture
+ * confondues par fournisseur.
+ */
+export function blocagesInstalles(runs: readonly TraceDeRun[]): BlocageInstalle[] {
+  const parProvider = new Map<string, TraceDeRun[]>();
+  for (const run of runs) {
+    const liste = parProvider.get(run.provider) ?? [];
+    liste.push(run);
+    parProvider.set(run.provider, liste);
+  }
+
+  const blocages: BlocageInstalle[] = [];
+
+  for (const [provider, liste] of parProvider) {
+    for (const famille of FAMILLES) {
+      const refus = liste.map((run) => refusDeLaTrace(run.error, famille));
+      const dernier = refus[0];
+      if (!dernier) {
+        continue;
+      }
+
+      const repetitions = refusRepete(dernier, refus.slice(1));
+      if (chuteInstallee(repetitions)) {
+        blocages.push({ ...dernier, provider, repetitions });
+      }
+    }
+  }
+
+  return blocages.sort(
+    (a, b) => a.provider.localeCompare(b.provider, "fr") || a.famille.localeCompare(b.famille),
+  );
+}
