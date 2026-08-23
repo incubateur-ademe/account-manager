@@ -9,6 +9,7 @@ import { peremptionDuPlan } from "@/core/plan";
 import { prisma } from "@/lib/db";
 import { calculerPlanDeDepart } from "@/lib/depart";
 import { requireOperateur } from "@/lib/session";
+import { dateFr } from "@/ui/dates";
 import {
   BoutonAnnuler,
   BoutonClore,
@@ -19,7 +20,13 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const dateFr = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long" });
+/**
+ * Sans fuseau, donc dans celui du lecteur, et c'est ce qu'il faut pour un horodatage :
+ * un plan confirmé à minuit et demi s'est bien confirmé ce jour-là pour qui l'a fait.
+ * Une échéance, elle, est une date sans heure côté base, que ce formateur reculerait
+ * d'un jour la moitié de l'année : elle passe par `dateFr`, en UTC.
+ */
+const dateLocale = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long" });
 
 const TIER: Record<string, { libelle: string; severite: "success" | "warning" | "info" }> = {
   auto: { libelle: "automatique", severite: "success" },
@@ -142,7 +149,7 @@ export default async function DepartPage({
       <p className={fr.cx("fr-text--sm")}>
         <Link href={`/personnes/${dossier.person.username}`}>{dossier.person.username}</Link>
         {", ouvert le "}
-        {dateFr.format(dossier.firstSignalAt)}
+        {dateLocale.format(dossier.firstSignalAt)}
         {dossier.effectiveDate ? `, fin de mission au ${dateFr.format(dossier.effectiveDate)}` : ""}
       </p>
 
@@ -191,8 +198,8 @@ export default async function DepartPage({
           description={
             <>
               <p className={fr.cx("fr-mb-1w")}>
-                Il valait jusqu'au {dateFr.format(plan?.expiresAt ?? maintenant)}. Ce qu'il décrit a
-                été constaté avant cette date.
+                Il valait jusqu'au {dateLocale.format(plan?.expiresAt ?? maintenant)}. Ce qu'il
+                décrit a été constaté avant cette date.
               </p>
               {plan && !etat.obsolete ? <BoutonRecalculer planId={plan.id} /> : null}
             </>
@@ -316,7 +323,7 @@ export default async function DepartPage({
                   ) : null}
                   {etape.executedAt ? (
                     <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-                      Pointée le {dateFr.format(etape.executedAt)}.
+                      Pointée le {dateLocale.format(etape.executedAt)}.
                     </p>
                   ) : null}
                   {pointable ? <Pointage etapeId={etape.id} faite={soldee} /> : null}
@@ -372,12 +379,12 @@ export default async function DepartPage({
 
       {plan ? (
         <p className={fr.cx("fr-text--sm", "fr-mt-3w")}>
-          Plan calculé le {dateFr.format(plan.createdAt)} par {plan.createdBy}
+          Plan calculé le {dateLocale.format(plan.createdAt)} par {plan.createdBy}
           {plan.confirmedBy
-            ? `, confirmé le ${dateFr.format(plan.confirmedAt ?? maintenant)} par ${plan.confirmedBy}`
+            ? `, confirmé le ${dateLocale.format(plan.confirmedAt ?? maintenant)} par ${plan.confirmedBy}`
             : annule || remplace || etat?.perime
               ? ""
-              : `, valable jusqu'au ${dateFr.format(plan.expiresAt)}`}
+              : `, valable jusqu'au ${dateLocale.format(plan.expiresAt)}`}
           .
         </p>
       ) : null}
