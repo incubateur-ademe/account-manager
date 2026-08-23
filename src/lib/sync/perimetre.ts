@@ -1,5 +1,5 @@
 import type { Attachment } from "@/core/appartenance";
-import { chuteExcessive } from "@/core/collecte";
+import { chuteExcessive, FOURNISSEUR_PERIMETRE } from "@/core/collecte";
 import {
   emailDeContact,
   type MembreDetaille,
@@ -109,7 +109,7 @@ export async function syncPerimetre(
   correlationId: string,
 ): Promise<PerimetreSyncResult> {
   const run = await prisma.syncRun.create({
-    data: { provider: "espace-membre", capability: "list", status: "FAILED", startedAt: now },
+    data: { provider: FOURNISSEUR_PERIMETRE, capability: "list", status: "FAILED", startedAt: now },
   });
 
   const errors: string[] = [];
@@ -338,7 +338,7 @@ export async function syncPerimetre(
 
 async function dernierPerimetreComplet(): Promise<number> {
   const dernier = await prisma.syncRun.findFirst({
-    where: { provider: "espace-membre", capability: "list", status: "OK" },
+    where: { provider: FOURNISSEUR_PERIMETRE, capability: "list", status: "OK" },
     orderBy: { startedAt: "desc" },
     select: { itemsSeen: true },
   });
