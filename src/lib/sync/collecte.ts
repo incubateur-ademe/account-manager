@@ -387,17 +387,25 @@ export async function executerCollecte(
         } as const)
       : null;
 
-    const leveIdentites =
-      chuteIdentites && (await consommerAutorisation(provider, chuteIdentites, run.id));
-    const leveRessources =
-      chuteRessources && (await consommerAutorisation(provider, chuteRessources, run.id));
-
     // Deux verrous distincts, et c'est le point. Une chute des identités interdit de
     // conclure sur qui a disparu, donc aussi sur les accès qui en dépendent. Une chute
     // des ressources n'interdit que les accès : qu'un connecteur cesse d'émettre une
     // famille de ressources ne dit rien de la personne dont la fiche vient de
     // s'éteindre, et les coupler laissait la seconde geler la première.
+    const leveIdentites = chuteIdentites
+      ? await consommerAutorisation(provider, chuteIdentites, run)
+      : false;
     const daterIdentites = chuteIdentites === null || leveIdentites;
+
+    // Le sort des identités d'abord, et seulement ensuite celui des ressources : une
+    // autorisation consommée pendant qu'un verrou en amont tient encore serait perdue
+    // sans rien dater, ferait écrire au journal qu'on a autorisé ce qui n'a pas eu
+    // lieu, et retirerait ce refus de la trace du run, si bien que le passage suivant
+    // repartirait de zéro et cesserait d'annoncer un blocage qui dure.
+    const leveRessources =
+      daterIdentites && chuteRessources
+        ? await consommerAutorisation(provider, chuteRessources, run)
+        : false;
     const daterAcces = daterIdentites && (chuteRessources === null || leveRessources);
 
     for (const [chute, leve] of [
@@ -510,23 +518,36 @@ async function messageDeChute(
 async function consommerAutorisation(
   provider: string,
   chute: RefusDeDatation,
-  runId: string,
+  run: { id: string; startedAt: Date },
 ): Promise<boolean> {
+  // Posée avant que ce passage ne commence, sinon elle vaut pour le suivant : l'écran
+  // promet d'autoriser la prochaine collecte, et un opérateur qui clique pendant qu'une
+  // collecte tourne décide sur un état que cette collecte a déjà cessé de lire.
+  const attendues = {
+    provider,
+    famille: chute.famille,
+    consumedAt: null,
+    createdAt: { lt: run.startedAt },
+  };
+
   const autorisation = await prisma.scopeDropOverride.findFirst({
-    where: { provider, famille: chute.famille, consumedAt: null },
+    where: attendues,
     orderBy: { createdAt: "asc" },
-    select: { id: true, reason: true, createdBy: true },
+    select: { reason: true, createdBy: true },
   });
 
   if (!autorisation) {
     return false;
   }
 
-  // Conditionné sur `consumedAt` encore nul : deux collectes concurrentes ne doivent
-  // pas se partager la même autorisation.
+  // Toutes celles qui attendent, et pas seulement la première : rien en base n'empêche
+  // deux créations concurrentes pour le même couple, et en laisser une derrière
+  // lèverait le garde-fou une seconde fois au passage d'après. Conditionné sur
+  // `consumedAt` encore nul pour que deux collectes concurrentes ne se les partagent
+  // pas.
   const pris = await prisma.scopeDropOverride.updateMany({
-    where: { id: autorisation.id, consumedAt: null },
-    data: { consumedAt: new Date(), consumedRunId: runId },
+    where: attendues,
+    data: { consumedAt: new Date(), consumedRunId: run.id },
   });
 
   if (pris.count === 0) {

@@ -209,7 +209,7 @@ export function refusRepete(
 
 /**
  * En deçà, on ne sait pas encore : une collecte peut échouer deux fois de suite pour
- * une raison qui passera. Au delà, le doute n'est plus raisonnable, et c'est à
+ * une raison qui passera. Au-delà, le doute n'est plus raisonnable, et c'est à
  * l'écran de le dire plutôt qu'à l'opérateur de le déduire d'une ligne de journal
  * qu'il relit chaque matin.
  */
