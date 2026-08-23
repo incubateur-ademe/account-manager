@@ -9,7 +9,7 @@ import {
   type PersonneConstatable,
   verrousDeCloture,
 } from "@/core/constat";
-import type { FindingKind, RiskLevel } from "@/generated/prisma/enums";
+import type { FindingKind } from "@/generated/prisma/enums";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import type { IncubatorStartup } from "@/lib/espace-membre";
@@ -162,7 +162,7 @@ export async function syncConstats(
       where: { dedupKey: constat.dedupKey },
       update: {
         kind: constat.kind as FindingKind,
-        severity: constat.severity as RiskLevel,
+        severity: constat.severity,
         personId: personne?.id ?? null,
         externalIdentityId: constat.identiteId ?? null,
         openedAt: now,
@@ -172,7 +172,7 @@ export async function syncConstats(
       create: {
         kind: constat.kind as FindingKind,
         dedupKey: constat.dedupKey,
-        severity: constat.severity as RiskLevel,
+        severity: constat.severity,
         personId: personne?.id ?? null,
         externalIdentityId: constat.identiteId ?? null,
         openedAt: now,

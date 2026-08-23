@@ -4,16 +4,14 @@ import type { Metadata } from "next";
 import { type SuggestionRattachement, suggererRattachements } from "@/core/suggestion-rattachement";
 import { prisma } from "@/lib/db";
 import { requireOperateur } from "@/lib/session";
-
 import type { Suggestion } from "@/ui/ChampAvecListe";
+import { dateFr } from "@/ui/dates";
 
 import { FileDesComptesIsoles, type LigneCompteIsole } from "./FileDesComptesIsoles";
 
 export const metadata: Metadata = { title: "Comptes isolés" };
 
 export const dynamic = "force-dynamic";
-
-const dateFr = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "UTC" });
 
 /**
  * Ce que le connecteur a écrit, relu sans confiance : la colonne est libre, et une

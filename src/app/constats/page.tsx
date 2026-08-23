@@ -5,14 +5,13 @@ import type { ConstatKind } from "@/core/constat";
 import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
 import { prisma } from "@/lib/db";
 import { requireOperateur } from "@/lib/session";
+import { dateFr } from "@/ui/dates";
 
 import { FileDesConstats, type LigneConstat } from "./FileDesConstats";
 
 export const metadata: Metadata = { title: "Constats" };
 
 export const dynamic = "force-dynamic";
-
-const dateFr = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "UTC" });
 
 export default async function ConstatsPage({
   searchParams,

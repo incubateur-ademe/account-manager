@@ -7,6 +7,7 @@ import { type EtatRevue, LIBELLE_REVUE, revueDe } from "@/core/revue";
 import { prisma } from "@/lib/db";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
+import { dateFr } from "@/ui/dates";
 
 import { BoutonRevue } from "./BoutonRevue";
 
@@ -21,8 +22,6 @@ const SEVERITE: Record<EtatRevue, "success" | "warning" | "error"> = {
 };
 
 const ORDRE: Record<EtatRevue, number> = { EN_RETARD: 0, BIENTOT: 1, A_JOUR: 2 };
-
-const dateFr = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "UTC" });
 
 export default async function ComptesDeServicePage() {
   await requireOperateur();

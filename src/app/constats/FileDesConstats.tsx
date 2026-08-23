@@ -6,8 +6,10 @@ import { Button } from "@codegouvfr/react-dsfr/Button";
 import { createModal } from "@codegouvfr/react-dsfr/Modal";
 import Link from "next/link";
 import { useState } from "react";
+import type { RiskLevel } from "@/generated/prisma/enums";
 import styleActions from "@/ui/Actions.module.css";
 import { Aide } from "@/ui/Aide";
+import { LIBELLE_SEVERITE, SEVERITE_CONSTAT } from "@/ui/severites";
 import { TableCustom } from "@/ui/TableCustom";
 import style from "@/ui/TableCustom.module.css";
 
@@ -20,14 +22,11 @@ export interface LigneConstat {
   /** Ce que le calcul a constaté, pour que la modale n'oblige pas à le deviner. */
   explication: string;
   action: string;
-  severity: "HIGH" | "MEDIUM" | "LOW";
+  severity: RiskLevel;
   ouvertLe: string;
   personne: { username: string; fullname: string } | null;
   compte: { provider: string; handle: string } | null;
 }
-
-const SEVERITE = { HIGH: "error", MEDIUM: "warning", LOW: "info" } as const;
-const LIBELLE_SEVERITE = { HIGH: "Haute", MEDIUM: "Moyenne", LOW: "Basse" } as const;
 
 const modale = createModal({ id: "clore-constat", isOpenedByDefault: false });
 
@@ -67,7 +66,7 @@ export function FileDesConstats({
           row: [
             {
               children: (
-                <Badge severity={SEVERITE[ligne.severity]} noIcon>
+                <Badge severity={SEVERITE_CONSTAT[ligne.severity]} noIcon>
                   {LIBELLE_SEVERITE[ligne.severity]}
                 </Badge>
               ),

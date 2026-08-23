@@ -6,7 +6,13 @@ import { useActionState } from "react";
 
 import { type EtatRattachementStartup, retirerRattachement } from "./actions";
 
-export function RetirerRattachement({ id, startup }: { id: string; startup: string }) {
+/**
+ * `cible` nomme ce que la ligne montre, et change de sens d'un écran à l'autre : la
+ * startup sur la fiche d'une personne, la personne sur la fiche d'une startup. Le
+ * bouton se répète autant de fois qu'il y a de lignes, son intitulé ne les distingue
+ * pas, et sans elle l'infobulle dirait la même chose partout.
+ */
+export function RetirerRattachement({ id, cible }: { id: string; cible: string }) {
   const [etat, formAction, pending] = useActionState<EtatRattachementStartup, FormData>(
     retirerRattachement,
     null,
@@ -20,7 +26,7 @@ export function RetirerRattachement({ id, startup }: { id: string; startup: stri
         priority="tertiary no outline"
         size="small"
         disabled={pending}
-        title={`Retirer le rattachement à ${startup}`}
+        title={`Retirer le rattachement manuel : ${cible}`}
       >
         {pending ? "Retrait…" : "Retirer"}
       </Button>

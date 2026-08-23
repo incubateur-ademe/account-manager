@@ -3,10 +3,11 @@ import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Badge } from "@codegouvfr/react-dsfr/Badge";
 
 import type { MatchMethod } from "@/generated/prisma/enums";
+import { dateFr } from "@/ui/dates";
+import { RATTACHEMENT_IDENTITE } from "@/ui/severites";
 import { TableCustom } from "@/ui/TableCustom";
 
 import { Detacher } from "./Detacher";
-import { dateFr, RATTACHEMENT_IDENTITE } from "./libelles";
 
 export interface CompteExterne {
   id: string;
