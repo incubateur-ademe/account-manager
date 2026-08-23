@@ -465,3 +465,49 @@ Au delà, sur une base réellement collectée (`pnpm sync` au moins une fois) :
 La Definition of Ready du ticket est close par ce document : le contenu de la page est arrêté et
 confronté à ce que la fiche personne affiche déjà (étape 1), et le sort des startups portant un
 `vanishedAt` est tranché (vue `sorties`, compteur dédié, dernière phase connue affichée comme telle).
+
+## Ce que l'implémentation a corrigé de ce plan
+
+Ce document a été écrit le 18 août, avant le lot 1.5 « interface » et avant la fusion de l'issue #2.
+Les deux ont bougé le code sous lui. **Tous ses numéros de ligne sont périmés**, et plusieurs de ses
+prescriptions décrivent un état qui n'a jamais existé. Ce qui suit remplace ce qui précède quand les
+deux se contredisent.
+
+**Étape 1.** `LIBELLE_SEVERITE` n'était plus dupliqué, et `LIBELLE_PHASE` non plus : le lot 1.5 les
+avait déjà rassemblés dans `src/app/personnes/[username]/libelles.ts`, un module de route qu'un autre
+écran ne peut pas importer sans traverser un chemin à crochets. Surtout, l'alerte de péremption de la
+fiche personne n'existe plus en tant qu'alerte : elle est devenue une donnée, le motif `fraicheur` de
+`motifs.ts`, rendue par le bloc « Ce qu'il y a à faire ». **`src/ui/Fraicheur.tsx` n'a donc pas été
+créé** : il n'y avait rien à en extraire, et l'en sortir aurait contredit la doctrine de ce bloc. Deux
+duplications que ce plan ne voyait pas ont en revanche rejoint le rangement, parce que les deux
+nouveaux écrans allaient les recopier une fois de plus : le formateur `dateFr`, identique dans sept
+fichiers, et le nom du fournisseur de périmètre, écrit à la main dans cinq.
+
+**Étape 2.** `estPhaseTerminale` ne naît pas dans `src/core/startups.ts` et `src/core/constat.ts` n'a
+pas bougé : le prédicat par liste `toutesLesStartupsSontTerminees` existait déjà dans
+`src/core/appartenance.ts`, et le moteur de constats le consommait déjà. Le prédicat unitaire est donc
+né à côté de lui, dans le même module, et le doublon réellement fermé était ailleurs, recopié à la main
+dans la fiche personne.
+
+Trois formes proposées ici ne tenaient pas :
+
+- `LigneStartup` entre en collision avec un homonyme de `SectionStartups.tsx`, de forme différente. La
+  ligne d'index s'appelle `LigneIndexStartup`.
+- `assemblerMembres(collectes, manuels, maintenant)` n'est pas implémentable : `RattachementManuel` ne
+  porte ni personne ni identité, il ne sait pas de qui il parle. La signature part de la liste des
+  personnes, chacune portant ses rattachements.
+- `echus` rend un `RattachementEchu` qui porte l'identifiant et le nom rendu, et non un
+  `RattachementManuel` nu, sans quoi la liste serait illisible sans rejointure.
+
+Une règle a été précisée à l'usage : une expiration n'entre dans `echus` que lorsqu'elle a **réellement**
+fait perdre la qualité de membre. Une personne que la collecte rattache toujours, ou dont un second
+rattachement court encore, n'y figure pas : l'écran annoncerait une expiration sans effet à côté d'une
+ligne de membre active.
+
+**Étape 3.** `src/app/personnes/Filtres.tsx` n'est plus un formulaire GET depuis le lot 1.5, mais un
+composant client qui repousse la navigation et appelle `router.replace`. C'est cette grammaire que
+l'index des startups suit, et non celle du journal, seul formulaire GET encore vivant.
+
+**Étape 6.** Elle n'était pas bloquée : l'issue #2 était fusionnée, `StartupAssignment` au schéma et ses
+deux actions serveur en place. Le travail s'y est révélé plus petit qu'annoncé, la liste des chemins à
+revalider étant déjà une constante et le `targetId` portant déjà la forme exigée par le journal.
