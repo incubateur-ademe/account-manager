@@ -118,6 +118,11 @@ vers une personne.
 
 Tout en **français** : code, commentaires, messages d'erreur, noms de tests, documentation, commits.
 
+**Conventional Commits, en français, sans scope**, pour les commits comme pour les titres de PR :
+`feat`, `fix`, `docs`, `refactor`, `test`, `build`, `ci`, `chore`, et `!` avant les deux points pour
+une rupture. Le titre de la PR compte double, c'est lui qui devient le message du squash sur `main`.
+La description suit `.github/pull_request_template.md`, qui demande le pourquoi avant le quoi.
+
 **Jamais de tiret cadratin (U+2014) ni de tiret demi-cadratin (U+2013)**, nulle part : ni prose, ni
 commentaire, ni code, ni message de commit. Virgule, deux-points, parenthèses ou point à la place. Le
 tiret simple `-` reste normal pour les listes et le kebab-case.
