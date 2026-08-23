@@ -569,3 +569,36 @@ model AuditEvent {
   @@index([correlationId])
   @@index([actorUsername])
 }
+
+/// Autorisation ponctuelle de dater les disparitions d'un fournisseur malgré le
+/// garde-fou de chute.
+///
+/// Le garde-fou refuse de conclure quand une collecte perd une part excessive de ce
+/// qu'elle connaissait, et il a raison de le faire. Mais quand la chute vient de
+/// données que ce refus empêche justement de nettoyer, il se maintient tout seul :
+/// rien n'en sort, et aucune disparition n'est plus jamais datée pour ce système.
+/// Cette table est la sortie, et elle est nominative : l'outil constate, un opérateur
+/// décide, le journal garde qui a décidé quoi.
+model ScopeDropOverride {
+  id String @id @default(cuid())
+
+  provider String
+
+  /// « identites » ou « ressources » : les deux verrous sont distincts, une
+  /// autorisation ne lève que le sien.
+  famille String
+
+  /// Obligatoire, comme la raison d'une surcharge d'appartenance : lever un garde-fou
+  /// sans motif est une décision qu'on ne saura pas réexaminer.
+  reason String
+
+  createdBy String
+  createdAt DateTime @default(now())
+
+  /// Se consomme au premier passage qui s'en sert, et ne vaut donc que pour lui : une
+  /// autorisation qui durerait éteindrait le garde-fou au lieu de le lever une fois.
+  consumedAt   DateTime?
+  consumedRunId String?
+
+  @@index([provider, famille, consumedAt])
+}

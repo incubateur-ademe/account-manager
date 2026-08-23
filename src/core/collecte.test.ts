@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  blocagesInstalles,
   champsConstates,
   chuteExcessive,
+  chuteInstallee,
   fraicheurDe,
+  type RefusDeDatation,
   type ReleveSysteme,
+  refusRepete,
   systemesMuets,
 } from "./collecte";
 
@@ -193,5 +197,118 @@ describe("ce qu'une identité collectée laisse en base", () => {
 
     // Une première collecte n'est pas une chute, ici comme pour les comptes.
     expect(chuteExcessive(0, 0, 0.2)).toBe(false);
+  });
+});
+
+describe("un garde-fou qui refuse toujours la même chose n'annonce plus un incident", () => {
+  it("compte les répétitions à l'identique, et s'arrête au premier passage qui diffère", () => {
+    // Le cas réel : un connecteur a cessé d'émettre une famille de ressources, la
+    // chute que leur absence provoque dépasse le seuil, et le refus de dater empêche
+    // de nettoyer ce qui provoque la chute. Le même refus retombe donc chaque nuit,
+    // avec exactement les mêmes nombres.
+    const refus: RefusDeDatation = { famille: "ressources", observe: 33, reference: 65 };
+    const memeRefus = { ...refus };
+
+    expect(refusRepete(refus, [memeRefus, memeRefus, memeRefus])).toBe(4);
+    expect(chuteInstallee(refusRepete(refus, [memeRefus, memeRefus]))).toBe(true);
+
+    // Deux passages ne suffisent pas à conclure : une lecture peut échouer deux fois
+    // pour une raison qui passera.
+    expect(chuteInstallee(refusRepete(refus, []))).toBe(false);
+    expect(chuteInstallee(refusRepete(refus, [memeRefus]))).toBe(false);
+
+    // Un passage sans refus, et le compte repart : c'est ce qui distingue l'état
+    // stable de la série d'incidents.
+    expect(refusRepete(refus, [memeRefus, null, memeRefus])).toBe(2);
+    expect(refusRepete(refus, [null])).toBe(1);
+  });
+
+  it("ne confond ni deux familles, ni deux chutes de tailles différentes", () => {
+    const surLesRessources: RefusDeDatation = { famille: "ressources", observe: 33, reference: 65 };
+
+    // Une chute des identités et une chute des ressources sont deux verrous distincts :
+    // les additionner ferait passer pour installée une situation qui change de nature
+    // d'un passage à l'autre.
+    expect(
+      refusRepete(surLesRessources, [{ famille: "identites", observe: 33, reference: 65 }]),
+    ).toBe(1);
+
+    // Des nombres qui bougent décrivent une situation qui bouge, donc un incident en
+    // cours, pas un état que le refus entretient.
+    expect(refusRepete(surLesRessources, [{ ...surLesRessources, observe: 34 }])).toBe(1);
+    expect(refusRepete(surLesRessources, [{ ...surLesRessources, reference: 64 }])).toBe(1);
+
+    // Et le seuil reste celui du noyau, jamais recopié chez l'appelant.
+    expect(chuteInstallee(2)).toBe(false);
+    expect(chuteInstallee(3)).toBe(true);
+  });
+});
+
+describe("les blocages que l'écran doit annoncer plutôt que de les laisser au journal", () => {
+  it("ne retient que ce qui refuse depuis assez longtemps, par système et par famille", () => {
+    const refus = (famille: string, observe: number, reference: number) => ({
+      messages: ["peu importe"],
+      refus: [{ famille, observe, reference }],
+    });
+
+    // Given trois systèmes : l'un bloqué sur ses ressources depuis quatre passages,
+    // l'un qui vient seulement de refuser, l'un qui a refusé puis s'est dénoué.
+    const blocages = blocagesInstalles([
+      { provider: "github", error: refus("ressources", 33, 65) },
+      { provider: "github", error: refus("ressources", 33, 65) },
+      { provider: "github", error: refus("ressources", 33, 65) },
+      { provider: "github", error: refus("ressources", 33, 65) },
+      { provider: "notion", error: refus("identites", 4, 40) },
+      { provider: "notion", error: null },
+      { provider: "ovh", error: null },
+      { provider: "ovh", error: refus("identites", 2, 30) },
+      { provider: "ovh", error: refus("identites", 2, 30) },
+      { provider: "ovh", error: refus("identites", 2, 30) },
+    ]);
+
+    // Then seul le premier est annoncé : les deux autres sont un incident en cours et
+    // une situation déjà passée.
+    expect(blocages).toHaveLength(1);
+    expect(blocages[0]).toMatchObject({
+      provider: "github",
+      famille: "ressources",
+      observe: 33,
+      reference: 65,
+      repetitions: 4,
+    });
+
+    // Un système peut être bloqué sur les deux familles à la fois, et l'écran doit
+    // alors le dire deux fois : les deux verrous se lèvent séparément.
+    const deuxVerrous = blocagesInstalles([
+      {
+        provider: "github",
+        error: {
+          messages: [],
+          refus: [
+            { famille: "identites", observe: 5, reference: 60 },
+            { famille: "ressources", observe: 33, reference: 65 },
+          ],
+        },
+      },
+      ...Array.from({ length: 3 }, () => ({
+        provider: "github",
+        error: {
+          messages: [],
+          refus: [
+            { famille: "identites", observe: 5, reference: 60 },
+            { famille: "ressources", observe: 33, reference: 65 },
+          ],
+        },
+      })),
+    ]);
+
+    expect(deuxVerrous.map((blocage) => blocage.famille)).toEqual(["identites", "ressources"]);
+
+    // Et une trace sans refus structuré, comme celles d'avant ce mécanisme, ne fait
+    // rien croire : elle se lit comme une absence de blocage, pas comme un blocage.
+    expect(
+      blocagesInstalles([{ provider: "github", error: { messages: ["ancienne forme"] } }]),
+    ).toEqual([]);
+    expect(blocagesInstalles([])).toEqual([]);
   });
 });
