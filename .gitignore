@@ -27,3 +27,4 @@ config/*.yaml
 # Choix de worktree et permissions inter-worktree, propres a une machine.
 .claude/.worktree-monitor-root
 .claude/.worktree-monitor-permissions
+.claude/launch.json
