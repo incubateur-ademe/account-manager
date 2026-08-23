@@ -51,10 +51,18 @@ export interface Appartenance {
 /**
  * Prédicat unique de phase terminale, garde-fou de phase inconnue compris.
  *
- * Il vit ici et le calcul des constats l'importe : décidé deux fois, l'écran et le
- * constat finiraient par diverger, et la fiche affirmerait le contraire de la file.
- * Une phase qu'on ne connaît pas interdit de conclure, on ne signale que sur du
- * constaté.
+ * Il vit ici et le calcul des constats l'importe, comme celui des écrans : décidé
+ * deux fois, l'écran et le constat finiraient par diverger, et la fiche affirmerait
+ * le contraire de la file. Une phase qu'on ne connaît pas interdit de conclure, on
+ * ne signale que sur du constaté.
+ */
+export function estPhaseTerminale(phase: string | null, terminales: ReadonlySet<string>): boolean {
+  return phase !== null && terminales.has(phase);
+}
+
+/**
+ * Une liste vide ne conclut à rien : sans startup, il n'y en a aucune de terminée à
+ * constater, et répondre vrai sortirait quelqu'un sur une absence de fait.
  */
 export function toutesLesStartupsSontTerminees(
   startups: readonly string[],
@@ -65,11 +73,10 @@ export function toutesLesStartupsSontTerminees(
     return false;
   }
 
+  // Le Set se construit une fois, hors de la boucle : par élément, la fonction
+  // deviendrait quadratique.
   const terminales = new Set(phasesTerminales);
-  return startups.every((ghid) => {
-    const phase = phaseParStartup.get(ghid) ?? null;
-    return phase !== null && terminales.has(phase);
-  });
+  return startups.every((ghid) => estPhaseTerminale(phaseParStartup.get(ghid) ?? null, terminales));
 }
 
 function motifDesFaits(etat: EtatAppartenance): MotifAppartenance {

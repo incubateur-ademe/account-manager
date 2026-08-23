@@ -1,3 +1,5 @@
+import type { RiskLevel } from "@/generated/prisma/enums";
+
 import { type Attachment, toutesLesStartupsSontTerminees } from "./appartenance";
 import {
   echeanceEffective,
@@ -17,7 +19,7 @@ export type ConstatKind =
 export interface Constat {
   kind: ConstatKind;
   dedupKey: string;
-  severity: "LOW" | "MEDIUM" | "HIGH";
+  severity: RiskLevel;
   detail: string;
   /** Renseigné quand le constat porte sur quelqu'un du périmètre. */
   username?: string;

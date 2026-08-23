@@ -102,7 +102,7 @@ export async function detacherIdentite(
 /** Même discriminant que le rattachement d'un compte, et pour la même raison. */
 export type EtatRattachementStartup = { erreur: string; confirmationRequise?: true } | null;
 
-const CHEMINS_RATTACHEMENT = ["/personnes", "/constats", "/"] as const;
+const CHEMINS_RATTACHEMENT = ["/personnes", "/constats", "/startups", "/"] as const;
 
 function jourDepuisIso(iso: string): Date | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
@@ -194,7 +194,11 @@ export async function rattacherAStartup(
       motif: motif === "" ? null : motif,
       prolongeLaMission: prolonge,
     },
-    revalider: [`/personnes/${personne.username}`, ...CHEMINS_RATTACHEMENT],
+    revalider: [
+      `/personnes/${personne.username}`,
+      `/startups/${startup.ghid}`,
+      ...CHEMINS_RATTACHEMENT,
+    ],
     ecrire: async (operateur) => {
       // Reposer sur la même startup remplace dans le même geste tracé : prolonger
       // reste un acte unique et lisible, plutôt qu'un retrait suivi d'une pose que
@@ -267,7 +271,11 @@ export async function retirerRattachement(
       posePar: rattachement.createdBy,
       poseLe: rattachement.createdAt.toISOString().slice(0, 10),
     },
-    revalider: [`/personnes/${rattachement.person.username}`, ...CHEMINS_RATTACHEMENT],
+    revalider: [
+      `/personnes/${rattachement.person.username}`,
+      `/startups/${rattachement.startupGhid}`,
+      ...CHEMINS_RATTACHEMENT,
+    ],
     ecrire: async (operateur) => {
       // `updateMany` conditionné plutôt qu'un `update` par identifiant : deux
       // retraits concurrents laisseraient sinon le second réécrire l'auteur et la

@@ -2,16 +2,15 @@ import { fr } from "@codegouvfr/react-dsfr";
 import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Tile } from "@codegouvfr/react-dsfr/Tile";
 import { CONNECTEURS } from "@/connectors";
-import { fraicheurDe, systemesMuets } from "@/core/collecte";
+import { FOURNISSEUR_PERIMETRE, fraicheurDe, systemesMuets } from "@/core/collecte";
 import { echeanceEffective } from "@/core/rattachement-startup";
 import { statutDePersonne } from "@/core/statut";
 import { prisma } from "@/lib/db";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
+import { dateFr } from "@/ui/dates";
 
 export const dynamic = "force-dynamic";
-
-const dateFr = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "UTC" });
 
 export default async function AccueilPage() {
   await requireOperateur();
@@ -31,14 +30,14 @@ export default async function AccueilPage() {
       },
     }),
     prisma.syncRun.findFirst({
-      where: { provider: "espace-membre" },
+      where: { provider: FOURNISSEUR_PERIMETRE },
       orderBy: { startedAt: "desc" },
       select: { startedAt: true, status: true, itemsSeen: true },
     }),
     prisma.finding.count({ where: { closedAt: null } }),
     prisma.finding.count({ where: { closedAt: null, kind: "SCOPE_EXIT" } }),
     prisma.syncRun.findMany({
-      where: { capability: "list", provider: { not: "espace-membre" } },
+      where: { capability: "list", provider: { not: FOURNISSEUR_PERIMETRE } },
       distinct: ["provider"],
       orderBy: { startedAt: "desc" },
       select: { provider: true, startedAt: true, status: true },

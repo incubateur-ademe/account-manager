@@ -6,8 +6,13 @@ import { Breadcrumb } from "@codegouvfr/react-dsfr/Breadcrumb";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { LIBELLE_APPARTENANCE, libelleAppartenance, surchargeSuperflue } from "@/core/appartenance";
-import { fraicheurDe } from "@/core/collecte";
+import {
+  estPhaseTerminale,
+  LIBELLE_APPARTENANCE,
+  libelleAppartenance,
+  surchargeSuperflue,
+} from "@/core/appartenance";
+import { FOURNISSEUR_PERIMETRE, fraicheurDe } from "@/core/collecte";
 import type { ConstatKind } from "@/core/constat";
 import { ETATS_VIVANTS } from "@/core/depart";
 import { ficheEditable, RAISON_NON_EDITABLE } from "@/core/fiche-manuelle";
@@ -19,19 +24,14 @@ import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
+import { dateFr } from "@/ui/dates";
+import { SEVERITE_STATUT } from "@/ui/severites";
 import { TableCustom } from "@/ui/TableCustom";
 
 import { ActionsDePage } from "./ActionsDePage";
 import { CeQuiAppelleUneAction } from "./CeQuiAppelleUneAction";
 import { Absent, Champ } from "./Champs";
-import {
-  dateFr,
-  expliquerStatut,
-  SEVERITE_APPARTENANCE,
-  SEVERITE_STATUT,
-  SOURCE,
-  STATUT_A_TRAITER,
-} from "./libelles";
+import { expliquerStatut, SEVERITE_APPARTENANCE, SOURCE, STATUT_A_TRAITER } from "./libelles";
 import { motifsDAction } from "./motifs";
 import { SectionComptesExternes } from "./SectionComptesExternes";
 import { SectionStartups } from "./SectionStartups";
@@ -42,13 +42,6 @@ interface Props {
   params: Promise<{ username: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
-
-/**
- * L'ingestion du périmètre passe par ce fournisseur : ses runs disent qu'on connaît
- * les personnes, jamais qu'on a lu un système cible. Les compter comme une collecte
- * de comptes ferait passer une absence d'observation pour une absence d'accès.
- */
-const FOURNISSEUR_PERIMETRE = "espace-membre";
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { username } = await params;
@@ -187,7 +180,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
         nom: collectee?.name ?? null,
         phase,
         phaseStart: collectee?.phaseStart ?? null,
-        terminale: phase !== null && phasesTerminales.has(phase),
+        terminale: estPhaseTerminale(phase, phasesTerminales),
         connue: phase !== null,
         collectee: personne.startups.includes(ghid),
         manuel: manuelParGhid.get(ghid) ?? null,

@@ -93,6 +93,13 @@ export function fraicheurDe(
   return { perimee: heures >= seuilHeures, heures };
 }
 
+/**
+ * L'ingestion du périmètre passe par ce fournisseur : ses runs disent qu'on connaît
+ * les personnes, jamais qu'on a lu un système cible. Les compter comme une collecte
+ * de comptes ferait passer une absence d'observation pour une absence d'accès.
+ */
+export const FOURNISSEUR_PERIMETRE = "espace-membre";
+
 export interface ReleveSysteme {
   provider: string;
   startedAt: Date;

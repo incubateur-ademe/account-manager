@@ -5,7 +5,7 @@ import Link from "next/link";
 
 import { LIBELLE_APPARTENANCE } from "@/core/appartenance";
 import { echeanceEffective, startupsEffectives } from "@/core/rattachement-startup";
-import { LIBELLE_STATUT, type Statut, statutDePersonne } from "@/core/statut";
+import { LIBELLE_STATUT, statutDePersonne } from "@/core/statut";
 import {
   type Colonne,
   estColonne,
@@ -20,6 +20,8 @@ import { appartenanceDeLaLigne, phasesDesStartups } from "@/lib/appartenance";
 import { prisma } from "@/lib/db";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
+import { dateFr } from "@/ui/dates";
+import { SEVERITE_STATUT } from "@/ui/severites";
 import { TableCustom } from "@/ui/TableCustom";
 
 import { EnteteTri } from "./EnteteTri";
@@ -28,18 +30,6 @@ import { Filtres } from "./Filtres";
 export const metadata: Metadata = { title: "Personnes suivies" };
 
 export const dynamic = "force-dynamic";
-
-const SEVERITE: Record<Statut, "success" | "info" | "warning" | "error" | "new"> = {
-  SORTI: "error",
-  A_TRAITER: "error",
-  EN_SURSIS: "warning",
-  BIENTOT: "new",
-  ACTIF: "success",
-  SANS_ECHEANCE: "info",
-  ANCIEN: "info",
-};
-
-const dateFr = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "UTC" });
 
 export default async function PersonnesPage(props: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -201,7 +191,7 @@ export default async function PersonnesPage(props: {
               },
               {
                 children: (
-                  <Badge severity={SEVERITE[personne.statut]} noIcon>
+                  <Badge severity={SEVERITE_STATUT[personne.statut]} noIcon>
                     {LIBELLE_STATUT[personne.statut]}
                   </Badge>
                 ),

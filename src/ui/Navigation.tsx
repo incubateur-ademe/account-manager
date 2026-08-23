@@ -8,6 +8,7 @@ import { BasculeModeAide } from "@/ui/ModeAide";
 const LIENS = [
   { text: "Tableau de bord", href: "/" },
   { text: "Personnes", href: "/personnes" },
+  { text: "Startups", href: "/startups" },
   { text: "Constats", href: "/constats" },
   { text: "Comptes isolés", href: "/comptes-isoles" },
   { text: "Comptes de service", href: "/comptes-de-service" },
