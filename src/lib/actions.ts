@@ -8,6 +8,12 @@ export interface ActionTracee<T> {
   action: string;
   targetType: string;
   targetId: string;
+  /**
+   * Relie les traces d'un même geste porté sur plusieurs personnes. Un geste unitaire
+   * n'en pose pas : chaque événement reste lisible seul, et le journal sait déjà
+   * rassembler une exécution par ce champ.
+   */
+  correlationId?: string;
   before?: unknown;
   after?: unknown;
   /** Chemins dont l'affichage dépend de cette écriture. */
@@ -36,6 +42,7 @@ export async function actionTracee<T>(params: ActionTracee<T>): Promise<T> {
     action: params.action,
     targetType: params.targetType,
     targetId: params.targetId,
+    correlationId: params.correlationId,
     before: params.before,
     after: params.after,
   };

@@ -276,3 +276,22 @@ pas proposées par défaut.
 5. Après une clôture groupée, `pnpm sync` ne rouvre pas les constats clos tant que la startup reste
    terminale.
 6. Aucune écriture n'a touché `Person.startups`.
+
+## Ce que l'implémentation a tranché autrement
+
+**Pas de modale, un seul formulaire à trois boutons.** Le plan prévoyait trois modales. Elles auraient
+multiplié les identifiants globaux de `createModal` sur un même écran, et surtout une modale se ferme :
+or le récapitulatif à trois blocs est précisément ce qu'il faut pouvoir relire après coup. La sélection
+et la raison se saisissent donc une fois dans un formulaire unique, et chaque bouton porte son
+`formAction` vers son action serveur. Rien n'enchaîne les trois gestes, ce qui était l'exigence.
+
+**La présélection ne dépend pas du constat ouvert.** Le plan cochait d'avance les personnes portant un
+`INACTIVE_STARTUP`. Mais ce constat n'existe qu'après le passage de la collecte : l'écran n'aurait rien
+eu à proposer le jour même où une phase bascule, c'est-à-dire le jour où il sert. Sont donc proposées
+celles dont rien ne retient le traitement, et le constat ouvert s'affiche à côté comme confirmation.
+Les gardes qui écartent rejouent le raisonnement du moteur sans le dupliquer : elles appellent
+`estPhaseTerminale`, le prédicat que le moteur de constats emploie lui-même.
+
+**Le noyau vit dans `src/core/startups.ts`** et non dans un module dédié : `repartirLeLot` a besoin des
+mêmes types que l'assemblage des membres, et les séparer aurait obligé à exporter la moitié de l'un
+vers l'autre.

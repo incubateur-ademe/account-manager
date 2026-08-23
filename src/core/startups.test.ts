@@ -7,7 +7,12 @@ import {
   compteurs,
   estVueStartups,
   filtrerStartups,
+  LIBELLE_ECARTE,
+  type MembreATraiter,
   type PersonneRattachable,
+  type ResultatParPersonne,
+  repartirLeLot,
+  resumeDuLot,
   type StartupObservee,
   type VueStartups,
 } from "./startups";
@@ -455,5 +460,161 @@ describe("une startup jamais observée ne se dit pas vide, et un ghid orphelin n
       membres: [],
       echus: [],
     });
+  });
+});
+
+const membreATraiter = (username: string, over: Partial<MembreATraiter> = {}): MembreATraiter => ({
+  username,
+  fullname: username,
+  origine: "collecte",
+  manuel: null,
+  echeance: le("2026-06-30"),
+  parEquipe: false,
+  statut: "A_TRAITER",
+  startupsEffectives: ["produit-alpha"],
+  dossierVivant: false,
+  surcharge: false,
+  constatOuvert: null,
+  disparue: false,
+  ...over,
+});
+
+const PHASES = new Map<string, string | null>([
+  ["produit-alpha", "abandon"],
+  ["produit-beta", "acceleration"],
+  ["service-gamma", "alumni"],
+  ["service-opaque", null],
+]);
+
+describe("le lot propose ceux pour qui la question se pose, et dit pourquoi il écarte les autres", () => {
+  it("n'en coche qu'un sur six, sans faire disparaître les cinq autres de l'écran", () => {
+    // Given une startup abandonnée et six membres dont un seul n'a plus d'autre attache
+    const candidats = repartirLeLot(
+      "produit-alpha",
+      [
+        membreATraiter("camille.exemple", { constatOuvert: "INACTIVE_STARTUP:camille.exemple" }),
+        membreATraiter("dominique.essai", { parEquipe: true }),
+        membreATraiter("ariane.modele", {
+          startupsEffectives: ["produit-alpha", "produit-beta"],
+        }),
+        membreATraiter("gabriel.fictif", {
+          startupsEffectives: ["produit-alpha", "service-opaque"],
+        }),
+        membreATraiter("noe.brouillon", { dossierVivant: true }),
+        membreATraiter("elias.temoin", { surcharge: true }),
+      ],
+      PHASES,
+      TERMINALES,
+    );
+
+    // Then les six figurent, et un seul est proposé
+    expect(candidats).toHaveLength(6);
+    expect(candidats.filter((candidat) => candidat.proposeParDefaut)).toHaveLength(1);
+
+    const par = (username: string) => candidats.find((candidat) => candidat.username === username);
+
+    expect(par("camille.exemple")).toMatchObject({ proposeParDefaut: true, ecarte: null });
+    expect(par("camille.exemple")?.constatOuvert).toBe("INACTIVE_STARTUP:camille.exemple");
+
+    // Une équipe transverse ne dépend d'aucune startup : la sortir ici contredirait la
+    // politique, qui la réclamera de nouveau à la collecte suivante.
+    expect(par("dominique.essai")).toMatchObject({ ecarte: "EQUIPE_TRANSVERSE" });
+    expect(par("ariane.modele")).toMatchObject({ ecarte: "AUTRE_STARTUP_VIVANTE" });
+    expect(par("ariane.modele")?.autresStartupsVivantes).toEqual(["produit-beta"]);
+    // Une phase qu'on ne connaît pas interdit de conclure, ici comme dans le moteur.
+    expect(par("gabriel.fictif")).toMatchObject({ ecarte: "PHASE_INCONNUE_AILLEURS" });
+    expect(par("gabriel.fictif")?.autresStartupsVivantes).toEqual([]);
+    expect(par("noe.brouillon")).toMatchObject({ ecarte: "DOSSIER_DEJA_OUVERT" });
+    expect(par("elias.temoin")).toMatchObject({ ecarte: "SURCHARGE_EXISTANTE" });
+
+    for (const candidat of candidats) {
+      expect(candidat.ecarte === null).toBe(candidat.proposeParDefaut);
+      expect(candidat.ecarte === null || LIBELLE_ECARTE[candidat.ecarte].length > 0).toBe(true);
+    }
+  });
+
+  it("écarte d'abord ce qui est le plus dirimant, et ne regarde jamais la startup traitée", () => {
+    // Given quelqu'un qui cumule toutes les raisons d'être écarté
+    const cumul = repartirLeLot(
+      "produit-alpha",
+      [
+        membreATraiter("camille.exemple", {
+          disparue: true,
+          parEquipe: true,
+          dossierVivant: true,
+          surcharge: true,
+          startupsEffectives: ["produit-alpha", "produit-beta"],
+        }),
+      ],
+      PHASES,
+      TERMINALES,
+    );
+
+    // Then c'est la disparition du référentiel qui est nommée, la première de la liste
+    expect(cumul[0]).toMatchObject({ ecarte: "DEJA_SORTIE", proposeParDefaut: false });
+
+    // Given quelqu'un dont la seule startup est celle qu'on traite, terminée
+    const seul = repartirLeLot(
+      "service-gamma",
+      [membreATraiter("dominique.essai", { startupsEffectives: ["service-gamma"] })],
+      PHASES,
+      TERMINALES,
+    );
+
+    // Then la startup traitée ne compte jamais comme une autre attache, terminée ou non
+    expect(seul[0]).toMatchObject({ ecarte: null, proposeParDefaut: true });
+    expect(seul[0]?.autresStartupsVivantes).toEqual([]);
+  });
+});
+
+describe("le récapitulatif d'un lot compte des personnes, jamais des événements", () => {
+  it("range en trois blocs et ne fond jamais un dossier déjà ouvert dans les succès", () => {
+    // Given quinze personnes soumises, dont deux avaient déjà un dossier et une échoue
+    const resultats: ResultatParPersonne[] = [
+      ...Array.from({ length: 12 }, (_, rang) => ({
+        username: `camille.exemple${rang}`,
+        fullname: `Camille Exemple ${rang}`,
+        issue: "TRAITEE" as const,
+        detail: null,
+      })),
+      {
+        username: "ariane.modele",
+        fullname: "Ariane Modèle",
+        issue: "DEJA" as const,
+        detail: "dossier-1",
+      },
+      {
+        username: "gabriel.fictif",
+        fullname: "Gabriel Fictif",
+        issue: "DEJA" as const,
+        detail: "dossier-2",
+      },
+      {
+        username: "noe.brouillon",
+        fullname: "Noé Brouillon",
+        issue: "ECHEC" as const,
+        detail: "Cette personne n'est plus en base.",
+      },
+    ];
+
+    const resume = resumeDuLot(resultats);
+
+    // Then chaque bloc porte les siennes, et leur somme vaut les personnes soumises
+    expect(resume.traitees).toHaveLength(12);
+    expect(resume.deja).toHaveLength(2);
+    expect(resume.echecs).toHaveLength(1);
+    expect(resume.total).toBe(15);
+    expect(resume.traitees.length + resume.deja.length + resume.echecs.length).toBe(resume.total);
+
+    // L'échec nomme la personne et sa raison : une alerte unique laisserait croire que
+    // les quatorze autres ont échoué aussi.
+    expect(resume.echecs[0]).toMatchObject({
+      username: "noe.brouillon",
+      detail: "Cette personne n'est plus en base.",
+    });
+    expect(resume.deja.map((resultat) => resultat.detail)).toEqual(["dossier-1", "dossier-2"]);
+
+    // Un lot entièrement vain reste lisible, et son total ne ment pas.
+    expect(resumeDuLot([])).toMatchObject({ total: 0 });
   });
 });

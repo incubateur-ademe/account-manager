@@ -303,3 +303,135 @@ export function assemblerMembres(
 
   return { membres, echus };
 }
+
+/**
+ * Ce qui empêche de proposer quelqu'un au traitement groupé d'une startup qui
+ * s'arrête. Aucune de ces raisons ne l'exclut de l'écran : elles disent pourquoi la
+ * case n'est pas cochée d'avance, et l'opérateur reste libre de la cocher.
+ */
+export type RaisonEcarte =
+  | "EQUIPE_TRANSVERSE"
+  | "AUTRE_STARTUP_VIVANTE"
+  | "PHASE_INCONNUE_AILLEURS"
+  | "DOSSIER_DEJA_OUVERT"
+  | "SURCHARGE_EXISTANTE"
+  | "DEJA_SORTIE";
+
+export const LIBELLE_ECARTE: Record<RaisonEcarte, string> = {
+  EQUIPE_TRANSVERSE: "Rattachée aussi par une équipe transverse, qui ne dépend d'aucune startup",
+  AUTRE_STARTUP_VIVANTE: "Travaille encore sur une startup en cours",
+  PHASE_INCONNUE_AILLEURS: "Rattachée à une startup dont la phase est inconnue",
+  DOSSIER_DEJA_OUVERT: "Un dossier de départ est déjà ouvert",
+  SURCHARGE_EXISTANTE: "Une décision d'appartenance a déjà été posée sur sa fiche",
+  DEJA_SORTIE: "Déjà sortie du référentiel",
+};
+
+export interface MembreATraiter extends MembreDeStartup {
+  /** Collecte et rattachements manuels réunis, comme le moteur de constats les voit. */
+  startupsEffectives: readonly string[];
+  dossierVivant: boolean;
+  surcharge: boolean;
+  /** La clé du constat de startups terminées ouvert sur cette personne, s'il existe. */
+  constatOuvert: string | null;
+  disparue: boolean;
+}
+
+export interface CandidatDeLot {
+  username: string;
+  fullname: string;
+  statut: Statut;
+  proposeParDefaut: boolean;
+  ecarte: RaisonEcarte | null;
+  /** Ses autres startups qui ne sont pas terminées, nommées pour que l'écran le dise. */
+  autresStartupsVivantes: readonly string[];
+  constatOuvert: string | null;
+}
+
+/**
+ * Départage, parmi les membres d'une startup qui s'arrête, ceux pour qui la question
+ * du départ se pose vraiment et ceux qu'il faut regarder deux fois.
+ *
+ * Une phase terminale ne sort personne : c'est ce qui sépare le constat de la
+ * décision, et une présélection trop large ferait du traitement groupé une sortie
+ * automatique déguisée en case à cocher. Le prédicat de phase est celui du moteur de
+ * constats, jamais une seconde version : une startup dont la phase est inconnue
+ * interdit de conclure ici comme elle le fait là-bas.
+ */
+export function repartirLeLot(
+  ghid: string,
+  membres: readonly MembreATraiter[],
+  phaseParStartup: ReadonlyMap<string, string | null>,
+  phasesTerminales: readonly string[],
+): CandidatDeLot[] {
+  const terminales = new Set(phasesTerminales);
+
+  return membres.map((membre) => {
+    const autres = membre.startupsEffectives.filter((autre) => autre !== ghid);
+    const inconnues = autres.filter((autre) => (phaseParStartup.get(autre) ?? null) === null);
+    const vivantes = autres.filter((autre) => {
+      const phase = phaseParStartup.get(autre) ?? null;
+      return phase !== null && !estPhaseTerminale(phase, terminales);
+    });
+
+    // L'ordre compte : la première raison rencontrée est celle qu'on affiche, et c'est
+    // la plus dirimante qui doit sortir. Un dossier déjà ouvert se dit avant une
+    // surcharge, parce qu'il désigne un geste en cours plutôt qu'une décision passée.
+    const ecarte: RaisonEcarte | null = membre.disparue
+      ? "DEJA_SORTIE"
+      : membre.parEquipe
+        ? "EQUIPE_TRANSVERSE"
+        : vivantes.length > 0
+          ? "AUTRE_STARTUP_VIVANTE"
+          : inconnues.length > 0
+            ? "PHASE_INCONNUE_AILLEURS"
+            : membre.dossierVivant
+              ? "DOSSIER_DEJA_OUVERT"
+              : membre.surcharge
+                ? "SURCHARGE_EXISTANTE"
+                : null;
+
+    return {
+      username: membre.username,
+      fullname: membre.fullname,
+      statut: membre.statut,
+      proposeParDefaut: ecarte === null,
+      ecarte,
+      autresStartupsVivantes: vivantes,
+      constatOuvert: membre.constatOuvert,
+    };
+  });
+}
+
+export type IssueDuLot = "TRAITEE" | "DEJA" | "ECHEC";
+
+export interface ResultatParPersonne {
+  username: string;
+  fullname: string;
+  issue: IssueDuLot;
+  /** Ce qui explique l'issue : la raison d'un échec, ou le dossier déjà ouvert. */
+  detail: string | null;
+}
+
+export interface ResumeDeLot {
+  traitees: ResultatParPersonne[];
+  deja: ResultatParPersonne[];
+  echecs: ResultatParPersonne[];
+  /** Nombre de PERSONNES soumises, jamais d'événements : le journal en pose deux par échec. */
+  total: number;
+}
+
+/**
+ * Range le résultat d'un geste groupé en trois blocs nommés.
+ *
+ * Trois et non deux : un dossier déjà ouvert n'est ni un succès ni un échec, et le
+ * confondre avec un succès ferait croire à quinze dossiers neufs. Un échec partiel
+ * rendu en une seule alerte laisserait de son côté croire que tout a échoué.
+ */
+export function resumeDuLot(resultats: readonly ResultatParPersonne[]): ResumeDeLot {
+  return {
+    traitees: resultats.filter((resultat) => resultat.issue === "TRAITEE"),
+    deja: resultats.filter((resultat) => resultat.issue === "DEJA"),
+    echecs: resultats.filter((resultat) => resultat.issue === "ECHEC"),
+    total: resultats.length,
+  };
+}

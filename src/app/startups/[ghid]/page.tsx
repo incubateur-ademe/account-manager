@@ -9,11 +9,13 @@ import type { ReactNode } from "react";
 
 import { estPhaseTerminale } from "@/core/appartenance";
 import { FOURNISSEUR_PERIMETRE, fraicheurDe } from "@/core/collecte";
+import { ETATS_VIVANTS } from "@/core/depart";
 import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
 import { LIBELLE_PHASE } from "@/core/libelle-startup";
-import type { RattachementManuel } from "@/core/rattachement-startup";
-import { assemblerMembres } from "@/core/startups";
+import { type RattachementManuel, startupsEffectives } from "@/core/rattachement-startup";
+import { assemblerMembres, type MembreATraiter, repartirLeLot } from "@/core/startups";
 import type { MatchMethod } from "@/generated/prisma/enums";
+import { phasesDesStartups } from "@/lib/appartenance";
 import { prisma } from "@/lib/db";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
@@ -22,6 +24,7 @@ import { RATTACHEMENT_IDENTITE } from "@/ui/severites";
 
 import type { PersonneProposable } from "./RattacherPersonne";
 import { type ComptesParFournisseur, type LigneMembre, SectionMembres } from "./SectionMembres";
+import { TraitementDuLot } from "./TraitementDuLot";
 
 export const dynamic = "force-dynamic";
 
@@ -87,7 +90,7 @@ export default async function FicheStartupPage({ params }: Props) {
   const { thresholds, startups: reglesStartups } = policy();
   const today = new Date();
 
-  const [startup, dernierePasse, systemesLus, personnes, proposables] = await Promise.all([
+  const [startup, dernierePasse, systemesLus, personnes, proposables, phases] = await Promise.all([
     prisma.startup.findUnique({
       where: { ghid },
       select: {
@@ -139,6 +142,13 @@ export default async function FicheStartupPage({ params }: Props) {
           where: { vanishedAt: null },
           select: { provider: true, matchMethod: true },
         },
+        scopeOverride: { select: { decision: true } },
+        // Un dossier déjà ouvert désigne un geste en cours : la ligne reste cochable,
+        // mais elle n'est pas proposée d'avance.
+        departureCases: {
+          where: { state: { in: [...ETATS_VIVANTS] } },
+          select: { id: true },
+        },
       },
     }),
     // Quatre-vingt-quinze personnes : une lecture complète coûte moins qu'une
@@ -148,6 +158,7 @@ export default async function FicheStartupPage({ params }: Props) {
       select: { username: true, fullname: true, missionEnd: true, vanishedAt: true },
       orderBy: { fullname: "asc" },
     }),
+    phasesDesStartups(),
   ]);
 
   if (!startup) {
@@ -193,8 +204,38 @@ export default async function FicheStartupPage({ params }: Props) {
       ? []
       : await prisma.finding.findMany({
           where: { closedAt: null, person: { username: { in: usernames } } },
-          select: { id: true, kind: true, person: { select: { username: true } } },
+          select: {
+            id: true,
+            kind: true,
+            dedupKey: true,
+            person: { select: { username: true } },
+          },
         });
+
+  const constatsInactifs = new Map(
+    constats.flatMap((constat) =>
+      constat.kind === "INACTIVE_STARTUP" && constat.person
+        ? [[constat.person.username, constat.dedupKey] as const]
+        : [],
+    ),
+  );
+
+  const fiches = new Map(personnes.map((personne) => [personne.username, personne]));
+  const aTraiter: MembreATraiter[] = membres.map((membre) => {
+    const fiche = fiches.get(membre.username);
+    return {
+      ...membre,
+      startupsEffectives:
+        fiche === undefined
+          ? []
+          : startupsEffectives(fiche.startups, fiche.startupAssignments, today),
+      dossierVivant: (fiche?.departureCases.length ?? 0) > 0,
+      surcharge: fiche?.scopeOverride != null,
+      constatOuvert: constatsInactifs.get(membre.username) ?? null,
+      disparue: fiche?.vanishedAt != null,
+    };
+  });
+  const candidats = repartirLeLot(startup.ghid, aTraiter, phases, reglesStartups.terminalPhases);
 
   const parType = new Map<string, number>();
   for (const constat of constats) {
@@ -309,6 +350,13 @@ export default async function FicheStartupPage({ params }: Props) {
         systemesCollectes={systemesCollectes}
         personnesProposables={personnesProposables}
       />
+
+      {/* Sur une startup qui tourne, il n'y a rien à traiter en lot : le bloc n'existe
+          que là où la question se pose, une phase terminale ou une sortie de
+          l'incubateur, et seulement s'il reste quelqu'un dessus. */}
+      {(terminale || startup.vanishedAt !== null) && candidats.length > 0 ? (
+        <TraitementDuLot ghid={startup.ghid} nomStartup={startup.name} candidats={candidats} />
+      ) : null}
 
       {/* Rien à dire quand il n'y a rien à faire : un titre suivi d'une phrase qui
           annonce le vide s'afficherait sur toutes les startups saines. Le cas sans
