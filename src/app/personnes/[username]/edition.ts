@@ -355,6 +355,15 @@ export async function renommerFiche(
     select: { provider: true, handle: true, externalId: true },
   });
 
+  // Une fiche renommable n'a jamais été collectée, donc aucune startup ne la porte par
+  // ce chemin, mais rien n'empêche qu'on l'ait rattachée à la main : ces pages-là
+  // nomment son identifiant et le lient, et celui-ci change ici.
+  const rattachees = await prisma.startupAssignment.findMany({
+    where: { personId: personne.id },
+    select: { startupGhid: true },
+    distinct: ["startupGhid"],
+  });
+
   try {
     await actionTracee({
       action: "personne.renommage",
@@ -362,7 +371,14 @@ export async function renommerFiche(
       targetId: personne.username,
       before: { username: personne.username },
       after: { username: nouveau },
-      revalider: [`/personnes/${personne.username}`, `/personnes/${nouveau}`, ...CHEMINS_LISTES],
+      revalider: [
+        `/personnes/${personne.username}`,
+        `/personnes/${nouveau}`,
+        ...rattachees.map(
+          (rattachement) => `/startups/${encodeURIComponent(rattachement.startupGhid)}`,
+        ),
+        ...CHEMINS_LISTES,
+      ],
       ecrire: async (operateur) => {
         tracerComptesDeplaces(operateur.username, comptes, personne.username, nouveau, "SUCCESS");
 
@@ -420,9 +436,19 @@ async function fusionner(sourceId: string, cibleId: string, plan: PlanFusion): P
       references: plan.references.length,
       referencesSupprimees: plan.referencesSupprimees.length,
     },
+    // La page de chaque startup dont un rattachement change de fiche, et pas seulement
+    // l'index : elle nomme ses membres et lie leurs identifiants, dont l'un vient de
+    // disparaître. Sans elle, revenir en arrière depuis la fiche fusionnée sert une
+    // liste où la personne absorbée figure encore, avec un lien vers une fiche qui
+    // n'existe plus.
     revalider: [
       `/personnes/${plan.source}`,
       `/personnes/${plan.cible}`,
+      ...new Set(
+        plan.rattachements.map(
+          (rattachement) => `/startups/${encodeURIComponent(rattachement.startupGhid)}`,
+        ),
+      ),
       ...CHEMINS_LISTES,
       "/departs",
     ],
