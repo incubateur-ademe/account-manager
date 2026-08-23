@@ -19,6 +19,8 @@ import {
   ouvrirDepartsEnLot,
 } from "./actions";
 
+type Geste = "sortie" | "depart" | "cloture";
+
 function Recapitulatif({ titre, resume }: { titre: string; resume: ResumeDeLot }) {
   // Trois blocs et jamais une alerte unique : « une personne en échec » rendu comme une
   // erreur laisserait croire que les quatorze autres ont échoué aussi.
@@ -101,8 +103,20 @@ export function TraitementDuLot({
   );
 
   const pending = sortieEnCours || departEnCours || clotureEnCours;
-  const etats = [etatSortie, etatDepart, etatCloture];
-  const erreur = etats.find((etat) => etat !== null && "erreur" in etat);
+
+  // Les trois états vivent séparément et aucun ne s'efface quand un autre répond : sans
+  // savoir quel bouton a été pressé en dernier, l'échec d'un geste resterait affiché
+  // sous le suivant, qui a pourtant réussi.
+  const [dernierGeste, setDernierGeste] = useState<Geste | null>(null);
+  const etatDuDernier =
+    dernierGeste === "sortie"
+      ? etatSortie
+      : dernierGeste === "depart"
+        ? etatDepart
+        : dernierGeste === "cloture"
+          ? etatCloture
+          : null;
+  const erreur = etatDuDernier !== null && "erreur" in etatDuDernier ? etatDuDernier.erreur : null;
 
   const basculer = (username: string) => {
     setSelection((avant) => {
@@ -222,11 +236,11 @@ export function TraitementDuLot({
           <input className={fr.cx("fr-input")} id={idRaison} name="raison" type="text" required />
         </div>
 
-        {erreur !== undefined && erreur !== null && "erreur" in erreur ? (
+        {erreur === null ? null : (
           <p className={fr.cx("fr-error-text")} role="alert">
-            {erreur.erreur}
+            {erreur}
           </p>
-        ) : null}
+        )}
 
         <p className={fr.cx("fr-text--sm", "fr-mt-2w")}>
           {selection.size} personne{selection.size > 1 ? "s" : ""} sélectionnée
@@ -241,7 +255,12 @@ export function TraitementDuLot({
               type="submit"
               priority="secondary"
               disabled={pending || selection.size === 0}
-              nativeButtonProps={{ formAction: actionSortie }}
+              nativeButtonProps={{
+                formAction: actionSortie,
+                onClick: () => {
+                  setDernierGeste("sortie");
+                },
+              }}
             >
               Les déclarer hors incubateur
             </Button>
@@ -251,7 +270,12 @@ export function TraitementDuLot({
               type="submit"
               priority="secondary"
               disabled={pending || selection.size === 0}
-              nativeButtonProps={{ formAction: actionDepart }}
+              nativeButtonProps={{
+                formAction: actionDepart,
+                onClick: () => {
+                  setDernierGeste("depart");
+                },
+              }}
             >
               Ouvrir leurs dossiers de départ
             </Button>
@@ -261,7 +285,12 @@ export function TraitementDuLot({
               type="submit"
               priority="tertiary"
               disabled={pending || avecConstat === 0}
-              nativeButtonProps={{ formAction: actionCloture }}
+              nativeButtonProps={{
+                formAction: actionCloture,
+                onClick: () => {
+                  setDernierGeste("cloture");
+                },
+              }}
             >
               Clore leurs constats de startups terminées ({avecConstat})
             </Button>

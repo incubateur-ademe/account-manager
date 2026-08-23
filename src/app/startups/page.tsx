@@ -261,11 +261,16 @@ export default async function StartupsPage(props: {
                     children: (
                       <span>
                         {dateFr.format(ligne.lastSeenAt)}
-                        {ligne.sortie ? (
+                        {/* Deux dates et non une : celle du dessus est la dernière fois
+                            que l'incubateur l'a rendue, celle-ci le jour où la collecte
+                            en a conclu qu'elle avait disparu. Une collecte partielle
+                            interdit de dater une disparition, si bien que le constat
+                            peut tomber des mois après le fait. */}
+                        {ligne.vanishedAt ? (
                           <>
                             <br />
                             <span className={fr.cx("fr-text--sm")}>
-                              plus rendue par l'incubateur depuis
+                              disparition constatée le {dateFr.format(ligne.vanishedAt)}
                             </span>
                           </>
                         ) : null}

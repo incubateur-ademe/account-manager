@@ -2,6 +2,8 @@
 
 import { randomUUID } from "node:crypto";
 
+import { unstable_rethrow } from "next/navigation";
+
 import { echeanceEffective } from "@/core/rattachement-startup";
 import { type ResultatParPersonne, type ResumeDeLot, resumeDuLot } from "@/core/startups";
 import { actionTracee } from "@/lib/actions";
@@ -13,6 +15,7 @@ import {
 import { prisma } from "@/lib/db";
 import { calculerPlanDeDepart, enregistrerPlan, ouvrirDossierDeDepart } from "@/lib/depart";
 import { policy } from "@/lib/policy";
+import { requireOperateur } from "@/lib/session";
 
 export type EtatLot = { erreur: string } | { resume: ResumeDeLot } | null;
 
@@ -44,10 +47,17 @@ interface Entree {
 }
 
 function lireEntree(formData: FormData, raisonRequise: boolean): Entree | { erreur: string } {
-  const usernames = formData
-    .getAll("username")
-    .map((valeur) => String(valeur).trim())
-    .filter((valeur) => valeur.length > 0);
+  // Dédoublonné dès la lecture : un formulaire se poste sans passer par l'écran qui
+  // l'a rendu, et deux fois le même identifiant produirait deux écritures et deux
+  // traces pour une seule personne.
+  const usernames = [
+    ...new Set(
+      formData
+        .getAll("username")
+        .map((valeur) => String(valeur).trim())
+        .filter((valeur) => valeur.length > 0),
+    ),
+  ];
   const raison = String(formData.get("raison") ?? "").trim();
   const ghid = String(formData.get("startup") ?? "").trim();
 
@@ -74,21 +84,29 @@ function lireEntree(formData: FormData, raisonRequise: boolean): Entree | { erre
  * personnes ferait annuler les quatorze autres par celle qui a disparu de la base
  * entre l'affichage et la soumission.
  */
-async function traiterChacune(
-  usernames: readonly string[],
-  traiter: (username: string) => Promise<ResultatParPersonne>,
+async function traiterChacune<T>(
+  items: readonly T[],
+  nommer: (item: T) => { username: string; fullname: string },
+  traiter: (item: T) => Promise<ResultatParPersonne>,
 ): Promise<ResumeDeLot> {
   const resultats: ResultatParPersonne[] = [];
 
-  for (const username of usernames) {
+  for (const item of items) {
     try {
-      resultats.push(await traiter(username));
+      resultats.push(await traiter(item));
     } catch (error: unknown) {
+      // Une redirection ou une interruption de rendu de Next voyage par une exception :
+      // l'avaler ici transformerait une barrière de session franchie en simple ligne
+      // d'échec, et la boucle continuerait de lire la base pour les suivantes.
+      unstable_rethrow(error);
+
+      // Le message d'origine reste au journal du serveur et n'atteint pas l'écran :
+      // une erreur de la base y nommerait son modèle, sa contrainte, parfois sa requête.
+      console.error("[lot] échec d'une écriture", nommer(item).username, error);
       resultats.push({
-        username,
-        fullname: username,
+        ...nommer(item),
         issue: "ECHEC",
-        detail: error instanceof Error ? error.message : "Échec inattendu.",
+        detail: "L'écriture a échoué. Le détail est au journal du serveur.",
       });
     }
   }
@@ -100,6 +118,11 @@ export async function declarerHorsIncubateurEnLot(
   _etat: EtatLot,
   formData: FormData,
 ): Promise<EtatLot> {
+  // Avant toute lecture, et pas seulement dans `actionTracee` : le proxy constate un
+  // cookie sans le valider, et sans cette barrière une session hors de la liste des
+  // opérateurs ferait lire la base et apprendrait au passage qui existe.
+  await requireOperateur();
+
   const entree = lireEntree(formData, true);
   if ("erreur" in entree) {
     return entree;
@@ -110,52 +133,56 @@ export async function declarerHorsIncubateurEnLot(
   const terminales = policy().startups.terminalPhases;
   const maintenant = new Date();
 
-  const resume = await traiterChacune(entree.usernames, async (username) => {
-    const personne = await prisma.person.findUnique({
-      where: { username },
-      select: { id: true, username: true, fullname: true, ...SELECTION_APPARTENANCE },
-    });
+  const resume = await traiterChacune(
+    entree.usernames,
+    (username) => ({ username, fullname: username }),
+    async (username) => {
+      const personne = await prisma.person.findUnique({
+        where: { username },
+        select: { id: true, username: true, fullname: true, ...SELECTION_APPARTENANCE },
+      });
 
-    if (!personne) {
-      return {
-        username,
-        fullname: username,
-        issue: "ECHEC",
-        detail: "Cette personne n'est plus en base.",
-      };
-    }
+      if (!personne) {
+        return {
+          username,
+          fullname: username,
+          issue: "ECHEC",
+          detail: "Cette personne n'est plus en base.",
+        };
+      }
 
-    const avant = appartenanceDeLaLigne(personne, phases, terminales, maintenant);
+      const avant = appartenanceDeLaLigne(personne, phases, terminales, maintenant);
 
-    await actionTracee({
-      action: "personne.appartenance.forcee",
-      targetType: "personne",
-      targetId: personne.username,
-      correlationId: lot,
-      before: { motif: avant.motif, dans: avant.dans },
-      after: { sens: "EXCLUDE", raison: entree.raison, startup: entree.ghid, lot },
-      revalider: cheminsDe(entree.ghid, personne.username),
-      ecrire: async (operateur) => {
-        await prisma.scopeOverride.upsert({
-          where: { personId: personne.id },
-          update: {
-            decision: "EXCLUDE",
-            reason: entree.raison,
-            createdBy: operateur.username,
-            createdAt: new Date(),
-          },
-          create: {
-            personId: personne.id,
-            decision: "EXCLUDE",
-            reason: entree.raison,
-            createdBy: operateur.username,
-          },
-        });
-      },
-    });
+      await actionTracee({
+        action: "personne.appartenance.forcee",
+        targetType: "personne",
+        targetId: personne.username,
+        correlationId: lot,
+        before: { motif: avant.motif, dans: avant.dans },
+        after: { sens: "EXCLUDE", raison: entree.raison, startup: entree.ghid, lot },
+        revalider: cheminsDe(entree.ghid, personne.username),
+        ecrire: async (operateur) => {
+          await prisma.scopeOverride.upsert({
+            where: { personId: personne.id },
+            update: {
+              decision: "EXCLUDE",
+              reason: entree.raison,
+              createdBy: operateur.username,
+              createdAt: new Date(),
+            },
+            create: {
+              personId: personne.id,
+              decision: "EXCLUDE",
+              reason: entree.raison,
+              createdBy: operateur.username,
+            },
+          });
+        },
+      });
 
-    return { username, fullname: personne.fullname, issue: "TRAITEE", detail: null };
-  });
+      return { username, fullname: personne.fullname, issue: "TRAITEE", detail: null };
+    },
+  );
 
   return { resume };
 }
@@ -168,6 +195,8 @@ export async function declarerHorsIncubateurEnLot(
  * perdre les quatorze autres.
  */
 export async function ouvrirDepartsEnLot(_etat: EtatLot, formData: FormData): Promise<EtatLot> {
+  await requireOperateur();
+
   const entree = lireEntree(formData, true);
   if ("erreur" in entree) {
     return entree;
@@ -176,73 +205,77 @@ export async function ouvrirDepartsEnLot(_etat: EtatLot, formData: FormData): Pr
   const lot = randomUUID();
   const maintenant = new Date();
 
-  const resume = await traiterChacune(entree.usernames, async (username) => {
-    const personne = await prisma.person.findUnique({
-      where: { username },
-      select: {
-        id: true,
-        username: true,
-        fullname: true,
-        missionEnd: true,
-        startupAssignments: {
-          where: { endedAt: null },
-          select: { startupGhid: true, until: true, endedAt: true },
+  const resume = await traiterChacune(
+    entree.usernames,
+    (username) => ({ username, fullname: username }),
+    async (username) => {
+      const personne = await prisma.person.findUnique({
+        where: { username },
+        select: {
+          id: true,
+          username: true,
+          fullname: true,
+          missionEnd: true,
+          startupAssignments: {
+            where: { endedAt: null },
+            select: { startupGhid: true, until: true, endedAt: true },
+          },
         },
-      },
-    });
+      });
 
-    if (!personne) {
+      if (!personne) {
+        return {
+          username,
+          fullname: username,
+          issue: "ECHEC",
+          detail: "Cette personne n'est plus en base.",
+        };
+      }
+
+      // La date de départ de quelqu'un dont l'accès est prolongé est la date prolongée,
+      // sans quoi le dossier contredirait sa fiche.
+      const echeance = echeanceEffective(
+        personne.missionEnd,
+        personne.startupAssignments,
+        maintenant,
+      );
+
+      let dejaOuvert = false;
+      const dossierId = await actionTracee({
+        action: "depart.ouverture",
+        targetType: "personne",
+        targetId: personne.username,
+        correlationId: lot,
+        after: {
+          echeance: echeance?.toISOString().slice(0, 10) ?? null,
+          raison: entree.raison,
+          startup: entree.ghid,
+          lot,
+        },
+        revalider: [...cheminsDe(entree.ghid, personne.username), "/departs"],
+        ecrire: async (operateur) => {
+          const dossier = await ouvrirDossierDeDepart(personne.id, echeance);
+          if (dossier.deja) {
+            dejaOuvert = true;
+            return dossier.id;
+          }
+
+          const calcule = await calculerPlanDeDepart(personne.id, personne.username, maintenant);
+          await enregistrerPlan(dossier.id, calcule, operateur.username, maintenant);
+          return dossier.id;
+        },
+      });
+
+      // Un dossier qui attendait déjà n'est ni un succès ni un échec : le confondre avec
+      // un succès ferait croire à quinze dossiers neufs.
       return {
         username,
-        fullname: username,
-        issue: "ECHEC",
-        detail: "Cette personne n'est plus en base.",
+        fullname: personne.fullname,
+        issue: dejaOuvert ? "DEJA" : "TRAITEE",
+        detail: dossierId,
       };
-    }
-
-    // La date de départ de quelqu'un dont l'accès est prolongé est la date prolongée,
-    // sans quoi le dossier contredirait sa fiche.
-    const echeance = echeanceEffective(
-      personne.missionEnd,
-      personne.startupAssignments,
-      maintenant,
-    );
-
-    let dejaOuvert = false;
-    const dossierId = await actionTracee({
-      action: "depart.ouverture",
-      targetType: "personne",
-      targetId: personne.username,
-      correlationId: lot,
-      after: {
-        echeance: echeance?.toISOString().slice(0, 10) ?? null,
-        raison: entree.raison,
-        startup: entree.ghid,
-        lot,
-      },
-      revalider: [...cheminsDe(entree.ghid, personne.username), "/departs"],
-      ecrire: async (operateur) => {
-        const dossier = await ouvrirDossierDeDepart(personne.id, echeance);
-        if (dossier.deja) {
-          dejaOuvert = true;
-          return dossier.id;
-        }
-
-        const calcule = await calculerPlanDeDepart(personne.id, personne.username, maintenant);
-        await enregistrerPlan(dossier.id, calcule, operateur.username, maintenant);
-        return dossier.id;
-      },
-    });
-
-    // Un dossier qui attendait déjà n'est ni un succès ni un échec : le confondre avec
-    // un succès ferait croire à quinze dossiers neufs.
-    return {
-      username,
-      fullname: personne.fullname,
-      issue: dejaOuvert ? "DEJA" : "TRAITEE",
-      detail: dossierId,
-    };
-  });
+    },
+  );
 
   return { resume };
 }
@@ -258,6 +291,8 @@ export async function ouvrirDepartsEnLot(_etat: EtatLot, formData: FormData): Pr
  * interdit en toutes lettres. Fermer un écart doit rester un acte signé.
  */
 export async function cloreConstatsEnLot(_etat: EtatLot, formData: FormData): Promise<EtatLot> {
+  await requireOperateur();
+
   const entree = lireEntree(formData, true);
   if ("erreur" in entree) {
     return entree;
@@ -284,16 +319,18 @@ export async function cloreConstatsEnLot(_etat: EtatLot, formData: FormData): Pr
     return { erreur: "Aucun constat de startups terminées n'est ouvert sur ces personnes." };
   }
 
+  // La boucle porte sur les constats et non sur leurs clés : sans quoi une exception
+  // ferait nommer la personne en échec par une clé technique, la seule chose que la
+  // reprise d'erreur aurait sous la main.
   const resume = await traiterChacune(
-    constats.map((constat) => constat.dedupKey),
-    async (dedupKey) => {
-      const constat = constats.find((candidat) => candidat.dedupKey === dedupKey);
-      const username = constat?.person?.username ?? dedupKey;
-      const fullname = constat?.person?.fullname ?? dedupKey;
-
-      if (!constat) {
-        return { username, fullname, issue: "ECHEC", detail: "Ce constat n'existe plus." };
-      }
+    constats,
+    (constat) => ({
+      username: constat.person?.username ?? constat.dedupKey,
+      fullname: constat.person?.fullname ?? constat.dedupKey,
+    }),
+    async (constat) => {
+      const username = constat.person?.username ?? constat.dedupKey;
+      const fullname = constat.person?.fullname ?? constat.dedupKey;
 
       // Relu au moment d'écrire : une fermeture concurrente ne doit pas faire échouer
       // le reste du lot.
