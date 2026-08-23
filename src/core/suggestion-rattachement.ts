@@ -81,8 +81,12 @@ function partiesDuCompte(handle: string): readonly (readonly string[])[] {
  * dit que le compte porte exactement ce nom, là où chercher le nom collé n'importe où
  * dans le compte rapprocherait `anne.roy` de `marie-anne.royer`.
  *
- * Aucun mélange entre les parties : la fin d'une adresse recollée au début de son
- * domaine fabriquerait un nom que personne ne porte.
+ * Le recollement s'arrête à l'arobase, là où `toutCouvert` la franchit, et les deux
+ * portées diffèrent à dessein. Reconnaître un fragment entier de part et d'autre est
+ * un indice solide, et c'est ce qui fait de `camille@rivet.fr` une certitude, le
+ * domaine d'une adresse personnelle portant le nom de famille. Recomposer un mot à
+ * cheval, en revanche, fabriquerait une chaîne qui n'existe dans aucune des deux
+ * parties, sur laquelle rien ne dit qu'un humain lirait le même nom.
  */
 function recollements(parties: readonly (readonly string[])[]): ReadonlySet<string> {
   const formes = new Set<string>();

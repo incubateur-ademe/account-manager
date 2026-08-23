@@ -117,6 +117,29 @@ describe("suggestion de rattachement d'un compte isolé", () => {
     ]);
   });
 
+  it("lit le nom de part et d'autre de l'arobase, sans le recomposer par-dessus", () => {
+    // Une adresse personnelle porte souvent le prénom devant et le nom de famille en
+    // domaine. Refuser d'y voir un nom entier passerait à côté de comptes que
+    // l'opérateur reconnaît au premier regard, sur des systèmes en libre-service où
+    // chacun s'inscrit avec l'adresse qu'il veut.
+    const personnelle = suggererRattachements("camille@rivet.fr", ANNUAIRE);
+
+    expect(usernames(personnelle)).toEqual(["camille.rivet"]);
+    expect(personnelle[0]).toMatchObject({
+      niveau: "forte",
+      motif: "Nom entier retrouvé dans ce compte",
+    });
+
+    // Recoller, en revanche, s'arrête à l'arobase. Reconnaître un fragment entier de
+    // chaque côté est un indice, recomposer un mot à cheval fabriquerait une chaîne
+    // qui n'existe dans aucune des deux parties. Le compte reste proposé, par la voie
+    // faible qui dit ce qu'elle vaut, plutôt que par une certitude bâtie sur du vide.
+    const aCheval = suggererRattachements("jeanfrancois@leduc.fr", ANNUAIRE);
+
+    expect(usernames(aCheval)).toEqual(["jean.francois.leduc"]);
+    expect(aCheval[0]?.niveau).toBe("faible");
+  });
+
   it("met les certitudes devant les ressemblances", () => {
     // L'opérateur lit de haut en bas et clique le premier nom qui lui parle : l'ordre
     // décide de ce qui sera rattaché.
