@@ -59,14 +59,56 @@ function fragments(valeur: string): readonly string[] {
  * retrouvent sur tout le parc. Ce qui le précède, en revanche, porte parfois le nom,
  * les adresses personnelles étant courantes sur les systèmes ouverts en libre-service.
  */
-function fragmentsDuCompte(handle: string): readonly string[] {
+function partiesDuCompte(handle: string): readonly (readonly string[])[] {
   const arobase = handle.lastIndexOf("@");
   if (arobase <= 0) {
-    return fragments(handle);
+    return [fragments(handle)];
   }
 
   const domaine = handle.slice(arobase + 1).split(".");
-  return [...fragments(handle.slice(0, arobase)), ...fragments(domaine.slice(0, -1).join("."))];
+  return [fragments(handle.slice(0, arobase)), fragments(domaine.slice(0, -1).join("."))];
+}
+
+/**
+ * Toutes les façons de recoller des fragments voisins, une partie à la fois.
+ *
+ * Les deux bouts ne découpent pas les noms composés au même endroit : le référentiel
+ * garde les traits d'union, le compte les avale souvent. Comparer fragment à fragment
+ * ne rapproche alors jamais `jean-marie.dupont-lajoie` de `jeanmarie.dupontlajoie`,
+ * alors qu'un humain y lit la même personne du premier coup d'oeil.
+ *
+ * Recoller plutôt qu'aplatir tout : l'égalité avec une suite complète de fragments
+ * dit que le compte porte exactement ce nom, là où chercher le nom collé n'importe où
+ * dans le compte rapprocherait `anne.roy` de `marie-anne.royer`.
+ *
+ * Le recollement s'arrête à l'arobase, là où `toutCouvert` la franchit, et les deux
+ * portées diffèrent à dessein. Reconnaître un fragment entier de part et d'autre est
+ * un indice solide, et c'est ce qui fait de `camille@rivet.fr` une certitude, le
+ * domaine d'une adresse personnelle portant le nom de famille. Recomposer un mot à
+ * cheval, en revanche, fabriquerait une chaîne qui n'existe dans aucune des deux
+ * parties, sur laquelle rien ne dit qu'un humain lirait le même nom.
+ */
+function recollements(parties: readonly (readonly string[])[]): ReadonlySet<string> {
+  const formes = new Set<string>();
+
+  for (const morceaux of parties) {
+    for (let debut = 0; debut < morceaux.length; debut += 1) {
+      for (let fin = debut + 1; fin <= morceaux.length; fin += 1) {
+        formes.add(morceaux.slice(debut, fin).join(""));
+      }
+    }
+  }
+
+  return formes;
+}
+
+/**
+ * Le même seuil de deux fragments que `toutCouvert`, et pour la même raison : un nom
+ * qui se réduit à un seul fragment est trop peu discriminant pour valoir une
+ * certitude, même retrouvé tel quel.
+ */
+function recolleDansLeCompte(attendus: readonly string[], recolles: ReadonlySet<string>): boolean {
+  return attendus.length >= 2 && recolles.has(attendus.join(""));
 }
 
 /**
@@ -102,11 +144,13 @@ export function suggererRattachements(
   handle: string,
   personnes: readonly PersonneProposable[],
 ): readonly SuggestionRattachement[] {
-  const presents = new Set(fragmentsDuCompte(handle));
+  const parties = partiesDuCompte(handle);
+  const presents = new Set(parties.flat());
   if (presents.size === 0) {
     return [];
   }
 
+  const recolles = recollements(parties);
   const suggestions: SuggestionRattachement[] = [];
 
   for (const personne of personnes) {
@@ -114,11 +158,13 @@ export function suggererRattachements(
     const deIdentifiant = fragments(personne.username);
     const commun = { username: personne.username, fullname: personne.fullname };
 
-    if (toutCouvert(duNom, presents)) {
+    // Le nom est là dans les deux cas, découpé comme ici ou d'un seul tenant : le
+    // motif dit ce qui a été reconnu, pas la façon dont le compte l'avait écrit.
+    if (toutCouvert(duNom, presents) || recolleDansLeCompte(duNom, recolles)) {
       suggestions.push({ ...commun, niveau: "forte", motif: MOTIF.nom });
       continue;
     }
-    if (toutCouvert(deIdentifiant, presents)) {
+    if (toutCouvert(deIdentifiant, presents) || recolleDansLeCompte(deIdentifiant, recolles)) {
       suggestions.push({ ...commun, niveau: "forte", motif: MOTIF.identifiant });
       continue;
     }

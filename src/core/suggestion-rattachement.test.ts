@@ -35,10 +35,30 @@ describe("suggestion de rattachement d'un compte isolé", () => {
     const parLoginGithub = suggererRattachements("Jean-Francois-Leduc", ANNUAIRE);
     const parSoulignement = suggererRattachements("JEAN_FRANCOIS_LEDUC@exemple.org", ANNUAIRE);
 
-    for (const suggestions of [parAdresse, parLoginGithub, parSoulignement]) {
+    // Le compte peut aussi avoir avalé les traits d'union que le référentiel garde,
+    // et porter en plus une mention de prestation : deux découpages du même nom que
+    // rien ne rapproche tant qu'on compare fragment à fragment.
+    const parNomRecolle = suggererRattachements("jeanfrancois.leduc.ext@exemple.org", ANNUAIRE);
+    const parNomEntierementRecolle = suggererRattachements(
+      "jeanfrancoisleduc@exemple.org",
+      ANNUAIRE,
+    );
+
+    for (const suggestions of [
+      parAdresse,
+      parLoginGithub,
+      parSoulignement,
+      parNomRecolle,
+      parNomEntierementRecolle,
+    ]) {
       expect(usernames(suggestions)).toEqual(["jean.francois.leduc"]);
       expect(suggestions[0]?.niveau).toBe("forte");
     }
+
+    // Recoller n'est pas chercher le nom n'importe où dans le compte : un nom voisin
+    // plus long ne doit pas absorber le plus court, sans quoi Léa Roy deviendrait une
+    // certitude sur le compte d'une Royer.
+    expect(suggererRattachements("marielea.royer@exemple.org", ANNUAIRE)).toEqual([]);
   });
 
   it("distingue la ressemblance partielle de la certitude, et se tait sur un fragment trop court", () => {
@@ -95,6 +115,29 @@ describe("suggestion de rattachement d'un compte isolé", () => {
     expect(usernames(suggererRattachements("contact@exemple.org", domaineHomonyme))).toEqual([
       "alix.exemple",
     ]);
+  });
+
+  it("lit le nom de part et d'autre de l'arobase, sans le recomposer par-dessus", () => {
+    // Une adresse personnelle porte souvent le prénom devant et le nom de famille en
+    // domaine. Refuser d'y voir un nom entier passerait à côté de comptes que
+    // l'opérateur reconnaît au premier regard, sur des systèmes en libre-service où
+    // chacun s'inscrit avec l'adresse qu'il veut.
+    const personnelle = suggererRattachements("camille@rivet.fr", ANNUAIRE);
+
+    expect(usernames(personnelle)).toEqual(["camille.rivet"]);
+    expect(personnelle[0]).toMatchObject({
+      niveau: "forte",
+      motif: "Nom entier retrouvé dans ce compte",
+    });
+
+    // Recoller, en revanche, s'arrête à l'arobase. Reconnaître un fragment entier de
+    // chaque côté est un indice, recomposer un mot à cheval fabriquerait une chaîne
+    // qui n'existe dans aucune des deux parties. Le compte reste proposé, par la voie
+    // faible qui dit ce qu'elle vaut, plutôt que par une certitude bâtie sur du vide.
+    const aCheval = suggererRattachements("jeanfrancois@leduc.fr", ANNUAIRE);
+
+    expect(usernames(aCheval)).toEqual(["jean.francois.leduc"]);
+    expect(aCheval[0]?.niveau).toBe("faible");
   });
 
   it("met les certitudes devant les ressemblances", () => {
