@@ -35,10 +35,30 @@ describe("suggestion de rattachement d'un compte isolé", () => {
     const parLoginGithub = suggererRattachements("Jean-Francois-Leduc", ANNUAIRE);
     const parSoulignement = suggererRattachements("JEAN_FRANCOIS_LEDUC@exemple.org", ANNUAIRE);
 
-    for (const suggestions of [parAdresse, parLoginGithub, parSoulignement]) {
+    // Le compte peut aussi avoir avalé les traits d'union que le référentiel garde,
+    // et porter en plus une mention de prestation : deux découpages du même nom que
+    // rien ne rapproche tant qu'on compare fragment à fragment.
+    const parNomRecolle = suggererRattachements("jeanfrancois.leduc.ext@exemple.org", ANNUAIRE);
+    const parNomEntierementRecolle = suggererRattachements(
+      "jeanfrancoisleduc@exemple.org",
+      ANNUAIRE,
+    );
+
+    for (const suggestions of [
+      parAdresse,
+      parLoginGithub,
+      parSoulignement,
+      parNomRecolle,
+      parNomEntierementRecolle,
+    ]) {
       expect(usernames(suggestions)).toEqual(["jean.francois.leduc"]);
       expect(suggestions[0]?.niveau).toBe("forte");
     }
+
+    // Recoller n'est pas chercher le nom n'importe où dans le compte : un nom voisin
+    // plus long ne doit pas absorber le plus court, sans quoi Léa Roy deviendrait une
+    // certitude sur le compte d'une Royer.
+    expect(suggererRattachements("marielea.royer@exemple.org", ANNUAIRE)).toEqual([]);
   });
 
   it("distingue la ressemblance partielle de la certitude, et se tait sur un fragment trop court", () => {
