@@ -2,6 +2,7 @@ import { fr } from "@codegouvfr/react-dsfr";
 import { Accordion } from "@codegouvfr/react-dsfr/Accordion";
 import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Badge } from "@codegouvfr/react-dsfr/Badge";
+import Link from "next/link";
 
 import { LIBELLE_PHASE } from "@/core/libelle-startup";
 import { dateFr } from "@/ui/dates";
@@ -83,59 +84,71 @@ export function SectionStartups({
               { children: "Origine" },
               { children: "" },
             ]}
-            body={lignes.map((ligne) => [
-              {
-                children: (
-                  <span>
-                    {ligne.nom ?? ligne.ghid}
-                    <br />
-                    <span className={fr.cx("fr-text--sm")}>{ligne.ghid}</span>
-                  </span>
-                ),
-              },
-              {
-                children:
-                  ligne.phase === null ? (
-                    <Absent mention="phase inconnue" />
-                  ) : (
-                    (LIBELLE_PHASE[ligne.phase] ?? ligne.phase)
+            body={lignes.map((ligne) => ({
+              key: ligne.ghid,
+              row: [
+                {
+                  children: (
+                    <span>
+                      {/* Un ghid que le référentiel ne porte pas n'a pas de fiche : la
+                          collecte l'a rendu sur une personne sans jamais rendre la
+                          startup, et le lien tomberait sur une page introuvable. */}
+                      {ligne.nom === null ? (
+                        ligne.ghid
+                      ) : (
+                        <Link href={`/startups/${encodeURIComponent(ligne.ghid)}`}>
+                          {ligne.nom}
+                        </Link>
+                      )}
+                      <br />
+                      <span className={fr.cx("fr-text--sm")}>{ligne.ghid}</span>
+                    </span>
                   ),
-              },
-              { children: ligne.phaseStart ? dateFr.format(ligne.phaseStart) : <Absent /> },
-              {
-                children: ligne.connue ? (
-                  <Badge severity={ligne.terminale ? "error" : "success"} noIcon>
-                    {ligne.terminale ? "Non, phase terminale" : "Oui"}
-                  </Badge>
-                ) : (
-                  <Badge severity="info" noIcon>
-                    On ne sait pas
-                  </Badge>
-                ),
-              },
-              {
-                children: (
-                  <span>
-                    {ligne.collectee ? "Collecté" : null}
-                    {ligne.collectee && ligne.manuel ? <br /> : null}
-                    {ligne.manuel ? (
-                      <>
-                        Manuel, jusqu'au {dateFr.format(ligne.manuel.until)}
-                        <br />
-                        <span className={fr.cx("fr-text--sm")}>
-                          posé par {ligne.manuel.createdBy}
-                        </span>
-                      </>
-                    ) : null}
-                  </span>
-                ),
-              },
-              {
-                children: ligne.manuel ? (
-                  <RetirerRattachement id={ligne.manuel.id} startup={ligne.nom ?? ligne.ghid} />
-                ) : null,
-              },
-            ])}
+                },
+                {
+                  children:
+                    ligne.phase === null ? (
+                      <Absent mention="phase inconnue" />
+                    ) : (
+                      (LIBELLE_PHASE[ligne.phase] ?? ligne.phase)
+                    ),
+                },
+                { children: ligne.phaseStart ? dateFr.format(ligne.phaseStart) : <Absent /> },
+                {
+                  children: ligne.connue ? (
+                    <Badge severity={ligne.terminale ? "error" : "success"} noIcon>
+                      {ligne.terminale ? "Non, phase terminale" : "Oui"}
+                    </Badge>
+                  ) : (
+                    <Badge severity="info" noIcon>
+                      On ne sait pas
+                    </Badge>
+                  ),
+                },
+                {
+                  children: (
+                    <span>
+                      {ligne.collectee ? "Collecté" : null}
+                      {ligne.collectee && ligne.manuel ? <br /> : null}
+                      {ligne.manuel ? (
+                        <>
+                          Manuel, jusqu'au {dateFr.format(ligne.manuel.until)}
+                          <br />
+                          <span className={fr.cx("fr-text--sm")}>
+                            posé par {ligne.manuel.createdBy}
+                          </span>
+                        </>
+                      ) : null}
+                    </span>
+                  ),
+                },
+                {
+                  children: ligne.manuel ? (
+                    <RetirerRattachement id={ligne.manuel.id} cible={ligne.nom ?? ligne.ghid} />
+                  ) : null,
+                },
+              ],
+            }))}
           />
 
           {/* Le constat de startups terminées épargne les rattachés par équipe : la

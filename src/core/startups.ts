@@ -189,7 +189,11 @@ export interface MembreDeStartup {
   origine: OrigineRattachement;
   manuel: RattachementManuel | null;
   echeance: Date | null;
-  /** Rattachée par une équipe transverse, donc absente de `Person.startups`. */
+  /**
+   * Rattachée à l'incubateur par une équipe transverse. Ne rien conclure de plus :
+   * `BOTH` l'est en même temps que par ses startups, et figure donc bien dans
+   * `Person.startups`. Seul `DECLARED` en est absent.
+   */
   parEquipe: boolean;
   statut: Statut;
 }

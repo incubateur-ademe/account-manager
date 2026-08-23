@@ -51,7 +51,10 @@ export interface ApercuFusion {
 
 export type EtatIdentifiant = { erreur: string } | { fusion: ApercuFusion } | null;
 
-const CHEMINS_LISTES = ["/personnes", "/comptes-isoles", "/constats", "/"] as const;
+// `/startups` en fait partie : une fusion déplace les rattachements manuels d'une
+// fiche à l'autre et un renommage change l'identifiant affiché, deux écritures dont
+// l'index des startups et la page de chacune tirent directement ce qu'ils montrent.
+const CHEMINS_LISTES = ["/personnes", "/comptes-isoles", "/constats", "/startups", "/"] as const;
 
 const SELECTION_FICHE = {
   id: true,
