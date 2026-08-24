@@ -90,6 +90,25 @@ export type Observation =
   | { etat: "partiel" }
   | { etat: "muet"; raison: SystemeMuet["raison"]; heures: number | null };
 
+/**
+ * Ce qu'un statut de relevé permet de dire de la ligne qu'il accompagne.
+ *
+ * `FAILED` et `SKIPPED` valent non observé au même titre qu'un relevé absent :
+ * `systemesMuets` le conclut déjà, mais rien dans cette signature n'oblige l'appelant à
+ * passer deux listes cohérentes, et une ligne « Lu dans les délais » posée sur une
+ * collecte échouée est exactement le mensonge que ce module existe pour empêcher.
+ */
+const NON_OBSERVE = { FAILED: "echec", SKIPPED: "non-lu" } as const;
+
+function observationDe(statut: ReleveSysteme["status"]): Observation {
+  if (statut === "PARTIAL") {
+    return { etat: "partiel" };
+  }
+  return statut === "OK"
+    ? { etat: "frais" }
+    : { etat: "muet", raison: NON_OBSERVE[statut], heures: null };
+}
+
 export interface LigneDInventaire {
   provider: string;
   /**
@@ -122,24 +141,22 @@ export function inventaireParSysteme(
 ): LigneDInventaire[] {
   return attendus.map((provider) => {
     const muet = muets.find((candidat) => candidat.provider === provider);
-    if (muet) {
-      return {
-        provider,
-        comptes: null,
-        administrateurs: 0,
-        membres: 0,
-        invitations: 0,
-        invitationObserveeDepuis: null,
-        observation: { etat: "muet", raison: muet.raison, heures: muet.heures },
-      };
-    }
-
     const releve = releves.find((candidat) => candidat.provider === provider);
-    if (!releve) {
-      // Sans relevé, il n'y a rien à dire de ce système. `systemesMuets` aurait conclu
-      // la même chose, mais rien dans cette signature n'oblige l'appelant à passer deux
-      // listes cohérentes, et retomber sur « frais » redirait « aucun compte » là où la
-      // seule chose établie est qu'on n'a pas regardé.
+
+    // Trois façons de ne rien pouvoir dire, une seule conséquence. Le muet reçu de
+    // `systemesMuets` fait foi ; à défaut, le statut du relevé tranche, et l'absence de
+    // relevé ne vaut jamais « frais ». La signature n'oblige pas l'appelant à passer
+    // deux listes cohérentes, et une ligne « Lu dans les délais » posée sur une
+    // collecte échouée est exactement ce que ce module existe pour empêcher.
+    const observation: Observation = muet
+      ? { etat: "muet", raison: muet.raison, heures: muet.heures }
+      : releve
+        ? observationDe(releve.status)
+        : { etat: "muet", raison: "non-lu", heures: null };
+
+    if (observation.etat === "muet") {
+      // Aucun nombre du tout, et pas un zéro : la seule chose établie est qu'on n'a pas
+      // regardé, et « 0 compte » dirait qu'on a regardé et trouvé personne.
       return {
         provider,
         comptes: null,
@@ -147,7 +164,7 @@ export function inventaireParSysteme(
         membres: 0,
         invitations: 0,
         invitationObserveeDepuis: null,
-        observation: { etat: "muet", raison: "non-lu", heures: null },
+        observation,
       };
     }
 
@@ -191,7 +208,7 @@ export function inventaireParSysteme(
       invitationObserveeDepuis: plusAncienneInvitation(
         siens.filter((un) => invites.has(un.externalIdentityId)),
       ),
-      observation: releve.status === "PARTIAL" ? { etat: "partiel" } : { etat: "frais" },
+      observation,
     };
   });
 }

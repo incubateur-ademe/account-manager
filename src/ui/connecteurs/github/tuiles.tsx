@@ -39,7 +39,14 @@ async function compterSansDeuxFacteurs(
       signal,
     });
 
-    if (reponse.status === 403 || reponse.status === 404) {
+    // Un 403 ne dit pas pourquoi de lui-même : une limitation d'appels en produit un
+    // comme un droit manquant. Ne conclure au droit que lorsque le quota n'est pas en
+    // cause, sous peine d'afficher une explication fausse et de faire chercher une
+    // permission qui ne manque pas.
+    if (reponse.status === 403 && reponse.headers.get("x-ratelimit-remaining") !== "0") {
+      throw new NonLisible(organisation);
+    }
+    if (reponse.status === 404) {
       throw new NonLisible(organisation);
     }
     if (!reponse.ok) {
@@ -57,7 +64,10 @@ async function compterSansDeuxFacteurs(
     }
   }
 
-  return total;
+  // Comme la collecte, qui interrompt au même seuil : cinquante pages valent cinq mille
+  // comptes, bien au-delà du parc réel. Rendre le total atteint ici afficherait un
+  // chiffre tronqué sans que rien ne le signale, et `rendreTuile` contient l'erreur.
+  throw new Error("pagination anormalement longue");
 }
 
 async function deuxFacteurs(contexte: ContexteTuile) {

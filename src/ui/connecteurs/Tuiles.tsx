@@ -67,8 +67,19 @@ export async function TuilesDeConnecteurs({ maintenant }: { maintenant: Date }) 
     return null;
   }
 
+  // Ce chargement est le seul endroit de la zone qui vive hors des trois filets : il
+  // précède le `Suspense` et la frontière, qu'il sert justement à construire. Un module
+  // de tuile qui refuse de se charger prive donc son connecteur de ses tuiles, et lui
+  // seul, plutôt que d'emporter la zone entière et le tableau de bord avec elle.
   const groupes = await Promise.all(
-    chargeurs.map(async ({ cle, chargeur }) => ({ cle, tuiles: (await chargeur()).tuiles })),
+    chargeurs.map(async ({ cle, chargeur }) => {
+      try {
+        return { cle, tuiles: (await chargeur()).tuiles };
+      } catch (erreur) {
+        console.error(`[tuiles ${cle}] module non chargé`, erreur);
+        return { cle, tuiles: [] as readonly TuileDeConnecteur[] };
+      }
+    }),
   );
 
   return (

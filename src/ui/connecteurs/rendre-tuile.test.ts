@@ -5,7 +5,9 @@ import { rendreTuile } from "./rendre-tuile";
 
 const ECHEANCE = 120;
 
-const JETON = "ghp_unJetonQuiNeDoitJamaisSAfficher";
+// Volontairement sans le préfixe d'un vrai jeton : le dépôt est public, et une chaîne
+// qui en mime le format réveille les détecteurs de secrets pour rien.
+const JETON = "valeur-sensible-qui-ne-doit-jamais-s-afficher";
 
 function tuile(cle: string, charger: TuileDeConnecteur["charger"]): TuileDeConnecteur {
   return { cle, titre: cle, provenance: "systeme", charger };

@@ -169,6 +169,29 @@ describe("une base vide ne se lit pas comme un parc sain", () => {
     expect(lignes[0]?.observation).toEqual({ etat: "muet", raison: "non-lu", heures: null });
   });
 
+  it("ne conclut jamais d'un relevé en échec ou ignoré, même sans liste de muets", () => {
+    // L'appelant est libre de ne pas passer les muets : la fonction ne doit pas pour
+    // autant présenter comme sain un système dont la collecte a échoué.
+    const lignes = inventaireParSysteme(
+      ["ovh", "github"],
+      [
+        { provider: "ovh", comptes: 12 },
+        { provider: "github", comptes: 8 },
+      ],
+      [],
+      [
+        { provider: "ovh", startedAt: HIER, status: "FAILED" },
+        { provider: "github", startedAt: HIER, status: "SKIPPED" },
+      ],
+      [],
+    );
+
+    expect(lignes[0]?.comptes).toBeNull();
+    expect(lignes[0]?.observation).toEqual({ etat: "muet", raison: "echec", heures: null });
+    expect(lignes[1]?.comptes).toBeNull();
+    expect(lignes[1]?.observation).toEqual({ etat: "muet", raison: "non-lu", heures: null });
+  });
+
   it("compte zéro quand la collecte a bien tourné et n'a rien trouvé", () => {
     const lignes = inventaireParSysteme(
       ["ovh"],
