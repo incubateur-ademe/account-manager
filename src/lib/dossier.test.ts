@@ -6,6 +6,7 @@ import { notion } from "@/connectors/notion";
 import type { Connector, Intent, PlannedStep, RunContext } from "@/core/connector";
 import type { EtatDossier } from "@/core/dossier";
 import { peutClore, peutConfirmer, systemesDuDepart } from "@/core/dossier";
+import { CLE_INCUBATEUR } from "@/core/modele-plan";
 import { empreinteDuPlan } from "@/core/plan";
 import { Prisma } from "@/generated/prisma/client";
 import {
@@ -45,6 +46,25 @@ interface EtapeEcrite {
   expectedState: object;
   idempotencyKey: string;
   manual?: object;
+  template?: object;
+}
+
+interface EtapeDeModeleEnBase {
+  key: string;
+  position: number;
+  title: string;
+  runbook: string | null;
+  deeplink: string | null;
+  doneWhen: string;
+  input: unknown;
+  riskLevel: string;
+}
+
+interface ModeleEnBase {
+  ownerKey: string;
+  kind: string;
+  startupsMayExtend: boolean;
+  steps: EtapeDeModeleEnBase[];
 }
 
 interface PlanEnBase {
@@ -62,6 +82,10 @@ const base = vi.hoisted(() => ({
   identites: [] as IdentiteEnBase[],
   dossiers: [] as DossierEnBase[],
   plans: [] as PlanEnBase[],
+  modeles: [] as ModeleEnBase[],
+  startupsCollectees: [] as string[],
+  rattachements: [] as { startupGhid: string; until: Date; endedAt: Date | null }[],
+  lecturesDeModeles: 0,
   connecteurs: [] as Connector[],
   lecturesDIdentites: 0,
   collisionAuProchainCreate: null as Error | null,
@@ -81,6 +105,25 @@ vi.mock("@/lib/db", () => ({
         return Promise.resolve(
           base.identites.filter(
             (identite) => identite.personId === where.personId && identite.vanishedAt === null,
+          ),
+        );
+      },
+    },
+    person: {
+      findUnique: () =>
+        Promise.resolve({
+          startups: base.startupsCollectees,
+          startupAssignments: base.rattachements.filter(
+            (rattachement) => rattachement.endedAt === null,
+          ),
+        }),
+    },
+    planTemplate: {
+      findMany: ({ where }: { where: { ownerKey: { in: readonly string[] }; kind: string } }) => {
+        base.lecturesDeModeles += 1;
+        return Promise.resolve(
+          base.modeles.filter(
+            (modele) => where.ownerKey.in.includes(modele.ownerKey) && modele.kind === where.kind,
           ),
         );
       },
@@ -264,6 +307,10 @@ function registre(...connecteurs: readonly Connector[]): void {
 
 beforeEach(() => {
   base.identites.length = 0;
+  base.modeles.length = 0;
+  base.startupsCollectees.length = 0;
+  base.rattachements.length = 0;
+  base.lecturesDeModeles = 0;
   base.dossiers.length = 0;
   base.plans.length = 0;
   base.lecturesDIdentites = 0;
@@ -418,9 +465,9 @@ describe("un plan d'arrivée", () => {
     ).toEqual({ possible: true });
   });
 
-  it("sort vide tant qu'aucun connecteur ne sait ouvrir un accès, et se clôt quand même", async () => {
+  it("sort vide quand rien ne le remplit, et se clôt quand même", async () => {
     // Given le dépôt tel qu'il est aujourd'hui : deux connecteurs, aucune capacité
-    // d'octroi déclarée
+    // d'octroi déclarée, et aucun modèle d'arrivée
     base.identites.push(identite({ provider: "github", matchMethod: "GITHUB_LOGIN" }));
 
     // When on calcule l'arrivée de la même personne
@@ -705,5 +752,293 @@ describe("l'intention portée aux connecteurs", () => {
         intent.subject.kind === "person" ? intent.subject.username : null,
       ),
     ).toEqual([USERNAME, USERNAME]);
+  });
+});
+
+function modele(
+  ownerKey: string,
+  startupsMayExtend: boolean,
+  steps: readonly Partial<EtapeDeModeleEnBase>[],
+): void {
+  base.modeles.push({
+    ownerKey,
+    kind: "OFFBOARDING",
+    startupsMayExtend,
+    steps: steps.map((etape, position) => ({
+      key: "cle",
+      position,
+      title: "Titre",
+      runbook: null,
+      deeplink: null,
+      doneWhen: "C'est constaté.",
+      input: null,
+      riskLevel: "LOW",
+      ...etape,
+    })),
+  });
+}
+
+/**
+ * Un plan ne se limite plus à ce que les connecteurs savent calculer. Ce qui se joue
+ * ici est la jonction : les modèles se lisent sur les startups réellement en cours,
+ * s'assemblent avec les connecteurs, et ce qui est écarté se dit.
+ */
+describe("un plan qui porte ce qu'aucun système ne connaît", () => {
+  it("assemble l'incubateur, les startups en cours et les connecteurs, puis fige leur origine", async () => {
+    // Given une personne collectée sur une startup, rattachée à la main à une
+    // seconde, et un modèle porté par une troisième dont elle n'est pas
+    base.startupsCollectees.push("alpha");
+    base.rattachements.push({
+      startupGhid: "beta",
+      until: new Date("2026-12-31"),
+      endedAt: null,
+    });
+    base.identites.push(identite({ provider: "notion", matchMethod: "DECLARED" }));
+
+    modele(CLE_INCUBATEUR, true, [
+      { key: "rendre-le-materiel", title: "Rendre le matériel" },
+      {
+        key: "signer-la-decharge",
+        title: "Signer la décharge",
+        input: { libelle: "Numéro de la décharge", obligatoire: true },
+      },
+    ]);
+    modele("alpha", false, [
+      { key: "rendre-le-badge", title: "Rendre le badge alpha" },
+      { key: "signer-la-decharge", title: "Signer la décharge" },
+    ]);
+    modele("beta", false, [{ key: "vider-le-casier", title: "Vider le casier beta" }]);
+    modele("gamma", false, [{ key: "prevenir-le-lead", title: "Prévenir le lead gamma" }]);
+
+    // When on calcule son départ
+    const calcule = await calculerPlan("OFFBOARDING", PERSONNE, USERNAME, MAINTENANT);
+
+    // Then l'ordre suit les origines et non l'ordre d'appel : l'incubateur, puis les
+    // startups par ghid croissant, puis les connecteurs
+    expect(calcule.etapes.map(({ etape }) => etape.label)).toEqual([
+      "Rendre le matériel",
+      "Signer la décharge",
+      "Rendre le badge alpha",
+      "Vider le casier beta",
+      `Retirer ${USERNAME} du workspace Notion`,
+    ]);
+    expect(calcule.etapes.map(({ origine }) => origine)).toEqual([
+      "modele:incubateur",
+      "modele:incubateur",
+      "modele:startup:alpha",
+      "modele:startup:beta",
+      "connecteur",
+    ]);
+    expect(calcule.etapes.map(({ ordre }) => ordre)).toEqual([0, 1, 2, 3, 4]);
+
+    // Then une startup à laquelle elle n'est pas rattachée ne dit rien : ni étape,
+    // ni écartée. Les modèles ont été lus en une seule fois, quel que soit le
+    // nombre de rattachements.
+    expect(JSON.stringify(calcule)).not.toContain("gamma");
+    expect(base.lecturesDeModeles).toBe(1);
+
+    // Then le geste que deux modèles demandaient n'est demandé qu'une fois, et c'est
+    // l'incubateur qui le porte : le premier arrivé gagne et garde sa place
+    expect(calcule.ecartees).toHaveLength(1);
+    expect(calcule.ecartees[0]?.raison).toBe("doublon");
+    expect(calcule.ecartees[0]?.origine).toBe("modele:startup:alpha");
+    expect(calcule.ecartees[0]?.etape.idempotencyKey).toBe("modele:signer-la-decharge");
+
+    // Then une étape déclarée est une étape de plan ordinaire, remplie de façon
+    // documentée : un système réservé, un tier manuel, la capacité du moment, et
+    // aucun état attendu à relire
+    const declaree = calcule.etapes[1]?.etape;
+    expect(declaree?.systemKey).toBe("modele");
+    expect(declaree?.tier).toBe("manual");
+    expect(declaree?.capability).toBe("revoke");
+    expect(declaree?.expectedState).toEqual({});
+    expect(declaree?.manual?.doneWhen).toBe("C'est constaté.");
+    expect(declaree?.template).toEqual({
+      owner: CLE_INCUBATEUR,
+      stepKey: "signer-la-decharge",
+      saisie: { libelle: "Numéro de la décharge", obligatoire: true },
+    });
+
+    // When on fige ce plan
+    const dossier = await ouvrirDossier(PERSONNE, "OFFBOARDING", null);
+    const planId = await enregistrerPlan(dossier.id, calcule, "operatrice.exemple", MAINTENANT);
+
+    // Then l'origine descend en base avec le reste : sans elle, l'écran du dossier
+    // ne saurait plus dire qui a demandé quoi
+    const etapes = base.plans[0]?.steps ?? [];
+    expect(base.plans[0]?.id).toBe(planId);
+    expect(etapes.map((etape) => etape.template)).toEqual([
+      { owner: CLE_INCUBATEUR, stepKey: "rendre-le-materiel" },
+      {
+        owner: CLE_INCUBATEUR,
+        stepKey: "signer-la-decharge",
+        saisie: { libelle: "Numéro de la décharge", obligatoire: true },
+      },
+      { owner: "alpha", stepKey: "rendre-le-badge" },
+      { owner: "beta", stepKey: "vider-le-casier" },
+      undefined,
+    ]);
+
+    // Then les clés d'idempotence sont suffixées par le plan, sans quoi le retour de
+    // cette personne des mois plus tard échouerait sur une violation d'unicité
+    expect(etapes.map((etape) => etape.idempotencyKey)).toEqual([
+      `modele:rendre-le-materiel:${planId}`,
+      `modele:signer-la-decharge:${planId}`,
+      `modele:rendre-le-badge:${planId}`,
+      `modele:vider-le-casier:${planId}`,
+      `notion:revoke:${USERNAME}:${planId}`,
+    ]);
+  });
+
+  it("neutralise les étapes de startup que l'incubateur n'admet pas, sans rien leur retirer", async () => {
+    // Given une startup qui déclare une étape, et un incubateur qui ne l'a pas admis
+    base.startupsCollectees.push("alpha");
+    modele(CLE_INCUBATEUR, false, [{ key: "rendre-le-materiel", title: "Rendre le matériel" }]);
+    modele("alpha", false, [{ key: "rendre-le-badge", title: "Rendre le badge alpha" }]);
+
+    // When on calcule son départ
+    const ferme = await calculerPlan("OFFBOARDING", PERSONNE, USERNAME, MAINTENANT);
+
+    // Then seule l'étape de l'incubateur sort, et celle de la startup se dit tout
+    // haut avec sa raison : neutralisée en silence, elle serait indiscernable d'une
+    // étape que personne n'aurait écrite
+    expect(ferme.etapes.map(({ etape }) => etape.label)).toEqual(["Rendre le matériel"]);
+    expect(ferme.ecartees).toHaveLength(1);
+    expect(ferme.ecartees[0]?.raison).toBe("non-autorise");
+    expect(ferme.ecartees[0]?.origine).toBe("modele:startup:alpha");
+    expect(ferme.ecartees[0]?.etape.label).toBe("Rendre le badge alpha");
+
+    // When l'autorisation s'ouvre, sans qu'aucune étape n'ait été touchée
+    const incubateur = base.modeles.find((entree) => entree.ownerKey === CLE_INCUBATEUR);
+    if (incubateur) {
+      incubateur.startupsMayExtend = true;
+    }
+    const ouvert = await calculerPlan("OFFBOARDING", PERSONNE, USERNAME, MAINTENANT);
+
+    // Then l'étape réapparaît à l'identique : refermer neutralise, rouvrir rend tout
+    expect(ouvert.etapes.map(({ etape }) => etape.label)).toEqual([
+      "Rendre le matériel",
+      "Rendre le badge alpha",
+    ]);
+    expect(ouvert.ecartees).toEqual([]);
+
+    // Then l'empreinte a bougé entre les deux : un brouillon calculé avant la
+    // bascule se découvrira obsolète plutôt que de se confirmer sur un plan démenti
+    expect(ouvert.empreinte).not.toBe(ferme.empreinte);
+
+    // When le modèle de l'incubateur disparaît pour ce moment
+    base.modeles.length = 0;
+    modele("alpha", false, [{ key: "rendre-le-badge", title: "Rendre le badge alpha" }]);
+    const sansIncubateur = await calculerPlan("OFFBOARDING", PERSONNE, USERNAME, MAINTENANT);
+
+    // Then l'étape de la startup est écartée de la même façon : l'absence de modèle
+    // d'incubateur vaut absence d'autorisation, sinon un moment que personne n'a
+    // ouvert serait le plus permissif de tous
+    expect(sansIncubateur.etapes).toEqual([]);
+    expect(sansIncubateur.ecartees.map(({ raison }) => raison)).toEqual(["non-autorise"]);
+  });
+
+  it("écarte une étape dont la saisie est illisible plutôt que de rendre le dossier inouvrable", async () => {
+    // Given une personne rattachée à une startup, un modèle d'incubateur ouvert dont
+    // une étape porte en base une valeur qui n'est pas une saisie attendue, et une
+    // étape de startup dans le même état. Une telle valeur ne peut venir que d'une
+    // écriture faite hors de cet outil.
+    base.startupsCollectees.push("alpha");
+    modele(CLE_INCUBATEUR, true, [
+      { key: "rendre-le-materiel", title: "Rendre le matériel" },
+      { key: "signer-la-decharge", title: "Signer la décharge", input: { obligatoire: true } },
+    ]);
+    modele("alpha", false, [
+      { key: "rendre-le-badge", title: "Rendre le badge alpha", input: "n'importe quoi" },
+    ]);
+
+    // When on calcule le départ
+    const ouvert = await calculerPlan("OFFBOARDING", PERSONNE, USERNAME, MAINTENANT);
+
+    // Then le calcul aboutit : faire lever la lecture fermerait l'ouverture, la
+    // confirmation, le recalcul et l'affichage du dossier, sur un message que l'écran
+    // d'erreur n'affiche même pas.
+    expect(ouvert.etapes.map(({ etape }) => etape.label)).toEqual(["Rendre le matériel"]);
+
+    // Then les deux étapes illisibles se disent tout haut, chacune avec le modèle qui
+    // la porte : c'est cette liste qui dit à l'opérateur quoi aller réparer.
+    expect(
+      ouvert.ecartees.map(({ origine, raison, etape }) => [origine, raison, etape.label]),
+    ).toEqual([
+      ["modele:incubateur", "saisie-illisible", "Signer la décharge"],
+      ["modele:startup:alpha", "saisie-illisible", "Rendre le badge alpha"],
+    ]);
+
+    // When l'incubateur referme l'autorisation donnée aux startups
+    const incubateur = base.modeles.find((entree) => entree.ownerKey === CLE_INCUBATEUR);
+    if (incubateur) {
+      incubateur.startupsMayExtend = false;
+    }
+    const ferme = await calculerPlan("OFFBOARDING", PERSONNE, USERNAME, MAINTENANT);
+
+    // Then l'étape de la startup n'est plus qu'une étape neutralisée : refermer
+    // neutralise, et une étape qu'aucun dossier ne portera n'a rien à réclamer.
+    expect(ferme.ecartees.map(({ origine, raison }) => [origine, raison])).toEqual([
+      ["modele:incubateur", "saisie-illisible"],
+      ["modele:startup:alpha", "non-autorise"],
+    ]);
+
+    // Then une fois la saisie réécrite, l'étape revient à l'identique : elle n'a jamais
+    // été supprimée, seulement écartée.
+    const decharge = incubateur?.steps.find((etape) => etape.key === "signer-la-decharge");
+    if (decharge) {
+      decharge.input = { libelle: "Numéro de la décharge", obligatoire: true };
+    }
+    const repare = await calculerPlan("OFFBOARDING", PERSONNE, USERNAME, MAINTENANT);
+    expect(repare.etapes.map(({ etape }) => etape.label)).toEqual([
+      "Rendre le matériel",
+      "Signer la décharge",
+    ]);
+    expect(repare.empreinte).not.toBe(ferme.empreinte);
+  });
+
+  it("s'applique autant de fois qu'il y a de dossiers, sans collision de clés", async () => {
+    // Given un modèle d'incubateur, et quelqu'un qui part une première fois
+    modele(CLE_INCUBATEUR, false, [{ key: "rendre-le-materiel", title: "Rendre le matériel" }]);
+    const premier = await ouvrirDossier(PERSONNE, "OFFBOARDING", null);
+    const calculePremier = await calculerPlan("OFFBOARDING", PERSONNE, USERNAME, MAINTENANT);
+    const planPremier = await enregistrerPlan(
+      premier.id,
+      calculePremier,
+      "operatrice.exemple",
+      MAINTENANT,
+    );
+
+    // When son départ est soldé, puis qu'elle revient et repart des mois plus tard
+    const solde = base.dossiers.find((dossier) => dossier.id === premier.id);
+    if (solde) {
+      solde.state = "DONE" satisfies EtatDossier;
+    }
+    const second = await ouvrirDossier(PERSONNE, "OFFBOARDING", null);
+    const calculeSecond = await calculerPlan("OFFBOARDING", PERSONNE, USERNAME, MAINTENANT);
+    const planSecond = await enregistrerPlan(
+      second.id,
+      calculeSecond,
+      "operatrice.exemple",
+      MAINTENANT,
+    );
+
+    // Then le même geste est redemandé, sous une clé distincte : le suffixe de plan
+    // est ce qui rend un modèle réapplicable. Sans lui, la seconde écriture violerait
+    // l'unicité, c'est-à-dire au retour de quelqu'un, des mois plus tard, dans un
+    // chemin que personne n'aurait rejoué.
+    expect(second.id).not.toBe(premier.id);
+    expect(base.plans).toHaveLength(2);
+    expect(base.plans[0]?.steps.map((etape) => etape.idempotencyKey)).toEqual([
+      `modele:rendre-le-materiel:${planPremier}`,
+    ]);
+    expect(base.plans[1]?.steps.map((etape) => etape.idempotencyKey)).toEqual([
+      `modele:rendre-le-materiel:${planSecond}`,
+    ]);
+
+    // Then les deux plans disent pourtant la même chose : l'empreinte se calcule sur
+    // les étapes nues, et ne bouge pas d'un dossier à l'autre.
+    expect(calculeSecond.empreinte).toBe(calculePremier.empreinte);
+    expect(base.plans[1]?.planDigest).toBe(base.plans[0]?.planDigest);
   });
 });

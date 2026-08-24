@@ -74,7 +74,7 @@ export interface EtapeAssemblee {
   ordre: number;
 }
 
-export type RaisonDEcart = "doublon" | "non-autorise";
+export type RaisonDEcart = "doublon" | "non-autorise" | "saisie-illisible";
 
 export interface EtapeEcartee {
   etape: PlannedStep;

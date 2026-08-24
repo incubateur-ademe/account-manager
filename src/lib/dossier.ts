@@ -14,6 +14,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
+import { etapesDeclarees } from "@/lib/modele-plan";
 
 /**
  * Durée de validité d'un plan. Passé ce délai, ce qui a été constaté est trop vieux
@@ -83,7 +84,10 @@ export interface PlanCalcule {
   sens: SensDossier;
   /** Les étapes retenues, chacune avec son origine et son rang de lecture. */
   etapes: readonly EtapeAssemblee[];
-  /** Ce que l'assemblage a écarté, et pourquoi. Rien n'est écarté en silence. */
+  /**
+   * Ce qui n'a pas été retenu, et pourquoi : un geste déjà demandé ailleurs, ou une
+   * étape de startup que l'incubateur n'admet pas. Rien n'est écarté en silence.
+   */
   ecartees: readonly EtapeEcartee[];
   empreinte: string;
   /** Systèmes couverts par un connecteur, sur lesquels la personne a un compte. */
@@ -99,11 +103,13 @@ export interface PlanCalcule {
 }
 
 /**
- * Ce qu'il faudrait faire pour donner ou pour retirer ses accès à quelqu'un, tel que
- * les connecteurs le disent aujourd'hui. Ne touche à rien, ni ici ni ailleurs.
+ * Ce qu'il faudrait faire pour donner ou pour retirer ses accès à quelqu'un : ce que
+ * les modèles déclarent et ce que les connecteurs disent aujourd'hui. Ne touche à
+ * rien, ni ici ni ailleurs.
  *
- * Un plan d'arrivée sort vide tant qu'aucun connecteur ne déclare `grant` : le
- * mécanisme est là, la substance viendra des modèles et des octrois.
+ * Aucun connecteur ne déclare encore `grant` : la substance d'une arrivée vient donc
+ * des seuls modèles, et le mécanisme se remplira du reste le jour où l'un d'eux
+ * saura ouvrir un accès.
  */
 export async function calculerPlan(
   sens: SensDossier,
@@ -144,17 +150,22 @@ export async function calculerPlan(
     );
   }
 
-  // Une seule origine aujourd'hui, celle des connecteurs. Les deux autres, les
-  // modèles de l'incubateur et ceux des startups, se branchent ici sans que rien
-  // d'autre ne bouge.
-  const assemblage = assembler({ origines: [{ origine: "connecteur", etapes: proposees }] });
+  // L'ordre dans lequel les origines sont fournies n'a aucun effet : `assembler`
+  // retrie par rang d'origine, sans quoi l'empreinte suivrait l'appelant.
+  const declarees = await etapesDeclarees(personId, sens, maintenant);
+  const assemblage = assembler({
+    origines: [...declarees.origines, { origine: "connecteur", etapes: proposees }],
+  });
 
   const couverts = new Set(CONNECTEURS.map((connecteur) => connecteur.contract.key));
 
   return {
     sens,
     etapes: assemblage.etapes,
-    ecartees: assemblage.ecartees,
+    // Les neutralisées d'abord : une étape que l'incubateur n'admet pas n'est jamais
+    // arrivée jusqu'au dédoublonnage, et les taire ferait de l'autorisation refermée
+    // une panne muette.
+    ecartees: [...declarees.ecartees, ...assemblage.ecartees],
     // Sur les étapes nues, avant que l'enregistrement ne suffixe leurs clés
     // d'idempotence : hacher après suffixage donnerait à deux plans du même dossier
     // des empreintes incomparables, et un plan confirmé se dirait obsolète tout seul.
@@ -272,6 +283,7 @@ export async function enregistrerPlan(
           expectedState: (etape.expectedState ?? {}) as object,
           idempotencyKey: `${etape.idempotencyKey}:${planId}`,
           ...(etape.manual ? { manual: etape.manual as object } : {}),
+          ...(etape.template ? { template: etape.template as object } : {}),
         })),
       },
     },

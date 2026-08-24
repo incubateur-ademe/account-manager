@@ -340,6 +340,19 @@ export default async function FicheStartupPage({ params }: Props) {
             <Champ libelle="Disparition constatée le">{dateFr.format(startup.vanishedAt)}</Champ>
           ) : null}
         </dl>
+
+        <p className={fr.cx("fr-mb-0")}>
+          <Link
+            className={fr.cx("fr-link")}
+            href={`/modeles/startup/${encodeURIComponent(startup.ghid)}`}
+          >
+            Le modèle de plan de cette startup
+          </Link>
+        </p>
+        <p className={fr.cx("fr-text--sm")}>
+          Ce qu'elle demande en propre à l'arrivée et au départ de ses membres, en plus de ce que
+          l'incubateur demande à tout le monde.
+        </p>
       </section>
 
       <SectionMembres

@@ -14,6 +14,7 @@ import {
   planAAnnuler,
 } from "@/core/dossier";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
+import { origineFigeeSchema } from "@/core/modele-plan";
 import { peremptionDuPlan } from "@/core/plan";
 import { actionTracee } from "@/lib/actions";
 import { prisma } from "@/lib/db";
@@ -148,6 +149,7 @@ export async function pointerEtape(
   const etapeId = String(formData.get("etapeId") ?? "").trim();
   const choix = String(formData.get("pointage") ?? "").trim();
   const note = String(formData.get("note") ?? "").trim();
+  const reponse = String(formData.get("reponse") ?? "").trim();
 
   const nouvelEtat = POINTAGES[choix];
   if (!nouvelEtat) {
@@ -161,6 +163,7 @@ export async function pointerEtape(
       label: true,
       systemKey: true,
       state: true,
+      template: true,
       plan: {
         select: {
           id: true,
@@ -207,6 +210,30 @@ export async function pointerEtape(
     };
   }
 
+  // Une origine gelée illisible ne peut venir que d'une écriture faite hors de cet
+  // outil. La taire ferait pointer « fait » sur une étape qui réclamait une valeur,
+  // et lever ici ôterait toute issue à l'écran : le pointage se refuse, et le dit.
+  const origine = origineFigeeSchema.nullish().safeParse(etape.template);
+  if (!origine.success) {
+    return {
+      erreur:
+        "L'origine déclarée de cette étape est illisible : reprenez-la depuis son modèle avant de la pointer.",
+    };
+  }
+
+  const saisie = origine.data?.saisie ?? null;
+
+  // Même refus que celui de la note, pour la même raison : sans la valeur qu'elle
+  // demandait, « fait » ne dit pas ce qui a été fait.
+  if (nouvelEtat === "SUCCEEDED" && saisie?.obligatoire === true && reponse.length === 0) {
+    return { erreur: `Renseignez « ${saisie.libelle} » avant de déclarer cette étape faite.` };
+  }
+
+  // Rattachée à « fait » et non à la seule présence d'une saisie : corrigée en écart ou
+  // en échec, l'étape garderait sinon la valeur du pointage précédent, affichée sous un
+  // geste que personne n'a fait.
+  const valeur = nouvelEtat === "SUCCEEDED" && saisie && reponse ? reponse : null;
+
   const maintenant = new Date();
 
   await actionTracee({
@@ -218,6 +245,7 @@ export async function pointerEtape(
       sens,
       etat: nouvelEtat,
       ...(note ? { note } : {}),
+      ...(valeur ? { reponse: valeur } : {}),
     },
     revalider: [`/dossiers/${etape.plan.accessCaseId}`],
     ecrire: async () => {
@@ -228,6 +256,7 @@ export async function pointerEtape(
           executedAt: maintenant,
           attempts: { increment: 1 },
           ...(note ? { lastError: note } : {}),
+          reponse: valeur,
         },
       });
 

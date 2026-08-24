@@ -27,6 +27,8 @@ interface EtapeEnBase {
   ordre: number;
   state: EtatEtape;
   lastError: string | null;
+  template: unknown;
+  reponse: string | null;
 }
 
 interface PlanEnBase {
@@ -62,6 +64,12 @@ const base = vi.hoisted(() => ({
   /** L'ordre réel des écritures, pour dire si la trace a bien précédé l'action. */
   gestes: [] as string[],
   connecteurs: [] as Connector[],
+  modeles: [] as {
+    ownerKey: string;
+    kind: string;
+    startupsMayExtend: boolean;
+    steps: readonly Record<string, unknown>[];
+  }[],
 }));
 
 vi.mock("@/connectors", () => ({ CONNECTEURS: base.connecteurs }));
@@ -115,7 +123,14 @@ vi.mock("@/lib/db", () => ({
         data,
       }: {
         data: PlanEnBase & {
-          steps: { create: readonly { systemKey: string; label: string; ordre: number }[] };
+          steps: {
+            create: readonly {
+              systemKey: string;
+              label: string;
+              ordre: number;
+              template?: unknown;
+            }[];
+          };
         };
       }) => {
         const { steps, ...entete } = data;
@@ -129,6 +144,8 @@ vi.mock("@/lib/db", () => ({
             ordre: etape.ordre,
             state: "PENDING",
             lastError: null,
+            template: etape.template ?? null,
+            reponse: null,
           });
         });
         return Promise.resolve({ id: data.id });
@@ -168,6 +185,12 @@ vi.mock("@/lib/db", () => ({
         return Promise.resolve({ count: 1 });
       },
     },
+    person: {
+      findUnique: () => Promise.resolve({ startups: [], startupAssignments: [] }),
+    },
+    planTemplate: {
+      findMany: () => Promise.resolve(base.modeles),
+    },
     planStep: {
       findUnique: ({ where }: { where: { id: string } }) => {
         const etape = base.etapes.find((candidat) => candidat.id === where.id);
@@ -184,13 +207,18 @@ vi.mock("@/lib/db", () => ({
         data,
       }: {
         where: { id: string };
-        data: { state: EtatEtape; lastError?: string };
+        data: { state: EtatEtape; lastError?: string; reponse?: string | null };
       }) => {
         const etape = base.etapes.find((candidat) => candidat.id === where.id);
         if (etape) {
           base.gestes.push(`etape:${data.state}`);
           etape.state = data.state;
           etape.lastError = data.lastError ?? etape.lastError;
+          // Une colonne absente du `data` se tait, une colonne à `null` efface : c'est
+          // ce que fait Prisma, et c'est ce qui se joue quand un pointage se corrige.
+          if ("reponse" in data) {
+            etape.reponse = data.reponse ?? null;
+          }
         }
         return Promise.resolve(etape);
       },
@@ -280,6 +308,7 @@ beforeEach(() => {
   base.etapes.length = 0;
   base.journal.length = 0;
   base.gestes.length = 0;
+  base.modeles.length = 0;
   base.connecteurs.length = 0;
   base.connecteurs.push(notion, ATELIER);
 });
@@ -483,5 +512,113 @@ describe("pointer une étape, dans le sens du dossier", () => {
       sens: "OFFBOARDING",
       etat: "ALREADY_ABSENT",
     });
+  });
+});
+
+/**
+ * Une étape déclarée peut réclamer une valeur, et c'est tout ce qui la distingue à
+ * l'écran d'une case à cocher. La consigner sans cette valeur ferait dire au journal
+ * qu'un geste a été fait sans dire lequel, ce que le critère de complétion existe
+ * précisément pour empêcher.
+ */
+describe("pointer une étape qui réclame une valeur", () => {
+  it("refuse « fait » sans la valeur, sans rien écrire, et la consigne quand elle vient", async () => {
+    // Given un plan d'arrivée qui porte une étape déclarée par l'incubateur, avec
+    // une saisie obligatoire
+    base.modeles.push({
+      ownerKey: "*incubateur",
+      kind: "ONBOARDING",
+      startupsMayExtend: false,
+      steps: [
+        {
+          key: "signer-la-charte",
+          position: 0,
+          title: "Signer la charte",
+          runbook: null,
+          deeplink: null,
+          doneWhen: "La charte signée est au dossier.",
+          input: { libelle: "Date de signature", obligatoire: true },
+          riskLevel: "LOW",
+        },
+      ],
+    });
+
+    const { plan } = await dossierAvecPlan("ONBOARDING");
+    plan.state = "EXECUTING";
+    const etape = base.etapes.find((candidat) => candidat.systemKey === "modele");
+    expect(etape?.label).toBe("Signer la charte");
+
+    // When on la déclare faite sans rien renseigner
+    const muette = await pointerEtape(
+      null,
+      formulaire({ etapeId: etape?.id ?? "", pointage: "fait" }),
+    );
+
+    // Then le refus nomme ce qu'on attend, et rien n'a bougé : ni l'étape, ni le
+    // journal, le refus se jouant avant que la trace ne soit posée
+    expect(muette.erreur).toContain("Date de signature");
+    expect(etape?.state).toBe("PENDING");
+    expect(etape?.reponse).toBeNull();
+    expect(base.journal).toHaveLength(0);
+
+    // When la valeur vient
+    const pointee = await pointerEtape(
+      null,
+      formulaire({ etapeId: etape?.id ?? "", pointage: "fait", reponse: "24 août 2026" }),
+    );
+
+    // Then l'étape est soldée, la valeur est en base, et la trace la porte : le
+    // journal doit pouvoir redire dans deux ans ce qui a été déclaré
+    expect(pointee.erreur).toBeUndefined();
+    expect(etape?.state).toBe("SUCCEEDED");
+    expect(etape?.reponse).toBe("24 août 2026");
+    expect(base.journal.at(-1)?.after).toMatchObject({
+      sens: "ONBOARDING",
+      etat: "SUCCEEDED",
+      reponse: "24 août 2026",
+    });
+
+    // Then la trace a précédé l'écriture, comme pour tout geste de cet outil
+    expect(base.gestes[0]).toBe("journal:dossier.pointage:SUCCESS");
+
+    // When l'opératrice se reprend et écarte finalement l'étape
+    const corrigee = await pointerEtape(
+      null,
+      formulaire({
+        etapeId: etape?.id ?? "",
+        pointage: "ignoree",
+        note: "La charte a été signée avant l'arrivée.",
+      }),
+    );
+
+    // Then la valeur saisie disparaît avec le « fait » qu'elle documentait : la garder
+    // afficherait une date de signature sous une étape que personne n'a faite.
+    expect(corrigee.erreur).toBeUndefined();
+    expect(etape?.state).toBe("SKIPPED");
+    expect(etape?.reponse).toBeNull();
+    expect(base.journal.at(-1)?.after).toMatchObject({
+      etat: "SKIPPED",
+      note: "La charte a été signée avant l'arrivée.",
+    });
+    expect(base.journal.at(-1)?.after).not.toHaveProperty("reponse");
+  });
+
+  it("laisse une étape de connecteur se pointer sans rien réclamer", async () => {
+    // Given un plan dont les étapes viennent des connecteurs, sans origine déclarée
+    const { plan } = await dossierAvecPlan("ONBOARDING");
+    plan.state = "EXECUTING";
+    const etape = base.etapes[0];
+    expect(etape?.template).toBeNull();
+
+    // When on la déclare faite, sans valeur
+    const pointee = await pointerEtape(
+      null,
+      formulaire({ etapeId: etape?.id ?? "", pointage: "fait" }),
+    );
+
+    // Then rien ne s'y oppose, et aucune réponse n'est inventée
+    expect(pointee.erreur).toBeUndefined();
+    expect(etape?.state).toBe("SUCCEEDED");
+    expect(etape?.reponse).toBeNull();
   });
 });

@@ -4,8 +4,22 @@ import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { type EtatEtape, estSoldee, peutAnnuler, peutClore, peutPointer } from "@/core/dossier";
+import {
+  type EtatEtape,
+  estSoldee,
+  peutAnnuler,
+  peutClore,
+  peutPointer,
+  type SensDossier,
+} from "@/core/dossier";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
+import {
+  CLE_INCUBATEUR,
+  ecartDeModele,
+  type OrigineFigee,
+  origineFigeeSchema,
+  type SaisieAttendue,
+} from "@/core/modele-plan";
 import { type OrigineEtape, peremptionDuPlan, type RaisonDEcart } from "@/core/plan";
 import { prisma } from "@/lib/db";
 import { calculerPlan } from "@/lib/dossier";
@@ -48,16 +62,20 @@ const ETAPE: Record<EtatEtape, { libelle: string; severite: "success" | "warning
 const ECART: Record<RaisonDEcart, string> = {
   doublon: "déjà demandée plus haut",
   "non-autorise": "non autorisée sur ce compte",
+  "saisie-illisible": "saisie attendue illisible",
 };
 
-function origineLisible(origine: OrigineEtape): string {
+const PREFIXE_STARTUP = "modele:startup:";
+
+function origineLisible(origine: OrigineEtape, nomsDeStartup: ReadonlyMap<string, string>): string {
   if (origine === "connecteur") {
     return "connecteur";
   }
   if (origine === "modele:incubateur") {
     return "modèle de l'incubateur";
   }
-  return `modèle de la startup ${origine.slice("modele:startup:".length)}`;
+  const ghid = origine.slice(PREFIXE_STARTUP.length);
+  return `modèle de la startup ${nomsDeStartup.get(ghid) ?? ghid}`;
 }
 
 interface MarcheASuivre {
@@ -68,6 +86,172 @@ interface MarcheASuivre {
 
 function marche(valeur: unknown): MarcheASuivre {
   return valeur && typeof valeur === "object" ? (valeur as MarcheASuivre) : {};
+}
+
+interface EtapeFigee {
+  id: string;
+  label: string;
+  tier: string;
+  riskLevel: string;
+  state: string;
+  manual: unknown;
+  reponse: string | null;
+  lastError: string | null;
+  executedAt: Date | null;
+}
+
+/**
+ * Une étape déclarée se reconnaît à son origine gelée, jamais à son `systemKey` : la
+ * constante réservée d'un modèle est un détail de remplissage, la colonne est la
+ * décision.
+ *
+ * Une origine illisible ne peut venir que d'une écriture faite hors de cet outil.
+ * L'étape passe alors pour une étape de connecteur plutôt que de faire tomber le
+ * dossier : elle reste lisible, et le pointage, lui, la refuse en le disant.
+ */
+function origineFigee(valeur: unknown): OrigineFigee | null {
+  const origine = origineFigeeSchema.safeParse(valeur);
+  return origine.success ? origine.data : null;
+}
+
+interface LigneDEtape {
+  etape: EtapeFigee;
+  origine: OrigineFigee | null;
+}
+
+interface GroupeDEtapes {
+  /** Le ghid de la startup, la clé de l'incubateur, ou rien pour un connecteur. */
+  proprietaire: string | null;
+  /** Rang de sa première étape, pour que la numérotation continue d'un groupe à l'autre. */
+  premier: number;
+  lignes: LigneDEtape[];
+}
+
+/**
+ * Les étapes réunies par ce qui les a demandées, dans leur ordre de lecture.
+ *
+ * Le regroupement suit l'ordre figé et ne le réarrange pas : c'est l'assemblage qui a
+ * décidé du rang, l'incubateur d'abord, puis les startups par ghid, puis les
+ * connecteurs. Un groupe se ferme dès que l'origine change, plutôt que de rassembler
+ * ce qui ne se suit pas : la numérotation d'un groupe part du rang de sa première
+ * étape, et rassembler mentirait dessus.
+ */
+function grouperParOrigine(lignes: readonly LigneDEtape[]): GroupeDEtapes[] {
+  const groupes: GroupeDEtapes[] = [];
+
+  lignes.forEach((ligne, rang) => {
+    const proprietaire = ligne.origine?.owner ?? null;
+    const courant = groupes.at(-1);
+
+    if (courant && courant.proprietaire === proprietaire) {
+      courant.lignes.push(ligne);
+      return;
+    }
+
+    groupes.push({ proprietaire, premier: rang, lignes: [ligne] });
+  });
+
+  return groupes;
+}
+
+/**
+ * Le titre d'un groupe. Il nomme celui qui demande, jamais le mécanisme qui a produit
+ * l'étape : ce que le lecteur a besoin de savoir est à qui s'adresser quand une ligne
+ * ne lui parle pas.
+ */
+function titreDuGroupe(proprietaire: string | null, nomsDeStartup: ReadonlyMap<string, string>) {
+  if (proprietaire === null) {
+    return "Sur les systèmes couverts";
+  }
+  if (proprietaire === CLE_INCUBATEUR) {
+    return "Ce que l'incubateur demande";
+  }
+  return `Ce que la startup ${nomsDeStartup.get(proprietaire) ?? proprietaire} demande`;
+}
+
+/** Une étape figée, telle qu'elle se lit et telle qu'elle se pointe. */
+function Etape({
+  etape,
+  saisie,
+  pointable,
+  sens,
+}: {
+  etape: EtapeFigee;
+  saisie: SaisieAttendue | null;
+  pointable: boolean;
+  sens: SensDossier;
+}) {
+  const aide = marche(etape.manual);
+  const tier = TIER[etape.tier] ?? { libelle: etape.tier, severite: "info" as const };
+  const pointee = ETAPE[etape.state as EtatEtape];
+  const soldee = estSoldee(etape.state as EtatEtape);
+
+  return (
+    <li className={fr.cx("fr-mb-4w")}>
+      <strong>{etape.label}</strong>{" "}
+      <Badge severity={pointee.severite} small noIcon>
+        {pointee.libelle}
+      </Badge>{" "}
+      <Badge severity={tier.severite} small noIcon>
+        {tier.libelle}
+      </Badge>{" "}
+      {etape.riskLevel === "HIGH" ? (
+        <Badge severity="error" small noIcon>
+          risque élevé
+        </Badge>
+      ) : null}
+      {aide.runbook ? (
+        <p className={fr.cx("fr-text--sm", "fr-mb-1v", "fr-mt-1v")}>{aide.runbook}</p>
+      ) : null}
+      {aide.deeplink ? (
+        <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
+          <a
+            href={aide.deeplink}
+            target="_blank"
+            rel="noreferrer"
+            title="Ouvrir la page concernée, nouvelle fenêtre"
+          >
+            Ouvrir la page concernée
+          </a>
+        </p>
+      ) : null}
+      {aide.doneWhen ? (
+        <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
+          <em>C'est fait quand : {aide.doneWhen}</em>
+        </p>
+      ) : null}
+      {saisie ? (
+        <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
+          Valeur demandée : {saisie.libelle}
+          {saisie.obligatoire ? " (sans elle, l'étape ne peut pas être déclarée faite)" : ""}.
+        </p>
+      ) : null}
+      {etape.reponse ? (
+        <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
+          <strong>Valeur saisie :</strong> {etape.reponse}
+        </p>
+      ) : null}
+      {etape.lastError ? (
+        <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
+          <strong>Note :</strong> {etape.lastError}
+        </p>
+      ) : null}
+      {etape.executedAt ? (
+        <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
+          Pointée le {dateLocale.format(etape.executedAt)}.
+        </p>
+      ) : null}
+      {pointable ? (
+        <Pointage
+          etapeId={etape.id}
+          faite={soldee}
+          sens={sens}
+          saisie={saisie}
+          reponse={etape.reponse}
+        />
+      ) : null}
+    </li>
+  );
 }
 
 export default async function DossierPage({
@@ -118,6 +302,8 @@ export default async function DossierPage({
               riskLevel: true,
               state: true,
               manual: true,
+              template: true,
+              reponse: true,
               lastError: true,
               executedAt: true,
             },
@@ -161,6 +347,48 @@ export default async function DossierPage({
   // et c'est cet écart qui a muré le dossier le jour où une étape a échoué.
   const pointable = plan !== undefined && !annule && peutPointer(plan.state).possible;
   const restantes = plan?.steps.filter((etape) => !estSoldee(etape.state as EtatEtape)).length ?? 0;
+
+  const lignes: LigneDEtape[] = (plan?.steps ?? []).map((etape) => ({
+    etape,
+    origine: origineFigee(etape.template),
+  }));
+  const groupes = grouperParOrigine(lignes);
+
+  // Les modèles ne portent que des ghid, sans clé étrangère vers les startups :
+  // afficher le ghid brut au-dessus d'une liste d'étapes, ou sous une étape écartée,
+  // ferait chercher qui demande quoi. Les deux listes puisent au même endroit, sans
+  // quoi la même startup serait nommée ici et réduite à son ghid là. Un ghid qu'aucune
+  // startup ne porte reste affiché tel quel, faute de mieux.
+  const proprietaires = [
+    ...new Set([
+      ...lignes.flatMap(({ origine }) =>
+        origine && origine.owner !== CLE_INCUBATEUR ? [origine.owner] : [],
+      ),
+      ...(actuel?.ecartees ?? []).flatMap(({ origine }) =>
+        origine.startsWith(PREFIXE_STARTUP) ? [origine.slice(PREFIXE_STARTUP.length)] : [],
+      ),
+    ]),
+  ];
+  const nomsDeStartup = new Map(
+    proprietaires.length === 0
+      ? []
+      : (
+          await prisma.startup.findMany({
+            where: { ghid: { in: proprietaires } },
+            select: { ghid: true, name: true },
+          })
+        ).map((startup) => [startup.ghid, startup.name] as const),
+  );
+
+  // Comparé au calcul du jour, et seulement pour le dire : un plan figé ne se
+  // rattrape pas tout seul, et un rattachement postérieur ne doit pas le changer.
+  const ecart =
+    plan && actuel
+      ? ecartDeModele(
+          plan.steps,
+          actuel.etapes.map(({ etape }) => etape),
+        )
+      : null;
 
   return (
     <main className={fr.cx("fr-container", "fr-my-6w")}>
@@ -209,11 +437,40 @@ export default async function DossierPage({
               /* Sans bouton de recalcul : `peutRecalculer` refuse un plan engagé, à
                  raison, et un bouton qui répond toujours non serait pire que pas de
                  bouton du tout. */
-              <p className={fr.cx("fr-mb-0")}>
-                Ce plan reste celui qui a été confirmé et ne se recalcule plus : ses étapes valent
-                telles quelles. Ce qui a changé depuis se traite hors de lui, et la collecte
-                suivante le redira.
-              </p>
+              <>
+                <p className={fr.cx("fr-mb-1w")}>
+                  Ce plan reste celui qui a été confirmé et ne se recalcule plus : ses étapes valent
+                  telles quelles. Ce qui a changé depuis se traite hors de lui, et la collecte
+                  suivante le redira.
+                </p>
+                {ecart && ecart.manquantes.length > 0 ? (
+                  <>
+                    <p className={fr.cx("fr-mb-1v")}>
+                      Le rattachement de cette personne a changé depuis ce plan :{" "}
+                      {ecart.manquantes.length} étape
+                      {ecart.manquantes.length > 1
+                        ? "s déclarées n'y figurent"
+                        : " déclarée n'y figure"}{" "}
+                      pas.
+                    </p>
+                    <ul className={fr.cx("fr-mb-1w")}>
+                      {ecart.manquantes.map((etape) => (
+                        <li key={etape.cle}>{etape.titre}</li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
+                {ecart && ecart.retirees.length > 0 ? (
+                  <p className={fr.cx("fr-mb-0")}>
+                    {ecart.retirees.length} étape
+                    {ecart.retirees.length > 1 ? "s de ce plan ne sont" : " de ce plan n'est"} plus
+                    déclarée{ecart.retirees.length > 1 ? "s" : ""} par aucun modèle :{" "}
+                    {ecart.retirees.map(({ titre }) => titre).join(", ")}. Elle
+                    {ecart.retirees.length > 1 ? "s restent" : " reste"} à faire, ce plan étant
+                    confirmé.
+                  </p>
+                ) : null}
+              </>
             )
           }
         />
@@ -299,64 +556,28 @@ export default async function DossierPage({
         <p>{mots.planVide}</p>
       ) : (
         <>
-          <ol className={fr.cx("fr-mt-2w")}>
-            {plan.steps.map((etape) => {
-              const aide = marche(etape.manual);
-              const tier = TIER[etape.tier] ?? { libelle: etape.tier, severite: "info" as const };
-              const pointee = ETAPE[etape.state as EtatEtape];
-              const soldee = estSoldee(etape.state as EtatEtape);
-
-              return (
-                <li key={etape.id} className={fr.cx("fr-mb-4w")}>
-                  <strong>{etape.label}</strong>{" "}
-                  <Badge severity={pointee.severite} small noIcon>
-                    {pointee.libelle}
-                  </Badge>{" "}
-                  <Badge severity={tier.severite} small noIcon>
-                    {tier.libelle}
-                  </Badge>{" "}
-                  {etape.riskLevel === "HIGH" ? (
-                    <Badge severity="error" small noIcon>
-                      risque élevé
-                    </Badge>
-                  ) : null}
-                  {aide.runbook ? (
-                    <p className={fr.cx("fr-text--sm", "fr-mb-1v", "fr-mt-1v")}>{aide.runbook}</p>
-                  ) : null}
-                  {aide.deeplink ? (
-                    <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-                      <a
-                        href={aide.deeplink}
-                        target="_blank"
-                        rel="noreferrer"
-                        title="Ouvrir la page concernée, nouvelle fenêtre"
-                      >
-                        Ouvrir la page concernée
-                      </a>
-                    </p>
-                  ) : null}
-                  {aide.doneWhen ? (
-                    <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-                      <em>C'est fait quand : {aide.doneWhen}</em>
-                    </p>
-                  ) : null}
-                  {etape.lastError ? (
-                    <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-                      <strong>Note :</strong> {etape.lastError}
-                    </p>
-                  ) : null}
-                  {etape.executedAt ? (
-                    <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-                      Pointée le {dateLocale.format(etape.executedAt)}.
-                    </p>
-                  ) : null}
-                  {pointable ? (
-                    <Pointage etapeId={etape.id} faite={soldee} sens={dossier.kind} />
-                  ) : null}
-                </li>
-              );
-            })}
-          </ol>
+          {groupes.map((groupe) => (
+            <section key={`${groupe.proprietaire ?? "connecteur"}:${groupe.premier}`}>
+              {/* Un plan qui ne réunit qu'une origine n'a rien à distinguer : le titre
+                  y répéterait ce que celui de la liste dit déjà. */}
+              {groupes.length > 1 ? (
+                <h3 className={fr.cx("fr-h6", "fr-mt-3w", "fr-mb-0")}>
+                  {titreDuGroupe(groupe.proprietaire, nomsDeStartup)}
+                </h3>
+              ) : null}
+              <ol className={fr.cx("fr-mt-2w")} start={groupe.premier + 1}>
+                {groupe.lignes.map(({ etape, origine }) => (
+                  <Etape
+                    key={etape.id}
+                    etape={etape}
+                    saisie={origine?.saisie ?? null}
+                    pointable={pointable}
+                    sens={dossier.kind}
+                  />
+                ))}
+              </ol>
+            </section>
+          ))}
 
           {brouillon ? (
             <>
@@ -392,7 +613,7 @@ export default async function DossierPage({
 
       {actuel && actuel.ecartees.length > 0 ? (
         <section className={fr.cx("fr-mt-4w")}>
-          <h2 className={fr.cx("fr-h6")}>Ce que le calcul n'a pas retenu</h2>
+          <h2 className={fr.cx("fr-h5")}>Ce que le calcul n'a pas retenu</h2>
           <p className={fr.cx("fr-text--sm")}>
             Ces étapes ont été proposées puis écartées à l'assemblage du calcul du jour. Rien n'est
             écarté en silence : si l'une d'elles compte, elle est à traiter hors de ce plan.
@@ -404,7 +625,9 @@ export default async function DossierPage({
                 <Badge severity="info" small noIcon>
                   {ECART[ecartee.raison]}
                 </Badge>{" "}
-                <span className={fr.cx("fr-text--sm")}>({origineLisible(ecartee.origine)})</span>
+                <span className={fr.cx("fr-text--sm")}>
+                  ({origineLisible(ecartee.origine, nomsDeStartup)})
+                </span>
               </li>
             ))}
           </ul>
