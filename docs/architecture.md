@@ -343,6 +343,12 @@ Un seul dossier vivant par personne **et par sens**. L'invariant est applicatif,
 lecture précédant la création : rien en base ne l'empêche sous concurrence, et c'est un
 état de fait assumé plutôt qu'une découverte au prochain incident.
 
+Vivant, et non unique : une personne qui revient dans l'incubateur ouvre un second
+dossier d'arrivée, celui de son premier passage étant clos, et repartira sur un
+troisième dossier. Ni l'arrivée ni le départ ne sont des événements qui n'arrivent
+qu'une fois par personne, et un modèle de plan s'applique donc autant de fois qu'il y a
+de dossiers.
+
 **Un plan est une suite d'étapes figées.** Il réunit trois origines, dans cet ordre : le
 modèle de l'incubateur, les modèles des startups de la personne, puis ce que les
 connecteurs proposent d'après les comptes réellement observés. Le type de plan choisit
