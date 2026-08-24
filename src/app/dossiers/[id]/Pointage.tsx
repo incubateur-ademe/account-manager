@@ -5,6 +5,8 @@ import { Button } from "@codegouvfr/react-dsfr/Button";
 import { createModal } from "@codegouvfr/react-dsfr/Modal";
 import { useActionState, useState } from "react";
 
+import { messageObligatoire } from "@/ui/validation";
+
 import { AnnulationDossier } from "./AnnulationDossier";
 
 import {
@@ -141,8 +143,15 @@ export function Pointage({ etapeId, faite }: { etapeId: string; faite: boolean }
             <input
               className={fr.cx("fr-input")}
               name="note"
+              required
+              minLength={3}
               placeholder={choix === "ignoree" ? "Pourquoi ?" : "Qu'est-ce qui a échoué ?"}
               aria-label="Raison"
+              {...messageObligatoire(
+                choix === "ignoree"
+                  ? "Dites pourquoi cette étape est écartée : sans raison, elle deviendra un accès oublié."
+                  : "Dites ce qui a échoué, sinon personne ne saura quoi reprendre.",
+              )}
             />
           </div>
         ) : null}
