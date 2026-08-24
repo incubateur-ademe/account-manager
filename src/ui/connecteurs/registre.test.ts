@@ -4,7 +4,7 @@ import { z } from "zod";
 import { CONNECTEURS } from "@/connectors";
 import type { ConnectorContract } from "@/core/connector";
 
-import { aUnePage, clesAvecEcran, ecranDe } from "./registre";
+import { aUnePage, clesAvecEcran, clesAvecTuiles, ecranDe, tuilesDe } from "./registre";
 
 function contrat(key: string, ajouts: Partial<ConnectorContract> = {}): ConnectorContract {
   return {
@@ -54,5 +54,35 @@ describe("une page de connecteur n'existe que quand il a quelque chose à montre
     // Le sens inverse n'est pas une faute : un connecteur peut n'avoir qu'une
     // configuration, et se contenter du socle commun de la page.
     expect(CONNECTEURS.filter((connecteur) => aUnePage(connecteur.contract))).not.toHaveLength(0);
+  });
+
+  it("n'enregistre aucune tuile de tableau de bord qu'aucun connecteur ne peut atteindre", () => {
+    const declares = CONNECTEURS.map((connecteur) => connecteur.contract.key);
+
+    for (const cle of clesAvecTuiles()) {
+      expect(declares).toContain(cle);
+    }
+
+    expect(tuilesDe("github")).toBeDefined();
+
+    // Une tuile n'est pas une page : un connecteur peut poser un chiffre sur le
+    // tableau de bord sans avoir d'écran à lui, et l'inverse.
+    expect(tuilesDe("nu")).toBeUndefined();
+  });
+
+  it("ne laisse pas deux tuiles d'un même connecteur porter la même clé", async () => {
+    for (const cle of clesAvecTuiles()) {
+      const chargeur = tuilesDe(cle);
+      if (!chargeur) {
+        throw new Error(`la clé ${cle} vient du registre et devrait s'y retrouver`);
+      }
+
+      const { tuiles } = await chargeur();
+      const cles = tuiles.map((tuile) => tuile.cle);
+
+      // Deux clés identiques donnent deux enfants React de même clé : l'un des deux
+      // disparaît du tableau de bord sans erreur ni trace, et son auteur ne voit rien.
+      expect(new Set(cles).size).toBe(cles.length);
+    }
   });
 });

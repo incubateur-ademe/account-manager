@@ -290,6 +290,16 @@ fois.
 plus les horodatages. `vanishedAt` plutôt qu'une suppression : une colonne, et
 l'historique est gratuit.
 
+Le `role` porte la chaîne du système, telle qu'il la rend : les vocabulaires sont trop
+différents pour être ramenés à une énumération sans perdre ce qui les sépare. Deux
+conventions seulement s'y ajoutent, parce que le tableau de bord en compte les effets.
+Le préfixe `invite:` désigne un accès en attente d'acceptation, qui n'ouvre encore rien
+mais que rien ne referme non plus. Les valeurs `admin` et `owner` désignent un droit
+d'administration. Règle dure : un connecteur qui remonte l'une de ces deux situations
+sous un autre nom **rend le chiffre faux sans bruit**, puisque rien ne signale un compte
+qu'on a cessé de compter. Remonter ou non ces situations reste son choix ; les nommer
+autrement, non.
+
 **`Reference`** : un objet possédé, ni accès ni révocable, avec `onOffboard` valant
 `ARCHIVE`, `TRANSFER` ou `KEEP`. Une page créée par quelqu'un n'est pas un accès ;
 les confondre fait proposer des suppressions absurdes.
@@ -510,8 +520,17 @@ jamais l'inverse, et un test parcourt le graphe d'imports depuis les entrées en
 de commande pour tenir la propriété.
 
 **Rien de spécifique dans les écrans génériques.** Le socle ne pose qu'un lien vers
-cette page. La seule exception envisagée est le tableau de bord, où un connecteur
-pourra poser des tuiles : c'est un chiffre, pas une fonctionnalité.
+cette page. La seule exception est le tableau de bord, où un connecteur pose ses propres
+tuiles : c'est un chiffre, pas une fonctionnalité.
+
+**Ce que vaut une tuile.** Une tuile est indicative. Elle n'écrit ni `SyncRun` ni
+événement d'audit, elle n'est pas rejouable, et le contexte que le socle lui passe ne
+contient pas de quoi laisser une trace, faute d'un journal ou d'un identifiant de run.
+Règle dure : rien de ce qu'une tuile affiche **ne peut fonder une décision de coupure**.
+Ce qui décide passe par la collecte, dont une tuile n'est pas une variante allégée : le
+jour où un de ces chiffres doit décider quelque chose, il devient une capacité de
+connecteur, avec son run et sa trace. Le socle ignore ce qu'une tuile contient, et une
+tuile qui échoue, qui traîne ou qui ne répond jamais n'emporte que son propre cadre.
 
 ### 5.4 Interface d'exécution
 

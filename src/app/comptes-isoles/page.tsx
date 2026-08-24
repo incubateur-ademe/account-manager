@@ -2,6 +2,7 @@ import { fr } from "@codegouvfr/react-dsfr";
 import type { Metadata } from "next";
 
 import { type SuggestionRattachement, suggererRattachements } from "@/core/suggestion-rattachement";
+import { OU_NON_REVOCABLE } from "@/lib/comptes-isoles";
 import { prisma } from "@/lib/db";
 import { requireOperateur } from "@/lib/session";
 import type { Suggestion } from "@/ui/ChampAvecListe";
@@ -77,13 +78,7 @@ export default async function ComptesIsolesPage() {
 
   const [isoles, personnes, comptes] = await Promise.all([
     prisma.externalIdentity.findMany({
-      // Un rattachement par ressemblance appelle le même geste qu'un compte sans
-      // détenteur : quelqu'un doit trancher. Le laisser hors de cette file le
-      // rendrait invisible, alors qu'il ne pourra jamais justifier une révocation.
-      where: {
-        vanishedAt: null,
-        OR: [{ personId: null, serviceAccountId: null }, { matchMethod: "HEURISTIC" }],
-      },
+      where: OU_NON_REVOCABLE,
       orderBy: [{ provider: "asc" }, { handle: "asc" }],
       select: {
         id: true,
