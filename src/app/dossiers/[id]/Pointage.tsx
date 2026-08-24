@@ -4,6 +4,8 @@ import { fr } from "@codegouvfr/react-dsfr";
 import { Button } from "@codegouvfr/react-dsfr/Button";
 import { createModal } from "@codegouvfr/react-dsfr/Modal";
 import { useActionState, useState } from "react";
+import type { SensDossier } from "@/core/dossier";
+import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 
 import { messageObligatoire } from "@/ui/validation";
 
@@ -19,10 +21,10 @@ import {
 
 // Hors du composant, comme partout ailleurs dans ce dépôt : `createModal` enregistre
 // la modale une fois pour toutes, et un écran de dossier n'en porte qu'une.
-const modaleAnnulation = createModal({ id: "annuler-depart", isOpenedByDefault: false });
+const modaleAnnulation = createModal({ id: "annuler-dossier", isOpenedByDefault: false });
 
 /**
- * Le geste qui dit qu'un départ n'aura pas lieu.
+ * Le geste qui dit qu'un dossier n'aura pas lieu.
  *
  * La modale se rend toujours, et seul son contenu dépend du verdict. Après
  * l'annulation, le chemin du dossier est revalidé et la page se re-rend avec un
@@ -32,13 +34,17 @@ const modaleAnnulation = createModal({ id: "annuler-depart", isOpenedByDefault: 
  */
 export function BoutonAnnuler({
   dossierId,
+  sens,
   etapes,
   annulable,
 }: {
   dossierId: string;
+  sens: SensDossier;
   etapes: number;
   annulable: boolean;
 }) {
+  const mots = LIBELLE_DOSSIER[sens];
+
   return (
     <>
       {annulable ? (
@@ -48,11 +54,11 @@ export function BoutonAnnuler({
           size="small"
           nativeButtonProps={modaleAnnulation.buttonProps}
         >
-          Annuler ce départ
+          {mots.annuler}
         </Button>
       ) : null}
 
-      <modaleAnnulation.Component title="Annuler ce départ">
+      <modaleAnnulation.Component title={mots.annuler}>
         {/* Le formulaire reste monté quoi qu'il arrive : l'annulation fait basculer
             `annulable` à faux avant que son effet de fermeture n'ait eu son tour, et
             un formulaire démonté à cet instant emporte le dialogue ouvert avec lui,
@@ -63,19 +69,16 @@ export function BoutonAnnuler({
               {etapes === 0
                 ? "Ce dossier n'a aucune étape : rien n'a été proposé, et rien ne sera abandonné."
                 : `${etapes} étape${etapes > 1 ? "s" : ""} proposée${etapes > 1 ? "s" : ""} ${etapes > 1 ? "seront abandonnées" : "sera abandonnée"}.`}{" "}
-              Aucun accès n'est coupé ni rouvert par ce geste : l'outil n'a rien exécuté, il a
-              seulement dit ce qu'il faudrait faire.
+              {mots.annulationEffet}
             </p>
-            <p className={fr.cx("fr-text--sm", "fr-mb-1w")}>
-              Un nouveau départ restera ouvrable ensuite, et la fiche de la personne cessera
-              d'annoncer celui-ci.
-            </p>
+            <p className={fr.cx("fr-text--sm", "fr-mb-1w")}>{mots.annulationSuite}</p>
           </>
         ) : (
           <p className={fr.cx("fr-text--sm")}>Ce dossier ne s'annule plus.</p>
         )}
         <AnnulationDossier
           dossierId={dossierId}
+          sens={sens}
           visible={annulable}
           onSucces={modaleAnnulation.close}
         />
@@ -106,17 +109,29 @@ export function BoutonConfirmer({ planId }: { planId: string }) {
 }
 
 /**
- * Quatre issues et pas deux : « déjà absent » est le cas nominal quand quelqu'un est
- * passé avant, et « écartée » doit porter sa raison, sans quoi l'étape devient un
- * accès oublié que plus rien ne rattrape.
+ * Quatre issues et pas deux : le constat qu'un autre est passé avant est le cas
+ * nominal, et « écartée » doit porter sa raison, sans quoi l'étape devient un accès
+ * oublié que plus rien ne rattrape.
+ *
+ * Ce constat se dit dans le sens du dossier, jamais dans les deux : proposer « déjà
+ * absent » sous une étape d'octroi ferait signer l'inverse de ce qui a été fait.
  */
-export function Pointage({ etapeId, faite }: { etapeId: string; faite: boolean }) {
+export function Pointage({
+  etapeId,
+  faite,
+  sens,
+}: {
+  etapeId: string;
+  faite: boolean;
+  sens: SensDossier;
+}) {
   const [etat, formAction, pending] = useActionState<EtatAction | null, FormData>(
     pointerEtape,
     null,
   );
   const [choix, setChoix] = useState("fait");
   const justification = choix === "ignoree" || choix === "echec";
+  const constat = LIBELLE_DOSSIER[sens].constat;
 
   return (
     <form action={formAction} className={fr.cx("fr-mt-1w")}>
@@ -132,7 +147,7 @@ export function Pointage({ etapeId, faite }: { etapeId: string; faite: boolean }
             aria-label="Ce qui a été fait"
           >
             <option value="fait">C'est fait</option>
-            <option value="deja-absent">Déjà absent</option>
+            <option value={constat.valeur}>{constat.libelle}</option>
             <option value="ignoree">Écartée</option>
             <option value="echec">Échec</option>
           </select>

@@ -13,7 +13,7 @@ import {
   SELECTION_APPARTENANCE,
 } from "@/lib/appartenance";
 import { prisma } from "@/lib/db";
-import { calculerPlanDeDepart, enregistrerPlan, ouvrirDossierDeDepart } from "@/lib/dossier";
+import { calculerPlan, enregistrerPlanDOuverture, ouvrirDossier } from "@/lib/dossier";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
 
@@ -242,11 +242,12 @@ export async function ouvrirDepartsEnLot(_etat: EtatLot, formData: FormData): Pr
 
       let dejaOuvert = false;
       const dossierId = await actionTracee({
-        action: "depart.ouverture",
+        action: "dossier.ouverture",
         targetType: "personne",
         targetId: personne.username,
         correlationId: lot,
         after: {
+          sens: "OFFBOARDING",
           echeance: echeance?.toISOString().slice(0, 10) ?? null,
           raison: entree.raison,
           startup: entree.ghid,
@@ -254,14 +255,24 @@ export async function ouvrirDepartsEnLot(_etat: EtatLot, formData: FormData): Pr
         },
         revalider: cheminsDe(entree.ghid, personne.username),
         ecrire: async (operateur) => {
-          const dossier = await ouvrirDossierDeDepart(personne.id, echeance);
+          const dossier = await ouvrirDossier(personne.id, "OFFBOARDING", echeance);
           if (dossier.deja) {
             dejaOuvert = true;
-            return dossier.id;
+
+            // Même reprise que l'ouverture unitaire : un dossier vivant sans plan est le
+            // reste d'une ouverture interrompue, et n'aurait sinon que l'annulation.
+            if ((await prisma.plan.count({ where: { accessCaseId: dossier.id } })) > 0) {
+              return dossier.id;
+            }
           }
 
-          const calcule = await calculerPlanDeDepart(personne.id, personne.username, maintenant);
-          await enregistrerPlan(dossier.id, calcule, operateur.username, maintenant);
+          const calcule = await calculerPlan(
+            "OFFBOARDING",
+            personne.id,
+            personne.username,
+            maintenant,
+          );
+          await enregistrerPlanDOuverture(dossier.id, calcule, operateur.username, maintenant);
           return dossier.id;
         },
       });

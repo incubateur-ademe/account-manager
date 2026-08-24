@@ -1,9 +1,19 @@
 import type { Peremption } from "@/core/plan";
 import { autoriseUneRevocation } from "@/core/rapprochement";
 
-export type EtatEtape = "PENDING" | "SKIPPED" | "SUCCEEDED" | "ALREADY_ABSENT" | "STALE" | "FAILED";
+export type EtatEtape =
+  | "PENDING"
+  | "SKIPPED"
+  | "SUCCEEDED"
+  | "ALREADY_ABSENT"
+  | "ALREADY_PRESENT"
+  | "STALE"
+  | "FAILED";
 
 export type EtatDossier = "WATCH" | "CANDIDATE" | "CONFIRMED" | "CANCELLED" | "DONE";
+
+/** Le sens d'un dossier : ce qu'il faudra donner, ou ce qu'il faudra retirer. */
+export type SensDossier = "ONBOARDING" | "OFFBOARDING";
 
 export type EtatPlan =
   | "DRAFT"
@@ -72,7 +82,12 @@ export function peutPointer(etat: EtatPlan): Verdict {
 
 /** Une étape qu'on ne reverra plus : elle a été traitée, ou écartée en connaissance de cause. */
 export function estSoldee(etat: EtatEtape): boolean {
-  return etat === "SUCCEEDED" || etat === "ALREADY_ABSENT" || etat === "SKIPPED";
+  return (
+    etat === "SUCCEEDED" ||
+    etat === "ALREADY_ABSENT" ||
+    etat === "ALREADY_PRESENT" ||
+    etat === "SKIPPED"
+  );
 }
 
 /**
@@ -80,8 +95,9 @@ export function estSoldee(etat: EtatEtape): boolean {
  * l'état ne se lit pas dans ses étapes finit par affirmer une chose que le détail
  * dément.
  *
- * « Déjà absent » vaut réussite, c'est le cas nominal quand quelqu'un d'autre est
- * passé avant. « Ignorée » aussi, à la différence près qu'elle porte une raison.
+ * « Déjà absent » et « déjà présent » valent réussite, c'est le cas nominal quand
+ * quelqu'un d'autre est passé avant. « Ignorée » aussi, à la différence près qu'elle
+ * porte une raison.
  */
 export function etatApresPointage(etapes: readonly EtatEtape[]): EtatPlan {
   if (etapes.length === 0) {
@@ -100,6 +116,53 @@ export function etatApresPointage(etapes: readonly EtatEtape[]): EtatPlan {
  */
 export function dossierSoldable(etatPlan: EtatPlan): boolean {
   return etatPlan === "EXECUTED";
+}
+
+/**
+ * Les états qu'un dossier de ce sens peut prendre.
+ *
+ * Une arrivée est une décision, jamais une veille ni un soupçon : elle n'admet ni
+ * `WATCH`, réservé à ce qu'une collecte lèvera un jour toute seule, ni `CANDIDATE`,
+ * qui dit qu'on soupçonne un départ sans l'avoir tranché. Personne ne soupçonne une
+ * arrivée : ou bien on la prépare, ou bien il n'y a pas de dossier.
+ */
+const ADMIS: Record<SensDossier, readonly EtatDossier[]> = {
+  ONBOARDING: ["CONFIRMED", "CANCELLED", "DONE"],
+  OFFBOARDING: ["WATCH", "CANDIDATE", "CONFIRMED", "CANCELLED", "DONE"],
+};
+
+export function etatsAdmis(sens: SensDossier): readonly EtatDossier[] {
+  return ADMIS[sens];
+}
+
+/**
+ * L'état de naissance d'un dossier ouvert à la main. Une arrivée naît confirmée,
+ * puisque l'ouvrir est déjà la décision. Un départ naît candidat : l'ouvrir dit
+ * qu'on s'en occupe, le confirmer dit qu'on répond de la liste.
+ */
+const NAISSANCE: Record<SensDossier, EtatDossier> = {
+  ONBOARDING: "CONFIRMED",
+  OFFBOARDING: "CANDIDATE",
+};
+
+export function etatDeNaissance(sens: SensDossier): EtatDossier {
+  return NAISSANCE[sens];
+}
+
+export function peutOuvrir(sens: SensDossier, etat: EtatDossier): Verdict {
+  if (!etatsAdmis(sens).includes(etat)) {
+    return {
+      possible: false,
+      raison:
+        sens === "ONBOARDING"
+          ? "Une arrivée ne se met ni en veille ni en soupçon : elle se prépare ou elle n'existe pas."
+          : "Cet état n'existe pas pour un départ.",
+    };
+  }
+  if (!dossierVivant(etat)) {
+    return { possible: false, raison: "Un dossier ne s'ouvre pas déjà clos." };
+  }
+  return { possible: true };
 }
 
 /**
@@ -144,7 +207,7 @@ function planEngage(plan: EtatPlan): boolean {
 }
 
 /**
- * Annuler, c'est dire qu'un départ n'aura pas lieu. Le geste s'arrête là où
+ * Annuler, c'est dire que ce dossier n'aura pas lieu. Le geste s'arrête là où
  * commence l'engagement : dès qu'un plan est confirmé, des étapes ont pu être
  * pointées, et défaire le dossier ferait disparaître des paroles que la collecte
  * doit encore vérifier. Il n'y a pas de fenêtre de rétractation ici, il y a la
@@ -174,7 +237,17 @@ export function peutAnnuler(dossier: EtatDossier, plan: EtatPlan | null): Verdic
  * l'action, dont celui qui parlait d'accès restés ouverts sur un dossier annulé, où
  * il n'y en avait aucun.
  */
-export function peutClore(dossier: EtatDossier, plan: EtatPlan | null, etapes: number): Verdict {
+const ETAPES_NON_SOLDEES: Record<SensDossier, string> = {
+  ONBOARDING: "Toutes les étapes ne sont pas soldées : des accès n'ont pas été donnés.",
+  OFFBOARDING: "Toutes les étapes ne sont pas soldées : des accès restent ouverts.",
+};
+
+export function peutClore(
+  sens: SensDossier,
+  dossier: EtatDossier,
+  plan: EtatPlan | null,
+  etapes: number,
+): Verdict {
   if (dossier === "DONE") {
     return { possible: false, raison: "Ce dossier est déjà clos." };
   }
@@ -191,17 +264,14 @@ export function peutClore(dossier: EtatDossier, plan: EtatPlan | null, etapes: n
   // Un plan qui ne demande rien est soldé par construction, et il faut le dire :
   // la confirmation refuse une liste vide, à raison, si bien que ce plan n'atteindra
   // jamais l'état exécuté. Sans cette ligne, la seule sortie restait l'annulation,
-  // qui inscrit « ce départ n'aura pas lieu » alors qu'il a bien lieu et que l'outil
+  // qui inscrit que le dossier n'aura pas lieu alors qu'il a bien lieu et que l'outil
   // n'avait simplement rien à faire.
   if (etapes === 0) {
     return { possible: true };
   }
 
   if (!dossierSoldable(plan)) {
-    return {
-      possible: false,
-      raison: "Toutes les étapes ne sont pas soldées : des accès restent ouverts.",
-    };
+    return { possible: false, raison: ETAPES_NON_SOLDEES[sens] };
   }
   return { possible: true };
 }

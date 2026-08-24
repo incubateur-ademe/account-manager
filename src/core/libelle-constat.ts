@@ -15,7 +15,7 @@ export const LIBELLE_CONSTAT: Record<ConstatKind, Libelle> = {
   OVERDUE_MANUAL_ACTION: {
     titre: "Action déclarée faite, mais sans effet observé",
     explication:
-      "Une étape de départ a été pointée comme faite, et le compte est toujours là quand le système a été relu. L'outil n'exécute rien lui-même : une case cochée vaut parole, pas preuve, et c'est la collecte qui tranche. Soit le geste a été fait ailleurs qu'attendu, soit il ne l'a pas été.",
+      "Une étape a été pointée comme faite, et la lecture suivante du système dit le contraire : le compte est toujours là après un départ, ou toujours absent après une arrivée. L'outil n'exécute rien lui-même : une case cochée vaut parole, pas preuve, et c'est la collecte qui tranche. Soit le geste a été fait ailleurs qu'attendu, soit il ne l'a pas été.",
     action: "Reprendre l'étape sur le système, ou corriger le pointage s'il était erroné.",
   },
   SCOPE_EXIT: {

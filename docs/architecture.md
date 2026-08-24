@@ -327,7 +327,70 @@ Le journal est en écriture seule, à rétention indéfinie, exportable. Son éc
 sans attente avec capture d'erreur : une panne du journal ne doit jamais faire échouer
 l'action métier, l'inverse n'étant pas vrai.
 
-### 3.4 Reconstructibilité
+### 3.4 Le dossier et le plan
+
+Un dossier porte un **sens**, l'arrivée ou le départ, et c'est le seul modèle des deux.
+Un second aurait imposé deux écrans, deux machines à états et deux façons de croire
+qu'une affaire est réglée, pour un mainteneur à temps partiel.
+
+**Les états admis dépendent du sens.** Un départ se soupçonne avant de se décider : il
+passe par `WATCH`, qu'une collecte lèvera un jour toute seule, puis `CANDIDATE`. Une
+arrivée est une décision et rien d'autre, elle naît confirmée et n'admet ni l'un ni
+l'autre. La base ne sait pas poser d'état par défaut : un défaut de colonne que la règle
+métier interdit n'attend que le premier `create` écrit un peu vite.
+
+Un seul dossier vivant par personne **et par sens**. La lecture avant création ne suffit
+pas, deux ouvertures simultanées la passant toutes les deux : un index unique partiel,
+limité aux états vivants, tient l'invariant en base. La course s'y résout comme elle se
+serait résolue une milliseconde plus tôt, en rendant le dossier gagnant. L'index est
+partiel et non total, sans quoi une personne qui revient ne pourrait plus jamais ouvrir
+de second dossier.
+
+Un seul plan courant par dossier, tenu par le même dispositif et pour la même raison :
+la reprise d'une ouverture interrompue compte les plans avant d'en calculer un, et deux
+ouvertures simultanées comptent toutes les deux zéro. Un index unique partiel sur le
+dossier, hors des états d'un plan écarté, garde le plan gagnant. Écarté et non ancien :
+un plan annulé, périmé ou remplacé laisse la place à son successeur, sans quoi aucun
+recalcul ne serait possible.
+
+Vivant, et non unique : une personne qui revient dans l'incubateur ouvre un second
+dossier d'arrivée, celui de son premier passage étant clos, et repartira sur un
+troisième dossier. Ni l'arrivée ni le départ ne sont des événements qui n'arrivent
+qu'une fois par personne, et un modèle de plan s'applique donc autant de fois qu'il y a
+de dossiers.
+
+**Un plan est une suite d'étapes figées.** Il réunit trois origines, dans cet ordre : le
+modèle de l'incubateur, les modèles des startups de la personne, puis ce que les
+connecteurs proposent d'après les comptes réellement observés. Le type de plan choisit
+le sens de l'intent, `grant` pour une arrivée et `revoke` pour un départ, et chaque
+connecteur répond selon le tier que ses credentials lui donnent ce jour-là.
+
+L'assemblage est **déterministe**, sinon l'empreinte changerait d'un calcul à l'autre
+sans que rien n'ait bougé. Le premier arrivé gagne et garde sa place, donc l'incubateur
+prime. Le dédoublonnage suit une règle unique pour les trois origines, sur la clé
+d'idempotence. Ce qui est écarté **se dit, avec sa raison** : retirer sans bruit une
+étape que quelqu'un a pris la peine de déclarer serait la panne muette que ce produit
+existe pour éviter.
+
+Le **rang de lecture** est figé dans l'étape au même titre que son libellé. Il se
+départage, faute de quoi deux étapes de même rang changeraient d'ordre d'un affichage à
+l'autre sous une liste numérotée.
+
+**L'empreinte ne porte que ce qui engage** : le système visé, la capacité, l'action, la
+clé d'idempotence et les paramètres. Ni les libellés, ni l'ordre. Elle répond à une
+seule question, celle de savoir si ce qu'on s'apprête à exécuter est encore ce qui a été
+approuvé, une collecte ayant pu passer entre les deux. Un plan cesse d'être valide de
+deux façons qu'il ne faut pas confondre : il **périme** par le temps, ce qui a été
+constaté devenant trop vieux pour qu'on agisse dessus sans regarder à nouveau, et il
+devient **obsolète** par le contenu, le plan recalculé ne disant plus la même chose.
+L'empreinte est recalculée au démarrage de l'exécution, pas seulement à la confirmation.
+
+**L'état d'un plan se déduit de ses étapes** et ne se pose jamais à la main. Pointer une
+étape reste une déclaration humaine et non une exécution : l'outil ne touche aucun
+système à ce moment-là, et le dire à l'écran évite qu'une case cochée passe pour un accès
+coupé.
+
+### 3.5 Reconstructibilité
 
 Tout est reconstructible en rejouant les connecteurs, sauf le journal, les
 dérogations et l'état décidé. Le périmètre de sauvegarde critique se réduit à ces

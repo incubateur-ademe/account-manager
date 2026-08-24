@@ -5,9 +5,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { type EtatEtape, estSoldee, peutAnnuler, peutClore, peutPointer } from "@/core/dossier";
-import { peremptionDuPlan } from "@/core/plan";
+import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
+import { type OrigineEtape, peremptionDuPlan, type RaisonDEcart } from "@/core/plan";
 import { prisma } from "@/lib/db";
-import { calculerPlanDeDepart } from "@/lib/dossier";
+import { calculerPlan } from "@/lib/dossier";
 import { requireOperateur } from "@/lib/session";
 import { dateFr } from "@/ui/dates";
 import {
@@ -38,10 +39,26 @@ const ETAPE: Record<EtatEtape, { libelle: string; severite: "success" | "warning
   PENDING: { libelle: "à faire", severite: "warning" },
   SUCCEEDED: { libelle: "fait", severite: "success" },
   ALREADY_ABSENT: { libelle: "déjà absent", severite: "success" },
+  ALREADY_PRESENT: { libelle: "déjà présent", severite: "success" },
   SKIPPED: { libelle: "écartée", severite: "warning" },
   FAILED: { libelle: "échec", severite: "error" },
   STALE: { libelle: "situation changée", severite: "warning" },
 };
+
+const ECART: Record<RaisonDEcart, string> = {
+  doublon: "déjà demandée plus haut",
+  "non-autorise": "non autorisée sur ce compte",
+};
+
+function origineLisible(origine: OrigineEtape): string {
+  if (origine === "connecteur") {
+    return "connecteur";
+  }
+  if (origine === "modele:incubateur") {
+    return "modèle de l'incubateur";
+  }
+  return `modèle de la startup ${origine.slice("modele:startup:".length)}`;
+}
 
 interface MarcheASuivre {
   runbook?: string;
@@ -53,7 +70,7 @@ function marche(valeur: unknown): MarcheASuivre {
   return valeur && typeof valeur === "object" ? (valeur as MarcheASuivre) : {};
 }
 
-export default async function DepartPage({
+export default async function DossierPage({
   params,
   searchParams,
 }: {
@@ -68,13 +85,14 @@ export default async function DepartPage({
     where: { id },
     select: {
       id: true,
+      kind: true,
       state: true,
       cancelledReason: true,
       effectiveDate: true,
       firstSignalAt: true,
       person: { select: { id: true, username: true, fullname: true } },
       plans: {
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: 1,
         select: {
           id: true,
@@ -86,9 +104,14 @@ export default async function DepartPage({
           confirmedBy: true,
           confirmedAt: true,
           steps: {
-            orderBy: [{ systemKey: "asc" }, { label: "asc" }],
+            // Le rang de lecture figé à la création, et non plus un tri alphabétique :
+            // l'ordre d'un plan est une décision de l'assemblage, que l'écran restitue.
+            // Départagé quand même : les étapes figées avant que ce rang n'existe valent
+            // toutes zéro, et sans second critère leur ordre changerait à chaque pointage.
+            orderBy: [{ ordre: "asc" }, { systemKey: "asc" }, { label: "asc" }, { id: "asc" }],
             select: {
               id: true,
+              ordre: true,
               systemKey: true,
               tier: true,
               label: true,
@@ -108,6 +131,7 @@ export default async function DepartPage({
     notFound();
   }
 
+  const mots = LIBELLE_DOSSIER[dossier.kind];
   const maintenant = new Date();
   const plan = dossier.plans[0];
   const annule = dossier.state === "CANCELLED";
@@ -120,21 +144,28 @@ export default async function DepartPage({
   // pour afficher une dérive sans issue serait un appel sortant pour rien.
   const actuel = annule
     ? null
-    : await calculerPlanDeDepart(dossier.person.id, dossier.person.username, maintenant);
+    : await calculerPlan(dossier.kind, dossier.person.id, dossier.person.username, maintenant);
 
   const etat = plan && actuel ? peremptionDuPlan(plan, actuel.empreinte, maintenant) : null;
+  const clos = dossier.state === "DONE";
   const brouillon = !annule && plan?.state === "DRAFT";
+  const remplace = plan?.state === "EXPIRED" || plan?.state === "STALE";
+  // Un plan dont quelqu'un répond : la dérive le concerne aussi, faute de quoi elle
+  // ne se disait qu'aux brouillons et un plan confirmé restait muet sur ce que la
+  // collecte a démenti depuis. Pas sur un dossier clos en revanche : ce que la
+  // collecte y dément, c'est le plan mené à son terme, et l'annoncer en avertissement
+  // donnerait le résultat recherché pour un incident.
+  const confirme =
+    plan !== undefined && !annule && !clos && !brouillon && !remplace && plan.state !== "CANCELLED";
   // Adossé à la garde plutôt que recopié : l'écran connaissait la règle de son côté,
   // et c'est cet écart qui a muré le dossier le jour où une étape a échoué.
   const pointable = plan !== undefined && !annule && peutPointer(plan.state).possible;
-  const clos = dossier.state === "DONE";
-  const remplace = plan?.state === "EXPIRED" || plan?.state === "STALE";
   const restantes = plan?.steps.filter((etape) => !estSoldee(etape.state as EtatEtape)).length ?? 0;
 
   return (
     <main className={fr.cx("fr-container", "fr-my-6w")}>
       <h1 className={fr.cx("fr-mb-1v")}>
-        Départ de {dossier.person.fullname}{" "}
+        {mots.nom} de {dossier.person.fullname}{" "}
         {clos ? (
           <Badge severity="success" noIcon>
             dossier clos
@@ -142,7 +173,7 @@ export default async function DepartPage({
         ) : null}
         {annule ? (
           <Badge severity="info" noIcon>
-            départ annulé
+            {mots.annule}
           </Badge>
         ) : null}
       </h1>
@@ -154,38 +185,36 @@ export default async function DepartPage({
       </p>
 
       {deja ? (
-        <Alert
-          severity="info"
-          className={fr.cx("fr-mt-3w")}
-          small
-          description="Ce dossier était déjà ouvert : vous êtes revenu dessus, aucun second dossier n'a été créé. Un départ ne s'ouvre qu'une fois par personne tant qu'il n'est pas clos."
-        />
+        <Alert severity="info" className={fr.cx("fr-mt-3w")} small description={mots.dejaOuvert} />
       ) : null}
 
       {/* Rien à cocher sur un dossier annulé ou clos : la dire quand même ferait
           promettre un geste que l'écran n'offre plus. */}
       {annule || clos ? null : (
-        <Alert
-          severity="info"
-          className={fr.cx("fr-my-3w")}
-          small
-          description="Cocher une étape n'exécute rien : l'outil consigne ce que vous déclarez avoir fait, il ne coupe aucun accès lui-même. La collecte suivante dira si le compte a réellement disparu."
-        />
+        <Alert severity="info" className={fr.cx("fr-my-3w")} small description={mots.cocher} />
       )}
 
-      {etat?.obsolete && brouillon ? (
+      {etat?.obsolete && (brouillon || confirme) ? (
         <Alert
           severity="warning"
           className={fr.cx("fr-mb-3w")}
           title="Ce plan ne décrit plus la situation"
           description={
-            <>
-              <p className={fr.cx("fr-mb-1w")}>
-                Les accès observés ont changé depuis son calcul : il ne peut plus être confirmé en
-                l'état.
+            brouillon ? (
+              <>
+                <p className={fr.cx("fr-mb-1w")}>{mots.derive}</p>
+                {plan ? <BoutonRecalculer planId={plan.id} /> : null}
+              </>
+            ) : (
+              /* Sans bouton de recalcul : `peutRecalculer` refuse un plan engagé, à
+                 raison, et un bouton qui répond toujours non serait pire que pas de
+                 bouton du tout. */
+              <p className={fr.cx("fr-mb-0")}>
+                Ce plan reste celui qui a été confirmé et ne se recalcule plus : ses étapes valent
+                telles quelles. Ce qui a changé depuis se traite hors de lui, et la collecte
+                suivante le redira.
               </p>
-              {plan ? <BoutonRecalculer planId={plan.id} /> : null}
-            </>
+            )
           }
         />
       ) : null}
@@ -242,11 +271,11 @@ export default async function DepartPage({
         <Alert
           severity="info"
           className={fr.cx("fr-mb-3w")}
-          title="Ce départ a été annulé"
+          title={mots.annulationTitre}
           description={
             dossier.cancelledReason
-              ? `${dossier.cancelledReason.replace(/[.!?]?$/, ".")} Aucun accès n'a été coupé par ce dossier, et un nouveau départ reste ouvrable.`
-              : "Aucun accès n'a été coupé par ce dossier, et un nouveau départ reste ouvrable."
+              ? `${dossier.cancelledReason.replace(/[.!?]?$/, ".")} ${mots.annulationConsequence}`
+              : mots.annulationConsequence
           }
         />
       ) : null}
@@ -255,24 +284,19 @@ export default async function DepartPage({
         {annule
           ? "Ce qui n'aura pas lieu"
           : remplace
-            ? "Ce que ce plan proposait"
+            ? mots.propose
             : brouillon
-              ? "Ce qui sera à faire"
-              : "Ce qu'il reste à faire"}
+              ? mots.aFaire
+              : mots.restant}
       </h2>
 
       {!plan ? (
         <p>
           Aucun plan n'a été enregistré pour ce dossier : son calcul n'a pas abouti.
-          {annule || clos
-            ? ""
-            : " L'annuler est la seule issue, un nouveau départ restant ouvrable ensuite."}
+          {annule || clos ? "" : mots.sansPlanIssue}
         </p>
       ) : plan.steps.length === 0 ? (
-        <p>
-          Aucune étape : aucun compte rattaché de façon sûre n'a été trouvé sur les systèmes que
-          l'outil sait traiter.
-        </p>
+        <p>{mots.planVide}</p>
       ) : (
         <>
           <ol className={fr.cx("fr-mt-2w")}>
@@ -326,7 +350,9 @@ export default async function DepartPage({
                       Pointée le {dateLocale.format(etape.executedAt)}.
                     </p>
                   ) : null}
-                  {pointable ? <Pointage etapeId={etape.id} faite={soldee} /> : null}
+                  {pointable ? (
+                    <Pointage etapeId={etape.id} faite={soldee} sens={dossier.kind} />
+                  ) : null}
                 </li>
               );
             })}
@@ -357,22 +383,44 @@ export default async function DepartPage({
             <Alert
               severity="warning"
               className={fr.cx("fr-mt-2w")}
-              title="Des accès sont restés ouverts"
+              title={mots.echecTitre}
               description="Une étape au moins a échoué. Le dossier ne peut pas être clos tant qu'elle n'est pas reprise."
             />
           ) : null}
         </>
       )}
 
+      {actuel && actuel.ecartees.length > 0 ? (
+        <section className={fr.cx("fr-mt-4w")}>
+          <h2 className={fr.cx("fr-h6")}>Ce que le calcul n'a pas retenu</h2>
+          <p className={fr.cx("fr-text--sm")}>
+            Ces étapes ont été proposées puis écartées à l'assemblage du calcul du jour. Rien n'est
+            écarté en silence : si l'une d'elles compte, elle est à traiter hors de ce plan.
+          </p>
+          <ul>
+            {actuel.ecartees.map((ecartee) => (
+              <li key={`${ecartee.origine}:${ecartee.etape.idempotencyKey}`}>
+                {ecartee.etape.label}{" "}
+                <Badge severity="info" small noIcon>
+                  {ECART[ecartee.raison]}
+                </Badge>{" "}
+                <span className={fr.cx("fr-text--sm")}>({origineLisible(ecartee.origine)})</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       {/* Hors du bloc des étapes, comme l'annulation : un plan qui n'en porte aucune
           est soldé par construction, et le bouton vivait dans une branche que ce
           cas-là n'atteint jamais. */}
-      {plan && peutClore(dossier.state, plan.state, plan.steps.length).possible ? (
+      {plan && peutClore(dossier.kind, dossier.state, plan.state, plan.steps.length).possible ? (
         <BoutonClore dossierId={dossier.id} />
       ) : null}
 
       <BoutonAnnuler
         dossierId={dossier.id}
+        sens={dossier.kind}
         etapes={plan?.steps.length ?? 0}
         annulable={peutAnnuler(dossier.state, plan?.state ?? null).possible}
       />

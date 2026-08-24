@@ -7,7 +7,7 @@ import style from "@/ui/Actions.module.css";
 import { Aide } from "@/ui/Aide";
 
 import { Appartenance, type SurchargePosee } from "./Appartenance";
-import { BoutonDepart } from "./BoutonDepart";
+import { BoutonDossier } from "./BoutonDossier";
 
 // Hors du composant : `createModal` enregistre la modale une fois pour toutes, et
 // une fiche n'en affiche qu'une à la fois.
@@ -37,7 +37,8 @@ export function ActionsDePage({
   return (
     <>
       <div className={fr.cx("fr-grid-row", "fr-grid-row--right", "fr-grid-row--middle")}>
-        <BoutonDepart username={username} />
+        <BoutonDossier username={username} sens="OFFBOARDING" />
+        <BoutonDossier username={username} sens="ONBOARDING" priorite="secondary" />
 
         <span className={style["geste"]}>
           {/* Le bouton reste, même inerte : absent, il laissait chercher ce qui

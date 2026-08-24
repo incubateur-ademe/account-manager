@@ -213,8 +213,9 @@ export async function syncConstats(
  * Ce qu'on a déclaré avoir fait, confronté à ce qu'on observe.
  *
  * Une étape pointée « faite » n'est qu'une parole tant qu'une lecture du système ne
- * l'a pas confirmée. On rapproche donc chaque déclaration de deux choses : le compte
- * de la personne sur ce système existe-t-il encore, et l'a-t-on relu depuis.
+ * l'a pas confirmée. On rapproche donc chaque déclaration de trois choses : le sens
+ * du dossier, l'existence du compte de la personne sur ce système, et la date de la
+ * dernière relecture.
  */
 async function actionsDeclarees(): Promise<ActionDeclaree[]> {
   const etapes = await prisma.planStep.findMany({
@@ -227,6 +228,7 @@ async function actionsDeclarees(): Promise<ActionDeclaree[]> {
         select: {
           accessCase: {
             select: {
+              kind: true,
               person: {
                 select: {
                   username: true,
@@ -253,8 +255,9 @@ async function actionsDeclarees(): Promise<ActionDeclaree[]> {
   const declarees: ActionDeclaree[] = [];
 
   for (const etape of etapes) {
-    const personne = etape.plan.accessCase?.person;
-    if (!personne || !etape.executedAt) {
+    const dossier = etape.plan.accessCase;
+    const personne = dossier?.person;
+    if (!dossier || !personne || !etape.executedAt) {
       continue;
     }
 
@@ -262,6 +265,10 @@ async function actionsDeclarees(): Promise<ActionDeclaree[]> {
       label: etape.label,
       systemKey: etape.systemKey,
       username: personne.username,
+      // Le sens se lit sur le dossier et non sur le plan : `PlanKind` porte aussi des
+      // valeurs qui ne sont ni une arrivée ni un départ, et une étape sans dossier
+      // n'entre pas ici.
+      sens: dossier.kind,
       declareeLe: etape.executedAt,
       compteToujoursLa: personne.identities.some(
         (identite) => identite.provider === etape.systemKey && identite.vanishedAt === null,
