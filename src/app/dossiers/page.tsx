@@ -36,7 +36,7 @@ export default async function DossiersPage() {
       firstSignalAt: true,
       person: { select: { username: true, fullname: true } },
       plans: {
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: 1,
         select: { steps: { select: { state: true } } },
       },

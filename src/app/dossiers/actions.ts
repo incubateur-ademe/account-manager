@@ -6,7 +6,7 @@ import type { SensDossier } from "@/core/dossier";
 import { echeanceEffective } from "@/core/rattachement-startup";
 import { actionTracee } from "@/lib/actions";
 import { prisma } from "@/lib/db";
-import { calculerPlan, enregistrerPlan, ouvrirDossier } from "@/lib/dossier";
+import { calculerPlan, enregistrerPlanDOuverture, ouvrirDossier } from "@/lib/dossier";
 import { requireOperateur } from "@/lib/session";
 
 export interface EtatDossier {
@@ -73,7 +73,7 @@ async function ouvrir(sens: SensDossier, formData: FormData): Promise<EtatDossie
       }
 
       const calcule = await calculerPlan(sens, personne.id, personne.username, maintenant);
-      await enregistrerPlan(dossier.id, calcule, operateur.username, maintenant);
+      await enregistrerPlanDOuverture(dossier.id, calcule, operateur.username, maintenant);
       return dossier.id;
     },
   });

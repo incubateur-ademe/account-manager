@@ -450,6 +450,13 @@ model Plan {
 
   @@index([state])
   @@index([accessCaseId])
+
+  /// Un index unique partiel sur ("accessCaseId"), qui exclut les etats d'un plan
+  /// ecarte (CANCELLED, EXPIRED, STALE), vit en base sans figurer ici : Prisma ne sait
+  /// pas exprimer la clause WHERE, et il ne voit pas non plus l'index comme une
+  /// derive. Il est ecrit a la main dans la migration
+  /// 20260824161541_un_seul_plan_courant_par_dossier. Sans cette ligne, la garde
+  /// serait invisible a qui lit ce fichier.
 }
 
 enum RiskLevel {

@@ -8,7 +8,12 @@ import type { EtatDossier } from "@/core/dossier";
 import { peutClore, peutConfirmer, systemesDuDepart } from "@/core/dossier";
 import { empreinteDuPlan } from "@/core/plan";
 import { Prisma } from "@/generated/prisma/client";
-import { calculerPlan, enregistrerPlan, ouvrirDossier } from "@/lib/dossier";
+import {
+  calculerPlan,
+  enregistrerPlan,
+  enregistrerPlanDOuverture,
+  ouvrirDossier,
+} from "@/lib/dossier";
 
 process.env["DATABASE_URL"] ??= "postgresql://localhost:5432/inutilise";
 process.env["ESPACE_MEMBRE_API_KEY"] ??= "inutilisee";
@@ -60,6 +65,8 @@ const base = vi.hoisted(() => ({
   connecteurs: [] as Connector[],
   lecturesDIdentites: 0,
   collisionAuProchainCreate: null as Error | null,
+  collisionAuProchainPlan: null as Error | null,
+  planGagnantEcritParLaCollision: true,
   /** Faux quand la collision ne vient pas d'une course, donc sans dossier a rendre. */
   gagnantEcritParLaCollision: true,
 }));
@@ -129,10 +136,24 @@ vi.mock("@/lib/db", () => ({
       }: {
         data: Omit<PlanEnBase, "steps"> & { steps: { create: readonly EtapeEcrite[] } };
       }) => {
+        const collision = base.collisionAuProchainPlan;
+        if (collision) {
+          base.collisionAuProchainPlan = null;
+          if (base.planGagnantEcritParLaCollision) {
+            const { steps, ...entete } = data;
+            base.plans.push({ ...entete, id: "plan-concurrent", steps: steps.create });
+          }
+          return Promise.reject(collision);
+        }
+
         const { steps, ...entete } = data;
         base.plans.push({ ...entete, steps: steps.create });
         return Promise.resolve({ id: data.id });
       },
+      count: ({ where }: { where: { accessCaseId: string } }) =>
+        Promise.resolve(
+          base.plans.filter((plan) => plan.accessCaseId === where.accessCaseId).length,
+        ),
     },
   },
 }));
@@ -248,6 +269,8 @@ beforeEach(() => {
   base.lecturesDIdentites = 0;
   base.collisionAuProchainCreate = null;
   base.gagnantEcritParLaCollision = true;
+  base.collisionAuProchainPlan = null;
+  base.planGagnantEcritParLaCollision = true;
   contextes.length = 0;
   registre(GITHUB, notion);
 });
@@ -475,6 +498,45 @@ describe("un plan d'arrivée", () => {
     // serait une erreur technique pour un geste qui a en réalité abouti.
     const suivant = await ouvrirDossier(PERSONNE, "ONBOARDING", null);
     expect(suivant).toEqual({ id: "dossier-concurrent", deja: true });
+  });
+
+  it("garde un seul plan quand deux ouvertures reprennent le même dossier sans plan", async () => {
+    // Given un dossier ouvert dont le plan manque, parce qu'une ouverture s'était
+    // interrompue entre ses deux écritures, et deux reprises simultanées : les deux
+    // comptent zéro plan, les deux calculent, et l'index en base refuse la seconde.
+    const dossier = await ouvrirDossier(PERSONNE, "OFFBOARDING", null);
+    const calcule = await calculerPlan("OFFBOARDING", PERSONNE, USERNAME, MAINTENANT);
+    base.collisionAuProchainPlan = new Prisma.PrismaClientKnownRequestError(
+      "Unique constraint failed on the fields: (`accessCaseId`)",
+      { code: "P2002", clientVersion: "7.9.1" },
+    );
+
+    // When la reprise perdante enregistre son plan
+    await enregistrerPlanDOuverture(dossier.id, calcule, "operatrice.exemple", MAINTENANT);
+
+    // Then le dossier ne porte que le plan gagnant : deux plans sur un même dossier ne
+    // se départagent pas, et les écrans finiraient par en montrer un puis l'autre.
+    expect(base.plans).toHaveLength(1);
+    expect(base.plans[0]?.id).toBe("plan-concurrent");
+  });
+
+  it("laisse remonter une collision de plan qui ne vient pas d'une course", async () => {
+    // Given une collision sans plan derrière : rien n'a été écrit, il n'y a donc aucun
+    // plan gagnant à garder.
+    const dossier = await ouvrirDossier(PERSONNE, "OFFBOARDING", null);
+    const calcule = await calculerPlan("OFFBOARDING", PERSONNE, USERNAME, MAINTENANT);
+    base.planGagnantEcritParLaCollision = false;
+    base.collisionAuProchainPlan = new Prisma.PrismaClientKnownRequestError(
+      "Unique constraint failed",
+      { code: "P2002", clientVersion: "7.9.1" },
+    );
+
+    // Then l'erreur n'est pas avalée : un dossier annoncé ouvert sans plan derrière est
+    // exactement l'état que la reprise existe pour éviter.
+    await expect(
+      enregistrerPlanDOuverture(dossier.id, calcule, "operatrice.exemple", MAINTENANT),
+    ).rejects.toThrow("Unique constraint failed");
+    expect(base.plans).toHaveLength(0);
   });
 
   it("laisse remonter une violation d'unicité qui ne vient pas d'une course", async () => {

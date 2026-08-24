@@ -346,6 +346,13 @@ serait résolue une milliseconde plus tôt, en rendant le dossier gagnant. L'ind
 partiel et non total, sans quoi une personne qui revient ne pourrait plus jamais ouvrir
 de second dossier.
 
+Un seul plan courant par dossier, tenu par le même dispositif et pour la même raison :
+la reprise d'une ouverture interrompue compte les plans avant d'en calculer un, et deux
+ouvertures simultanées comptent toutes les deux zéro. Un index unique partiel sur le
+dossier, hors des états d'un plan écarté, garde le plan gagnant. Écarté et non ancien :
+un plan annulé, périmé ou remplacé laisse la place à son successeur, sans quoi aucun
+recalcul ne serait possible.
+
 Vivant, et non unique : une personne qui revient dans l'incubateur ouvre un second
 dossier d'arrivée, celui de son premier passage étant clos, et repartira sur un
 troisième dossier. Ni l'arrivée ni le départ ne sont des événements qui n'arrivent

@@ -280,3 +280,38 @@ export async function enregistrerPlan(
 
   return plan.id;
 }
+
+/**
+ * Le plan d'un dossier qu'on vient d'ouvrir, ou dont l'ouverture s'etait interrompue
+ * avant d'en ecrire un.
+ *
+ * Compter les plans avant d'en ecrire un ne suffit pas : deux ouvertures simultanees
+ * comptent toutes les deux zero, et tout le calcul s'ecoule entre ce comptage et
+ * l'ecriture. Un index partiel double la garde en base, comme pour le dossier lui-meme,
+ * et la course s'y resout en gardant le plan gagnant.
+ *
+ * Le rattrapage vit ici et non dans `enregistrerPlan` : le recalcul remplace un plan
+ * avant d'en ecrire un autre, sous transaction, et une violation d'unicite y dirait que
+ * le remplacement n'a pas eu lieu. L'avaler la-bas murerait le dossier au lieu de
+ * defaire la transaction.
+ */
+export async function enregistrerPlanDOuverture(
+  accessCaseId: string,
+  calcule: PlanCalcule,
+  createdBy: string,
+  maintenant: Date,
+): Promise<void> {
+  try {
+    await enregistrerPlan(accessCaseId, calcule, createdBy, maintenant);
+  } catch (erreur) {
+    if (!(erreur instanceof Prisma.PrismaClientKnownRequestError) || erreur.code !== "P2002") {
+      throw erreur;
+    }
+
+    // Meme prudence que sur le dossier : sans plan derriere, la collision ne vient pas
+    // d'une course, et l'avaler annoncerait un geste abouti sans rien pour le porter.
+    if ((await prisma.plan.count({ where: { accessCaseId } })) === 0) {
+      throw erreur;
+    }
+  }
+}

@@ -13,7 +13,7 @@ import {
   SELECTION_APPARTENANCE,
 } from "@/lib/appartenance";
 import { prisma } from "@/lib/db";
-import { calculerPlan, enregistrerPlan, ouvrirDossier } from "@/lib/dossier";
+import { calculerPlan, enregistrerPlanDOuverture, ouvrirDossier } from "@/lib/dossier";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
 
@@ -272,7 +272,7 @@ export async function ouvrirDepartsEnLot(_etat: EtatLot, formData: FormData): Pr
             personne.username,
             maintenant,
           );
-          await enregistrerPlan(dossier.id, calcule, operateur.username, maintenant);
+          await enregistrerPlanDOuverture(dossier.id, calcule, operateur.username, maintenant);
           return dossier.id;
         },
       });

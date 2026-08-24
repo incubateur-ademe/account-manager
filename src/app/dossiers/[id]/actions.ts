@@ -267,7 +267,7 @@ export async function cloreDossier(
       state: true,
       person: { select: { username: true } },
       plans: {
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: 1,
         select: { state: true, _count: { select: { steps: true } } },
       },
@@ -329,7 +329,11 @@ export async function annulerDossier(
       kind: true,
       state: true,
       person: { select: { username: true } },
-      plans: { orderBy: { createdAt: "desc" }, take: 1, select: { id: true, state: true } },
+      plans: {
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 1,
+        select: { id: true, state: true },
+      },
     },
   });
 

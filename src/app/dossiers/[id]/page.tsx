@@ -92,7 +92,7 @@ export default async function DossierPage({
       firstSignalAt: true,
       person: { select: { id: true, username: true, fullname: true } },
       plans: {
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: 1,
         select: {
           id: true,
