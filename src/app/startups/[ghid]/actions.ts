@@ -258,7 +258,12 @@ export async function ouvrirDepartsEnLot(_etat: EtatLot, formData: FormData): Pr
           const dossier = await ouvrirDossier(personne.id, "OFFBOARDING", echeance);
           if (dossier.deja) {
             dejaOuvert = true;
-            return dossier.id;
+
+            // Même reprise que l'ouverture unitaire : un dossier vivant sans plan est le
+            // reste d'une ouverture interrompue, et n'aurait sinon que l'annulation.
+            if ((await prisma.plan.count({ where: { accessCaseId: dossier.id } })) > 0) {
+              return dossier.id;
+            }
           }
 
           const calcule = await calculerPlan(

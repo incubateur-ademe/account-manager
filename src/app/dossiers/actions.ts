@@ -63,7 +63,13 @@ async function ouvrir(sens: SensDossier, formData: FormData): Promise<EtatDossie
       const dossier = await ouvrirDossier(personne.id, sens, echeance);
       if (dossier.deja) {
         dejaOuvert = true;
-        return dossier.id;
+
+        // Un dossier vivant sans plan est le reste d'une ouverture interrompue entre ses
+        // deux écritures. Sans cette reprise il n'a plus que l'annulation pour issue, le
+        // recalcul exigeant un brouillon qui n'existe pas.
+        if ((await prisma.plan.count({ where: { accessCaseId: dossier.id } })) > 0) {
+          return dossier.id;
+        }
       }
 
       const calcule = await calculerPlan(sens, personne.id, personne.username, maintenant);
