@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { CONNECTEURS } from "@/connectors";
 import type { PlannedStep, RunContext } from "@/core/connector";
-import { ETATS_VIVANTS, type SystemesDuDepart, systemesDuDepart } from "@/core/depart";
+import { ETATS_VIVANTS, type SystemesDuDepart, systemesDuDepart } from "@/core/dossier";
 import { empreinteDuPlan } from "@/core/plan";
 import type { Prisma } from "@/generated/prisma/client";
 import { audit } from "@/lib/audit";
@@ -120,7 +120,7 @@ export async function ouvrirDossierDeDepart(
   personId: string,
   effectiveDate: Date | null,
 ): Promise<{ id: string; deja: boolean }> {
-  const ouvert = await prisma.departureCase.findFirst({
+  const ouvert = await prisma.accessCase.findFirst({
     where: { personId, state: { in: [...ETATS_VIVANTS] } },
     select: { id: true },
   });
@@ -129,7 +129,7 @@ export async function ouvrirDossierDeDepart(
     return { id: ouvert.id, deja: true };
   }
 
-  const cree = await prisma.departureCase.create({
+  const cree = await prisma.accessCase.create({
     data: {
       personId,
       // CANDIDATE et non WATCH : un dossier ouvert à la main est une décision, pas
@@ -149,7 +149,7 @@ export async function ouvrirDossierDeDepart(
  * même si la ressource visée a changé de nom depuis.
  */
 export async function enregistrerPlan(
-  departureCaseId: string,
+  accessCaseId: string,
   calcule: PlanCalcule,
   createdBy: string,
   maintenant: Date,
@@ -171,7 +171,7 @@ export async function enregistrerPlan(
   const plan = await client.plan.create({
     data: {
       id: planId,
-      departureCaseId,
+      accessCaseId,
       kind: "OFFBOARDING",
       state: "DRAFT",
       planDigest: calcule.empreinte,

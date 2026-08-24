@@ -4,7 +4,7 @@ import { fr } from "@codegouvfr/react-dsfr";
 import { Button } from "@codegouvfr/react-dsfr/Button";
 import { createModal } from "@codegouvfr/react-dsfr/Modal";
 import { useActionState } from "react";
-import { type EtatDepart, ouvrirDepart } from "@/app/departs/actions";
+import { type EtatDepart, ouvrirDepart } from "@/app/dossiers/actions";
 import style from "@/ui/Actions.module.css";
 import { Aide } from "@/ui/Aide";
 

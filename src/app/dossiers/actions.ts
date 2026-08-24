@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { echeanceEffective } from "@/core/rattachement-startup";
 import { actionTracee } from "@/lib/actions";
 import { prisma } from "@/lib/db";
-import { calculerPlanDeDepart, enregistrerPlan, ouvrirDossierDeDepart } from "@/lib/depart";
+import { calculerPlanDeDepart, enregistrerPlan, ouvrirDossierDeDepart } from "@/lib/dossier";
 
 export interface EtatDepart {
   erreur?: string;
@@ -53,7 +53,7 @@ export async function ouvrirDepart(
     targetType: "personne",
     targetId: personne.username,
     after: { echeance: echeance?.toISOString().slice(0, 10) ?? null },
-    revalider: [`/personnes/${personne.username}`, "/departs"],
+    revalider: [`/personnes/${personne.username}`],
     ecrire: async (operateur) => {
       const dossier = await ouvrirDossierDeDepart(personne.id, echeance);
       if (dossier.deja) {
@@ -72,5 +72,5 @@ export async function ouvrirDepart(
   // qu'elle a abouti. Le drapeau dit au dossier s'il vient d'être ouvert ou s'il
   // attendait déjà : sans lui, un second clic donne l'impression d'en avoir créé un
   // deuxième.
-  redirect(`/departs/${dossierId}${dejaOuvert ? "?deja=1" : ""}`);
+  redirect(`/dossiers/${dossierId}${dejaOuvert ? "?deja=1" : ""}`);
 }
