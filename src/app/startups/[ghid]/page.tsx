@@ -143,10 +143,12 @@ export default async function FicheStartupPage({ params }: Props) {
           select: { provider: true, matchMethod: true },
         },
         scopeOverride: { select: { decision: true } },
-        // Un dossier déjà ouvert désigne un geste en cours : la ligne reste cochable,
-        // mais elle n'est pas proposée d'avance.
+        // Un départ déjà ouvert désigne un geste en cours : la ligne reste cochable,
+        // mais elle n'est pas proposée d'avance. Borné au départ : le motif qui la
+        // consomme annonce un départ en cours, et une arrivée remontée ici le ferait
+        // mentir.
         accessCases: {
-          where: { state: { in: [...ETATS_VIVANTS] } },
+          where: { kind: "OFFBOARDING", state: { in: [...ETATS_VIVANTS] } },
           select: { id: true },
         },
       },

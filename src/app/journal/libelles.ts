@@ -15,6 +15,15 @@ const LIBELLE_ACTION: Record<string, string> = {
   "finding.close": "Fermeture d'un constat",
   "service-account.review": "Revue d'un compte de service",
   "sync.lancement": "Collecte lancée à la main",
+  "dossier.ouverture": "Ouverture d'un dossier d'accès",
+  "dossier.confirmation": "Confirmation d'un plan",
+  "dossier.pointage": "Pointage d'une étape",
+  "dossier.cloture": "Clôture d'un dossier d'accès",
+  "dossier.recalcul": "Recalcul d'un plan",
+  "dossier.annulation": "Annulation d'un dossier d'accès",
+  // Les six verbes que le dossier d'accès remplace. Le journal est en écriture seule
+  // à rétention indéfinie : une ligne d'il y a six mois doit rester lisible telle
+  // qu'elle a été écrite, et ces libellés ne s'effacent donc jamais.
   "depart.ouverture": "Ouverture d'un dossier de départ",
   "depart.confirmation": "Confirmation d'un plan de départ",
   "depart.pointage": "Pointage d'une étape de départ",

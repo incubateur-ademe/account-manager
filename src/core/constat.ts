@@ -1,6 +1,7 @@
 import type { RiskLevel } from "@/generated/prisma/enums";
 
 import { type Attachment, toutesLesStartupsSontTerminees } from "./appartenance";
+import type { SensDossier } from "./dossier";
 import {
   echeanceEffective,
   enCours,
@@ -197,6 +198,8 @@ export interface ActionDeclaree {
   label: string;
   systemKey: string;
   username: string;
+  /** Le sens du dossier dont l'étape vient : il décide de ce qui contredit la parole. */
+  sens: SensDossier;
   declareeLe: Date;
   /** Vrai quand le compte visé est toujours observé sur ce système. */
   compteToujoursLa: boolean;
@@ -205,19 +208,38 @@ export interface ActionDeclaree {
 }
 
 /**
+ * Ce qu'on devrait observer une fois l'étape faite, et donc ce qui la dément. Un
+ * départ se vérifie sur une absence, une arrivée sur une présence : reprendre la
+ * règle du départ pour les deux ferait signaler comme un manquement chaque accès
+ * effectivement donné.
+ */
+const DEMENTIE: Record<SensDossier, (compteToujoursLa: boolean) => boolean> = {
+  ONBOARDING: (compteToujoursLa) => !compteToujoursLa,
+  OFFBOARDING: (compteToujoursLa) => compteToujoursLa,
+};
+
+const DETAIL: Record<SensDossier, (label: string, systemKey: string) => string> = {
+  ONBOARDING: (label, systemKey) =>
+    `« ${label} » a été déclarée faite, mais aucun compte n'est observé sur ${systemKey} à la lecture suivante`,
+  OFFBOARDING: (label, systemKey) =>
+    `« ${label} » a été déclarée faite, mais le compte est toujours présent sur ${systemKey} à la lecture suivante`,
+};
+
+/**
  * L'outil n'exécute rien : il enregistre ce qu'un opérateur déclare avoir fait. Sans
  * contrepartie, une case cochée vaudrait donc preuve, alors qu'elle ne vaut que
  * parole, et un accès resté ouvert par oubli passerait pour un accès coupé.
  *
  * C'est la collecte qui tranche, et elle seule. On n'attend pas un délai : on attend
  * d'avoir regardé. Tant que le système n'a pas été relu depuis la déclaration, il n'y
- * a rien à dire ; une fois relu, un compte toujours là contredit ce qui a été affirmé.
+ * a rien à dire ; une fois relu, ce qu'on observe contredit ou non ce qui a été
+ * affirmé, dans le sens du dossier.
  */
 export function constatsDActionsDeclarees(actions: readonly ActionDeclaree[]): Constat[] {
   const constats: Constat[] = [];
 
   for (const action of actions) {
-    if (!action.compteToujoursLa) {
+    if (!DEMENTIE[action.sens](action.compteToujoursLa)) {
       continue;
     }
     if (action.relueLe === null || action.relueLe.getTime() <= action.declareeLe.getTime()) {
@@ -228,7 +250,7 @@ export function constatsDActionsDeclarees(actions: readonly ActionDeclaree[]): C
       kind: "OVERDUE_MANUAL_ACTION",
       dedupKey: `OVERDUE_MANUAL_ACTION:${action.systemKey}:${action.username}`,
       severity: "HIGH",
-      detail: `« ${action.label} » a été déclarée faite, mais le compte est toujours présent sur ${action.systemKey} à la lecture suivante`,
+      detail: DETAIL[action.sens](action.label, action.systemKey),
       username: action.username,
     });
   }

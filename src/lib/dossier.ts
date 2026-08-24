@@ -1,9 +1,15 @@
 import { randomUUID } from "node:crypto";
 
 import { CONNECTEURS } from "@/connectors";
-import type { PlannedStep, RunContext } from "@/core/connector";
-import { ETATS_VIVANTS, type SystemesDuDepart, systemesDuDepart } from "@/core/dossier";
-import { empreinteDuPlan } from "@/core/plan";
+import type { Connector, Intent, PlannedStep, RunContext } from "@/core/connector";
+import {
+  ETATS_VIVANTS,
+  etatDeNaissance,
+  type SensDossier,
+  type SystemesDuDepart,
+  systemesDuDepart,
+} from "@/core/dossier";
+import { assembler, type EtapeAssemblee, type EtapeEcartee, empreinteDuPlan } from "@/core/plan";
 import type { Prisma } from "@/generated/prisma/client";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
@@ -17,6 +23,14 @@ import { env } from "@/lib/env";
 const VALIDITE_JOURS = 7;
 
 const RISQUE = { low: "LOW", medium: "MEDIUM", high: "HIGH" } as const;
+
+/** Ce qu'un plan demande aux connecteurs, dans un sens comme dans l'autre. */
+const INTENTION: Record<SensDossier, Intent["kind"]> = {
+  ONBOARDING: "grant",
+  OFFBOARDING: "revoke",
+};
+
+const AUCUN_SYSTEME: SystemesDuDepart = { revocables: [], observes: [], nonConfirmes: [] };
 
 /**
  * Les systèmes sur lesquels la personne a été observée, répartis selon ce qu'on a le
@@ -41,8 +55,36 @@ async function systemesDeLaPersonne(personId: string): Promise<SystemesDuDepart>
   );
 }
 
+/**
+ * Les connecteurs qu'un plan interroge, et ce ne sont pas les mêmes dans les deux
+ * sens.
+ *
+ * Pour un départ, seuls ceux où la personne est observée avec un rattachement sûr :
+ * une ressemblance ne coupe rien, et un système où elle n'a pas de compte n'appelle
+ * aucun geste.
+ *
+ * Pour une arrivée, tous ceux qui savent donner un accès, sans regarder ce qui est
+ * déjà là : un compte déjà ouvert se pointe « déjà présent », il ne fait pas
+ * disparaître l'étape qui l'exigeait. Aucune identité n'entre donc dans ce filtre,
+ * et une ressemblance n'y produit pas davantage d'étape que dans l'autre sens.
+ */
+function interroge(
+  sens: SensDossier,
+  connecteur: Connector,
+  presente: ReadonlySet<string>,
+): boolean {
+  if (sens === "OFFBOARDING") {
+    return presente.has(connecteur.contract.key);
+  }
+  return connecteur.contract.capabilities.grant !== undefined;
+}
+
 export interface PlanCalcule {
-  etapes: readonly PlannedStep[];
+  sens: SensDossier;
+  /** Les étapes retenues, chacune avec son origine et son rang de lecture. */
+  etapes: readonly EtapeAssemblee[];
+  /** Ce que l'assemblage a écarté, et pourquoi. Rien n'est écarté en silence. */
+  ecartees: readonly EtapeEcartee[];
   empreinte: string;
   /** Systèmes couverts par un connecteur, sur lesquels la personne a un compte. */
   systemes: readonly string[];
@@ -57,15 +99,22 @@ export interface PlanCalcule {
 }
 
 /**
- * Ce qu'il faudrait faire pour retirer ses accès à quelqu'un, tel que les
- * connecteurs le disent aujourd'hui. Ne touche à rien, ni ici ni ailleurs.
+ * Ce qu'il faudrait faire pour donner ou pour retirer ses accès à quelqu'un, tel que
+ * les connecteurs le disent aujourd'hui. Ne touche à rien, ni ici ni ailleurs.
+ *
+ * Un plan d'arrivée sort vide tant qu'aucun connecteur ne déclare `grant` : le
+ * mécanisme est là, la substance viendra des modèles et des octrois.
  */
-export async function calculerPlanDeDepart(
+export async function calculerPlan(
+  sens: SensDossier,
   personId: string,
   username: string,
   maintenant: Date,
 ): Promise<PlanCalcule> {
-  const constates = await systemesDeLaPersonne(personId);
+  // Les comptes observés ne disent rien de ce qu'il faut donner : les lire pour une
+  // arrivée serait une requête pour rien, et les afficher ferait passer un accès
+  // existant pour un manque.
+  const constates = sens === "OFFBOARDING" ? await systemesDeLaPersonne(personId) : AUCUN_SYSTEME;
   const presente = new Set(constates.revocables);
 
   const ctx: RunContext = {
@@ -78,28 +127,38 @@ export async function calculerPlanDeDepart(
     audit,
   };
 
-  const etapes: PlannedStep[] = [];
+  const proposees: PlannedStep[] = [];
   const systemes: string[] = [];
 
   for (const connecteur of CONNECTEURS) {
-    const cle = connecteur.contract.key;
-    if (!presente.has(cle)) {
+    if (!interroge(sens, connecteur, presente)) {
       continue;
     }
 
-    systemes.push(cle);
-    const proposees = await connecteur.plan(
-      { kind: "revoke", subject: { kind: "person", username } },
-      ctx,
+    systemes.push(connecteur.contract.key);
+    proposees.push(
+      ...(await connecteur.plan(
+        { kind: INTENTION[sens], subject: { kind: "person", username } },
+        ctx,
+      )),
     );
-    etapes.push(...proposees);
   }
+
+  // Une seule origine aujourd'hui, celle des connecteurs. Les deux autres, les
+  // modèles de l'incubateur et ceux des startups, se branchent ici sans que rien
+  // d'autre ne bouge.
+  const assemblage = assembler({ origines: [{ origine: "connecteur", etapes: proposees }] });
 
   const couverts = new Set(CONNECTEURS.map((connecteur) => connecteur.contract.key));
 
   return {
-    etapes,
-    empreinte: empreinteDuPlan(etapes),
+    sens,
+    etapes: assemblage.etapes,
+    ecartees: assemblage.ecartees,
+    // Sur les étapes nues, avant que l'enregistrement ne suffixe leurs clés
+    // d'idempotence : hacher après suffixage donnerait à deux plans du même dossier
+    // des empreintes incomparables, et un plan confirmé se dirait obsolète tout seul.
+    empreinte: empreinteDuPlan(assemblage.etapes.map(({ etape }) => etape)),
     systemes,
     // Sur tous les systèmes observés et non sur les seuls révocables : un compte que
     // rien ici ne sait traiter est à traiter dehors, que son rattachement soit sûr
@@ -112,16 +171,22 @@ export async function calculerPlanDeDepart(
 /**
  * Ouvre un dossier, ou rend celui qui est déjà ouvert.
  *
- * Un seul dossier vivant par personne : deux dossiers concurrents pour un même
- * départ produiraient deux plans, deux approbations, et deux façons de croire que
- * l'affaire est réglée.
+ * Un seul dossier vivant par personne et par sens : deux dossiers concurrents pour
+ * un même départ produiraient deux plans, deux approbations, et deux façons de
+ * croire que l'affaire est réglée. Par sens, parce qu'une arrivée et un départ ne se
+ * gênent pas : quelqu'un qui revient a un départ clos derrière lui, et rien
+ * n'interdit qu'on prépare son retour pendant qu'on solde sa sortie.
+ *
+ * L'unicité reste applicative, cette lecture avant création : aucune contrainte en
+ * base ne l'impose sous concurrence.
  */
-export async function ouvrirDossierDeDepart(
+export async function ouvrirDossier(
   personId: string,
+  sens: SensDossier,
   effectiveDate: Date | null,
 ): Promise<{ id: string; deja: boolean }> {
   const ouvert = await prisma.accessCase.findFirst({
-    where: { personId, state: { in: [...ETATS_VIVANTS] } },
+    where: { personId, kind: sens, state: { in: [...ETATS_VIVANTS] } },
     select: { id: true },
   });
 
@@ -132,9 +197,8 @@ export async function ouvrirDossierDeDepart(
   const cree = await prisma.accessCase.create({
     data: {
       personId,
-      // CANDIDATE et non WATCH : un dossier ouvert à la main est une décision, pas
-      // une veille. WATCH reste pour ce qu'une collecte lèvera un jour toute seule.
-      state: "CANDIDATE",
+      kind: sens,
+      state: etatDeNaissance(sens),
       ...(effectiveDate ? { effectiveDate } : {}),
     },
     select: { id: true },
@@ -172,18 +236,19 @@ export async function enregistrerPlan(
     data: {
       id: planId,
       accessCaseId,
-      kind: "OFFBOARDING",
+      kind: calcule.sens,
       state: "DRAFT",
       planDigest: calcule.empreinte,
       createdBy,
       expiresAt,
       steps: {
-        create: calcule.etapes.map((etape) => ({
+        create: calcule.etapes.map(({ etape, ordre }) => ({
           systemKey: etape.systemKey,
           tier: etape.tier,
           capability: etape.capability,
           action: etape.action,
           label: etape.label,
+          ordre,
           params: etape.params as object,
           riskLevel: RISQUE[etape.riskLevel],
           expectedState: (etape.expectedState ?? {}) as object,

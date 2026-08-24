@@ -252,14 +252,20 @@ export interface PlannedStep {
   manual?: ManualTask;
 }
 
+/**
+ * `ALREADY_PRESENT` est le symétrique d'`ALREADY_ABSENT` et jamais une relecture de
+ * celui-ci : sous une étape d'octroi, l'écran afficherait « déjà absent ».
+ */
 export type PrecheckResult =
   | { state: "READY" }
   | { state: "ALREADY_ABSENT" }
+  | { state: "ALREADY_PRESENT" }
   | { state: "STALE"; expected: unknown; actual: unknown };
 
 export type StepOutcome =
   | { state: "SUCCEEDED"; reversibleUntil?: Date; evidence?: string }
   | { state: "ALREADY_ABSENT" }
+  | { state: "ALREADY_PRESENT" }
   | { state: "FAILED"; error: string; retryable: boolean };
 
 export interface RunContext {
@@ -304,7 +310,7 @@ export interface Connector {
 
   plan: (intent: Intent, ctx: RunContext) => Promise<readonly PlannedStep[]>;
 
-  /** Séparé de execute pour que le socle traite ALREADY_ABSENT et STALE de façon uniforme, sans que chaque connecteur ait à le savoir. */
+  /** Séparé de execute pour que le socle traite ALREADY_ABSENT, ALREADY_PRESENT et STALE de façon uniforme, sans que chaque connecteur ait à le savoir. */
   precheck?: (step: PlannedStep, ctx: RunContext) => Promise<PrecheckResult>;
 
   /** Absent quand aucune voie automatique n'existe : le socle produit alors la tâche manuelle du step. */

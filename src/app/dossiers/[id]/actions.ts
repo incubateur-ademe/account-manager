@@ -1,6 +1,6 @@
 "use server";
 
-import type { EtatEtape } from "@/core/dossier";
+import type { EtatEtape, SensDossier } from "@/core/dossier";
 import {
   dossierVivant,
   ETATS_VIVANTS,
@@ -13,10 +13,12 @@ import {
   peutRecalculer,
   planAAnnuler,
 } from "@/core/dossier";
+import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 import { peremptionDuPlan } from "@/core/plan";
 import { actionTracee } from "@/lib/actions";
 import { prisma } from "@/lib/db";
-import { calculerPlanDeDepart, enregistrerPlan } from "@/lib/dossier";
+import { calculerPlan, enregistrerPlan } from "@/lib/dossier";
+import { requireOperateur } from "@/lib/session";
 
 export interface EtatAction {
   erreur?: string;
@@ -25,8 +27,20 @@ export interface EtatAction {
 const POINTAGES: Record<string, EtatEtape> = {
   fait: "SUCCEEDED",
   "deja-absent": "ALREADY_ABSENT",
+  "deja-present": "ALREADY_PRESENT",
   ignoree: "SKIPPED",
   echec: "FAILED",
+};
+
+/**
+ * Le constat qu'un autre est passé avant, et il n'y en a qu'un par sens. Le refus
+ * n'est pas cosmétique : consigner « déjà absent » sous une étape d'octroi ferait
+ * dire au journal l'inverse de ce qui a été constaté, et l'écran le relirait ainsi
+ * dans deux ans.
+ */
+const CONSTAT_DU_SENS: Record<SensDossier, EtatEtape> = {
+  ONBOARDING: "ALREADY_PRESENT",
+  OFFBOARDING: "ALREADY_ABSENT",
 };
 
 async function planDuDossier(planId: string) {
@@ -39,9 +53,9 @@ async function planDuDossier(planId: string) {
       expiresAt: true,
       accessCaseId: true,
       accessCase: {
-        select: { state: true, person: { select: { id: true, username: true } } },
+        select: { kind: true, state: true, person: { select: { id: true, username: true } } },
       },
-      steps: { select: { id: true, state: true, label: true, systemKey: true } },
+      steps: { select: { id: true, state: true, ordre: true, label: true, systemKey: true } },
     },
   });
 }
@@ -54,6 +68,8 @@ export async function confirmerPlan(
   _etat: EtatAction | null,
   formData: FormData,
 ): Promise<EtatAction> {
+  await requireOperateur();
+
   const planId = String(formData.get("planId") ?? "").trim();
   const plan = await planDuDossier(planId);
 
@@ -61,8 +77,10 @@ export async function confirmerPlan(
     return { erreur: "Ce plan n'existe plus." };
   }
 
+  const sens = plan.accessCase.kind;
   const maintenant = new Date();
-  const actuel = await calculerPlanDeDepart(
+  const actuel = await calculerPlan(
+    sens,
     plan.accessCase.person.id,
     plan.accessCase.person.username,
     maintenant,
@@ -85,10 +103,10 @@ export async function confirmerPlan(
   }
 
   await actionTracee({
-    action: "depart.confirmation",
+    action: "dossier.confirmation",
     targetType: "plan",
     targetId: plan.id,
-    after: { etapes: plan.steps.length, empreinte: plan.planDigest },
+    after: { sens, etapes: plan.steps.length, empreinte: plan.planDigest },
     revalider: [`/dossiers/${plan.accessCaseId}`],
     ecrire: async (operateur) => {
       // Conditionnée sur ce qui a été lu, plan et dossier : la garde seule laisse
@@ -125,6 +143,8 @@ export async function pointerEtape(
   _etat: EtatAction | null,
   formData: FormData,
 ): Promise<EtatAction> {
+  await requireOperateur();
+
   const etapeId = String(formData.get("etapeId") ?? "").trim();
   const choix = String(formData.get("pointage") ?? "").trim();
   const note = String(formData.get("note") ?? "").trim();
@@ -146,7 +166,7 @@ export async function pointerEtape(
           id: true,
           state: true,
           accessCaseId: true,
-          accessCase: { select: { state: true } },
+          accessCase: { select: { kind: true, state: true } },
           steps: { select: { id: true, state: true } },
         },
       },
@@ -162,6 +182,15 @@ export async function pointerEtape(
   // consignait donc un geste sur un dossier que quelqu'un venait d'abandonner.
   if (etape.plan.accessCase && !dossierVivant(etape.plan.accessCase.state)) {
     return { erreur: "Ce dossier n'est plus ouvert." };
+  }
+
+  const sens = etape.plan.accessCase?.kind ?? null;
+  if (
+    sens !== null &&
+    (nouvelEtat === "ALREADY_ABSENT" || nouvelEtat === "ALREADY_PRESENT") &&
+    nouvelEtat !== CONSTAT_DU_SENS[sens]
+  ) {
+    return { erreur: "Ce constat ne vaut pas dans le sens de ce dossier." };
   }
 
   const verdict = peutPointer(etape.plan.state);
@@ -181,11 +210,15 @@ export async function pointerEtape(
   const maintenant = new Date();
 
   await actionTracee({
-    action: "depart.pointage",
+    action: "dossier.pointage",
     targetType: "etape",
     targetId: `${etape.systemKey}:${etape.label}`,
     before: { etat: etape.state },
-    after: { etat: nouvelEtat, ...(note ? { note } : {}) },
+    after: {
+      sens,
+      etat: nouvelEtat,
+      ...(note ? { note } : {}),
+    },
     revalider: [`/dossiers/${etape.plan.accessCaseId}`],
     ecrire: async () => {
       await prisma.planStep.update({
@@ -222,12 +255,15 @@ export async function cloreDossier(
   _etat: EtatAction | null,
   formData: FormData,
 ): Promise<EtatAction> {
+  await requireOperateur();
+
   const dossierId = String(formData.get("dossierId") ?? "").trim();
 
   const dossier = await prisma.accessCase.findUnique({
     where: { id: dossierId },
     select: {
       id: true,
+      kind: true,
       state: true,
       person: { select: { username: true } },
       plans: {
@@ -243,16 +279,21 @@ export async function cloreDossier(
   }
 
   const dernier = dossier.plans[0] ?? null;
-  const verdict = peutClore(dossier.state, dernier?.state ?? null, dernier?._count.steps ?? 0);
+  const verdict = peutClore(
+    dossier.kind,
+    dossier.state,
+    dernier?.state ?? null,
+    dernier?._count.steps ?? 0,
+  );
   if (!verdict.possible) {
     return { erreur: verdict.raison };
   }
 
   await actionTracee({
-    action: "depart.cloture",
+    action: "dossier.cloture",
     targetType: "personne",
     targetId: dossier.person.username,
-    after: { etat: "DONE" },
+    after: { sens: dossier.kind, etat: "DONE" },
     revalider: [`/dossiers/${dossier.id}`, `/personnes/${dossier.person.username}`],
     ecrire: async () => {
       await prisma.accessCase.update({ where: { id: dossier.id }, data: { state: "DONE" } });
@@ -265,9 +306,9 @@ export async function cloreDossier(
 /**
  * Annule un dossier, et le brouillon qui l'accompagne.
  *
- * Un départ qui n'aura pas lieu doit pouvoir se dire, sinon son dossier reste ouvert
- * et le bloque : la fusion de deux fiches le refuse, et la fiche continue d'annoncer
- * un départ que personne ne prépare plus.
+ * Un dossier qui n'aura pas lieu doit pouvoir se dire, sinon il reste ouvert et
+ * bloque : la fusion de deux fiches le refuse, et la fiche continue d'annoncer un
+ * mouvement que personne ne prépare plus.
  *
  * Le plan tombe dans la même transaction que le dossier. Séparés, un brouillon
  * survivrait sous un dossier annulé, et sa confirmation resterait offerte.
@@ -276,17 +317,16 @@ export async function annulerDossier(
   _etat: EtatAction | null,
   formData: FormData,
 ): Promise<EtatAction> {
+  await requireOperateur();
+
   const dossierId = String(formData.get("dossierId") ?? "").trim();
   const motif = String(formData.get("motif") ?? "").trim();
-
-  if (motif.length < 3) {
-    return { erreur: "Dites pourquoi ce départ n'aura pas lieu." };
-  }
 
   const dossier = await prisma.accessCase.findUnique({
     where: { id: dossierId },
     select: {
       id: true,
+      kind: true,
       state: true,
       person: { select: { username: true } },
       plans: { orderBy: { createdAt: "desc" }, take: 1, select: { id: true, state: true } },
@@ -297,6 +337,12 @@ export async function annulerDossier(
     return { erreur: "Ce dossier n'existe plus." };
   }
 
+  // Le motif se contrôle après la lecture, et non avant : sa phrase nomme le sens du
+  // dossier, qu'on ne connaît qu'une fois le dossier lu.
+  if (motif.length < 3) {
+    return { erreur: LIBELLE_DOSSIER[dossier.kind].motifAttendu };
+  }
+
   const plan = dossier.plans[0] ?? null;
   const verdict = peutAnnuler(dossier.state, plan?.state ?? null);
   if (!verdict.possible) {
@@ -304,11 +350,12 @@ export async function annulerDossier(
   }
 
   await actionTracee({
-    action: "depart.annulation",
+    action: "dossier.annulation",
     targetType: "personne",
     targetId: dossier.person.username,
     before: { etat: dossier.state, plan: plan?.state ?? null },
     after: {
+      sens: dossier.kind,
       etat: "CANCELLED",
       // L'état réel du plan après le geste : « null » pour les deux cas, plan absent
       // et plan laissé intact parce qu'il était déjà remplacé, aurait rendu la trace
@@ -365,6 +412,8 @@ export async function recalculerPlan(
   _etat: EtatAction | null,
   formData: FormData,
 ): Promise<EtatAction> {
+  await requireOperateur();
+
   const planId = String(formData.get("planId") ?? "").trim();
   const plan = await planDuDossier(planId);
 
@@ -372,9 +421,11 @@ export async function recalculerPlan(
     return { erreur: "Ce plan n'existe plus." };
   }
 
+  const sens = plan.accessCase.kind;
   const dossierId = plan.accessCaseId;
   const maintenant = new Date();
-  const actuel = await calculerPlanDeDepart(
+  const actuel = await calculerPlan(
+    sens,
     plan.accessCase.person.id,
     plan.accessCase.person.username,
     maintenant,
@@ -392,11 +443,11 @@ export async function recalculerPlan(
   }
 
   await actionTracee({
-    action: "depart.recalcul",
+    action: "dossier.recalcul",
     targetType: "plan",
     targetId: plan.id,
     before: { empreinte: plan.planDigest, etapes: plan.steps.length },
-    after: { empreinte: actuel.empreinte, etapes: actuel.etapes.length },
+    after: { sens, empreinte: actuel.empreinte, etapes: actuel.etapes.length },
     revalider: [`/dossiers/${dossierId}`],
     ecrire: async (operateur) => {
       // Les deux écritures dans la même transaction : séparées, une panne entre les

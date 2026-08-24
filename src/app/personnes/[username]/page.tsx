@@ -133,8 +133,10 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
     }),
     // Filtrée par la relation plutôt que par l'identifiant de la personne, que cette
     // requête ne connaît pas encore : elle part en même temps que celle qui le lit.
+    // Bornée au départ : le motif qui la consomme annonce « un départ est en cours »,
+    // et un dossier d'arrivée remonté ici le ferait mentir.
     prisma.accessCase.findFirst({
-      where: { person: { username }, state: { in: [...ETATS_VIVANTS] } },
+      where: { person: { username }, kind: "OFFBOARDING", state: { in: [...ETATS_VIVANTS] } },
       select: { id: true },
     }),
   ]);

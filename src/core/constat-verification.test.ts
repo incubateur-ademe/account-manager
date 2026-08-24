@@ -6,6 +6,7 @@ const declaration = (over: Partial<ActionDeclaree> = {}): ActionDeclaree => ({
   label: "Retirer jean.dupont de l'organisation incubateur-ademe",
   systemKey: "github",
   username: "jean.dupont",
+  sens: "OFFBOARDING",
   declareeLe: new Date("2026-08-18T10:00:00Z"),
   compteToujoursLa: true,
   relueLe: new Date("2026-08-19T04:30:00Z"),
@@ -31,6 +32,26 @@ describe("confrontation entre ce qui est déclaré et ce qui est observé", () =
 
   it("se tait quand le compte a bien disparu", () => {
     expect(constatsDActionsDeclarees([declaration({ compteToujoursLa: false })])).toEqual([]);
+  });
+
+  it("vérifie une arrivée sur une présence, et non sur une absence", () => {
+    // Given une étape d'arrivée pointée « faite »
+    const donne = declaration({
+      sens: "ONBOARDING",
+      label: "Inviter jean.dupont dans l'organisation incubateur-ademe",
+      compteToujoursLa: false,
+    });
+
+    // When la collecte ne voit aucun compte, puis en voit un
+    const [manquant] = constatsDActionsDeclarees([donne]);
+    const observe = constatsDActionsDeclarees([{ ...donne, compteToujoursLa: true }]);
+
+    // Then c'est l'absence qui dément la parole, et la présence qui la confirme :
+    // reprendre la règle du départ ferait signaler chaque accès réellement donné.
+    expect(manquant?.kind).toBe("OVERDUE_MANUAL_ACTION");
+    expect(manquant?.severity).toBe("HIGH");
+    expect(manquant?.detail).toContain("aucun compte n'est observé");
+    expect(observe).toEqual([]);
   });
 
   it("attend d'avoir regardé plutôt qu'un délai", () => {

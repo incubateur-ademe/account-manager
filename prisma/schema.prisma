@@ -369,6 +369,11 @@ model ScopeOverride {
   person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
 }
 
+enum CaseKind {
+  ONBOARDING
+  OFFBOARDING
+}
+
 enum CaseState {
   WATCH
   CANDIDATE
@@ -380,8 +385,14 @@ enum CaseState {
 model AccessCase {
   id String @id @default(cuid())
 
-  personId        String
-  state           CaseState @default(WATCH)
+  personId String
+  kind     CaseKind
+
+  /// Sans defaut : les etats admis dependent du sens, une arrivee n'admet pas
+  /// WATCH, et un defaut que la regle metier interdit finirait par etre pose par
+  /// le premier create ecrit un peu vite.
+  state CaseState
+
   firstSignalAt   DateTime  @default(now())
   effectiveDate   DateTime? @db.Date
   cancelledReason String?
@@ -391,9 +402,11 @@ model AccessCase {
 
   @@index([personId])
   @@index([state])
+  @@index([kind, state])
 }
 
 enum PlanKind {
+  ONBOARDING
   OFFBOARDING
   DRIFT_FIX
   MANUAL_OP
@@ -444,6 +457,7 @@ enum StepState {
   SKIPPED
   SUCCEEDED
   ALREADY_ABSENT
+  ALREADY_PRESENT
   STALE
   FAILED
 }
@@ -464,6 +478,10 @@ model PlanStep {
   params        Json
   riskLevel     RiskLevel @default(MEDIUM)
   expectedState Json
+
+  /// Rang de lecture, fige dans la ligne au meme titre que le libelle. L'ordre
+  /// d'execution est un autre ordre, calcule au demarrage et jamais reecrit ici.
+  ordre Int @default(0)
 
   // La marche a suivre telle qu'elle etait au moment ou le plan a ete calcule :
   // titre, runbook, lien direct, et ce qu'il faut constater pour cocher. Figee ici
