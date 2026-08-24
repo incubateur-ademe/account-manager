@@ -7,6 +7,7 @@ import type { Connector, Intent, PlannedStep, RunContext } from "@/core/connecto
 import type { EtatDossier } from "@/core/dossier";
 import { peutClore, peutConfirmer, systemesDuDepart } from "@/core/dossier";
 import { empreinteDuPlan } from "@/core/plan";
+import { Prisma } from "@/generated/prisma/client";
 import { calculerPlan, enregistrerPlan, ouvrirDossier } from "@/lib/dossier";
 
 process.env["DATABASE_URL"] ??= "postgresql://localhost:5432/inutilise";
@@ -58,6 +59,9 @@ const base = vi.hoisted(() => ({
   plans: [] as PlanEnBase[],
   connecteurs: [] as Connector[],
   lecturesDIdentites: 0,
+  collisionAuProchainCreate: null as Error | null,
+  /** Faux quand la collision ne vient pas d'une course, donc sans dossier a rendre. */
+  gagnantEcritParLaCollision: true,
 }));
 
 vi.mock("@/connectors", () => ({ CONNECTEURS: base.connecteurs }));
@@ -93,6 +97,21 @@ vi.mock("@/lib/db", () => ({
       }: {
         data: { personId: string; kind: string; state: string; effectiveDate?: Date };
       }) => {
+        const collision = base.collisionAuProchainCreate;
+        if (collision) {
+          base.collisionAuProchainCreate = null;
+          if (base.gagnantEcritParLaCollision) {
+            base.dossiers.push({
+              id: "dossier-concurrent",
+              personId: data.personId,
+              kind: data.kind,
+              state: data.state,
+              effectiveDate: null,
+            });
+          }
+          return Promise.reject(collision);
+        }
+
         const dossier: DossierEnBase = {
           id: `dossier-${base.dossiers.length + 1}`,
           personId: data.personId,
@@ -227,6 +246,8 @@ beforeEach(() => {
   base.dossiers.length = 0;
   base.plans.length = 0;
   base.lecturesDIdentites = 0;
+  base.collisionAuProchainCreate = null;
+  base.gagnantEcritParLaCollision = true;
   contextes.length = 0;
   registre(GITHUB, notion);
 });
@@ -431,6 +452,46 @@ describe("un plan d'arrivée", () => {
     const seconde = await ouvrirDossier(PERSONNE, "ONBOARDING", null);
     expect(seconde.deja).toBe(false);
     expect(base.dossiers).toHaveLength(3);
+  });
+
+  it("rend le dossier gagnant quand deux ouvertures se croisent, sans doublon ni erreur", async () => {
+    // Given deux opérateurs qui ouvrent la même arrivée en même temps : notre lecture
+    // ne voit rien, et entre elle et notre écriture l'autre a écrit. L'index partiel
+    // refuse la nôtre.
+    base.collisionAuProchainCreate = new Prisma.PrismaClientKnownRequestError(
+      "Unique constraint failed on the fields: (`personId`,`kind`)",
+      { code: "P2002", clientVersion: "7.9.1" },
+    );
+
+    // When on ouvre le dossier
+    const perdant = await ouvrirDossier(PERSONNE, "ONBOARDING", null);
+
+    // Then le geste aboutit sur le dossier de l'autre, annoncé comme déjà ouvert : la
+    // course se résout comme elle se serait résolue une milliseconde plus tôt.
+    expect(perdant).toEqual({ id: "dossier-concurrent", deja: true });
+    expect(base.dossiers).toHaveLength(1);
+
+    // Then rien ne remonte à l'écran : une violation d'unicité affichée telle quelle
+    // serait une erreur technique pour un geste qui a en réalité abouti.
+    const suivant = await ouvrirDossier(PERSONNE, "ONBOARDING", null);
+    expect(suivant).toEqual({ id: "dossier-concurrent", deja: true });
+  });
+
+  it("laisse remonter une violation d'unicité qui ne vient pas d'une course", async () => {
+    // Given une collision sur une autre contrainte que celle du dossier vivant : rien
+    // n'a été écrit, il n'y a donc aucun dossier gagnant à rendre.
+    base.gagnantEcritParLaCollision = false;
+    base.collisionAuProchainCreate = new Prisma.PrismaClientKnownRequestError(
+      "Unique constraint failed",
+      { code: "P2002", clientVersion: "7.9.1" },
+    );
+
+    // Then l'erreur n'est pas avalée : la faire passer pour une course masquerait un
+    // défaut d'écriture, et le geste serait annoncé comme abouti sans dossier derrière.
+    await expect(ouvrirDossier(PERSONNE, "ONBOARDING", null)).rejects.toThrow(
+      "Unique constraint failed",
+    );
+    expect(base.dossiers).toHaveLength(0);
   });
 });
 

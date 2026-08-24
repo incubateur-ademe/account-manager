@@ -339,9 +339,12 @@ arrivée est une décision et rien d'autre, elle naît confirmée et n'admet ni 
 l'autre. La base ne sait pas poser d'état par défaut : un défaut de colonne que la règle
 métier interdit n'attend que le premier `create` écrit un peu vite.
 
-Un seul dossier vivant par personne **et par sens**. L'invariant est applicatif, la
-lecture précédant la création : rien en base ne l'empêche sous concurrence, et c'est un
-état de fait assumé plutôt qu'une découverte au prochain incident.
+Un seul dossier vivant par personne **et par sens**. La lecture avant création ne suffit
+pas, deux ouvertures simultanées la passant toutes les deux : un index unique partiel,
+limité aux états vivants, tient l'invariant en base. La course s'y résout comme elle se
+serait résolue une milliseconde plus tôt, en rendant le dossier gagnant. L'index est
+partiel et non total, sans quoi une personne qui revient ne pourrait plus jamais ouvrir
+de second dossier.
 
 Vivant, et non unique : une personne qui revient dans l'incubateur ouvre un second
 dossier d'arrivée, celui de son premier passage étant clos, et repartira sur un

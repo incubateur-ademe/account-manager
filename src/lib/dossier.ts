@@ -10,7 +10,7 @@ import {
   systemesDuDepart,
 } from "@/core/dossier";
 import { assembler, type EtapeAssemblee, type EtapeEcartee, empreinteDuPlan } from "@/core/plan";
-import type { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -177,8 +177,9 @@ export async function calculerPlan(
  * gênent pas : quelqu'un qui revient a un départ clos derrière lui, et rien
  * n'interdit qu'on prépare son retour pendant qu'on solde sa sortie.
  *
- * L'unicité reste applicative, cette lecture avant création : aucune contrainte en
- * base ne l'impose sous concurrence.
+ * La lecture avant création ne suffit pas : deux ouvertures simultanées la passent
+ * toutes les deux. Un index partiel la double en base, et la course s'y résout comme
+ * elle se serait résolue une milliseconde plus tôt, en rendant le dossier gagnant.
  */
 export async function ouvrirDossier(
   personId: string,
@@ -194,17 +195,34 @@ export async function ouvrirDossier(
     return { id: ouvert.id, deja: true };
   }
 
-  const cree = await prisma.accessCase.create({
-    data: {
-      personId,
-      kind: sens,
-      state: etatDeNaissance(sens),
-      ...(effectiveDate ? { effectiveDate } : {}),
-    },
-    select: { id: true },
-  });
+  try {
+    const cree = await prisma.accessCase.create({
+      data: {
+        personId,
+        kind: sens,
+        state: etatDeNaissance(sens),
+        ...(effectiveDate ? { effectiveDate } : {}),
+      },
+      select: { id: true },
+    });
 
-  return { id: cree.id, deja: false };
+    return { id: cree.id, deja: false };
+  } catch (erreur) {
+    if (!(erreur instanceof Prisma.PrismaClientKnownRequestError) || erreur.code !== "P2002") {
+      throw erreur;
+    }
+
+    const gagnant = await prisma.accessCase.findFirst({
+      where: { personId, kind: sens, state: { in: [...ETATS_VIVANTS] } },
+      select: { id: true },
+    });
+
+    if (!gagnant) {
+      throw erreur;
+    }
+
+    return { id: gagnant.id, deja: true };
+  }
 }
 
 /**

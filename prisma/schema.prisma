@@ -400,6 +400,12 @@ model AccessCase {
   person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
   plans  Plan[]
 
+  /// Un index unique partiel sur (personId, kind), limite aux etats vivants, vit en
+  /// base sans figurer ici : Prisma ne sait pas exprimer la clause WHERE, et il ne
+  /// voit pas non plus l'index comme une derive. Il est ecrit a la main dans la
+  /// migration 20260824153852_un_seul_dossier_vivant. Sans cette ligne, la garde
+  /// serait invisible a qui lit ce fichier.
+
   @@index([personId])
   @@index([state])
   @@index([kind, state])
