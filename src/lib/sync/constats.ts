@@ -225,7 +225,7 @@ async function actionsDeclarees(): Promise<ActionDeclaree[]> {
       executedAt: true,
       plan: {
         select: {
-          departureCase: {
+          accessCase: {
             select: {
               person: {
                 select: {
@@ -253,7 +253,7 @@ async function actionsDeclarees(): Promise<ActionDeclaree[]> {
   const declarees: ActionDeclaree[] = [];
 
   for (const etape of etapes) {
-    const personne = etape.plan.departureCase?.person;
+    const personne = etape.plan.accessCase?.person;
     if (!personne || !etape.executedAt) {
       continue;
     }

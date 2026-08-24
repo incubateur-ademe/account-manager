@@ -9,7 +9,7 @@ import type { ReactNode } from "react";
 
 import { estPhaseTerminale } from "@/core/appartenance";
 import { FOURNISSEUR_PERIMETRE, fraicheurDe } from "@/core/collecte";
-import { ETATS_VIVANTS } from "@/core/depart";
+import { ETATS_VIVANTS } from "@/core/dossier";
 import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
 import { LIBELLE_PHASE } from "@/core/libelle-startup";
 import { type RattachementManuel, startupsEffectives } from "@/core/rattachement-startup";
@@ -145,7 +145,7 @@ export default async function FicheStartupPage({ params }: Props) {
         scopeOverride: { select: { decision: true } },
         // Un dossier déjà ouvert désigne un geste en cours : la ligne reste cochable,
         // mais elle n'est pas proposée d'avance.
-        departureCases: {
+        accessCases: {
           where: { state: { in: [...ETATS_VIVANTS] } },
           select: { id: true },
         },
@@ -229,7 +229,7 @@ export default async function FicheStartupPage({ params }: Props) {
         fiche === undefined
           ? []
           : startupsEffectives(fiche.startups, fiche.startupAssignments, today),
-      dossierVivant: (fiche?.departureCases.length ?? 0) > 0,
+      dossierVivant: (fiche?.accessCases.length ?? 0) > 0,
       surcharge: fiche?.scopeOverride != null,
       constatOuvert: constatsInactifs.get(membre.username) ?? null,
       disparue: fiche?.vanishedAt != null,

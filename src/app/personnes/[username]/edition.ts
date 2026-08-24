@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { dossierVivant } from "@/core/depart";
+import { dossierVivant } from "@/core/dossier";
 import {
   type ChampsFiche,
   type FicheAFusionner,
@@ -156,7 +156,7 @@ async function inventaireDe(
       where: { personId },
       select: { id: true, kind: true, dedupKey: true },
     }),
-    prisma.departureCase.findMany({ where: { personId }, select: { id: true, state: true } }),
+    prisma.accessCase.findMany({ where: { personId }, select: { id: true, state: true } }),
     prisma.reference.findMany({ where: { personId }, select: { id: true, resourceId: true } }),
     // Ouverts comme clos : un rattachement fermé explique un constat levé la veille,
     // et le schéma pose qu'un retrait ferme au lieu de supprimer.
@@ -413,7 +413,7 @@ export async function renommerFiche(
  * L'ordre vient du plan et n'est pas recopié ici : supprimer la fiche avant d'avoir
  * tout déplacé laisserait les cascades du schéma emporter sans un mot les constats,
  * les dossiers et les références, et abandonner les plans du dossier supprimé avec
- * un `departureCaseId` nul, vivants mais introuvables dans les écrans.
+ * un `accessCaseId` nul, vivants mais introuvables dans les écrans.
  */
 async function fusionner(sourceId: string, cibleId: string, plan: PlanFusion): Promise<void> {
   await actionTracee({
@@ -450,7 +450,6 @@ async function fusionner(sourceId: string, cibleId: string, plan: PlanFusion): P
         ),
       ),
       ...CHEMINS_LISTES,
-      "/departs",
     ],
     ecrire: async (operateur) => {
       tracerComptesDeplaces(operateur.username, plan.comptes, plan.source, plan.cible, "SUCCESS");
@@ -494,7 +493,7 @@ async function fusionner(sourceId: string, cibleId: string, plan: PlanFusion): P
                 });
                 break;
               case "deplacer-dossiers":
-                await tx.departureCase.updateMany({
+                await tx.accessCase.updateMany({
                   where: { id: { in: [...etape.ids] } },
                   data: { personId: cibleId },
                 });

@@ -119,7 +119,7 @@ model Person {
 
   identities         ExternalIdentity[]
   references         Reference[]
-  departureCases     DepartureCase[]
+  accessCases        AccessCase[]
   findings           Finding[]
   startupAssignments StartupAssignment[]
   scopeOverride      ScopeOverride?
@@ -369,7 +369,7 @@ model ScopeOverride {
   person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
 }
 
-enum DepartureState {
+enum CaseState {
   WATCH
   CANDIDATE
   CONFIRMED
@@ -377,13 +377,13 @@ enum DepartureState {
   DONE
 }
 
-model DepartureCase {
+model AccessCase {
   id String @id @default(cuid())
 
   personId        String
-  state           DepartureState @default(WATCH)
-  firstSignalAt   DateTime       @default(now())
-  effectiveDate   DateTime?      @db.Date
+  state           CaseState @default(WATCH)
+  firstSignalAt   DateTime  @default(now())
+  effectiveDate   DateTime? @db.Date
   cancelledReason String?
 
   person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
@@ -413,9 +413,9 @@ enum PlanState {
 model Plan {
   id String @id @default(cuid())
 
-  departureCaseId String?
-  kind            PlanKind
-  state           PlanState @default(DRAFT)
+  accessCaseId String?
+  kind         PlanKind
+  state        PlanState @default(DRAFT)
 
   planDigest      String
   confirmedDigest String?
@@ -426,11 +426,11 @@ model Plan {
   createdAt   DateTime  @default(now())
   expiresAt   DateTime
 
-  departureCase DepartureCase? @relation(fields: [departureCaseId], references: [id], onDelete: SetNull)
-  steps         PlanStep[]
+  accessCase AccessCase? @relation(fields: [accessCaseId], references: [id], onDelete: SetNull)
+  steps      PlanStep[]
 
   @@index([state])
-  @@index([departureCaseId])
+  @@index([accessCaseId])
 }
 
 enum RiskLevel {
@@ -597,7 +597,7 @@ model ScopeDropOverride {
 
   /// Se consomme au premier passage qui s'en sert, et ne vaut donc que pour lui : une
   /// autorisation qui durerait éteindrait le garde-fou au lieu de le lever une fois.
-  consumedAt   DateTime?
+  consumedAt    DateTime?
   consumedRunId String?
 
   @@index([provider, famille, consumedAt])

@@ -137,7 +137,7 @@ describe("les gestes que porte le bloc d'action d'une fiche", () => {
     const constatAvecDossier = avecDossier.find((motif) => motif.cle.startsWith("constat-"));
     expect(nomsDesGestes(constatAvecDossier?.gestes)).toEqual(["clore"]);
     expect(constatAvecDossier?.lien).toEqual({
-      href: "/departs/dossier-abc",
+      href: "/dossiers/dossier-abc",
       libelle: "Ouvrir le dossier de départ en cours",
     });
 

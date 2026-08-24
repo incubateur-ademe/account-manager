@@ -78,7 +78,7 @@ export function motifsDesConstats(
     // reprend là où elle a été pointée.
     const versLeDossier =
       constat.kind === "OVERDUE_MANUAL_ACTION" && dossierVivant !== null
-        ? { href: `/departs/${dossierVivant}`, libelle: "Ouvrir le dossier de départ en cours" }
+        ? { href: `/dossiers/${dossierVivant}`, libelle: "Ouvrir le dossier de départ en cours" }
         : null;
 
     return {
@@ -131,7 +131,7 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
       severite: "info",
       titre: "Un départ est en cours",
       description: "Ses étapes et leur pointage vivent dans le dossier.",
-      lien: { href: `/departs/${etat.dossierVivant}`, libelle: "Ouvrir le dossier" },
+      lien: { href: `/dossiers/${etat.dossierVivant}`, libelle: "Ouvrir le dossier" },
     });
   }
 

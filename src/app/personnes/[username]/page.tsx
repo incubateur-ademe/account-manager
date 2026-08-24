@@ -14,7 +14,7 @@ import {
 } from "@/core/appartenance";
 import { FOURNISSEUR_PERIMETRE, fraicheurDe } from "@/core/collecte";
 import type { ConstatKind } from "@/core/constat";
-import { ETATS_VIVANTS } from "@/core/depart";
+import { ETATS_VIVANTS } from "@/core/dossier";
 import { ficheEditable, RAISON_NON_EDITABLE } from "@/core/fiche-manuelle";
 import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
 import { echeanceEffective, enCours, startupsEffectives } from "@/core/rattachement-startup";
@@ -133,7 +133,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
     }),
     // Filtrée par la relation plutôt que par l'identifiant de la personne, que cette
     // requête ne connaît pas encore : elle part en même temps que celle qui le lit.
-    prisma.departureCase.findFirst({
+    prisma.accessCase.findFirst({
       where: { person: { username }, state: { in: [...ETATS_VIVANTS] } },
       select: { id: true },
     }),

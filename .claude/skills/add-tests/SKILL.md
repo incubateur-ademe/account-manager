@@ -34,7 +34,7 @@ Priorise par le cout d'une regression, pas par la facilite a tester :
 | Connecteurs (`list`, `plan`, `precheck`, `execute`) | un run complet contre des reponses distantes figees, y compris pagination tronquee et erreur unitaire | un `ok` menteur produit de fausses revocations |
 | Calcul d'ecart et de plan | du perimetre + collecte jusqu'aux steps figes, avec l'empreinte | c'est ce que l'operateur confirme |
 | Rapprochement d'identite | `matchMethod`, `personId` nul, compte isole | une identite forcee vers une personne coupe l'acces de quelqu'un en poste |
-| Machine a etats `DepartureCase` et `Plan` | transitions valides et invalides, `graceDays`, expiration | un depart deduit d'un seul signal est un bug grave |
+| Machine a etats `AccessCase` et `Plan` | transitions valides et invalides, `graceDays`, expiration | un depart deduit d'un seul signal est un bug grave |
 | Audit | l'evenement est ecrit avant l'action, et une panne d'audit ne fait pas echouer l'action | invariant du produit |
 | `ACTIONS_ENABLED=false` | un plan complet s'execute en simulation sans aucun appel d'ecriture | garde-fou principal |
 | Tests de contrat de connecteur | la forme de la reponse distante n'a pas change (section 4.8 de `docs/architecture.md`) | les API amont ne sont ni versionnees ni documentees |

@@ -310,7 +310,7 @@ promu qu'à la fin : un processus tué laisse une trace d'échec, pas un run ver
 
 ### 3.3 Décidé (PostgreSQL, immuable)
 
-**`DepartureCase`**, **`Plan`**, **`PlanStep`**, **`Finding`**, **`Derogation`**,
+**`AccessCase`**, **`Plan`**, **`PlanStep`**, **`Finding`**, **`Derogation`**,
 **`StartupAssignment`**, **`ScopeOverride`**, **`AuditEvent`**.
 
 Un rattachement manuel à une startup ne vit pas dans `Person.startups`, que la collecte

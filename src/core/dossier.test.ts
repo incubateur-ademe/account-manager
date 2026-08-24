@@ -15,7 +15,7 @@ import {
   peutRecalculer,
   planAAnnuler,
   systemesDuDepart,
-} from "./depart";
+} from "./dossier";
 
 const FRAIS = { perime: false, obsolete: false };
 

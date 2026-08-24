@@ -206,7 +206,7 @@ export interface FicheAFusionner {
  * cosmétique : supprimer la fiche source avant d'avoir tout déplacé fait agir les
  * cascades du schéma à notre place, et elles emportent sans un mot les constats,
  * les dossiers et les références, en laissant les plans du dossier supprimé avec
- * un `departureCaseId` nul, vivants mais introuvables.
+ * un `accessCaseId` nul, vivants mais introuvables.
  */
 export type EtapeFusion =
   | { type: "deplacer-comptes"; ids: readonly string[] }

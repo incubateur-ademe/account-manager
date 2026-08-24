@@ -4,10 +4,10 @@ import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { type EtatEtape, estSoldee, peutAnnuler, peutClore, peutPointer } from "@/core/depart";
+import { type EtatEtape, estSoldee, peutAnnuler, peutClore, peutPointer } from "@/core/dossier";
 import { peremptionDuPlan } from "@/core/plan";
 import { prisma } from "@/lib/db";
-import { calculerPlanDeDepart } from "@/lib/depart";
+import { calculerPlanDeDepart } from "@/lib/dossier";
 import { requireOperateur } from "@/lib/session";
 import { dateFr } from "@/ui/dates";
 import {
@@ -64,7 +64,7 @@ export default async function DepartPage({
   const { id } = await params;
   const { deja } = await searchParams;
 
-  const dossier = await prisma.departureCase.findUnique({
+  const dossier = await prisma.accessCase.findUnique({
     where: { id },
     select: {
       id: true,

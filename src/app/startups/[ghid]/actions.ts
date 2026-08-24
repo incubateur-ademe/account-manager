@@ -13,7 +13,7 @@ import {
   SELECTION_APPARTENANCE,
 } from "@/lib/appartenance";
 import { prisma } from "@/lib/db";
-import { calculerPlanDeDepart, enregistrerPlan, ouvrirDossierDeDepart } from "@/lib/depart";
+import { calculerPlanDeDepart, enregistrerPlan, ouvrirDossierDeDepart } from "@/lib/dossier";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
 
@@ -188,7 +188,7 @@ export async function declarerHorsIncubateurEnLot(
 }
 
 /**
- * Les primitives de `src/lib/depart.ts` sont rappelées ici plutôt que l'action
+ * Les primitives de `src/lib/dossier.ts` sont rappelées ici plutôt que l'action
  * unitaire : celle-ci se termine par un `redirect`, qui lève une exception et
  * interromprait la boucle au premier tour. Aucun `redirect` non plus au bout de ce
  * geste : il ne sait viser qu'un dossier, et en choisir un arbitrairement ferait
@@ -252,7 +252,7 @@ export async function ouvrirDepartsEnLot(_etat: EtatLot, formData: FormData): Pr
           startup: entree.ghid,
           lot,
         },
-        revalider: [...cheminsDe(entree.ghid, personne.username), "/departs"],
+        revalider: cheminsDe(entree.ghid, personne.username),
         ecrire: async (operateur) => {
           const dossier = await ouvrirDossierDeDepart(personne.id, echeance);
           if (dossier.deja) {
