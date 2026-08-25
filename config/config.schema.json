@@ -211,7 +211,7 @@
                 },
                 "scope": {
                   "default": {},
-                  "description": "Ce que l'accès ouvre sur ce système. Sa forme appartient au connecteur visé, qui seul sait la valider : ce fichier n'en vérifie que la structure, et une clé laissée vide y vaut un scope vide. Un scope faux se signale à la vérification de la politique et non au démarrage, faute de quoi une faute de frappe dans un profil arrêterait la collecte de tout le parc.",
+                  "description": "Ce que l'accès ouvre sur ce système. Sa forme appartient au connecteur visé, qui seul sait la valider : ce fichier n'en vérifie rien, et une clé laissée vide y vaut un scope vide. Un scope faux se signale à la vérification de la politique et non au démarrage, faute de quoi une faute de frappe dans un profil arrêterait la collecte de tout le parc.",
                   "examples": [
                     {
                       "organisation": "mon-organisation",

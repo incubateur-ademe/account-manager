@@ -168,22 +168,25 @@ const accesDeProfilSchema = z
         description: "Clé du système visé, telle que la déclare son connecteur.",
         examples: ["github"],
       }),
-    // Tout ce qui n'est pas un objet vaut ici le scope vide, et la faute se dit à la
-    // seconde passe. Une clé écrite puis laissée vide rend `null` en YAML, une valeur
-    // posée sans accolades rend une chaîne : refuser l'une ou l'autre au chargement
-    // ferait cesser de se charger la politique entière pour la faute d'un seul profil,
-    // soit exactement ce que les deux passes existent pour éviter. Le `.default({})`
-    // reste posé sur le noeud interne, le seul dont `z.toJSONSchema` rende encore la
-    // valeur implicite.
+    // La valeur passe telle quelle, et la faute se dit à la seconde passe. La refuser
+    // ici ferait cesser de se charger la politique entière pour la faute d'un seul
+    // profil, soit ce que les deux passes existent pour éviter ; la ramener au scope
+    // vide effaçait la faute avec elle, et un connecteur qui n'attend aucun champ
+    // l'acceptait alors sans un mot. Seul `null`, que rend une clé écrite puis laissée
+    // vide, vaut le scope vide. Le noeud JSON Schema est redonné par `.meta()`, la
+    // saisie assistée continuant d'exiger un objet dans l'éditeur.
     scope: z.preprocess(
-      (brut) => (brut !== null && typeof brut === "object" && !Array.isArray(brut) ? brut : {}),
+      (brut) => (brut === null ? {} : brut),
       z
-        .record(z.string(), z.unknown())
+        .unknown()
         .default({})
         .meta({
           description:
-            "Ce que l'accès ouvre sur ce système. Sa forme appartient au connecteur visé, qui seul sait la valider : ce fichier n'en vérifie que la structure, et une clé laissée vide y vaut un scope vide. Un scope faux se signale à la vérification de la politique et non au démarrage, faute de quoi une faute de frappe dans un profil arrêterait la collecte de tout le parc.",
+            "Ce que l'accès ouvre sur ce système. Sa forme appartient au connecteur visé, qui seul sait la valider : ce fichier n'en vérifie rien, et une clé laissée vide y vaut un scope vide. Un scope faux se signale à la vérification de la politique et non au démarrage, faute de quoi une faute de frappe dans un profil arrêterait la collecte de tout le parc.",
           examples: [{ organisation: "mon-organisation", role: "member" }],
+          type: "object",
+          propertyNames: { type: "string" },
+          additionalProperties: {},
         }),
     ),
     expiresInDays: z

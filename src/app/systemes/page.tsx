@@ -34,6 +34,8 @@ const TIER: Record<Tier, { libelle: string; severite: "success" | "warning" | "i
 
 interface AccesDeProfil {
   profil: string;
+  /** Rang dans la liste du profil : deux accès y visent parfois le même système. */
+  rang: number;
   libelle: string;
   scope: string;
   echeance: string;
@@ -67,11 +69,12 @@ function profilsDeclares(): ProfilsDeclares {
     const parSysteme = new Map<string, AccesDeProfil[]>();
 
     for (const profil of profils) {
-      for (const acces of profil.accesses) {
+      for (const [rang, acces] of profil.accesses.entries()) {
         const lignes = parSysteme.get(acces.system) ?? [];
 
         lignes.push({
           profil: profil.key,
+          rang,
           libelle: profil.label,
           scope: JSON.stringify(acces.scope),
           echeance:
@@ -79,7 +82,7 @@ function profilsDeclares(): ProfilsDeclares {
               ? "sans échéance"
               : `${acces.expiresInDays} jours d'accès`,
           refus: refus
-            .filter((un) => un.profil === profil.key && un.systeme === acces.system)
+            .filter((un) => un.profil === profil.key && un.acces === rang)
             .map((un) => un.motif),
         });
 
@@ -188,7 +191,7 @@ function Profils({ acces }: { acces: readonly AccesDeProfil[] }) {
       </p>
       <ul className={fr.cx("fr-text--sm")}>
         {acces.map((un) => (
-          <li key={`${un.profil}:${un.scope}`}>
+          <li key={`${un.profil}:${un.rang}`}>
             {un.libelle} (<code>{un.profil}</code>) : <code>{un.scope}</code>, {un.echeance}.{" "}
             {un.refus.length === 0 ? null : (
               <>

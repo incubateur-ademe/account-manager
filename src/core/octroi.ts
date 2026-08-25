@@ -33,6 +33,13 @@ export interface SystemeOffrantOctroi {
 
 export interface RefusDOctroi {
   profil: string;
+  /**
+   * Rang de l'accès dans la liste du profil, seul identifiant qu'un accès possède :
+   * rien ne l'y rend unique, et deux accès d'un même profil peuvent viser le même
+   * système, sur deux organisations par exemple. Sans lui, un accès valide affiche le
+   * refus de son voisin.
+   */
+  acces: number;
   systeme: string;
   motif: string;
 }
@@ -158,9 +165,9 @@ export function verifierProfils(
   const refus: RefusDOctroi[] = [];
 
   for (const profil of profils) {
-    for (const acces of profil.accesses) {
+    for (const [rang, acces] of profil.accesses.entries()) {
       const noter = (motif: string) => {
-        refus.push({ profil: profil.key, systeme: acces.system, motif });
+        refus.push({ profil: profil.key, acces: rang, systeme: acces.system, motif });
       };
 
       const systeme = parCle.get(acces.system);
@@ -177,6 +184,16 @@ export function verifierProfils(
       if (!systeme.octroiDeclare) {
         noter(
           "ce système ne déclare aucun octroi : son connecteur ne sait pas encore donner un accès, même à la main. L'accès est à retirer du profil en attendant qu'il le sache.",
+        );
+        continue;
+      }
+
+      // C'est ici, et nulle part au chargement, que ce qui n'est pas un objet se dit :
+      // un schéma de scope sans champ attendu accepterait n'importe quel scalaire, son
+      // objet strict n'ayant aucune clé inconnue à refuser.
+      if (typeof acces.scope !== "object" || acces.scope === null || Array.isArray(acces.scope)) {
+        noter(
+          `scope : ce champ attend un objet, ce profil y met ${typeRecu(acces.scope)}. Laissez-le vide pour un scope vide, ou écrivez sous lui les clés que ce système attend.`,
         );
         continue;
       }

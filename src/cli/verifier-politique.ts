@@ -28,7 +28,10 @@ function resume(): string[] {
   if (refus.length > 0) {
     throw new Error(
       `Profils invalides :\n${refus
-        .map((refuse) => `  profiles.${refuse.profil} > ${refuse.systeme} : ${refuse.motif}`)
+        .map(
+          (refuse) =>
+            `  profiles[${refuse.profil}].accesses[${refuse.acces}] (${refuse.systeme}) : ${refuse.motif}`,
+        )
         .join(
           "\n",
         )}\n\nIls se corrigent dans la cle profiles du fichier config.yaml de la politique.`,

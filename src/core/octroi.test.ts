@@ -200,18 +200,16 @@ describe("un profil ne s'applique que si tout ce qu'il désigne existe et se val
       profil("visiteur", [{ system: "gitlab", scope: MEMBRE }]),
     ];
 
-    // Le catalogue ne porte aucune sonde et aucun tier, seulement un booléen : un
-    // octroi indisponible faute de secret reste un profil valide, c'est à l'exécution
-    // que le tier dégrade. La démonstration passe par l'environnement parce que c'est
-    // le seul endroit d'où un credential pourrait entrer.
-    process.env["GITHUB_ADMIN_TOKEN"] = "un-jeton-qui-ne-sert-a-rien-ici";
-    const avec = verifierProfils(profils, CATALOGUE);
+    // La garantie est portée par le type et non par ce test : le catalogue ne porte
+    // aucune sonde ni aucun tier, seulement un booléen, si bien que rien de ce que
+    // `verifierProfils` reçoit ne peut dépendre d'un secret. Un octroi indisponible
+    // faute de credential reste donc un profil valide, et c'est à l'exécution que le
+    // tier dégrade. Poser un jeton dans l'environnement pour le montrer suggérerait
+    // l'inverse : que la fonction saurait le lire.
+    const refus = verifierProfils(profils, CATALOGUE);
 
-    delete process.env["GITHUB_ADMIN_TOKEN"];
-    const sans = verifierProfils(profils, CATALOGUE);
-
-    expect(avec).toEqual(sans);
-    expect(sans).toHaveLength(1);
+    expect(refus).toHaveLength(1);
+    expect(refus[0]?.profil).toBe("visiteur");
   });
 });
 
@@ -355,6 +353,91 @@ describe("la politique charge un profil sans en valider le scope", () => {
     // Absent, le noeud vaut la liste vide : une instance qui ne déclare aucun profil
     // fonctionne, elle n'ouvre simplement rien automatiquement à l'arrivée.
     expect(configSchema.parse({ version: 1 }).profiles).toEqual([]);
+  });
+});
+
+describe("un scope mal formé se charge quand même, et c'est la seconde passe qui le nomme", () => {
+  it("laisse passer ce qui n'est pas un objet, puis le refuse en nommant l'accès fautif", () => {
+    // Given un fichier où plusieurs profils écrivent leur scope de travers, et un
+    // profil qui déclare deux accès sur le même système, l'un valide et l'autre non
+    const lu = configSchema.parse({
+      version: 1,
+      profiles: [
+        {
+          key: "chaine",
+          label: "Scope écrit sans accolades",
+          accesses: [{ system: "notion", scope: "admin" }],
+        },
+        {
+          key: "liste",
+          label: "Scope écrit en liste",
+          accesses: [{ system: "notion", scope: [] }],
+        },
+        {
+          key: "nombre",
+          label: "Scope écrit en nombre",
+          accesses: [{ system: "notion", scope: 42 }],
+        },
+        {
+          key: "vide",
+          label: "Clé écrite puis laissée vide",
+          accesses: [{ system: "notion", scope: null }],
+        },
+        {
+          key: "developpeur",
+          label: "Développeur",
+          accesses: [
+            { system: "github", scope: MEMBRE },
+            { system: "github", scope: ADMIN },
+          ],
+        },
+      ],
+    });
+
+    // Then le chargement passe, et c'est la propriété qui ne se négocie pas : un
+    // fichier refusé ici, c'est la collecte de tout le parc qui ne tourne plus.
+    expect(lu.profiles.map((entree) => entree.key)).toEqual([
+      "chaine",
+      "liste",
+      "nombre",
+      "vide",
+      "developpeur",
+    ]);
+
+    // Then la valeur fautive est conservée telle quelle : la ramener au scope vide
+    // effacerait la faute avec elle, et un système qui n'attend aucun champ
+    // l'accepterait alors sans un mot.
+    expect(lu.profiles[0]?.accesses[0]?.scope).toBe("admin");
+    expect(lu.profiles[1]?.accesses[0]?.scope).toEqual([]);
+    expect(lu.profiles[2]?.accesses[0]?.scope).toBe(42);
+
+    // Then seule la clé laissée vide vaut le scope vide, elle qui ne dit rien de faux
+    expect(lu.profiles[3]?.accesses[0]?.scope).toEqual({});
+
+    // When la seconde passe examine ces profils
+    const refus = verifierProfils(lu.profiles, CATALOGUE);
+
+    // Then les trois scopes mal formés sont refusés, chacun nommant ce qu'il a reçu,
+    // alors même que notion n'attend aucun champ et n'aurait rien eu à refuser
+    expect(refus.filter((un) => un.profil === "chaine")).toHaveLength(1);
+    expect(refus.find((un) => un.profil === "chaine")?.motif).toContain("attend un objet");
+    expect(refus.find((un) => un.profil === "liste")?.motif).toContain("une liste");
+    expect(refus.find((un) => un.profil === "nombre")?.motif).toContain("attend un objet");
+
+    // Then la clé laissée vide ne dit rien de faux et ne se fait pas reprendre
+    expect(refus.filter((un) => un.profil === "vide")).toEqual([]);
+
+    // Then du profil à deux accès, seul le second est refusé, et son rang le désigne :
+    // sans lui, l'accès valide afficherait le refus de son voisin.
+    const deuxAcces = refus.filter((un) => un.profil === "developpeur");
+    expect(deuxAcces).toHaveLength(1);
+    expect(deuxAcces[0]?.acces).toBe(1);
+    expect(deuxAcces[0]?.motif).toContain("échéance");
+
+    // Then aucun de ces refus ne parle anglais
+    for (const un of refus) {
+      expect(un.motif).not.toMatch(ANGLAIS);
+    }
   });
 });
 
