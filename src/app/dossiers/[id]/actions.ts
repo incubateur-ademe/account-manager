@@ -1,5 +1,7 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+
 import type { EtatEtape, SensDossier } from "@/core/dossier";
 import {
   dossierVivant,
@@ -17,12 +19,22 @@ import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 import { origineFigeeSchema } from "@/core/modele-plan";
 import { peremptionDuPlan } from "@/core/plan";
 import { actionTracee } from "@/lib/actions";
+import { profilDeLaPolitique } from "@/lib/arrivee";
 import { prisma } from "@/lib/db";
-import { calculerPlan, enregistrerPlan } from "@/lib/dossier";
+import { calculerPlan, enregistrerPlan, messageDeRefus } from "@/lib/dossier";
+import { executerPlan, type ResultatDExecution } from "@/lib/execution";
 import { requireOperateur } from "@/lib/session";
 
 export interface EtatAction {
   erreur?: string;
+  /**
+   * Ce qu'un passage de la boucle d'exécution a fait, ou n'a pas fait.
+   *
+   * Il se rend à l'écran plutôt que de se déduire des étapes : en simulation, aucune
+   * étape prête ne change d'état, et une page qui se contenterait de se rafraîchir
+   * n'aurait rien à montrer d'un lancement qui a bel et bien eu lieu.
+   */
+  execution?: ResultatDExecution;
 }
 
 const POINTAGES: Record<string, EtatEtape> = {
@@ -54,7 +66,12 @@ async function planDuDossier(planId: string) {
       expiresAt: true,
       accessCaseId: true,
       accessCase: {
-        select: { kind: true, state: true, person: { select: { id: true, username: true } } },
+        select: {
+          kind: true,
+          state: true,
+          profileKey: true,
+          person: { select: { id: true, username: true } },
+        },
       },
       steps: { select: { id: true, state: true, ordre: true, label: true, systemKey: true } },
     },
@@ -85,6 +102,7 @@ export async function confirmerPlan(
     plan.accessCase.person.id,
     plan.accessCase.person.username,
     maintenant,
+    profilDeLaPolitique(plan.accessCase.profileKey),
   );
 
   // L'état du dossier d'abord : sa garde ne portait que sur le plan, si bien qu'un
@@ -478,10 +496,18 @@ export async function recalculerPlan(
     plan.accessCase.person.id,
     plan.accessCase.person.username,
     maintenant,
+    profilDeLaPolitique(plan.accessCase.profileKey),
   );
 
   if (!dossierVivant(plan.accessCase.state)) {
     return { erreur: "Ce dossier n'est plus ouvert." };
+  }
+
+  // Le recalcul est le seul chemin qui réécrive un plan : un profil devenu invalide
+  // depuis l'ouverture s'y dit ici, sous le formulaire, plutôt qu'au milieu de la
+  // transaction qui remplace le brouillon.
+  if (actuel.refus.length > 0) {
+    return { erreur: messageDeRefus(actuel.refus) };
   }
 
   const peremption = peremptionDuPlan(plan, actuel.empreinte, maintenant);
@@ -525,4 +551,47 @@ export async function recalculerPlan(
   });
 
   return {};
+}
+
+/**
+ * Lance l'exécution d'un plan confirmé.
+ *
+ * Le geste de masse est une case que l'opérateur coche lui-même, jamais un défaut ni un
+ * paramètre d'URL : au-delà du plafond, un plan ne part pas sans que quelqu'un ait dit
+ * une seconde fois qu'il en répond. Son absence n'est pas une erreur de saisie, c'est
+ * le cas nominal, et le refus dit alors ce qu'il refuse et ce qu'il faut faire.
+ *
+ * Rien n'est tracé ici : `executerPlan` journalise le plan puis chaque étape avant de
+ * l'appeler, nominativement, et une trace de plus posée en amont dirait qu'un geste a
+ * eu lieu avant même de savoir si le plan était exécutable.
+ */
+export async function lancerExecution(
+  _etat: EtatAction | null,
+  formData: FormData,
+): Promise<EtatAction> {
+  const operateur = await requireOperateur();
+
+  const planId = String(formData.get("planId") ?? "").trim();
+  const masseConfirmee = String(formData.get("masse") ?? "") === "confirmee";
+
+  const plan = await prisma.plan.findUnique({
+    where: { id: planId },
+    select: { accessCaseId: true },
+  });
+
+  if (!plan) {
+    return { erreur: "Ce plan n'existe plus." };
+  }
+
+  const resultat = await executerPlan(planId, {
+    operateur: operateur.username,
+    masseConfirmee,
+    maintenant: new Date(),
+  });
+
+  if (plan.accessCaseId) {
+    revalidatePath(`/dossiers/${plan.accessCaseId}`);
+  }
+
+  return resultat.refus ? { erreur: resultat.refus } : { execution: resultat };
 }

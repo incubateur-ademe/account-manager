@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 
 import type { ConstatKind } from "@/core/constat";
 import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
+import { profilsOfferts } from "@/lib/arrivee";
 import { prisma } from "@/lib/db";
 import { requireOperateur } from "@/lib/session";
 import { dateFr } from "@/ui/dates";
@@ -82,7 +83,11 @@ export default async function ConstatsPage({
             .
           </p>
 
-          <FileDesConstats lignes={lignes} {...(typeof designe === "string" ? { designe } : {})} />
+          <FileDesConstats
+            lignes={lignes}
+            profils={profilsOfferts()}
+            {...(typeof designe === "string" ? { designe } : {})}
+          />
 
           {/* Une consigne par type et non par ligne : répétée treize fois, elle
               cessait d'être lue dès la deuxième. */}

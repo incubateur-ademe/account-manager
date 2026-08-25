@@ -3,12 +3,16 @@ import { z } from "zod";
 
 import { CONTRAT_GITHUB, examinerScopeGithub } from "@/connectors/github";
 import { CONTRAT_NOTION } from "@/connectors/notion";
+import { type PlannedStep, resolveCapability, type SubjectRef } from "@/core/connector";
 import {
+  assemblerOctrois,
   echeanceDOctroi,
   handlesSurs,
+  type SystemeOctroyeur,
   type SystemeOffrantOctroi,
   verifierProfils,
 } from "@/core/octroi";
+import { empreinteDuPlan } from "@/core/plan";
 import { configSchema, type Profil } from "@/core/policy";
 
 /**
@@ -20,7 +24,7 @@ const GITHUB: SystemeOffrantOctroi = {
   key: "github",
   scopeSchema: CONTRAT_GITHUB.scopeSchema,
   octroiDeclare: true,
-  examinerScope: examinerScopeGithub(["incubateur-ademe"]),
+  examinerScope: examinerScopeGithub(["incubateur-ademe", "startups-ademe"]),
 };
 
 /** Un octroi sans portée à choisir, et son vrai schéma : c'est sa stricture qu'on vérifie. */
@@ -47,6 +51,9 @@ function profil(key: string, accesses: Profil["accesses"]): Profil {
 
 const MEMBRE = { organisation: "incubateur-ademe", role: "member" };
 const ADMIN = { organisation: "incubateur-ademe", role: "admin" };
+
+/** La même administration, sur une autre organisation : une autre cible, donc un autre accès. */
+const ADMIN_AILLEURS = { organisation: "startups-ademe", role: "admin" };
 
 describe("un profil ne s'applique que si tout ce qu'il désigne existe et se valide", () => {
   it("distingue la clé à corriger du connecteur qui ne sait pas encore faire", () => {
@@ -507,5 +514,428 @@ describe("les identifiants qu'un octroi reçoit sont ceux dont on répond", () =
         { provider: "notion", handle: "   ", methode: "EMAIL_EXACT", disparue: false },
       ]),
     ).toEqual({});
+  });
+});
+
+/**
+ * Le vrai contrat de GitHub, la vraie résolution de capacité, une doublure pour le
+ * seul appel sortant qu'il resterait : ce qui est vérifié ici est la rencontre du
+ * profil, du connecteur et de l'horloge, et une doublure de scope ferait passer le
+ * test le jour où GitHub changerait le sien.
+ */
+function octroyeur(over: Partial<SystemeOctroyeur> = {}): SystemeOctroyeur {
+  return {
+    key: "github",
+    scopeSchema: CONTRAT_GITHUB.scopeSchema,
+    octroiDeclare: true,
+    examinerScope: examinerScopeGithub(["incubateur-ademe", "startups-ademe"]),
+    capacite: resolveCapability(
+      "grant",
+      CONTRAT_GITHUB.capabilities.grant,
+      [{ id: "github-token-admin", available: true, checkedAt: new Date(0) }],
+      CONTRAT_GITHUB.runbook,
+    ),
+    planifier: (scope, sujet) => [etapeDouble(scope, sujet)],
+    ...over,
+  };
+}
+
+/**
+ * Ce qu'un connecteur rend pour un octroi, dans la forme que le socle attend de lui :
+ * un critère de complétion qui dit qu'une invitation en attente est un accès accordé.
+ */
+function etapeDouble(scope: unknown, sujet: SubjectRef): PlannedStep {
+  const { organisation, role } = scope as { organisation: string; role: string };
+  const qui = sujet.kind === "person" ? sujet.username : sujet.key;
+  const handle = sujet.kind === "person" ? sujet.handles?.["github"] : undefined;
+
+  return {
+    systemKey: "github",
+    capability: "grant",
+    tier: handle ? "auto" : "manual",
+    action: "ouvrir-l-acces",
+    label: `Inviter ${qui} dans ${organisation} avec le rôle ${role}`,
+    params: { organisation, role, beneficiaire: qui, compte: handle ?? null },
+    riskLevel: role === "admin" ? "high" : "medium",
+    expectedState: { role },
+    idempotencyKey: `github:${organisation}:grant:${qui}:${role}`,
+    manual: {
+      title: `Inviter ${qui} dans ${organisation}`,
+      runbook: CONTRAT_GITHUB.runbook,
+      doneWhen: `${qui} figure parmi les membres de ${organisation} avec le rôle ${role}, ou parmi les invitations en attente : une invitation non acceptée est un accès accordé, pas un accès en suspens.`,
+    },
+  };
+}
+
+const ALICE: SubjectRef = {
+  kind: "person",
+  username: "alice.martin",
+  handles: { github: "alicemartin" },
+};
+
+const LE_5_JANVIER = new Date("2026-01-05T09:00:00.000Z");
+
+describe("un profil ouvre exactement ce qu'il déclare, et le socle y ajoute le terme", () => {
+  it("pose l'échéance depuis le profil, laisse la justification vide, et passe au connecteur les identifiants sûrs", () => {
+    // Given un profil qui ouvre une place ordinaire sans terme et, sur une autre
+    // organisation, une administration à cent quatre-vingts jours
+    const developpeur = profil("developpeur", [
+      { system: "github", scope: MEMBRE },
+      { system: "github", scope: ADMIN_AILLEURS, expiresInDays: 180 },
+    ]);
+
+    // When on assemble ses octrois pour une personne dont on connaît le compte
+    const { etapes, refus } = assemblerOctrois(developpeur, [octroyeur()], ALICE, LE_5_JANVIER);
+
+    // Then rien n'est refusé, et chaque accès a produit son étape
+    expect(refus).toEqual([]);
+    expect(etapes).toHaveLength(2);
+
+    // Then le terme vient de `echeanceDOctroi` et de nulle part ailleurs : absolu,
+    // compté depuis le calcul, et posé sur la seule étape que le profil borne
+    expect(etapes[0]?.grantExpiresAt).toBeUndefined();
+    expect(etapes[1]?.grantExpiresAt).toEqual(echeanceDOctroi(180, LE_5_JANVIER));
+    expect(etapes[1]?.grantExpiresAt).toEqual(new Date("2026-07-04T09:00:00.000Z"));
+
+    // Then aucune étape ne porte de justification : le profil est la justification, et
+    // la recopier depuis lui ferait naître la file des accès à justifier pleine de faux
+    for (const etape of etapes) {
+      expect(Object.hasOwn(etape, "justification")).toBe(false);
+    }
+
+    // Then le connecteur a reçu le scope tel que son schéma le rend, et l'identifiant
+    // dont on répond : il a donc pu tenir sa voie automatique
+    expect(etapes[0]?.params).toMatchObject({ compte: "alicemartin", role: "member" });
+    expect(etapes.map((etape) => etape.tier)).toEqual(["auto", "auto"]);
+
+    // Then le critère de complétion reste celui du connecteur, et il dit ce que le
+    // socle ne saurait pas dire : une invitation en attente est un accès accordé
+    expect(etapes[1]?.manual?.doneWhen).toContain("invitations en attente");
+  });
+
+  it("refuse en bloc un accès élevé sans échéance, en nommant le profil, le système et le rôle", () => {
+    // Given un profil où l'administration a été écrite sans terme, à côté d'un accès
+    // parfaitement valide
+    const sansTerme = profil("mainteneur", [
+      { system: "github", scope: MEMBRE },
+      { system: "github", scope: ADMIN },
+    ]);
+
+    // When on assemble
+    const { etapes, refus } = assemblerOctrois(sansTerme, [octroyeur()], ALICE, LE_5_JANVIER);
+
+    // Then la construction échoue, et elle échoue en bloc : l'accès valide ne part pas
+    // à moitié pendant que son voisin attend une correction
+    expect(etapes).toEqual([]);
+    expect(refus).toHaveLength(1);
+
+    // Then le refus nomme le profil, le système, le rang de l'accès et ce que le rôle
+    // ouvre, faute de quoi il faudrait deviner laquelle des deux lignes corriger
+    expect(refus[0]?.profil).toBe("mainteneur");
+    expect(refus[0]?.systeme).toBe("github");
+    expect(refus[0]?.acces).toBe(1);
+    expect(refus[0]?.motif).toContain("admin");
+    expect(refus[0]?.motif).toContain("incubateur-ademe");
+    expect(refus[0]?.motif).toContain("expiresInDays");
+
+    // Then c'est bien la construction qui refuse, et le même verdict qu'à la lecture
+    // de la politique : un profil que `pnpm policy:check` accepte ne doit jamais faire
+    // échouer un plan, ni l'inverse
+    expect(verifierProfils([sansTerme], [octroyeur()])).toHaveLength(1);
+  });
+
+  it("rend le même verdict qu'à la vérification de la politique sur un scope faux", () => {
+    // Given un profil qui vise une organisation hors liste et un système inconnu
+    const boiteux = profil("boiteux", [
+      { system: "github", scope: { organisation: "autre-org", role: "member" } },
+      { system: "gitlab", scope: MEMBRE },
+    ]);
+
+    // When on assemble
+    const { etapes, refus } = assemblerOctrois(boiteux, [octroyeur()], ALICE, LE_5_JANVIER);
+
+    // Then rien n'est construit, et les deux motifs sont ceux du fichier de politique
+    expect(etapes).toEqual([]);
+    expect(refus.map((r) => r.systeme)).toEqual(["github", "gitlab"]);
+    expect(refus[0]?.motif).toContain("autre-org");
+    expect(refus[1]?.motif).toContain("aucun connecteur ne porte cette clé");
+    expect(refus.map((r) => r.motif)).toEqual(
+      verifierProfils([boiteux], [octroyeur()]).map((r) => r.motif),
+    );
+  });
+
+  it("refuse deux accès qui visent la même cible sous deux rôles, à la vérification", () => {
+    // Given un profil qui demande une place ordinaire et l'administration de la même
+    // organisation, l'une et l'autre parfaitement écrites
+    const deuxRoles = profil("mainteneur", [
+      { system: "github", scope: MEMBRE },
+      { system: "github", scope: ADMIN, expiresInDays: 180 },
+    ]);
+
+    // When on assemble
+    const { etapes, refus } = assemblerOctrois(deuxRoles, [octroyeur()], ALICE, LE_5_JANVIER);
+
+    // Then rien n'est construit : les deux étapes viseraient la même place, la première
+    // exécutée ferait constater à la seconde un autre rôle que celui qu'elle attend, et
+    // cette seconde étape resterait en écart sans que personne ne puisse la débloquer
+    expect(etapes).toEqual([]);
+    expect(refus).toHaveLength(1);
+
+    // Then le refus nomme le profil, le système, le rang à corriger et les deux rôles :
+    // c'est le second qui est en trop, et il faut savoir lequel des deux garder
+    expect(refus[0]?.profil).toBe("mainteneur");
+    expect(refus[0]?.systeme).toBe("github");
+    expect(refus[0]?.acces).toBe(1);
+    expect(refus[0]?.motif).toContain("admin");
+    expect(refus[0]?.motif).toContain("member");
+    expect(refus[0]?.motif).toContain("incubateur-ademe");
+
+    // Then c'est bien la vérification qui refuse, et le même verdict qu'à la lecture de
+    // la politique : le défaut se corrige dans le fichier, et jamais sur un plan confirmé
+    // dont une étape serait murée pour toujours
+    expect(verifierProfils([deuxRoles], CATALOGUE).map((r) => r.motif)).toEqual(
+      refus.map((r) => r.motif),
+    );
+
+    // Then ce qui compte est la cible et non le système : deux organisations distinctes
+    // ne se gênent pas, et le rôle n'entre pas dans la cible
+    expect(
+      verifierProfils(
+        [
+          profil("mainteneur", [
+            { system: "github", scope: MEMBRE },
+            { system: "github", scope: ADMIN_AILLEURS, expiresInDays: 180 },
+          ]),
+        ],
+        CATALOGUE,
+      ),
+    ).toEqual([]);
+  });
+
+  it("tient le terme d'un octroi pour la seule affaire du profil, étape émise comprise", () => {
+    // Given un connecteur qui relève lui-même le risque de son étape et lui pose une
+    // échéance de son cru, sur un scope que son examen tient pourtant pour ordinaire
+    const DANS_DIX_ANS = new Date("2036-01-05T09:00:00.000Z");
+    const zele = octroyeur({
+      planifier: (scope, sujet) => [
+        { ...etapeDouble(scope, sujet), riskLevel: "high", grantExpiresAt: DANS_DIX_ANS },
+      ],
+    });
+    const ordinaire = { system: "github" as const, scope: MEMBRE };
+
+    // When on assemble un profil sans terme
+    const sansTerme = assemblerOctrois(
+      profil("developpeur", [ordinaire]),
+      [zele],
+      ALICE,
+      LE_5_JANVIER,
+    );
+
+    // Then l'étape élevée est refusée : la règle regarde ce que l'étape porte et pas
+    // seulement ce que le scope disait, faute de quoi un connecteur ouvrirait une
+    // administration sans terme en relevant son propre risque
+    expect(sansTerme.etapes).toEqual([]);
+    expect(sansTerme.refus).toHaveLength(1);
+    expect(sansTerme.refus[0]?.profil).toBe("developpeur");
+    expect(sansTerme.refus[0]?.systeme).toBe("github");
+    expect(sansTerme.refus[0]?.acces).toBe(0);
+    expect(sansTerme.refus[0]?.motif).toContain("member");
+    expect(sansTerme.refus[0]?.motif).toContain("expiresInDays");
+
+    // Then l'examen du scope, lui, ne voyait rien : ce refus ne pouvait venir que de là
+    expect(verifierProfils([profil("developpeur", [ordinaire])], CATALOGUE)).toEqual([]);
+
+    // When le profil borne l'accès à quatre-vingt-dix jours
+    const borne = assemblerOctrois(
+      profil("developpeur", [{ ...ordinaire, expiresInDays: 90 }]),
+      [zele],
+      ALICE,
+      LE_5_JANVIER,
+    );
+
+    // Then l'étape sort, et son terme est celui du profil : l'échéance du connecteur est
+    // écrasée et non complétée, la durée d'un accès appartenant à la politique
+    expect(borne.refus).toEqual([]);
+    expect(borne.etapes[0]?.grantExpiresAt).toEqual(echeanceDOctroi(90, LE_5_JANVIER));
+    expect(borne.etapes[0]?.grantExpiresAt).not.toEqual(DANS_DIX_ANS);
+
+    // Then sans terme au profil, l'étape n'en porte aucun : l'absence de terme dans le
+    // profil vaut absence de terme sur l'étape, et rien d'autre ne la décide
+    const modeste = octroyeur({
+      planifier: (scope, sujet) => [{ ...etapeDouble(scope, sujet), grantExpiresAt: DANS_DIX_ANS }],
+    });
+    const libre = assemblerOctrois(
+      profil("developpeur", [ordinaire]),
+      [modeste],
+      ALICE,
+      LE_5_JANVIER,
+    );
+
+    expect(libre.refus).toEqual([]);
+    expect(libre.etapes[0]?.grantExpiresAt).toBeUndefined();
+    expect(Object.hasOwn(libre.etapes[0] ?? {}, "grantExpiresAt")).toBe(false);
+  });
+});
+
+describe("un octroi impossible produit une étape, jamais une omission", () => {
+  it("émet l'étape au tier réel, en portant le runbook du contrat et ce qui manque", () => {
+    // Given un système dont toutes les voies d'octroi exigent un credential absent :
+    // la capacité résout donc en « none »
+    const sansVoie = octroyeur({
+      capacite: resolveCapability(
+        "grant",
+        [{ requires: ["jeton-notion"], tier: "auto", runbook: "Ouvrir l'espace, puis inviter." }],
+        [
+          {
+            id: "jeton-notion",
+            available: false,
+            unavailableReason: "absent de l'environnement",
+            checkedAt: new Date(0),
+          },
+        ],
+        "Marche à suivre du contrat.",
+      ),
+      // Le connecteur n'est même pas consulté : il n'a aucune voie à proposer.
+      planifier: () => {
+        throw new Error("un connecteur sans voie ne doit pas être consulté");
+      },
+    });
+
+    // When on assemble un profil qui vise ce système
+    const { etapes, refus } = assemblerOctrois(
+      profil("developpeur", [{ system: "github", scope: MEMBRE }]),
+      [sansVoie],
+      ALICE,
+      LE_5_JANVIER,
+    );
+
+    // Then l'étape existe quand même : une ligne d'arrivée qui manque est le mode de
+    // panne que ce produit existe pour éviter, une ligne à faire à la main se traite
+    expect(refus).toEqual([]);
+    expect(etapes).toHaveLength(1);
+    expect(etapes[0]?.tier).toBe("none");
+    expect(etapes[0]?.capability).toBe("grant");
+
+    // Then elle porte le runbook du contrat, requis même sur une capacité automatique,
+    // et elle nomme le credential qui manque plutôt que de se taire
+    expect(etapes[0]?.manual?.runbook).toContain("Marche à suivre du contrat.");
+    expect(etapes[0]?.manual?.runbook).toContain("jeton-notion");
+
+    // Then son critère de complétion existe : sans lui, « fait » ne veut rien dire
+    expect(etapes[0]?.manual?.doneWhen).toContain("alice.martin");
+
+    // Then ses paramètres restent plats, tout le scope compris : `empreinteDuPlan`
+    // filtre les clés à tous les niveaux, et un scope imbriqué disparaîtrait de
+    // l'empreinte, rendant deux octrois différents indiscernables
+    expect(etapes[0]?.params).toEqual({
+      beneficiaire: "alice.martin",
+      organisation: "incubateur-ademe",
+      role: "member",
+    });
+
+    const memeSujetAutreRole = assemblerOctrois(
+      profil("developpeur", [{ system: "github", scope: ADMIN, expiresInDays: 180 }]),
+      [sansVoie],
+      ALICE,
+      LE_5_JANVIER,
+    );
+    expect(empreinteDuPlan(memeSujetAutreRole.etapes)).not.toBe(empreinteDuPlan(etapes));
+  });
+
+  it("émet l'étape quand le connecteur ne propose rien, sans inventer de voie", () => {
+    // Given un connecteur qui déclare un octroi manuel mais ne sait rien en dire
+    const muet = octroyeur({
+      capacite: resolveCapability(
+        "grant",
+        [{ requires: [], tier: "manual" }],
+        [],
+        "Marche à suivre du contrat.",
+      ),
+      planifier: () => [],
+    });
+
+    // When on assemble
+    const { etapes } = assemblerOctrois(
+      profil("developpeur", [{ system: "github", scope: MEMBRE, expiresInDays: 90 }]),
+      [muet],
+      ALICE,
+      LE_5_JANVIER,
+    );
+
+    // Then l'étape est là, à son tier réel et non dégradée d'un cran de plus
+    expect(etapes).toHaveLength(1);
+    expect(etapes[0]?.tier).toBe("manual");
+
+    // Then le terme du profil s'y pose comme sur n'importe quelle autre
+    expect(etapes[0]?.grantExpiresAt).toEqual(echeanceDOctroi(90, LE_5_JANVIER));
+  });
+
+  it("ne laisse jamais l'étape de repli au tier automatique, même quand la capacité y résout", () => {
+    // Given un système dont l'octroi résout en automatique, credential présent, mais
+    // dont le connecteur ne sait pas décrire l'étape : c'est la configuration où un
+    // connecteur déclare savoir donner avant de savoir planifier.
+    const muetMaisArme = octroyeur({
+      capacite: resolveCapability(
+        "grant",
+        [
+          { requires: ["jeton-admin"], tier: "auto", runbook: "Inviter depuis la console." },
+          { requires: [], tier: "manual", runbook: "Inviter à la main." },
+        ],
+        [{ id: "jeton-admin", available: true, checkedAt: new Date(0) }],
+        "Marche à suivre du contrat.",
+      ),
+      planifier: () => [],
+    });
+
+    // When on assemble un profil qui vise ce système
+    const { etapes } = assemblerOctrois(
+      profil("developpeur", [{ system: "github", scope: MEMBRE }]),
+      [muetMaisArme],
+      ALICE,
+      LE_5_JANVIER,
+    );
+
+    // Then l'étape existe, mais à la main : elle porte une action que le socle a
+    // inventée et que le connecteur n'a jamais planifiée. Au tier automatique, la
+    // boucle la lui enverrait avec un ordre qu'il ne connaît pas, et le plafond de
+    // masse la compterait comme si elle partait toute seule.
+    expect(etapes).toHaveLength(1);
+    expect(etapes[0]?.tier).toBe("manual");
+    expect(etapes[0]?.manual).toBeDefined();
+  });
+});
+
+describe("l'arrivée ne se prive pas d'un accès sur un doute d'identité", () => {
+  it("émet l'étape sans identifiant sûr, et laisse le connecteur dégrader lui-même", () => {
+    // Given une personne dont aucun compte n'est rattaché de façon sûre : ni login sur
+    // sa fiche, ni identité observée que son rapprochement autorise à couper
+    const douteuse: SubjectRef = {
+      kind: "person",
+      username: "bruno.lefevre",
+      handles: handlesSurs(null, [
+        { provider: "github", handle: "brunolf", methode: "HEURISTIC", disparue: false },
+      ]),
+    };
+    expect(douteuse.kind === "person" && douteuse.handles).toEqual({});
+
+    // When on assemble son arrivée
+    const { etapes, refus } = assemblerOctrois(
+      profil("developpeur", [{ system: "github", scope: MEMBRE }]),
+      [octroyeur()],
+      douteuse,
+      LE_5_JANVIER,
+    );
+
+    // Then l'étape existe : écarter un octroi sur la foi d'une ressemblance priverait
+    // quelqu'un d'un accès sans que rien ne le signale, là où un octroi de trop se
+    // solde d'un clic sur « déjà présent »
+    expect(refus).toEqual([]);
+    expect(etapes).toHaveLength(1);
+
+    // Then c'est le connecteur qui a dégradé en manuel, et non la résolution de
+    // capacité : ce qui manque ici est une donnée, pas un credential
+    expect(etapes[0]?.tier).toBe("manual");
+    expect(etapes[0]?.params).toMatchObject({ compte: null });
+    expect(etapes[0]?.manual?.doneWhen).toContain("invitations en attente");
   });
 });

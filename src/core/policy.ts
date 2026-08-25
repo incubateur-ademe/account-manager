@@ -388,6 +388,16 @@ export const configSchema = z
               "Part du périmètre qu'une collecte peut gagner d'un coup avant de refuser d'en tirer la moindre arrivée. La symétrie avec maxScopeDrop n'est pas décorative : le périmètre arrive en un seul appel, et une réponse anormale peut aussi bien enfler que fondre.",
             examples: [0.2],
           }),
+        maxPlanSteps: z
+          .number()
+          .int()
+          .positive()
+          .default(20)
+          .meta({
+            description:
+              "Nombre d'étapes qu'un plan peut faire exécuter d'un coup avant d'exiger une confirmation explicite en plus de la sienne. Seul garde-fou conservé à la place des approbateurs multiples, de la fenêtre de rétractation et du quorum : un plan anormalement gros est le plus souvent le signe d'un calcul qui a dérapé, et le relire ligne à ligne coûte moins que de le défaire.",
+            examples: [20],
+          }),
         collectStaleHours: z
           .number()
           .int()

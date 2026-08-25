@@ -285,6 +285,16 @@ export interface PlannedStep {
   /** Présent dès que le tier n'est pas "auto". */
   manual?: ManualTask;
   /**
+   * Le terme décidé de l'octroi, posé par le socle depuis le profil et jamais par un
+   * connecteur : c'est la politique qui décide de la durée d'un accès, pas le système
+   * qui l'ouvre.
+   *
+   * Hors de `params`, donc hors de l'empreinte, et c'est voulu : la date est absolue
+   * et comptée depuis l'instant du calcul, si bien qu'un plan recalculé une seconde
+   * plus tard se déclarerait obsolète tout seul.
+   */
+  grantExpiresAt?: Date;
+  /**
    * L'origine déclarée de l'étape : quel modèle l'a demandée, sous quelle clé, et
    * quelle saisie elle attendait. Un connecteur ne le pose jamais, et son absence
    * signifie exactement « cette étape vient d'un système ».
@@ -349,6 +359,28 @@ export interface Connector {
   list?: (ctx: RunContext) => Promise<CollectResult>;
 
   plan: (intent: Intent, ctx: RunContext) => Promise<readonly PlannedStep[]>;
+
+  /**
+   * Les étapes qu'un accès de profil ouvre, décidées sans rien lire.
+   *
+   * Synchrone quand `plan` ne l'est pas, et ce n'est pas un raccourci : `plan` a le
+   * droit d'interroger son système pour affiner ce qu'il propose, décider des étapes
+   * d'un octroi ne lit rien. Un assemblage d'arrivée se prouve ainsi sans rien
+   * brancher, et son empreinte ne dépend ni de l'horloge ni du réseau.
+   *
+   * Le scope arrive tel que `scopeSchema` l'a rendu, jamais autrement, et le sujet
+   * complet : c'est sous `handles` que le connecteur trouve, ou ne trouve pas,
+   * l'identifiant dont le socle répond. Une clé absente le fait dégrader en manuel de
+   * lui-même, ce qui manque étant une donnée et non un credential.
+   *
+   * Absent, chaque accès de profil visant ce système sort en étape manuelle portant le
+   * runbook du contrat : une ligne d'arrivée qui manque est le mode de panne que ce
+   * produit existe pour éviter. Présent, il devient la seule voie de ce qui dépend du
+   * profil, et `plan` cesse d'émettre le même geste sur un octroi sans scope, faute de
+   * quoi le même octroi serait proposé deux fois sous deux clés que le dédoublonnage
+   * ne rapprocherait pas.
+   */
+  planifierOctroi?: (scope: unknown, subject: SubjectRef) => readonly PlannedStep[];
 
   /** Séparé de execute pour que le socle traite ALREADY_ABSENT, ALREADY_PRESENT et STALE de façon uniforme, sans que chaque connecteur ait à le savoir. */
   precheck?: (step: PlannedStep, ctx: RunContext) => Promise<PrecheckResult>;

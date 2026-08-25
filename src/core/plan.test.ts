@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import type { PlannedStep } from "./connector";
-import { assembler, empreinteDuPlan, type OrigineDEtapes, peremptionDuPlan } from "./plan";
+import {
+  assembler,
+  empreinteDuPlan,
+  masseDuPlan,
+  type OrigineDEtapes,
+  peremptionDuPlan,
+  refusDeMasse,
+} from "./plan";
 
 const etape = (over: Partial<PlannedStep> = {}): PlannedStep => ({
   systemKey: "github",
@@ -58,6 +65,39 @@ describe("empreinte d'un plan", () => {
     const ailleurs = empreinteDuPlan([etape({ params: { organisation: "autre-org" } })]);
 
     expect(ailleurs).not.toBe(initial);
+  });
+
+  it("descend dans un paramètre imbriqué, sans déplacer l'empreinte d'un plan déjà confirmé", () => {
+    // Given deux étapes qui ne diffèrent que par un sous-objet de paramètres : rien
+    // n'empêche un connecteur d'en produire un, et le socle n'est pas seul à écrire ici
+    const socle = etape({
+      params: { organisation: "incubateur-ademe", equipe: { slug: "socle" } },
+    });
+    const produit = etape({
+      params: { organisation: "incubateur-ademe", equipe: { slug: "produit" } },
+    });
+
+    // Then les deux plans se distinguent : le filtre de clés de `JSON.stringify` porte à
+    // tous les niveaux, et borné au premier il faisait disparaître le sous-objet, si bien
+    // que deux étapes différentes passaient ensemble sous la garde d'écart
+    expect(empreinteDuPlan([socle])).not.toBe(empreinteDuPlan([produit]));
+
+    // Then l'ordre des clés n'y change rien à l'intérieur non plus qu'au premier niveau
+    expect(
+      empreinteDuPlan([etape({ params: { equipe: { role: "member", slug: "produit" } } })]),
+    ).toBe(empreinteDuPlan([etape({ params: { equipe: { slug: "produit", role: "member" } } })]));
+
+    // Then l'empreinte d'un plan aux paramètres plats ne bouge pas d'un caractère. Ces
+    // valeurs sont celles que les plans déjà confirmés portent en base : les déplacer
+    // dirait obsolète, d'un seul coup, tout plan en attente d'exécution.
+    expect(empreinteDuPlan([etape()])).toBe("9ce27f80");
+    expect(empreinteDuPlan([etape({ params: {} })])).toBe("18947b65");
+    expect(
+      empreinteDuPlan([
+        etape(),
+        etape({ systemKey: "notion", idempotencyKey: "notion:revoke:jean.dupont" }),
+      ]),
+    ).toBe("5be04c6e");
   });
 });
 
@@ -222,5 +262,95 @@ describe("assemblage d'un plan", () => {
     // sinon deux plans successifs d'un même dossier ne se compareraient jamais.
     const suffixee = empreinteDuPlan([etape({ idempotencyKey: `${github.idempotencyKey}:6f1b` })]);
     expect(suffixee).not.toBe(empreinteDuPlan([github]));
+  });
+});
+
+/**
+ * Le plafond de masse est le seul garde-fou que ce produit conserve à la place des
+ * approbateurs multiples, de la fenêtre de rétractation et du quorum. Il ne sert
+ * qu'une fois : le jour où un calcul dérape et où personne ne le voit avant la
+ * première écriture sur un système tiers.
+ */
+describe("plafond de masse d'un plan", () => {
+  const auto = (rang: number) => etape({ tier: "auto", idempotencyKey: `auto:${rang}` });
+  const main = (rang: number) => etape({ tier: "manual", idempotencyKey: `manual:${rang}` });
+
+  it("ne compte que ce que la boucle toucherait, et laisse partir un plan ordinaire", () => {
+    // Given un plan d'arrivée nominal : trois gestes automatiques, une dizaine de
+    // lignes qu'un humain ira faire, et une ligne sans voie praticable
+    const nominal = [
+      ...Array.from({ length: 3 }, (_, rang) => auto(rang)),
+      ...Array.from({ length: 12 }, (_, rang) => main(rang)),
+      etape({ tier: "none", idempotencyKey: "none:0" }),
+    ];
+
+    // When on le mesure contre le plafond de la politique
+    const masse = masseDuPlan(nominal, 5);
+
+    // Then seules les trois automatiques comptent : les manuelles sont déjà bornées
+    // par la main qui les coche, et une étape sans voie n'est jamais exécutée
+    expect(masse.executables).toBe(3);
+    expect(masse.seuil).toBe(5);
+    expect(masse.depasse).toBe(false);
+
+    // Then rien n'est demandé de plus, et surtout pas une confirmation de routine :
+    // un garde-fou qui se déclenche à chaque fois cesse d'être lu dès la deuxième
+    expect(refusDeMasse(masse, false)).toBeNull();
+  });
+
+  it("ne compte pas un tier assisté, que la boucle ne sait pas conduire", () => {
+    // Given un plan où un geste se dit assisté, tier qu'aucun connecteur ne déclare et
+    // dont la boucle ne saurait rien faire d'autre qu'un appel automatique
+    const mixte = [auto(0), auto(1), etape({ tier: "assisted", idempotencyKey: "assisted:0" })];
+
+    // When on le mesure
+    // Then seuls les deux gestes automatiques comptent : le plafond borne ce que la
+    // machine ferait vraiment, et compter un tier promis mais non tenu ferait retenir
+    // des plans sur des étapes que rien n'exécute
+    expect(masseDuPlan(mixte, 2).executables).toBe(2);
+    expect(masseDuPlan(mixte, 2).depasse).toBe(false);
+
+    // Then c'est bien le tier qui décide, et non le nombre de lignes
+    expect(masseDuPlan([...mixte, auto(2)], 2).executables).toBe(3);
+    expect(masseDuPlan([...mixte, auto(2)], 2).depasse).toBe(true);
+  });
+
+  it("retient un plan au-dessus du seuil tant qu'aucun geste humain ne l'a confirmé", () => {
+    // Given un calcul qui a dérapé et produit trente-quatre écritures d'un coup
+    const derape = Array.from({ length: 34 }, (_, rang) => auto(rang));
+    const masse = masseDuPlan(derape, 20);
+
+    // Then le plafond est franchi
+    expect(masse.depasse).toBe(true);
+    expect(masse.executables).toBe(34);
+
+    // When personne n'a rien confirmé de plus
+    const refus = refusDeMasse(masse, false);
+
+    // Then le plan ne part pas, et le refus dit ce qu'il refuse, de combien, et quoi
+    // faire : un refus qui se contente de bloquer se contourne au lieu de se lire
+    expect(refus).not.toBeNull();
+    expect(refus).toContain("34");
+    expect(refus).toContain("20");
+    expect(refus).toContain("relisez la liste étape par étape");
+
+    // When l'opérateur confirme la masse explicitement
+    // Then le plan part, sans que rien d'autre n'ait changé
+    expect(refusDeMasse(masse, true)).toBeNull();
+
+    // Then le plafond reste franchi malgré la confirmation : ce qui a été confirmé
+    // est la masse, pas le fait qu'elle soit normale
+    expect(masseDuPlan(derape, 20).depasse).toBe(true);
+  });
+
+  it("laisse passer le plan qui touche exactement le seuil, et retient le suivant", () => {
+    // Given deux plans qui ne diffèrent que d'une étape, de part et d'autre du seuil
+    const juste = Array.from({ length: 20 }, (_, rang) => auto(rang));
+    const une = [...juste, auto(20)];
+
+    // Then le plafond est un maximum admis, pas une borne à ne pas atteindre : sans
+    // quoi le nombre écrit dans la politique ne serait pas celui qu'elle dit
+    expect(refusDeMasse(masseDuPlan(juste, 20), false)).toBeNull();
+    expect(refusDeMasse(masseDuPlan(une, 20), false)).not.toBeNull();
   });
 });

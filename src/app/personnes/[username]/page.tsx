@@ -20,6 +20,7 @@ import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
 import { echeanceEffective, enCours, startupsEffectives } from "@/core/rattachement-startup";
 import { LIBELLE_STATUT, statutDePersonne } from "@/core/statut";
 import { appartenanceDeLaLigne } from "@/lib/appartenance";
+import { profilsOfferts } from "@/lib/arrivee";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { policy } from "@/lib/policy";
@@ -59,6 +60,9 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
   const { username } = await params;
   const { edition } = await searchParams;
   const { thresholds, startups: reglesStartups, scope } = policy();
+  // Lus ici plutôt que dans la modale : la politique vit dans un fichier, et les deux
+  // blocs qui ouvrent une arrivée sont des composants clients.
+  const profils = profilsOfferts();
   const today = new Date();
 
   const [personne, collectes, dernierePasse, dossiersVivants] = await Promise.all([
@@ -290,6 +294,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
           <ActionsDePage
             username={personne.username}
             editable={editabilite.editable}
+            profils={profils}
             {...(editabilite.editable
               ? {}
               : { raisonNonEditable: RAISON_NON_EDITABLE[editabilite.raison] })}
@@ -327,7 +332,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
         </Link>
       </p>
 
-      <CeQuiAppelleUneAction username={personne.username} motifs={motifs} />
+      <CeQuiAppelleUneAction username={personne.username} motifs={motifs} profils={profils} />
 
       <section className={fr.cx("fr-mt-4w")}>
         <h2 className={fr.cx("fr-h5")}>Situation</h2>

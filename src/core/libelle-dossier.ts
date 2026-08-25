@@ -56,7 +56,7 @@ export const LIBELLE_DOSSIER: Record<SensDossier, LibelleDossier> = {
     aideOuverture:
       "Ouvrir un dossier d'arrivée et calculer la liste de ce qu'il faudra donner, système par système. Rien n'est exécuté et aucun accès n'est ouvert.",
     ouvertureExplication:
-      "Un dossier est ouvert et la liste de ce qu'il faut donner est calculée. Aucun système ne sait encore ouvrir un accès depuis cet outil : le plan sortira vide tant que les octrois et les modèles d'arrivée n'existent pas. Rien n'est exécuté et aucun accès n'est ouvert.",
+      "Un dossier est ouvert et la liste de ce qu'il faut donner est calculée : ce que les modèles d'arrivée déclarent, et ce que le profil choisi ouvre sur les systèmes couverts. Rien n'est exécuté et aucun accès n'est ouvert : le plan reste à confirmer avant que le moindre appel ne soit possible.",
     dejaOuvert:
       "Ce dossier était déjà ouvert : vous êtes revenu dessus, aucun second dossier n'a été créé. Une arrivée ne s'ouvre qu'une fois par personne tant qu'elle n'est pas close.",
     cocher:
@@ -65,7 +65,7 @@ export const LIBELLE_DOSSIER: Record<SensDossier, LibelleDossier> = {
     restant: "Ce qu'il reste à donner",
     propose: "Ce que ce plan proposait de donner",
     planVide:
-      "Aucune étape : aucun connecteur ne sait encore ouvrir un accès, et aucun modèle d'arrivée n'est déclaré. Le dossier est bien ouvert, sa liste viendra quand l'un ou l'autre existera.",
+      "Aucune étape : le profil retenu à l'ouverture n'ouvre rien sur les systèmes couverts, ou aucun ne l'a été, et aucun modèle d'arrivée ne concerne cette personne. Le dossier est bien ouvert, sa liste viendra de l'un ou de l'autre.",
     sansPlanIssue: " L'annuler est la seule issue, une nouvelle arrivée restant ouvrable ensuite.",
     derive:
       "Ce que les systèmes savent donner a changé depuis son calcul : il ne peut plus être confirmé en l'état.",

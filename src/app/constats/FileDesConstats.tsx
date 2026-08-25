@@ -12,6 +12,7 @@ import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 import type { RiskLevel } from "@/generated/prisma/enums";
 import styleActions from "@/ui/Actions.module.css";
 import { Aide } from "@/ui/Aide";
+import type { ChoixDeProfils } from "@/ui/profils";
 import { LIBELLE_SEVERITE, SEVERITE_CONSTAT } from "@/ui/severites";
 import { TableCustom } from "@/ui/TableCustom";
 import style from "@/ui/TableCustom.module.css";
@@ -51,10 +52,13 @@ const modaleArrivee = createModal({ id: "preparer-arrivee-constat", isOpenedByDe
 export function FileDesConstats({
   lignes,
   designe,
+  profils,
 }: {
   lignes: readonly LigneConstat[];
   /** Clé du constat sur lequel une fiche vient de renvoyer. */
   designe?: string;
+  /** Les profils qu'une arrivée peut appliquer, lus par le serveur qui monte cette file. */
+  profils: ChoixDeProfils;
 }) {
   const [choisi, setChoisi] = useState<LigneConstat | null>(null);
   const [arrivee, setArrivee] = useState<{ username: string; fullname: string } | null>(null);
@@ -206,6 +210,7 @@ export function FileDesConstats({
               key={arrivee.username}
               username={arrivee.username}
               sens="ONBOARDING"
+              profils={profils}
             />
           </>
         )}

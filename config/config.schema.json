@@ -96,6 +96,16 @@
           "minimum": 0,
           "maximum": 1
         },
+        "maxPlanSteps": {
+          "default": 20,
+          "description": "Nombre d'étapes qu'un plan peut faire exécuter d'un coup avant d'exiger une confirmation explicite en plus de la sienne. Seul garde-fou conservé à la place des approbateurs multiples, de la fenêtre de rétractation et du quorum : un plan anormalement gros est le plus souvent le signe d'un calcul qui a dérapé, et le relire ligne à ligne coûte moins que de le défaire.",
+          "examples": [
+            20
+          ],
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
         "collectStaleHours": {
           "default": 48,
           "description": "Âge au-delà duquel les écrans préviennent que la collecte ne tourne plus, plutôt que d'afficher un périmètre gelé avec l'assurance d'un périmètre frais.",
