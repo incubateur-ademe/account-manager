@@ -117,6 +117,14 @@ model Person {
   lastSeenAt  DateTime  @default(now())
   vanishedAt  DateTime?
 
+  /// Quand la collecte a revu une fiche qu'elle avait vue disparaitre. firstSeenAt ne
+  /// bouge jamais, retour compris : jugee sur elle seule, une personne revenue
+  /// resterait ineligible pour toujours, alors que son retour est une arrivee a
+  /// traiter. C'est le seul signe d'un nouveau sejour, et il vient de la collecte :
+  /// une mission qui s'acheve ne fait pas sortir du referentiel, donc rien du cote
+  /// des dossiers ne dit qu'un sejour a recommence.
+  returnedAt DateTime?
+
   identities         ExternalIdentity[]
   references         Reference[]
   accessCases        AccessCase[]
@@ -397,6 +405,19 @@ model AccessCase {
   effectiveDate   DateTime? @db.Date
   cancelledReason String?
 
+  /// Quand le dossier a ete clos. L'etat DONE dit que le sejour est fini, il ne dit
+  /// pas quand : effectiveDate est une date de prise d'effet, saisie et souvent
+  /// absente, et rien d'autre n'horodate la cloture.
+  ///
+  /// Elle ne decide d'aucune arrivee, et ne l'a jamais valablement fait : une mission
+  /// qui s'acheve ne fait pas sortir du referentiel, si bien qu'un depart correctement
+  /// solde laisse la fiche en place, et prendre cette cloture pour la fin d'un sejour
+  /// levait un constat d'arrivee sur la personne qu'on venait d'offboarder. Un retour
+  /// se lit sur Person.returnedAt, et sur rien d'autre. La colonne reste : dater la
+  /// cloture d'un dossier est une donnee metier a part entiere, et l'historique des
+  /// departs clos ne se reconstitue pas apres coup.
+  closedAt DateTime?
+
   person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
   plans  Plan[]
 
@@ -596,6 +617,7 @@ model PlanTemplateStep {
 
 enum FindingKind {
   SCOPE_EXIT
+  SCOPE_ENTRY
   INACTIVE_STARTUP
   ORPHAN
   UNREGISTERED

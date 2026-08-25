@@ -44,6 +44,13 @@ thresholds:
   # fois sans qu'aucune erreur ne soit levee, et l'offboarding suivrait.
   maxScopeDrop: 0.2
 
+  # Part du perimetre qu'une collecte peut gagner d'un coup avant de refuser d'en
+  # tirer la moindre arrivee. Meme appel unique, meme doute en sens inverse : une
+  # source qui rend d'un coup un perimetre plus large ne se distingue pas d'une
+  # arrivee collective, et constater une arrivee finit par ouvrir un dossier au nom
+  # de quelqu'un.
+  maxNewPersonShare: 0.2
+
   # Age au-dela duquel les ecrans cessent d'affirmer et previennent que la collecte ne
   # tourne plus. Deux fois la periode du traitement quotidien : une nuit sautee arrive,
   # deux de suite est une panne.

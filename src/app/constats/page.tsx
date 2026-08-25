@@ -48,6 +48,9 @@ export default async function ConstatsPage({
   const lignes: LigneConstat[] = tries.map((constat) => ({
     id: constat.id,
     dedupKey: constat.dedupKey,
+    // Le type descend jusqu'au client, et non seulement son libellé : c'est lui qui
+    // décide du geste offert, et un texte ne se remonte pas en type.
+    kind: constat.kind as ConstatKind,
     titre: LIBELLE_CONSTAT[constat.kind as ConstatKind]?.titre ?? constat.kind,
     explication: LIBELLE_CONSTAT[constat.kind as ConstatKind]?.explication ?? "",
     action: LIBELLE_CONSTAT[constat.kind as ConstatKind]?.action ?? "",

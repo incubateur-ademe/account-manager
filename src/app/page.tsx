@@ -3,7 +3,7 @@ import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Table } from "@codegouvfr/react-dsfr/Table";
 import { Tile } from "@codegouvfr/react-dsfr/Tile";
 import { CONNECTEURS } from "@/connectors";
-import { FOURNISSEUR_PERIMETRE, fraicheurDe, systemesMuets } from "@/core/collecte";
+import { FOURNISSEUR_PERIMETRE, fraicheurDe, refusDArrivees, systemesMuets } from "@/core/collecte";
 import type { LigneDInventaire } from "@/core/inventaire";
 import { echeanceEffective, startupsEffectives } from "@/core/rattachement-startup";
 import { statutDePersonne } from "@/core/statut";
@@ -50,32 +50,34 @@ export default async function AccueilPage() {
   const { thresholds, startups } = policy();
   const today = new Date();
 
-  const [personnes, dernierRun, constatsOuverts, sorties, relevesSystemes] = await Promise.all([
-    prisma.person.findMany({
-      select: {
-        missionEnd: true,
-        vanishedAt: true,
-        startups: true,
-        startupAssignments: {
-          where: { endedAt: null },
-          select: { startupGhid: true, until: true, endedAt: true },
+  const [personnes, dernierRun, constatsOuverts, sorties, arrivees, relevesSystemes] =
+    await Promise.all([
+      prisma.person.findMany({
+        select: {
+          missionEnd: true,
+          vanishedAt: true,
+          startups: true,
+          startupAssignments: {
+            where: { endedAt: null },
+            select: { startupGhid: true, until: true, endedAt: true },
+          },
         },
-      },
-    }),
-    prisma.syncRun.findFirst({
-      where: { provider: FOURNISSEUR_PERIMETRE },
-      orderBy: { startedAt: "desc" },
-      select: { startedAt: true, status: true, itemsSeen: true },
-    }),
-    prisma.finding.count({ where: { closedAt: null } }),
-    prisma.finding.count({ where: { closedAt: null, kind: "SCOPE_EXIT" } }),
-    prisma.syncRun.findMany({
-      where: { capability: "list", provider: { not: FOURNISSEUR_PERIMETRE } },
-      distinct: ["provider"],
-      orderBy: { startedAt: "desc" },
-      select: { provider: true, startedAt: true, status: true },
-    }),
-  ]);
+      }),
+      prisma.syncRun.findFirst({
+        where: { provider: FOURNISSEUR_PERIMETRE },
+        orderBy: { startedAt: "desc" },
+        select: { startedAt: true, status: true, itemsSeen: true, error: true },
+      }),
+      prisma.finding.count({ where: { closedAt: null } }),
+      prisma.finding.count({ where: { closedAt: null, kind: "SCOPE_EXIT" } }),
+      prisma.finding.count({ where: { closedAt: null, kind: "SCOPE_ENTRY" } }),
+      prisma.syncRun.findMany({
+        where: { capability: "list", provider: { not: FOURNISSEUR_PERIMETRE } },
+        distinct: ["provider"],
+        orderBy: { startedAt: "desc" },
+        select: { provider: true, startedAt: true, status: true },
+      }),
+    ]);
 
   // Les mêmes lignes que l'écran des startups, pliées de la même façon : une startup
   // terminale qui ne porte plus personne n'appelle aucun geste, et les deux écrans
@@ -106,6 +108,18 @@ export default async function AccueilPage() {
   const sansEcheance = suivies.filter((personne) => personne.missionEnd === null).length;
 
   const fraicheur = fraicheurDe(dernierRun?.startedAt ?? null, today, thresholds.collectStaleHours);
+
+  // Le nombre d'arrivées à acter est celui de la dernière conclusion, pas celui du
+  // jour : un passage tronqué ou qui a refusé une vague n'en lève ni n'en ferme
+  // aucune, et « rien à acter » se dirait alors exactement comme « on n'a pas
+  // regardé ». Une instance qui n'a jamais collecté n'a pas non plus de passage à
+  // mettre en cause, et le lui reprocher ferait chercher un incident inexistant.
+  const reserveSurLesArrivees =
+    dernierRun === null
+      ? ", aucune collecte n'ayant encore eu lieu."
+      : dernierRun.status === "OK" && !refusDArrivees(dernierRun.error)
+        ? "."
+        : `, non revue${arrivees > 1 ? "s" : ""} au dernier passage.`;
 
   const attendus = CONNECTEURS.map((connecteur) => connecteur.contract.key);
   const muets = systemesMuets(relevesSystemes, attendus, today, thresholds.collectStaleHours);
@@ -189,7 +203,11 @@ export default async function AccueilPage() {
         <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
           <Tile
             title={`${constatsOuverts} constat${constatsOuverts > 1 ? "s" : ""}`}
-            desc={`Dont ${sorties} sortie${sorties > 1 ? "s" : ""} du référentiel.`}
+            desc={
+              `Dont ${sorties} sortie${sorties > 1 ? "s" : ""} du référentiel ` +
+              `et ${arrivees} arrivée${arrivees > 1 ? "s" : ""} à acter` +
+              reserveSurLesArrivees
+            }
             linkProps={{ href: "/constats" }}
             orientation="horizontal"
           />

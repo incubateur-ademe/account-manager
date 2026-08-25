@@ -60,6 +60,32 @@ export function chuteExcessive(reference: number, observe: number, partMax: numb
   return observe < Math.floor(reference * (1 - partMax));
 }
 
+/**
+ * En deçà, une vague n'en est pas une : sur un petit périmètre, une rentrée de
+ * septembre ordinaire franchit la part sans que rien d'anormal ne se soit produit,
+ * et refuser d'y conclure ferait taire la détection au moment précis où elle sert.
+ */
+export const PLANCHER_ARRIVEES = 5;
+
+/**
+ * La symétrie avec `chuteExcessive` n'est pas décorative : le périmètre arrive en un
+ * seul appel, et une réponse anormale peut aussi bien enfler que fondre. Une source
+ * qui rend d'un coup un périmètre plus large qu'il ne l'était n'est pas distinguable
+ * d'une arrivée collective, et dans le doute on refuse d'en tirer des arrivées, car
+ * constater une arrivée finit par ouvrir un dossier au nom de quelqu'un.
+ *
+ * La borne se dérive de l'expression de la chute plutôt que de `reference * partMax`,
+ * qui s'en écarte d'une unité dès que la part ne tombe pas juste : deux garde-fous
+ * qui se disent symétriques et ne retiennent pas le bras au même écart ne le sont
+ * plus, et c'est le genre de divergence que personne ne vient relire.
+ */
+export function arriveeMassive(reference: number, observe: number, partMax: number): boolean {
+  if (observe < PLANCHER_ARRIVEES || reference <= 0) {
+    return false;
+  }
+  return observe > reference - Math.floor(reference * (1 - partMax));
+}
+
 export interface Fraicheur {
   /** Vrai quand ce qui est affiché ne peut plus être tenu pour l'état du jour. */
   perimee: boolean;
@@ -248,6 +274,31 @@ export function refusDeLaTrace(error: unknown, famille: FamilleDeChute): RefusDe
   }
 
   return null;
+}
+
+/** Ce par quoi commence la phrase qu'un passage laisse quand il refuse une vague. */
+export const REFUS_DE_VAGUE = "vague d'arrivées";
+
+/**
+ * Le refus d'arrivées qu'une trace de run porte, s'il y en a un.
+ *
+ * Ce refus ne bascule pas le statut du run, contrairement à celui des disparitions :
+ * un passage qui s'est tu sur les arrivées ressemble donc trait pour trait à un
+ * passage qui n'en a trouvé aucune, et un écran qui compte les arrivées à acter
+ * afficherait zéro dans les deux cas. La trace est du JSON libre côté base : elle se
+ * lit ici, comme les refus de datation, pour que l'écran et la collecte ne cessent
+ * pas de s'accorder sur ce qu'ils y cherchent.
+ */
+export function refusDArrivees(error: unknown): boolean {
+  if (!error || typeof error !== "object" || !("messages" in error)) {
+    return false;
+  }
+
+  const brut = (error as { messages: unknown }).messages;
+  return (
+    Array.isArray(brut) &&
+    brut.some((message) => typeof message === "string" && message.startsWith(REFUS_DE_VAGUE))
+  );
 }
 
 export interface TraceDeRun {

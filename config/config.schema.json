@@ -86,6 +86,16 @@
           "minimum": 0,
           "maximum": 1
         },
+        "maxNewPersonShare": {
+          "default": 0.2,
+          "description": "Part du périmètre qu'une collecte peut gagner d'un coup avant de refuser d'en tirer la moindre arrivée. La symétrie avec maxScopeDrop n'est pas décorative : le périmètre arrive en un seul appel, et une réponse anormale peut aussi bien enfler que fondre.",
+          "examples": [
+            0.2
+          ],
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
         "collectStaleHours": {
           "default": 48,
           "description": "Âge au-delà duquel les écrans préviennent que la collecte ne tourne plus, plutôt que d'afficher un périmètre gelé avec l'assurance d'un périmètre frais.",

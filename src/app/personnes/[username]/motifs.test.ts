@@ -36,7 +36,8 @@ function fiche(over: Partial<EtatDeLaFiche> = {}): EtatDeLaFiche {
     fraicheur: { perimee: false, heures: 2 },
     toutesStartupsTerminees: false,
     parEquipe: false,
-    dossierVivant: null,
+    departVivant: null,
+    arriveeVivante: null,
     ...over,
   };
 }
@@ -130,7 +131,7 @@ describe("les gestes que porte le bloc d'action d'une fiche", () => {
     const avecDossier = motifsDAction(
       fiche({
         ouverts: [constat({ kind: "OVERDUE_MANUAL_ACTION", severity: "HIGH" })],
-        dossierVivant: "dossier-abc",
+        departVivant: "dossier-abc",
       }),
     );
 
@@ -155,6 +156,38 @@ describe("les gestes que porte le bloc d'action d'une fiche", () => {
 
     const liens = [...avecDossier, ...sansDossier].map((motif) => motif.lien?.href ?? "");
     expect(liens.some((href) => href.startsWith("/constats"))).toBe(false);
+  });
+
+  it("annonce l'arrivée en cours, et ne propose de la préparer que tant qu'aucune ne l'est", () => {
+    const sansDossier = motifsDAction(fiche({ ouverts: [constat({ kind: "SCOPE_ENTRY" })] }));
+
+    expect(sansDossier.map((motif) => motif.cle)).toEqual(["constat-id-SCOPE_ENTRY"]);
+    expect(sansDossier[0]?.description).toBe(LIBELLE_CONSTAT.SCOPE_ENTRY.action);
+    expect(nomsDesGestes(sansDossier[0]?.gestes)).toEqual(["ouvrir-arrivee", "clore"]);
+    expect(sansDossier[0]?.lien).toBeUndefined();
+
+    const avecDossier = motifsDAction(
+      fiche({ ouverts: [constat({ kind: "SCOPE_ENTRY" })], arriveeVivante: "dossier-arr" }),
+    );
+
+    expect(avecDossier.map((motif) => motif.cle)).toEqual([
+      "arrivee-en-cours",
+      "constat-id-SCOPE_ENTRY",
+    ]);
+    expect(avecDossier[0]?.lien).toEqual({
+      href: "/dossiers/dossier-arr",
+      libelle: "Ouvrir le dossier",
+    });
+    expect(avecDossier[0]?.gestes).toBeUndefined();
+    expect(nomsDesGestes(avecDossier[1]?.gestes)).toEqual(["clore"]);
+
+    // Les deux sens vivent côte à côte : un retour se prépare pendant que le départ
+    // qui l'a précédé n'est pas encore soldé.
+    const lesDeux = motifsDAction(
+      fiche({ departVivant: "dossier-dep", arriveeVivante: "dossier-arr" }),
+    );
+
+    expect(lesDeux.map((motif) => motif.cle)).toEqual(["depart-en-cours", "arrivee-en-cours"]);
   });
 
   it("écarte le doublon de la consigne, et donne le même geste aux deux routes", () => {
@@ -219,7 +252,7 @@ describe("les gestes que porte le bloc d'action d'une fiche", () => {
     const complete = motifsDAction(
       fiche({
         statut: "SORTI",
-        dossierVivant: "dossier-abc",
+        departVivant: "dossier-abc",
         ouverts: [
           constat({ kind: "SCOPE_EXIT", severity: "HIGH" }),
           constat({ kind: "INACTIVE_STARTUP" }),

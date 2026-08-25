@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  arriveeMassive,
   blocagesInstalles,
   champsConstates,
   chuteExcessive,
   chuteInstallee,
   fraicheurDe,
+  PLANCHER_ARRIVEES,
   type RefusDeDatation,
   type ReleveSysteme,
   refusRepete,
@@ -75,6 +77,48 @@ describe("chute d'une collecte d'un relevé à l'autre", () => {
 
   it("ne bronche pas quand la collecte grossit", () => {
     expect(chuteExcessive(100, 500, PART_MAX)).toBe(false);
+  });
+});
+
+describe("vague d'arrivées d'un relevé à l'autre", () => {
+  const PART_MAX = 0.2;
+
+  it("laisse passer une rentrée ordinaire, et retient le bras devant une vague", () => {
+    // Trois arrivées sur douze personnes franchissent la part sans rien signifier :
+    // sur un périmètre étroit, une rentrée de septembre y suffit, et refuser d'en
+    // conclure ferait taire la détection au moment précis où elle sert.
+    expect(arriveeMassive(12, 3, PART_MAX)).toBe(false);
+    expect(arriveeMassive(12, PLANCHER_ARRIVEES - 1, PART_MAX)).toBe(false);
+
+    // Vingt-cinq arrivées d'un coup sur quatre-vingt-quinze ne ressemblent à aucune
+    // rentrée : une source qui rend d'un coup un périmètre plus large ressemble trait
+    // pour trait à une arrivée collective, et ouvrir vingt-cinq dossiers au nom de
+    // gens en poste depuis des mois coûte la crédibilité de la file.
+    expect(arriveeMassive(95, 25, PART_MAX)).toBe(true);
+
+    // Le plancher franchi, c'est la part qui décide, à l'unité près.
+    expect(arriveeMassive(95, 19, PART_MAX)).toBe(false);
+    expect(arriveeMassive(95, 20, PART_MAX)).toBe(true);
+  });
+
+  it("ne soupçonne rien faute de périmètre connu", () => {
+    // Première collecte : tout est nouveau, et rien de tout cela n'est une vague.
+    expect(arriveeMassive(0, 1, PART_MAX)).toBe(false);
+    expect(arriveeMassive(0, 208, PART_MAX)).toBe(false);
+  });
+
+  it("reste la symétrique exacte de la chute sur les mêmes nombres", () => {
+    // Les deux garde-fous se lisent ensemble ou ne se lisent pas : l'un refuse de
+    // conclure quand le périmètre fond, l'autre quand il enfle, et un périmètre
+    // stable ne déclenche ni l'un ni l'autre.
+    expect(chuteExcessive(95, 70, PART_MAX)).toBe(true);
+    expect(arriveeMassive(95, 70, PART_MAX)).toBe(true);
+
+    expect(chuteExcessive(95, 90, PART_MAX)).toBe(false);
+    expect(arriveeMassive(95, 6, PART_MAX)).toBe(false);
+
+    expect(chuteExcessive(0, 12, PART_MAX)).toBe(false);
+    expect(arriveeMassive(0, 12, PART_MAX)).toBe(false);
   });
 });
 

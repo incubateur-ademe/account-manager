@@ -30,6 +30,10 @@ const personne = (over: Partial<PersonneConstatable> = {}): PersonneConstatable 
   rattachementsManuels: [],
   missionEnd: new Date("2027-01-01T00:00:00Z"),
   vanishedAt: null,
+  firstSeenAt: new Date("2026-01-05T00:00:00Z"),
+  returnedAt: null,
+  source: "BETA",
+  arriveeTraiteeLe: null,
   ...over,
 });
 
@@ -40,6 +44,7 @@ describe("constats levés sur le périmètre", () => {
       PHASES,
       TERMINALES,
       AUJOURDHUI,
+      null,
     );
     expect(constats).toHaveLength(1);
     expect(constats[0]).toMatchObject({
@@ -55,6 +60,7 @@ describe("constats levés sur le périmètre", () => {
       PHASES,
       TERMINALES,
       AUJOURDHUI,
+      null,
     );
     expect(constats[0]).toMatchObject({ kind: "INACTIVE_STARTUP", severity: "MEDIUM" });
   });
@@ -66,6 +72,7 @@ describe("constats levés sur le périmètre", () => {
         PHASES,
         TERMINALES,
         AUJOURDHUI,
+        null,
       ),
     ).toHaveLength(0);
   });
@@ -74,20 +81,26 @@ describe("constats levés sur le périmètre", () => {
     // Une startup absente du référentiel local pourrait être vivante : signaler
     // reviendrait à proposer une coupure sur une supposition.
     expect(
-      constatsDe([personne({ startups: ["startup.jamais.vue"] })], PHASES, TERMINALES, AUJOURDHUI),
+      constatsDe(
+        [personne({ startups: ["startup.jamais.vue"] })],
+        PHASES,
+        TERMINALES,
+        AUJOURDHUI,
+        null,
+      ),
     ).toHaveLength(0);
   });
 
   it("épargne l'équipe transverse, dont le rattachement ne dépend d'aucune startup", () => {
     const transverse = personne({ attachment: "DECLARED", startups: [] });
-    expect(constatsDe([transverse], PHASES, TERMINALES, AUJOURDHUI)).toHaveLength(0);
+    expect(constatsDe([transverse], PHASES, TERMINALES, AUJOURDHUI, null)).toHaveLength(0);
   });
 
   it("ne cumule pas deux constats sur la même personne", () => {
     // Sortie du référentiel ET startups terminées : le premier suffit, les deux
     // appellent la même action et deux lignes pour un cas font du bruit.
     const cumul = personne({ startups: ["produit-epsilon"], vanishedAt: new Date("2026-08-08") });
-    const constats = constatsDe([cumul], PHASES, TERMINALES, AUJOURDHUI);
+    const constats = constatsDe([cumul], PHASES, TERMINALES, AUJOURDHUI, null);
     expect(constats).toHaveLength(1);
     expect(constats[0]?.kind).toBe("SCOPE_EXIT");
   });
@@ -99,6 +112,7 @@ describe("constats levés sur le périmètre", () => {
       PHASES,
       TERMINALES,
       AUJOURDHUI,
+      null,
     );
     expect(constats[0]?.kind).toBe("INACTIVE_STARTUP");
   });
@@ -110,7 +124,7 @@ describe("constats levés sur le périmètre", () => {
       startups: ["produit-epsilon"],
       missionEnd: new Date("2024-01-01T00:00:00Z"),
     });
-    expect(constatsDe([partie], PHASES, TERMINALES, AUJOURDHUI)).toHaveLength(0);
+    expect(constatsDe([partie], PHASES, TERMINALES, AUJOURDHUI, null)).toHaveLength(0);
   });
 });
 
@@ -233,6 +247,7 @@ describe("le constat de startups terminées voit les rattachements manuels", () 
       PHASES,
       TERMINALES,
       AUJOURDHUI,
+      null,
     );
 
     expect(constats).toHaveLength(1);
@@ -256,6 +271,7 @@ describe("le constat de startups terminées voit les rattachements manuels", () 
         PHASES,
         TERMINALES,
         AUJOURDHUI,
+        null,
       ),
     ).toHaveLength(0);
   });
@@ -267,6 +283,7 @@ describe("le constat de startups terminées voit les rattachements manuels", () 
         PHASES,
         TERMINALES,
         AUJOURDHUI,
+        null,
       ),
     ).toHaveLength(0);
   });
@@ -278,18 +295,19 @@ describe("le constat de startups terminées voit les rattachements manuels", () 
         PHASES,
         TERMINALES,
         AUJOURDHUI,
+        null,
       ),
     ).toHaveLength(0);
   });
 
   it("cesse de compter un rattachement expiré ou retiré, sans qu'on ait rien écrit", () => {
     const expire = dominique({ rattachementsManuels: [rattache("produit-omega", "2026-07-31")] });
-    expect(constatsDe([expire], PHASES, TERMINALES, AUJOURDHUI)).toHaveLength(0);
+    expect(constatsDe([expire], PHASES, TERMINALES, AUJOURDHUI, null)).toHaveLength(0);
 
     const retire = dominique({
       rattachementsManuels: [rattache("produit-omega", "2026-11-30", le("2026-08-01"))],
     });
-    expect(constatsDe([retire], PHASES, TERMINALES, AUJOURDHUI)).toHaveLength(0);
+    expect(constatsDe([retire], PHASES, TERMINALES, AUJOURDHUI, null)).toHaveLength(0);
   });
 });
 
@@ -305,7 +323,7 @@ describe("le garde-fou de mission terminée se lit sur l'échéance effective", 
       startups: ["produit-omega"],
       missionEnd: le("2026-07-08"),
     });
-    expect(constatsDe([partie], PHASES, TERMINALES, CET_APRES_MIDI)).toHaveLength(0);
+    expect(constatsDe([partie], PHASES, TERMINALES, CET_APRES_MIDI, null)).toHaveLength(0);
 
     // Prolongée jusqu'au mois prochain : elle est de nouveau réputée en poste, et
     // plus rien de vivant ne le justifie. C'est exactement ce que le geste de
@@ -317,7 +335,7 @@ describe("le garde-fou de mission terminée se lit sur l'échéance effective", 
         { startupGhid: "produit-omega", until: le("2026-09-08"), endedAt: null },
       ],
     });
-    expect(constatsDe([prolongee], PHASES, TERMINALES, CET_APRES_MIDI)[0]).toMatchObject({
+    expect(constatsDe([prolongee], PHASES, TERMINALES, CET_APRES_MIDI, null)[0]).toMatchObject({
       kind: "INACTIVE_STARTUP",
     });
   });
@@ -327,11 +345,11 @@ describe("le garde-fou de mission terminée se lit sur l'échéance effective", 
       startups: ["produit-omega"],
       missionEnd: le("2026-08-08"),
     });
-    expect(constatsDe([dernierJour], PHASES, TERMINALES, CET_APRES_MIDI)[0]).toMatchObject({
+    expect(constatsDe([dernierJour], PHASES, TERMINALES, CET_APRES_MIDI, null)[0]).toMatchObject({
       kind: "INACTIVE_STARTUP",
     });
 
     const veille = personne({ startups: ["produit-omega"], missionEnd: le("2026-08-07") });
-    expect(constatsDe([veille], PHASES, TERMINALES, CET_APRES_MIDI)).toHaveLength(0);
+    expect(constatsDe([veille], PHASES, TERMINALES, CET_APRES_MIDI, null)).toHaveLength(0);
   });
 });

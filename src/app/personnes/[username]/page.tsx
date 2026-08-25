@@ -61,7 +61,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
   const { thresholds, startups: reglesStartups, scope } = policy();
   const today = new Date();
 
-  const [personne, collectes, dernierePasse, dossierVivant] = await Promise.all([
+  const [personne, collectes, dernierePasse, dossiersVivants] = await Promise.all([
     prisma.person.findUnique({
       where: { username },
       select: {
@@ -133,11 +133,11 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
     }),
     // Filtrée par la relation plutôt que par l'identifiant de la personne, que cette
     // requête ne connaît pas encore : elle part en même temps que celle qui le lit.
-    // Bornée au départ : le motif qui la consomme annonce « un départ est en cours »,
-    // et un dossier d'arrivée remonté ici le ferait mentir.
-    prisma.accessCase.findFirst({
-      where: { person: { username }, kind: "OFFBOARDING", state: { in: [...ETATS_VIVANTS] } },
-      select: { id: true },
+    // Les deux sens, chacun annoncé par son propre motif : l'index unique partiel en
+    // garantit au plus un par sens, jamais un seul pour les deux.
+    prisma.accessCase.findMany({
+      where: { person: { username }, state: { in: [...ETATS_VIVANTS] } },
+      select: { id: true, kind: true },
     }),
   ]);
 
@@ -252,7 +252,8 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
     fermes,
     toutesStartupsTerminees: toutesTerminees,
     parEquipe,
-    dossierVivant: dossierVivant?.id ?? null,
+    departVivant: dossiersVivants.find((dossier) => dossier.kind === "OFFBOARDING")?.id ?? null,
+    arriveeVivante: dossiersVivants.find((dossier) => dossier.kind === "ONBOARDING")?.id ?? null,
   });
 
   return (
@@ -326,7 +327,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
         </Link>
       </p>
 
-      <CeQuiAppelleUneAction motifs={motifs} />
+      <CeQuiAppelleUneAction username={personne.username} motifs={motifs} />
 
       <section className={fr.cx("fr-mt-4w")}>
         <h2 className={fr.cx("fr-h5")}>Situation</h2>

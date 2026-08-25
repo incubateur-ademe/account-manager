@@ -1,4 +1,4 @@
-import type { RiskLevel } from "@/generated/prisma/enums";
+import type { PersonSource, RiskLevel } from "@/generated/prisma/enums";
 
 import { type Attachment, toutesLesStartupsSontTerminees } from "./appartenance";
 import type { SensDossier } from "./dossier";
@@ -12,6 +12,7 @@ import { jourUTC } from "./statut";
 
 export type ConstatKind =
   | "SCOPE_EXIT"
+  | "SCOPE_ENTRY"
   | "INACTIVE_STARTUP"
   | "ORPHAN"
   | "UNREGISTERED"
@@ -37,6 +38,17 @@ export interface PersonneConstatable {
   rattachementsManuels: readonly RattachementManuel[];
   missionEnd: Date | null;
   vanishedAt: Date | null;
+  /** Posée à la création de la fiche, jamais réécrite, retour compris. */
+  firstSeenAt: Date;
+  /** Datée par la collecte le jour où elle revoit une fiche qu'elle avait vue partir. */
+  returnedAt: Date | null;
+  source: PersonSource;
+  /**
+   * Date du dernier plan d'arrivée exécuté, et de celui-là seulement : un plan à
+   * moitié exécuté laisse la personne sans une partie de ses accès, un plan annulé,
+   * périmé ou en brouillon ne dit rien de plus qu'un dossier ouvert.
+   */
+  arriveeTraiteeLe: Date | null;
 }
 
 /**
@@ -55,6 +67,106 @@ function sortieDuPerimetre(personne: PersonneConstatable): Constat | null {
     dedupKey: `SCOPE_EXIT:${personne.username}`,
     severity: "HIGH",
     detail: `${personne.fullname} a quitté le référentiel de l'incubateur`,
+  };
+}
+
+/**
+ * Le jour où la détection des arrivées est entrée en service. Le produit a été
+ * déployé une semaine plus tôt sans rien savoir des arrivées : sans cette borne, sa
+ * mise en service constaterait d'un coup tout le périmètre déjà en poste, et une
+ * file de quatre-vingt-quinze constats ne se lit pas, elle se ferme.
+ *
+ * C'est un fait sur l'histoire du code et non un réglage d'exploitation : la reculer
+ * ferait réapparaître d'un coup des constats sur des gens en poste depuis des mois.
+ * Elle ne se retouche donc jamais après coup. Une arrivée manquée se rattrape par
+ * une ouverture manuelle de dossier, une file noyée décrédibilise l'outil.
+ */
+export const MISE_EN_SERVICE_DES_ARRIVEES = new Date("2026-08-25T00:00:00Z");
+
+/**
+ * Ce qu'il faut savoir du périmètre, et non de la personne, pour juger d'une
+ * arrivée. Tout le reste de l'éligibilité est une propriété de la personne, d'où un
+ * seul champ.
+ *
+ * Son absence là où elle est attendue est un état à part entière : la collecte n'a
+ * pas conclu sur les arrivées, et rien ne doit alors en être déduit, ni levé, ni
+ * fermé, ni déverrouillé.
+ */
+export interface RegleArrivee {
+  /** Date au-delà de laquelle une entrée dans le périmètre est une vraie arrivée. */
+  amorcage: Date;
+}
+
+/**
+ * La borne à partir de laquelle on s'autorise à constater une arrivée.
+ *
+ * Nulle tant qu'aucune collecte n'a vu personne : sans périmètre connu, une première
+ * vue ne dit pas que quelqu'un vient d'arriver, elle dit que l'outil vient d'ouvrir
+ * les yeux. Sur une instance neuve, c'est la première collecte qui fait la borne et
+ * la constante ne protège rien ; sur celle-ci, c'est l'inverse.
+ */
+export function amorcageDesArrivees(
+  premiereCollecte: Date | null,
+  miseEnService: Date,
+): Date | null {
+  if (premiereCollecte === null) {
+    return null;
+  }
+  return premiereCollecte.getTime() > miseEnService.getTime() ? premiereCollecte : miseEnService;
+}
+
+/**
+ * L'instant depuis lequel la présence de cette personne demande un onboarding.
+ *
+ * `firstSeenAt` ne bouge pas au retour de quelqu'un. Jugée sur elle seule, une
+ * personne revenue resterait inéligible pour toujours, par sa date de première vue,
+ * alors que son retour est précisément une arrivée à traiter, avec des accès à
+ * rouvrir. Sa réapparition dans le référentiel reprend donc la main : une première
+ * arrivée se juge sur la première vue, un retour sur le jour où on l'a revue.
+ *
+ * Et sur rien d'autre, surtout pas sur la clôture de son dernier départ. Une mission
+ * qui s'achève ne fait pas sortir du référentiel amont, dont la liste des membres rend
+ * aussi les missions terminées : clore un départ pendant que la fiche est encore là
+ * est le chemin normal du produit. Cette clôture lue ici levait donc une arrivée sur
+ * chaque personne correctement offboardée, dès le premier départ soldé.
+ */
+function dateDeReference(personne: PersonneConstatable): Date {
+  const retour = personne.returnedAt;
+  if (retour !== null && retour.getTime() > personne.firstSeenAt.getTime()) {
+    return retour;
+  }
+  return personne.firstSeenAt;
+}
+
+/**
+ * Le pendant exact de la sortie du périmètre : quelqu'un est là que personne n'a
+ * accueilli. Ses accès ont donc été posés ailleurs, ou pas posés du tout, et dans
+ * les deux cas l'outil ignore ce qu'il aura à retirer le jour du départ.
+ */
+function arriveeSansOnboarding(personne: PersonneConstatable, regle: RegleArrivee): Constat | null {
+  // Un compte machine n'arrive pas.
+  if (personne.source === "SERVICE") {
+    return null;
+  }
+
+  const reference = dateDeReference(personne);
+  if (reference.getTime() <= regle.amorcage.getTime()) {
+    return null;
+  }
+
+  // Un onboarding antérieur à la date de référence appartient au séjour d'avant :
+  // il n'accueille pas celui-ci.
+  const traitee = personne.arriveeTraiteeLe;
+  if (traitee !== null && traitee.getTime() > reference.getTime()) {
+    return null;
+  }
+
+  return {
+    kind: "SCOPE_ENTRY",
+    username: personne.username,
+    dedupKey: `SCOPE_ENTRY:${personne.username}`,
+    severity: "MEDIUM",
+    detail: `aucun plan d'arrivée n'a été exécuté pour ${personne.fullname} depuis son entrée dans le périmètre`,
   };
 }
 
@@ -121,6 +233,7 @@ export function constatsDe(
   phaseParStartup: ReadonlyMap<string, string | null>,
   phasesTerminales: readonly string[],
   today: Date,
+  arrivees: RegleArrivee | null,
 ): Constat[] {
   const constats: Constat[] = [];
 
@@ -129,7 +242,16 @@ export function constatsDe(
     if (sortie) {
       constats.push(sortie);
       // Une personne déjà sortie n'a pas besoin d'un second constat sur ses
-      // startups : le premier couvre le cas et appelle la même action.
+      // startups : le premier couvre le cas et appelle la même action. Elle n'a pas
+      // davantage besoin qu'on lui souhaite la bienvenue.
+      continue;
+    }
+
+    const arrivee = arrivees === null ? null : arriveeSansOnboarding(personne, arrivees);
+    if (arrivee) {
+      constats.push(arrivee);
+      // Proposer de retirer les accès de quelqu'un dont on n'a même pas acté
+      // l'arrivée serait absurde : c'est l'arrivée qu'il faut traiter d'abord.
       continue;
     }
 
@@ -140,6 +262,39 @@ export function constatsDe(
   }
 
   return constats.sort((a, b) => a.dedupKey.localeCompare(b.dedupKey));
+}
+
+/**
+ * Les types que la collecte sait produire, et donc les seuls qu'elle a le droit de
+ * refermer. Un constat d'une autre origine, posé à la main ou par un futur chemin,
+ * ne doit pas se faire clore par une réconciliation qui ignore ce qui l'a levé.
+ *
+ * Une fonction et non une constante, parce que le droit de conclure sur les arrivées
+ * se décide à chaque passage. « Ne pas conclure » n'est jamais « produire une liste
+ * vide » : un type qui n'est pas calculé doit sortir des trois portes à la fois, la
+ * levée, la fermeture des constats ouverts et le réarmement des clôtures manuelles.
+ * Oublier l'une des trois ferme un constat à tort ou lève un verrou qu'un opérateur
+ * a posé, et les deux pannes sont muettes. La liste est donc lue au même endroit par
+ * les trois requêtes, plutôt que tenue par la discipline de qui les relit.
+ */
+export function typesReconcilies({
+  arriveesConcluantes,
+}: {
+  arriveesConcluantes: boolean;
+}): ConstatKind[] {
+  const types: ConstatKind[] = [
+    "SCOPE_EXIT",
+    "INACTIVE_STARTUP",
+    "ORPHAN",
+    "UNREGISTERED",
+    "OVERDUE_MANUAL_ACTION",
+  ];
+
+  if (arriveesConcluantes) {
+    types.push("SCOPE_ENTRY");
+  }
+
+  return types;
 }
 
 /**

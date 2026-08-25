@@ -246,7 +246,13 @@ livraison de code, et n'a pas à être publié dans un dépôt lisible de tous.
 
 **`Person`** : `username` (pivot), `usernameFabricated`, `fullname`, `primaryEmail`,
 `communicationEmail`, `githubLogin`, `missionEnd`, `source`, `attachment`, `startups[]`,
-`firstSeenAt`, `lastSeenAt`, `vanishedAt`.
+`firstSeenAt`, `lastSeenAt`, `vanishedAt`, `returnedAt`.
+
+`returnedAt` date la réapparition de quelqu'un que la collecte avait cessé de voir, et
+c'est ce qui distingue un séjour du suivant : `firstSeenAt` ne bouge pas au retour d'une
+personne, et une règle qui s'y fierait seule tiendrait un retour pour un séjour ininterrompu.
+La clôture d'un départ ne dit rien de tel : une mission terminée reste dans le référentiel,
+et solder un départ pendant que la fiche est encore là est le chemin normal.
 
 `attachment` dit la voie constatée par l'espace-membre, « aucune » comprise. À quel titre
 une personne appartient à l'incubateur ne s'y lit pas : cela se calcule, voir §2.3.

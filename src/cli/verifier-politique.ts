@@ -28,6 +28,7 @@ function resume(): string[] {
     `echeance proche     ${politique.thresholds.soonDays} j`,
     `mission ancienne    ${politique.thresholds.staleDays} j`,
     `chute maximale      ${Math.round(politique.thresholds.maxScopeDrop * 100)} %`,
+    `arrivees maximales  ${Math.round(politique.thresholds.maxNewPersonShare * 100)} %`,
     `collecte perimee    ${politique.thresholds.collectStaleHours} h`,
     `systemes            ${politique.systems.length}`,
     `derogations         ${politique.permanentDerogations.length}`,
