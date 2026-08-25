@@ -8,7 +8,7 @@ import { policy } from "@/lib/policy";
 import { executerCollecte, noterSystemeNonLu } from "@/lib/sync/collecte";
 import { syncComptesDeService } from "@/lib/sync/comptes-service";
 import { syncConstats, syncStartups } from "@/lib/sync/constats";
-import { syncPerimetre } from "@/lib/sync/perimetre";
+import { noterRefusDArrivees, syncPerimetre } from "@/lib/sync/perimetre";
 import { rapprocherIdentites } from "@/lib/sync/rapprochement";
 
 /**
@@ -164,6 +164,9 @@ export async function executerSync(
           startups: true,
           missionEnd: true,
           vanishedAt: true,
+          firstSeenAt: true,
+          returnedAt: true,
+          source: true,
           // Filtre de lecture seulement : aucune écriture n'est ajoutée au chemin
           // de collecte, un rattachement expiré se reconnaît à sa date.
           startupAssignments: {
@@ -205,10 +208,30 @@ export async function executerSync(
       policy().startups.terminalPhases,
       now,
       correlationId,
+      {
+        // Une collecte tronquée ne conclut rien sur les arrivées, dans aucun sens :
+        // ni levée, ni fermeture, ni verrou réarmé.
+        perimetreComplet: perimetre.status === "OK",
+        maxNewPersonShare: policy().thresholds.maxNewPersonShare,
+      },
     );
     journal(
       `[sync] constats : ${constats.actifs} actifs, ${constats.ouverts} ouverts, ${constats.fermes} fermés`,
     );
+    journal(
+      `[sync] arrivées : ${
+        constats.arrivees.conclu
+          ? `${constats.arrivees.levees} constatées`
+          : constats.arrivees.message
+      }`,
+    );
+
+    // Le refus de vague ne bascule pas le statut du run : sans cette ligne dans la
+    // trace, la seule chose qui dirait qu'un passage s'est tu sur les arrivées serait
+    // le journal de la console, que personne ne relit.
+    if (!constats.arrivees.conclu && constats.arrivees.cause === "vague") {
+      await noterRefusDArrivees(perimetre.runId, constats.arrivees.message);
+    }
   }
 
   for (const key of comptes.horsPolitique) {

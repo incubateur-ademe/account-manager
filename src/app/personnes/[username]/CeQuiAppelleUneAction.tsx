@@ -7,13 +7,16 @@ import { createModal } from "@codegouvfr/react-dsfr/Modal";
 import Link from "next/link";
 import { useState } from "react";
 import { ClotureConstat } from "@/app/constats/ClotureConstat";
+import { FormulaireOuverture } from "@/app/dossiers/FormulaireOuverture";
+import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 
 import { modaleRattacherStartup } from "./ModaleRattacherStartup";
 import type { Geste, MotifDAction } from "./motifs";
 
 // Hors du composant : `createModal` enregistre la modale une fois pour toutes, et le
-// bloc n'en ouvre qu'une à la fois. L'identifiant diffère de celui de la file pour
-// qu'un partage de chunk ne puisse pas enregistrer deux fois le même.
+// bloc n'en ouvre qu'une à la fois. Les identifiants diffèrent de ceux de la file et
+// de l'en-tête pour qu'un partage de chunk ne puisse pas enregistrer deux fois le
+// même.
 //
 // Les boutons de geste portent les attributs d'ouverture du système de design plutôt
 // que d'appeler `open()`. Sans eux, le système ne connaît d'autre déclencheur que le
@@ -21,7 +24,13 @@ import type { Geste, MotifDAction } from "./motifs";
 // à la fermeture. Leur identifiant est réécrit, sinon tous porteraient celui de la
 // modale. Le bloc étant rendu avant la section Startups, son bouton est le premier
 // déclencheur du document, donc celui à qui le focus revient.
+//
+// L'arrivée déclare la sienne pour cette raison même, plutôt que d'ouvrir celle de
+// l'en-tête : l'en-tête est rendu avant le bloc, si bien que le focus reviendrait à
+// son bouton, et l'opérateur reprendrait sa lecture au-dessus du motif qui l'avait
+// appelé.
 const modaleCloture = createModal({ id: "clore-constat-fiche", isOpenedByDefault: false });
+const modaleArrivee = createModal({ id: "preparer-arrivee-fiche", isOpenedByDefault: false });
 
 type GesteDeCloture = Extract<Geste, { nom: "clore" }>;
 
@@ -35,7 +44,13 @@ type GesteDeCloture = Extract<Geste, { nom: "clore" }>;
  * page. Un bouton qui monterait chacun sa boîte de dialogue en poserait autant de même
  * identifiant.
  */
-export function CeQuiAppelleUneAction({ motifs }: { motifs: readonly MotifDAction[] }) {
+export function CeQuiAppelleUneAction({
+  username,
+  motifs,
+}: {
+  username: string;
+  motifs: readonly MotifDAction[];
+}) {
   const [choisi, setChoisi] = useState<GesteDeCloture | null>(null);
 
   if (motifs.length === 0) {
@@ -81,6 +96,20 @@ export function CeQuiAppelleUneAction({ motifs }: { motifs: readonly MotifDActio
                       >
                         Rattacher à une startup
                       </Button>
+                    ) : geste.nom === "ouvrir-arrivee" ? (
+                      <Button
+                        key={geste.nom}
+                        className={fr.cx("fr-mr-1v")}
+                        priority="tertiary"
+                        size="small"
+                        nativeButtonProps={{
+                          ...modaleArrivee.buttonProps,
+                          id: `arrivee-${motif.cle}`,
+                          type: "button",
+                        }}
+                      >
+                        {LIBELLE_DOSSIER.ONBOARDING.ouvrir}
+                      </Button>
                     ) : (
                       <Button
                         key={geste.nom}
@@ -124,6 +153,10 @@ export function CeQuiAppelleUneAction({ motifs }: { motifs: readonly MotifDActio
           </>
         ) : null}
       </modaleCloture.Component>
+
+      <modaleArrivee.Component title={LIBELLE_DOSSIER.ONBOARDING.ouvrir}>
+        <FormulaireOuverture username={username} sens="ONBOARDING" />
+      </modaleArrivee.Component>
     </section>
   );
 }

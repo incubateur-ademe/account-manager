@@ -133,6 +133,7 @@ describe("l'identifiant fautif rejoint la vraie personne", () => {
     constats: [
       { id: "f1", kind: "UNREGISTERED", dedupKey: "UNREGISTERED:notion:camille.exemple" },
       { id: "f2", kind: "SCOPE_EXIT", dedupKey: "SCOPE_EXIT:camille.exempl" },
+      { id: "f3", kind: "SCOPE_ENTRY", dedupKey: "SCOPE_ENTRY:camille.exempl" },
     ],
     dossiers: [{ id: "d1", vivant: true }],
     references: [{ id: "r1", resourceId: "res-1" }],
@@ -155,9 +156,10 @@ describe("l'identifiant fautif rejoint la vraie personne", () => {
 
     // Le constat ancré sur le compte traverse sans retouche, celui ancré sur la
     // personne est réattribué au nouvel identifiant.
-    expect(plan.constatsMigres).toHaveLength(2);
+    expect(plan.constatsMigres).toHaveLength(3);
     expect(plan.clesReecrites).toEqual([
       { id: "f2", avant: "SCOPE_EXIT:camille.exempl", apres: "SCOPE_EXIT:camille.exemple" },
+      { id: "f3", avant: "SCOPE_ENTRY:camille.exempl", apres: "SCOPE_ENTRY:camille.exemple" },
     ]);
     expect(plan.constatsFermes).toHaveLength(0);
 

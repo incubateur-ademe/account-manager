@@ -89,8 +89,8 @@ export default async function DossiersPage() {
 
       <p className={fr.cx("fr-text--lead")}>
         Les arrivées et les départs en préparation, et ceux qui sont soldés. Un dossier s'ouvre
-        depuis la fiche d'une personne : il n'y a pas d'autre porte d'entrée, le pivot restant
-        l'identifiant beta.gouv.
+        depuis la fiche d'une personne, ou depuis le constat d'arrivée qui la désigne : dans les
+        deux cas le pivot reste l'identifiant beta.gouv.
       </p>
 
       {ouverts.length === 0 ? (

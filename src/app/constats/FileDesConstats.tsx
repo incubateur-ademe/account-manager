@@ -6,6 +6,9 @@ import { Button } from "@codegouvfr/react-dsfr/Button";
 import { createModal } from "@codegouvfr/react-dsfr/Modal";
 import Link from "next/link";
 import { useState } from "react";
+import { FormulaireOuverture } from "@/app/dossiers/FormulaireOuverture";
+import type { ConstatKind } from "@/core/constat";
+import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 import type { RiskLevel } from "@/generated/prisma/enums";
 import styleActions from "@/ui/Actions.module.css";
 import { Aide } from "@/ui/Aide";
@@ -18,6 +21,8 @@ import { ClotureConstat } from "./ClotureConstat";
 export interface LigneConstat {
   id: string;
   dedupKey: string;
+  /** Ce qui décide du geste offert, là où le libellé ne décide que du texte. */
+  kind: ConstatKind;
   titre: string;
   /** Ce que le calcul a constaté, pour que la modale n'oblige pas à le deviner. */
   explication: string;
@@ -29,6 +34,11 @@ export interface LigneConstat {
 }
 
 const modale = createModal({ id: "clore-constat", isOpenedByDefault: false });
+
+// Le seul constat dont la file offre autre chose que la clôture. Sa modale est
+// déclarée ici, une fois, et non par ligne : elle porte la même explication que celle
+// de la fiche, montée par le même formulaire.
+const modaleArrivee = createModal({ id: "preparer-arrivee-constat", isOpenedByDefault: false });
 
 /**
  * Le formulaire de clôture vit dans une modale, et non dans chaque ligne.
@@ -47,6 +57,7 @@ export function FileDesConstats({
   designe?: string;
 }) {
   const [choisi, setChoisi] = useState<LigneConstat | null>(null);
+  const [arrivee, setArrivee] = useState<{ username: string; fullname: string } | null>(null);
 
   return (
     <>
@@ -113,19 +124,44 @@ export function FileDesConstats({
             },
             { children: ligne.ouvertLe },
             {
+              // Une arrivée constatée appelle deux issues, et la consigne les nomme
+              // toutes les deux : préparer ce qui n'a pas été fait, ou dire ce qui
+              // l'a été ailleurs. Les autres constats n'ont que la seconde.
               children: (
-                <Button
-                  priority="secondary"
-                  size="small"
-                  nativeButtonProps={{
-                    ...modale.buttonProps,
-                    onClick: () => {
-                      setChoisi(ligne);
-                    },
-                  }}
-                >
-                  Clore
-                </Button>
+                <>
+                  {ligne.kind === "SCOPE_ENTRY" && ligne.personne ? (
+                    <Button
+                      className={fr.cx("fr-mr-1v")}
+                      priority="secondary"
+                      size="small"
+                      nativeButtonProps={{
+                        ...modaleArrivee.buttonProps,
+                        id: `arrivee-${ligne.dedupKey}`,
+                        type: "button",
+                        onClick: () => {
+                          setArrivee(ligne.personne);
+                        },
+                      }}
+                    >
+                      {LIBELLE_DOSSIER.ONBOARDING.ouvrir}
+                    </Button>
+                  ) : null}
+                  <Button
+                    priority="secondary"
+                    size="small"
+                    nativeButtonProps={{
+                      ...modale.buttonProps,
+                      // Réécrit, sinon toutes les lignes porteraient l'identifiant de
+                      // la modale, et deux boutons de la file celui de l'autre.
+                      id: `clore-${ligne.dedupKey}`,
+                      onClick: () => {
+                        setChoisi(ligne);
+                      },
+                    }}
+                  >
+                    Clore
+                  </Button>
+                </>
               ),
             },
           ],
@@ -160,6 +196,20 @@ export function FileDesConstats({
           </>
         )}
       </modale.Component>
+
+      <modaleArrivee.Component title={LIBELLE_DOSSIER.ONBOARDING.ouvrir}>
+        {arrivee === null ? null : (
+          <>
+            <p className={fr.cx("fr-text--lead", "fr-mb-1v")}>{arrivee.fullname}</p>
+            <p className={fr.cx("fr-text--sm", "fr-mb-2w")}>{arrivee.username}</p>
+            <FormulaireOuverture
+              key={arrivee.username}
+              username={arrivee.username}
+              sens="ONBOARDING"
+            />
+          </>
+        )}
+      </modaleArrivee.Component>
     </>
   );
 }

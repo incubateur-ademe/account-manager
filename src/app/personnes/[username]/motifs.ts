@@ -16,6 +16,7 @@ import { expliquerStatut, type Seuils, STATUT_A_TRAITER } from "./libelles";
  */
 export type Geste =
   | { nom: "rattacher-startup" }
+  | { nom: "ouvrir-arrivee" }
   | {
       nom: "clore";
       dedupKey: string;
@@ -53,7 +54,8 @@ export interface MotifDAction {
 
 export function motifsDesConstats(
   ouverts: readonly ConstatOuvert[],
-  dossierVivant: string | null,
+  departVivant: string | null,
+  arriveeVivante: string | null,
 ): MotifDAction[] {
   return ouverts.map((constat) => {
     const libelle = LIBELLE_CONSTAT[constat.kind as ConstatKind];
@@ -63,6 +65,13 @@ export function motifsDesConstats(
     const gestes: Geste[] = [];
     if (constat.kind === "INACTIVE_STARTUP") {
       gestes.push({ nom: "rattacher-startup" });
+    }
+    // La consigne de l'arrivée nomme deux issues, et l'écran les offre toutes les
+    // deux. Pas quand le dossier existe déjà : le motif qui l'annonce y mène, et
+    // proposer de préparer une arrivée en cours ferait croire qu'on en ouvre une
+    // seconde.
+    if (constat.kind === "SCOPE_ENTRY" && arriveeVivante === null) {
+      gestes.push({ nom: "ouvrir-arrivee" });
     }
     gestes.push({
       nom: "clore",
@@ -77,8 +86,8 @@ export function motifsDesConstats(
     // et seulement quand ce dossier existe : une action déclarée sans effet se
     // reprend là où elle a été pointée.
     const versLeDossier =
-      constat.kind === "OVERDUE_MANUAL_ACTION" && dossierVivant !== null
-        ? { href: `/dossiers/${dossierVivant}`, libelle: "Ouvrir le dossier de départ en cours" }
+      constat.kind === "OVERDUE_MANUAL_ACTION" && departVivant !== null
+        ? { href: `/dossiers/${departVivant}`, libelle: "Ouvrir le dossier de départ en cours" }
         : null;
 
     return {
@@ -109,7 +118,9 @@ export interface EtatDeLaFiche {
   /** Rattachée par une équipe : un titre qui ne passe par aucune startup. */
   parEquipe: boolean;
   /** Le dossier de départ ouvert sur cette personne, unique par construction. */
-  dossierVivant: string | null;
+  departVivant: string | null;
+  /** Celui d'arrivée, qui vit à côté du départ et non à sa place. */
+  arriveeVivante: string | null;
 }
 
 /**
@@ -125,13 +136,26 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
   // En tête, et sans gravité : un départ en cours n'est pas un écart, c'est un
   // travail commencé. Le taire ferait rouvrir le même dossier sans savoir qu'on y
   // revient, et préparer un départ deux fois est le geste que cet écran doit éviter.
-  if (etat.dossierVivant !== null) {
+  if (etat.departVivant !== null) {
     motifs.push({
       cle: "depart-en-cours",
       severite: "info",
       titre: "Un départ est en cours",
       description: "Ses étapes et leur pointage vivent dans le dossier.",
-      lien: { href: `/dossiers/${etat.dossierVivant}`, libelle: "Ouvrir le dossier" },
+      lien: { href: `/dossiers/${etat.departVivant}`, libelle: "Ouvrir le dossier" },
+    });
+  }
+
+  // Le pendant exact, et pour la même raison : une arrivée ouverte que la fiche tait
+  // se reprépare à zéro, et le constat d'arrivée continuerait d'appeler un geste
+  // qu'on a déjà posé.
+  if (etat.arriveeVivante !== null) {
+    motifs.push({
+      cle: "arrivee-en-cours",
+      severite: "info",
+      titre: "Une arrivée est en cours",
+      description: "Ce qu'il faut lui donner, et son pointage, vivent dans le dossier.",
+      lien: { href: `/dossiers/${etat.arriveeVivante}`, libelle: "Ouvrir le dossier" },
     });
   }
 
@@ -159,7 +183,7 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
     });
   }
 
-  motifs.push(...motifsDesConstats(etat.ouverts, etat.dossierVivant));
+  motifs.push(...motifsDesConstats(etat.ouverts, etat.departVivant, etat.arriveeVivante));
 
   if (etat.fraicheur.perimee) {
     motifs.push({

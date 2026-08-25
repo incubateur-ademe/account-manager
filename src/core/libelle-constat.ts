@@ -24,6 +24,12 @@ export const LIBELLE_CONSTAT: Record<ConstatKind, Libelle> = {
       "Cette personne a disparu du référentiel de l'incubateur, et rien ici ne dit ce que ses accès sont devenus. Le référentiel amont retire des équipes les membres dont la mission est terminée, ce qui la rend invisible au moment précis où il faut agir.",
     action: "Vérifier ses accès et les couper, puis clore ce constat.",
   },
+  SCOPE_ENTRY: {
+    titre: "Arrivée sans onboarding",
+    explication:
+      "Cette personne est apparue dans le périmètre sans qu'aucun plan d'arrivée n'ait été exécuté pour elle, ce qui veut dire que ses accès ont été posés ailleurs, ou pas posés du tout. Le jour de son départ, l'outil ne saura pas quoi retirer.",
+    action: "Préparer son arrivée, ou clore ce constat en disant ce qui a déjà été fait.",
+  },
   INACTIVE_STARTUP: {
     titre: "Startups toutes terminées",
     explication:

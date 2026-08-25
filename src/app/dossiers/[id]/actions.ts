@@ -329,14 +329,19 @@ export async function cloreDossier(
     return { erreur: verdict.raison };
   }
 
+  const maintenant = new Date();
+
   await actionTracee({
     action: "dossier.cloture",
     targetType: "personne",
     targetId: dossier.person.username,
-    after: { sens: dossier.kind, etat: "DONE" },
+    after: { sens: dossier.kind, etat: "DONE", closedAt: maintenant },
     revalider: [`/dossiers/${dossier.id}`, `/personnes/${dossier.person.username}`],
     ecrire: async () => {
-      await prisma.accessCase.update({ where: { id: dossier.id }, data: { state: "DONE" } });
+      await prisma.accessCase.update({
+        where: { id: dossier.id },
+        data: { state: "DONE", closedAt: maintenant },
+      });
     },
   });
 

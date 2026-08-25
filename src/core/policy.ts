@@ -300,6 +300,16 @@ export const configSchema = z
               "Part du périmètre qu'une collecte peut perdre d'un coup avant de refuser d'en tirer la moindre disparition. Une réponse tronquée mais valide ne se distingue d'un départ collectif que par son ampleur.",
             examples: [0.2],
           }),
+        maxNewPersonShare: z
+          .number()
+          .min(0)
+          .max(1)
+          .default(0.2)
+          .meta({
+            description:
+              "Part du périmètre qu'une collecte peut gagner d'un coup avant de refuser d'en tirer la moindre arrivée. La symétrie avec maxScopeDrop n'est pas décorative : le périmètre arrive en un seul appel, et une réponse anormale peut aussi bien enfler que fondre.",
+            examples: [0.2],
+          }),
         collectStaleHours: z
           .number()
           .int()

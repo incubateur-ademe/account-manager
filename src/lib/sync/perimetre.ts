@@ -23,6 +23,8 @@ import { policy } from "@/lib/policy";
 const CONCURRENCE = 8;
 
 export interface PerimetreSyncResult {
+  /** La trace de ce passage, pour qui a quelque chose à y ajouter après coup. */
+  runId: string;
   status: "OK" | "PARTIAL" | "FAILED";
   seen: number;
   created: number;
@@ -59,7 +61,7 @@ function toDate(iso: string | null): Date | null {
  * collectée. Le jour où quelqu'un ajoute un champ à `Person`, c'est ici qu'on voit
  * si la collecte s'est mise à écraser une décision.
  */
-export function champsCollectes(personne: PersonneResolue, now: Date) {
+export function champsCollectes(personne: PersonneResolue, now: Date, vanishedAt: Date | null) {
   return {
     // Le jour où une source amont connaît cet identifiant, il cesse d'être une
     // construction locale et redevient un pivot que rien n'a le droit de renommer.
@@ -76,24 +78,36 @@ export function champsCollectes(personne: PersonneResolue, now: Date) {
     source: personne.source,
     lastSeenAt: now,
     vanishedAt: null,
+    // Une fiche revue après avoir disparu est un retour, et c'est la seule chose qui
+    // en tienne lieu : `firstSeenAt` ne bougera plus. La disparition étant effacée
+    // sur la ligne du dessus, l'état d'avant le passage est le seul témoin qui reste,
+    // d'où le paramètre. `undefined` ne touche à rien : une personne qui n'avait pas
+    // disparu garde la date de son retour précédent, et une fiche créée ici n'en a
+    // aucune, n'étant revenue de nulle part.
+    returnedAt: vanishedAt === null ? undefined : now,
   };
 }
 
 async function upsert(personne: PersonneResolue, now: Date): Promise<"created" | "updated"> {
-  const data = champsCollectes(personne, now);
-
   const existing = await prisma.person.findUnique({
     where: { username: personne.username },
-    select: { id: true },
+    select: { id: true, vanishedAt: true },
   });
 
   if (existing) {
-    await prisma.person.update({ where: { id: existing.id }, data });
+    await prisma.person.update({
+      where: { id: existing.id },
+      data: champsCollectes(personne, now, existing.vanishedAt),
+    });
     return "updated";
   }
 
   await prisma.person.create({
-    data: { ...data, username: personne.username, firstSeenAt: now },
+    data: {
+      ...champsCollectes(personne, now, null),
+      username: personne.username,
+      firstSeenAt: now,
+    },
   });
   return "created";
 }
@@ -246,6 +260,7 @@ export async function syncPerimetre(
   } catch (error: unknown) {
     errors.push(error instanceof Error ? error.message : String(error));
     const failed: PerimetreSyncResult = {
+      runId: run.id,
       status: "FAILED",
       seen: 0,
       created,
@@ -314,6 +329,7 @@ export async function syncPerimetre(
   }
 
   const result: PerimetreSyncResult = {
+    runId: run.id,
     status,
     seen: resolues.length,
     created,
@@ -353,6 +369,38 @@ async function closeRun(id: string, now: Date, result: PerimetreSyncResult): Pro
       status: result.status,
       itemsSeen: result.seen,
       error: result.errors.length > 0 ? { messages: result.errors } : undefined,
+    },
+  });
+}
+
+/**
+ * Ajoute un refus à la trace d'un passage déjà clos, sans toucher à son statut.
+ *
+ * Les arrivées se jugent après la clôture du run, une fois les systèmes cibles lus, et
+ * leur refus n'est pas un échec de lecture : le périmètre a bien été collecté, c'est
+ * ce qu'on a le droit d'en conclure qui est en cause. Le statut ne bascule donc pas,
+ * et cette ligne est la seule trace du refus. Elle rejoint les messages du run parce
+ * que c'est là que l'écran des collectes va les chercher.
+ */
+export async function noterRefusDArrivees(runId: string, message: string): Promise<void> {
+  const run = await prisma.syncRun.findUnique({ where: { id: runId }, select: { error: true } });
+  if (!run) {
+    return;
+  }
+
+  // La trace repart de l'objet relu au lieu d'être réécrite : elle porte aussi les
+  // refus de datation, qu'un refus d'arrivées effacerait en la remplaçant, et une
+  // trace amputée fait mentir l'écran qui la lit plutôt que de le faire échouer.
+  const trace =
+    run.error !== null && typeof run.error === "object" && !Array.isArray(run.error)
+      ? run.error
+      : {};
+  const existants = "messages" in trace ? trace["messages"] : null;
+
+  await prisma.syncRun.update({
+    where: { id: runId },
+    data: {
+      error: { ...trace, messages: [...(Array.isArray(existants) ? existants : []), message] },
     },
   });
 }

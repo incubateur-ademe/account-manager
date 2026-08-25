@@ -1,12 +1,21 @@
-import { chuteExcessive } from "@/core/collecte";
+import {
+  arriveeMassive,
+  chuteExcessive,
+  FOURNISSEUR_PERIMETRE,
+  REFUS_DE_VAGUE,
+} from "@/core/collecte";
 import {
   type ActionDeclaree,
+  amorcageDesArrivees,
   type Constat,
   constatsDActionsDeclarees,
   constatsDe,
   constatsDIdentites,
   type IdentiteConstatable,
+  MISE_EN_SERVICE_DES_ARRIVEES,
   type PersonneConstatable,
+  type RegleArrivee,
+  typesReconcilies,
   verrousDeCloture,
 } from "@/core/constat";
 import type { FindingKind } from "@/generated/prisma/enums";
@@ -15,22 +24,28 @@ import { prisma } from "@/lib/db";
 import type { IncubatorStartup } from "@/lib/espace-membre";
 
 /**
- * Les types que la collecte sait produire, et donc les seuls qu'elle a le droit de
- * refermer. Un constat d'une autre origine, posé à la main ou par un futur chemin,
- * ne doit pas se faire clore par une réconciliation qui ignore ce qui l'a levé.
+ * Ce que la collecte sait d'une personne avant que la base n'y pose la date dont
+ * dépend une arrivée. Elle se lit ici, à côté de la règle qui la compare, plutôt
+ * qu'au milieu de la projection du périmètre : c'est une date de dossier, pas un fait
+ * observé sur la personne.
  */
-const RECONCILIES = [
-  "SCOPE_EXIT",
-  "INACTIVE_STARTUP",
-  "ORPHAN",
-  "UNREGISTERED",
-  "OVERDUE_MANUAL_ACTION",
-] as const;
+export type PersonneAvantArrivee = Omit<PersonneConstatable, "arriveeTraiteeLe">;
+
+/**
+ * Ce que le passage a fait des arrivées : un compte, ou une raison de n'avoir rien
+ * conclu. Ce n'est pas un confort de compte rendu : le refus de vague ne bascule pas
+ * le statut du run, contrairement à la chute du périmètre, si bien que cette phrase
+ * est sa seule trace.
+ */
+export type ArriveesDuPassage =
+  | { conclu: true; levees: number }
+  | { conclu: false; cause: "perimetre-incomplet" | "amorcage-inconnu" | "vague"; message: string };
 
 export interface ConstatsResult {
   ouverts: number;
   fermes: number;
   actifs: number;
+  arrivees: ArriveesDuPassage;
 }
 
 export interface StartupsResult {
@@ -98,23 +113,72 @@ export async function syncStartups(
  * résolue devient du bruit, et le bruit fait ignorer le reste.
  */
 export async function syncConstats(
-  personnes: readonly PersonneConstatable[],
+  personnes: readonly PersonneAvantArrivee[],
   startups: readonly IncubatorStartup[],
   identites: readonly IdentiteConstatable[],
   phasesTerminales: readonly string[],
   now: Date,
   correlationId: string,
+  options: { perimetreComplet: boolean; maxNewPersonShare: number },
 ): Promise<ConstatsResult> {
   const phaseParStartup = new Map(startups.map((s) => [s.ghid, s.currentPhase]));
+
+  const traitees = await arriveesTraitees();
+  const observees: PersonneConstatable[] = personnes.map((personne) => ({
+    ...personne,
+    arriveeTraiteeLe: traitees.get(personne.username) ?? null,
+  }));
+
+  // Un périmètre tronqué ne conclut rien sur les arrivées : les fiches qui manquent à
+  // une réponse amputée sont exactement celles qu'on prendrait pour des arrivées.
+  const amorcage = options.perimetreComplet ? await dateDAmorcage() : null;
+  const regleCandidate: RegleArrivee | null = amorcage === null ? null : { amorcage };
+
+  // Les arrivées se comptent sur un calcul complet et non sur un décompte écrit ici :
+  // la règle qui juge une arrivée vit dans le noyau, et la recopier pour compter la
+  // ferait diverger.
+  const calcul = constatsDe(observees, phaseParStartup, phasesTerminales, now, regleCandidate);
+  const levees = calcul.filter((constat) => constat.kind === "SCOPE_ENTRY").length;
+
+  const perimetreConnu = observees.filter(
+    (personne) => personne.vanishedAt === null && personne.source !== "SERVICE",
+  ).length;
+
+  // La part se mesure sur le périmètre d'avant, celui que les arrivées viennent élargir,
+  // et non sur celui d'après qui les contient déjà : mesurée sur le second, la même vague
+  // paraîtrait toujours plus modeste qu'elle ne l'est, et d'autant plus qu'elle est
+  // grosse. C'est aussi ce qui rend le garde-fou symétrique de celui des chutes, qui
+  // compare lui aussi ce qu'on observe à ce qu'on connaissait avant le passage.
+  const vague = arriveeMassive(perimetreConnu - levees, levees, options.maxNewPersonShare);
+
+  // La liste des types réconciliables décide des trois portes de ce passage, et une
+  // seule fonction la rend : la levée juste en dessous, la fermeture des constats
+  // ouverts, le réarmement des clôtures manuelles. « Ne pas conclure » n'est jamais
+  // « produire une liste vide » : une porte qui jugerait à côté refermerait un constat
+  // à tort ou lèverait un verrou qu'un opérateur a posé, et les deux pannes sont
+  // muettes.
+  const reconcilies = typesReconcilies({
+    arriveesConcluantes: regleCandidate !== null && !vague,
+  });
+
+  // La règle du calcul retenu se lit sur cette liste : ce que la réconciliation ne
+  // tient pas pour réconciliable ne se lève pas non plus. Le résultat ne s'élague pas
+  // pour autant, la priorité par `continue` ayant substitué l'arrivée à d'autres
+  // constats : la retirer demande un second calcul sans règle, sans quoi un
+  // `INACTIVE_STARTUP` que l'arrivée masquait disparaîtrait avec elle.
+  const regleRetenue = reconcilies.includes("SCOPE_ENTRY") ? regleCandidate : null;
+
   const constats = [
-    ...constatsDe(personnes, phaseParStartup, phasesTerminales, now),
+    ...(regleRetenue === regleCandidate
+      ? calcul
+      : constatsDe(observees, phaseParStartup, phasesTerminales, now, regleRetenue)),
     ...constatsDIdentites(identites),
     ...constatsDActionsDeclarees(await actionsDeclarees()),
   ];
   const parCle = new Map<string, Constat>(constats.map((c) => [c.dedupKey, c]));
 
   const existants = await prisma.finding.findMany({
-    where: { closedAt: null, kind: { in: [...RECONCILIES] } },
+    where: { closedAt: null, kind: { in: reconcilies } },
     select: { id: true, dedupKey: true },
   });
   const clesExistantes = new Set(existants.map((f) => f.dedupKey));
@@ -126,7 +190,7 @@ export async function syncConstats(
     where: {
       closedBy: { not: null },
       closedAt: { not: null },
-      kind: { in: [...RECONCILIES] },
+      kind: { in: reconcilies },
     },
     select: { id: true, dedupKey: true },
   });
@@ -206,7 +270,134 @@ export async function syncConstats(
     });
   }
 
-  return { ouverts, fermes: aFermer.length, actifs: constats.length };
+  return {
+    ouverts,
+    fermes: aFermer.length,
+    actifs: constats.length,
+    arrivees: compteRenduDesArrivees({
+      perimetreComplet: options.perimetreComplet,
+      amorcage,
+      vague,
+      levees,
+      perimetreConnu,
+    }),
+  };
+}
+
+function compteRenduDesArrivees({
+  perimetreComplet,
+  amorcage,
+  vague,
+  levees,
+  perimetreConnu,
+}: {
+  perimetreComplet: boolean;
+  amorcage: Date | null;
+  vague: boolean;
+  levees: number;
+  perimetreConnu: number;
+}): ArriveesDuPassage {
+  if (!perimetreComplet) {
+    return {
+      conclu: false,
+      cause: "perimetre-incomplet",
+      message: "périmètre incomplet, aucune arrivée conclue",
+    };
+  }
+  if (amorcage === null) {
+    return {
+      conclu: false,
+      cause: "amorcage-inconnu",
+      message: "aucune collecte n'a encore vu le périmètre, aucune arrivée conclue",
+    };
+  }
+  if (vague) {
+    return {
+      conclu: false,
+      cause: "vague",
+      message:
+        `${REFUS_DE_VAGUE} : ${levees} pour un périmètre de ${perimetreConnu}, ` +
+        "aucune arrivée conclue",
+    };
+  }
+  return { conclu: true, levees };
+}
+
+/**
+ * La borne à partir de laquelle une entrée dans le périmètre est une vraie arrivée.
+ *
+ * `itemsSeen > 0` plutôt qu'un statut : un run qui n'a vu personne n'a ouvert les yeux
+ * sur aucun périmètre, et un run partiel qui a vu du monde a bel et bien créé des
+ * fiches dont la première vue ne doit pas passer pour une arrivée.
+ *
+ * Le premier passage ne lève rien de lui-même, et ce n'est pas un hasard : la collecte
+ * du périmètre pose le même instant sur la trace du run et sur le `firstSeenAt` des
+ * fiches qu'elle crée, or l'égalité est exclue de l'éligibilité. Sur cette instance
+ * c'est de toute façon la constante qui fait la borne, la première collecte lui étant
+ * antérieure d'une semaine.
+ */
+export async function dateDAmorcage(): Promise<Date | null> {
+  const premiere = await prisma.syncRun.findFirst({
+    where: { provider: FOURNISSEUR_PERIMETRE, capability: "list", itemsSeen: { gt: 0 } },
+    orderBy: { startedAt: "asc" },
+    select: { startedAt: true },
+  });
+
+  return amorcageDesArrivees(premiere?.startedAt ?? null, MISE_EN_SERVICE_DES_ARRIVEES);
+}
+
+/**
+ * Quand l'arrivée de chacun a été traitée, pour ceux dont elle l'a été.
+ *
+ * Une seule requête pour tout le périmètre : interroger par personne ferait cent
+ * allers-retours pour une règle qui tient en une comparaison de dates. `EXECUTED` et
+ * lui seul, un plan à moitié exécuté laissant la personne sans une partie de ses
+ * accès ; le sens se lit sur le dossier comme ailleurs, et le plan doit être un plan
+ * d'arrivée, non une réparation de dérive posée sous le même dossier.
+ *
+ * La date retenue est celle du dernier pointage et non celle de la confirmation :
+ * c'est le pointage qui a fait passer le plan en `EXECUTED`, la confirmation ne dit
+ * que le moment où il a été approuvé. Un plan sans étape datée retombe sur elle.
+ */
+async function arriveesTraitees(): Promise<Map<string, Date>> {
+  const plans = await prisma.plan.findMany({
+    where: { kind: "ONBOARDING", state: "EXECUTED", accessCase: { kind: "ONBOARDING" } },
+    select: {
+      confirmedAt: true,
+      steps: { select: { executedAt: true } },
+      accessCase: { select: { person: { select: { username: true } } } },
+    },
+  });
+
+  const traitees = new Map<string, Date>();
+
+  for (const plan of plans) {
+    const username = plan.accessCase?.person.username;
+    if (!username) {
+      continue;
+    }
+
+    let executeLe = plan.confirmedAt;
+    for (const etape of plan.steps) {
+      if (etape.executedAt && (executeLe === null || etape.executedAt > executeLe)) {
+        executeLe = etape.executedAt;
+      }
+    }
+
+    retenirLaPlusRecente(traitees, username, executeLe);
+  }
+
+  return traitees;
+}
+
+function retenirLaPlusRecente(dates: Map<string, Date>, cle: string, date: Date | null): void {
+  if (date === null) {
+    return;
+  }
+  const connue = dates.get(cle);
+  if (connue === undefined || connue < date) {
+    dates.set(cle, date);
+  }
 }
 
 /**
