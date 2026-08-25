@@ -9,8 +9,11 @@ import {
   type SystemesDuDepart,
   systemesDuDepart,
 } from "@/core/dossier";
+import type { RefusDOctroi } from "@/core/octroi";
 import { assembler, type EtapeAssemblee, type EtapeEcartee, empreinteDuPlan } from "@/core/plan";
+import type { Profil } from "@/core/policy";
 import { Prisma } from "@/generated/prisma/client";
+import { octroisDUnProfil } from "@/lib/arrivee";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -32,6 +35,8 @@ const INTENTION: Record<SensDossier, Intent["kind"]> = {
 };
 
 const AUCUN_SYSTEME: SystemesDuDepart = { revocables: [], observes: [], nonConfirmes: [] };
+
+const AUCUN_OCTROI = { etapes: [], refus: [] } as const;
 
 /**
  * Les systèmes sur lesquels la personne a été observée, répartis selon ce qu'on a le
@@ -105,22 +110,36 @@ export interface PlanCalcule {
    * et son silence passerait pour une absence de compte.
    */
   nonConfirmes: readonly string[];
+  /**
+   * Ce qui empêche d'enregistrer ce plan : un accès de profil qui ne s'applique pas,
+   * un scope qu'aucun schéma n'accepte, un rôle à risque élevé sans échéance. Non
+   * vide, aucune étape ne sort, et c'est la construction qui échoue et non
+   * l'exécution : refuser plus tard laisserait un plan confirmé que personne ne peut
+   * exécuter.
+   */
+  refus: readonly RefusDOctroi[];
 }
 
 /**
  * Ce qu'il faudrait faire pour donner ou pour retirer ses accès à quelqu'un : ce que
- * les modèles déclarent et ce que les connecteurs disent aujourd'hui. Ne touche à
- * rien, ni ici ni ailleurs.
+ * les modèles déclarent, ce que les connecteurs disent aujourd'hui, et ce que le profil
+ * choisi ouvre. Ne touche à rien, ni ici ni ailleurs.
  *
- * Les connecteurs déclarent l'octroi sans en rendre encore les étapes : la substance
- * d'une arrivée vient donc des seuls modèles, et le mécanisme se remplira du reste
- * sans rien changer ici.
+ * Le profil n'arrive que pour une arrivée, et son absence n'est pas une erreur : un
+ * départ n'en applique aucun, et une arrivée ouverte sans profil est une arrivée qui
+ * n'ouvre rien sur les systèmes couverts, ce qui reste une décision licite.
+ *
+ * Il arrive par paramètre plutôt que d'être lu ici, pour que l'appelant qui recalcule
+ * un plan à l'exécution passe exactement celui que le dossier porte : lire la politique
+ * au fond de cette fonction ferait dépendre l'empreinte d'un fichier plutôt que du
+ * dossier.
  */
 export async function calculerPlan(
   sens: SensDossier,
   personId: string,
   username: string,
   maintenant: Date,
+  profil?: Profil | undefined,
 ): Promise<PlanCalcule> {
   // Les comptes observés ne disent rien de ce qu'il faut donner : les lire pour une
   // arrivée serait une requête pour rien, et les afficher ferait passer un accès
@@ -147,6 +166,9 @@ export async function calculerPlan(
     }
 
     systemes.push(connecteur.contract.key);
+    // Sans scope : ce qu'un connecteur rend ici est ce qu'une arrivée exige quel que
+    // soit le profil. Ce qui dépend du profil passe par `octroisDUnProfil`, qui porte
+    // le scope validé, et les deux voies ne doivent jamais proposer le même geste.
     proposees.push(
       ...(await connecteur.plan(
         { kind: INTENTION[sens], subject: { kind: "person", username } },
@@ -154,6 +176,13 @@ export async function calculerPlan(
       )),
     );
   }
+
+  const octrois =
+    sens === "ONBOARDING" && profil
+      ? await octroisDUnProfil(profil, personId, username, maintenant)
+      : AUCUN_OCTROI;
+
+  proposees.push(...octrois.etapes);
 
   // L'ordre dans lequel les origines sont fournies n'a aucun effet : `assembler`
   // retrie par rang d'origine, sans quoi l'empreinte suivrait l'appelant.
@@ -181,6 +210,7 @@ export async function calculerPlan(
     // ou non.
     sansConnecteur: constates.observes.filter((provider) => !couverts.has(provider)),
     nonConfirmes: constates.nonConfirmes.filter((provider) => couverts.has(provider)),
+    refus: octrois.refus,
   };
 }
 
@@ -201,6 +231,12 @@ export async function ouvrirDossier(
   personId: string,
   sens: SensDossier,
   effectiveDate: Date | null,
+  /**
+   * Le profil que cette arrivée applique. Il se fige à l'ouverture parce que le
+   * recalcul doit le retrouver : un plan recalculé sans lui ne porterait aucune de ses
+   * étapes d'octroi et se dirait obsolète tout seul.
+   */
+  profileKey: string | null = null,
 ): Promise<{ id: string; deja: boolean }> {
   const ouvert = await prisma.accessCase.findFirst({
     where: { personId, kind: sens, state: { in: [...ETATS_VIVANTS] } },
@@ -218,6 +254,7 @@ export async function ouvrirDossier(
         kind: sens,
         state: etatDeNaissance(sens),
         ...(effectiveDate ? { effectiveDate } : {}),
+        ...(profileKey ? { profileKey } : {}),
       },
       select: { id: true },
     });
@@ -242,9 +279,27 @@ export async function ouvrirDossier(
 }
 
 /**
+ * Ce qu'un refus de construction dit, et il nomme tout ce qu'il faut pour le corriger :
+ * le profil, le rang de l'accès dans sa liste, le système, et le motif.
+ */
+export function messageDeRefus(refus: readonly RefusDOctroi[]): string {
+  const lignes = refus.map(
+    (motif) =>
+      `  profil « ${motif.profil} », accès n°${motif.acces + 1} sur ${motif.systeme} : ${motif.motif}`,
+  );
+
+  return `Ce plan ne peut pas être construit :\n${lignes.join("\n")}`;
+}
+
+/**
  * Fige un plan calculé. Chaque étape stocke la photo de ce qu'elle engage, jamais
  * une référence : ce qui a été approuvé doit rester lisible tel quel dans deux ans,
  * même si la ressource visée a changé de nom depuis.
+ *
+ * Un plan porteur du moindre refus ne s'écrit pas, et la garde vit ici plutôt que chez
+ * l'appelant : un profil dont un accès ne s'applique pas n'ouvre pas les autres à
+ * moitié, et un appelant qui oublierait de regarder `refus` enregistrerait sinon un
+ * plan amputé sans que rien ne le signale.
  */
 export async function enregistrerPlan(
   accessCaseId: string,
@@ -259,6 +314,10 @@ export async function enregistrerPlan(
    */
   client: Prisma.TransactionClient | typeof prisma = prisma,
 ): Promise<string> {
+  if (calcule.refus.length > 0) {
+    throw new Error(messageDeRefus(calcule.refus));
+  }
+
   const expiresAt = new Date(maintenant.getTime() + VALIDITE_JOURS * 24 * 60 * 60_000);
 
   // L'identifiant est tiré ici pour entrer dans les clés d'idempotence, uniques en
@@ -287,6 +346,7 @@ export async function enregistrerPlan(
           riskLevel: RISQUE[etape.riskLevel],
           expectedState: (etape.expectedState ?? {}) as object,
           idempotencyKey: `${etape.idempotencyKey}:${planId}`,
+          ...(etape.grantExpiresAt ? { grantExpiresAt: etape.grantExpiresAt } : {}),
           ...(etape.manual ? { manual: etape.manual as object } : {}),
           ...(etape.template ? { template: etape.template as object } : {}),
         })),

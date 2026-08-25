@@ -9,6 +9,12 @@ import type {
   ObservedGrant,
   ObservedIdentity,
   ObservedResource,
+  PlannedStep,
+  PrecheckResult,
+  RiskLevel,
+  RunContext,
+  StepOutcome,
+  SubjectRef,
 } from "@/core/connector";
 import type { ExamenDeScope } from "@/core/octroi";
 import { env } from "@/lib/env";
@@ -92,6 +98,18 @@ const SCOPE = z.strictObject({
 export type ScopeGithub = z.infer<typeof SCOPE>;
 
 /**
+ * Un membre ordinaire d'une organisation n'ouvre pas ce qu'ouvre son administration,
+ * qui porte sur l'organisation entière, ses dépôts et ses membres.
+ *
+ * Écrit une fois : c'est ce risque qui fait exiger une échéance à la construction du
+ * plan, et c'est lui que l'étape porte ensuite. Deux expressions de la même règle
+ * finiraient par diverger, et un accès élevé se retrouverait sans terme.
+ */
+function risqueDuRole(role: ScopeGithub["role"]): RiskLevel {
+  return role === "admin" ? "high" : "medium";
+}
+
+/**
  * Ce que `SCOPE` ne peut pas dire de lui-même : les organisations suivies sont
  * déclarées dans la politique, donc inconnues à la compilation, et le schéma reste
  * statique pour que `z.toJSONSchema` le rende. L'appartenance se vérifie donc ici,
@@ -113,10 +131,11 @@ export function examinerScopeGithub(
         : [
             `scope.organisation : « ${organisation} » ne figure pas parmi les organisations déclarées sous connectors.github.organisations (${organisations.join(", ")}).`,
           ],
-      // Un membre ordinaire d'une organisation n'ouvre pas ce qu'ouvre son
-      // administration, qui porte sur l'organisation entière, ses dépôts et ses membres.
-      risque: role === "admin" ? "high" : "medium",
+      risque: risqueDuRole(role),
       libelle: `le rôle ${role} sur l'organisation ${organisation}`,
+      // L'organisation seule : une place d'un rôle et une place d'un autre sont la même
+      // place, et un profil qui demanderait les deux en verrait une rester en écart.
+      cible: `organisation:${organisation}`,
     };
   };
 }
@@ -475,6 +494,410 @@ export async function collecter(
     : { status: "partial", errors: [erreurs[0] as CollectError, ...erreurs.slice(1)], ...payload };
 }
 
+// ---------------------------------------------------------------------------
+// L'octroi : ce qu'une arrivée demande, et ce qui l'exécute
+// ---------------------------------------------------------------------------
+
+const ACTION_OCTROI = "inviter-dans-l-organisation";
+
+/**
+ * La fenêtre pendant laquelle un octroi se défait sans dommage, déclarée une fois et
+ * portée à la fois par la capacité et par l'étape : c'est elle qui décide de l'ordre
+ * d'exécution, et deux valeurs qui divergeraient feraient exécuter en premier ce qu'on
+ * croit le plus facile à défaire.
+ */
+const REVERSIBLE_JOURS = 7;
+
+const REVERSIBLE_MS = REVERSIBLE_JOURS * 24 * 60 * 60_000;
+
+/**
+ * Les étapes qu'un accès de profil ouvre sur GitHub, décidées sans rien lire.
+ *
+ * Une seule étape par accès : un scope nomme une organisation et un rôle, et un profil
+ * qui vise deux organisations porte deux accès.
+ *
+ * Deux choses la font dégrader en manuel, et elles ne se confondent pas. Sans jeton
+ * d'écriture, aucune voie automatique n'existe, et l'étape doit dire exactement ce que
+ * la résolution de capacité dit aux écrans, faute de quoi elle annoncerait un geste
+ * que la boucle tenterait pour rien. Sans identifiant GitHub sûr, il n'y a personne à
+ * inviter : ce qui manque là est une donnée, le connecteur en répond seul, et une
+ * ressemblance n'ouvre jamais un accès sur le compte d'un autre.
+ */
+export function planifierOctroiGithub(
+  scope: ScopeGithub,
+  sujet: SubjectRef,
+  ecriturePossible: boolean,
+): readonly PlannedStep[] {
+  const { organisation, role } = scope;
+  const qui = sujet.kind === "person" ? sujet.username : sujet.key;
+  const compte = sujet.kind === "person" ? (sujet.handles?.["github"] ?? null) : null;
+  const auto = ecriturePossible && compte !== null;
+
+  const pourquoi =
+    compte === null
+      ? ` Aucun identifiant GitHub sûr n'est connu pour ${qui} : c'est à l'opérateur de désigner le compte, personne ici ne le devine.`
+      : ` Aucune voie automatique n'est praticable, il manque : ${CREDENTIAL_ADMIN}.`;
+
+  return [
+    {
+      systemKey: "github",
+      capability: "grant",
+      tier: auto ? "auto" : "manual",
+      action: ACTION_OCTROI,
+      label: `Inviter ${qui}${compte === null ? "" : ` (compte ${compte})`} dans l'organisation ${organisation} avec le rôle ${role}`,
+      params: { organisation, role, beneficiaire: qui, compte },
+      riskLevel: risqueDuRole(role),
+      expectedState: { membre: true, role },
+      // Sur l'identifiant beta.gouv et non sur le compte GitHub : c'est le pivot
+      // d'identité, et une clé qui suivrait le compte ferait perdre de vue le geste le
+      // jour où le compte se découvre entre la confirmation et l'exécution. Le compte
+      // visé, lui, est dans les paramètres, donc dans l'empreinte : s'il change, le
+      // plan confirmé ne décrit plus ce qui a été approuvé, et c'est exact.
+      idempotencyKey: `github:${organisation}:grant:${qui}:${role}`,
+      ...(auto ? { reversibleForDays: REVERSIBLE_JOURS } : {}),
+      ...(auto
+        ? {}
+        : {
+            manual: {
+              title: `Inviter ${qui} dans ${organisation} avec le rôle ${role}`,
+              runbook: `${RUNBOOK_OCTROI}${pourquoi}`,
+              deeplink: `https://github.com/orgs/${organisation}/people`,
+              doneWhen: `${qui} figure parmi les membres de ${organisation} avec le rôle ${role}, ou parmi les invitations en attente de l'organisation : une invitation en attente est un accès accordé, elle n'attend qu'une acceptation.`,
+            },
+          }),
+    },
+  ];
+}
+
+interface CibleDOctroi {
+  organisation: string;
+  compte: string;
+  role: string;
+}
+
+/**
+ * Ce qu'une étape d'octroi vise, relu depuis les paramètres figés à sa construction.
+ *
+ * Nul dès que l'étape n'est pas un octroi écrit par ce connecteur, ou qu'aucun compte
+ * GitHub ne lui a été désigné : le précheck n'a alors rien à constater et l'exécution
+ * n'a personne à inviter. Une étape de retrait porte l'identifiant beta.gouv et non le
+ * login GitHub, et déduire l'un de l'autre serait exactement la ressemblance sur
+ * laquelle ce produit refuse d'agir.
+ */
+function cibleDOctroi(step: PlannedStep): CibleDOctroi | null {
+  if (step.action !== ACTION_OCTROI) {
+    return null;
+  }
+
+  const organisation = step.params["organisation"];
+  const compte = step.params["compte"];
+  const role = step.params["role"];
+
+  if (typeof organisation !== "string" || organisation.length === 0) {
+    return null;
+  }
+  if (typeof compte !== "string" || compte.length === 0) {
+    return null;
+  }
+  if (typeof role !== "string" || role.length === 0) {
+    return null;
+  }
+
+  return { organisation, compte, role };
+}
+
+function cheminDAppartenance(cible: CibleDOctroi): string {
+  return `/orgs/${encodeURIComponent(cible.organisation)}/memberships/${encodeURIComponent(cible.compte)}`;
+}
+
+export interface ReponseGithub {
+  statut: number;
+  corps: unknown;
+}
+
+/**
+ * Un appel unitaire, séparé de son interprétation pour la même raison que la lecture
+ * l'est de l'assemblage : ce qui décide doit se prouver sans réseau.
+ */
+export type Sonde = (chemin: string) => Promise<ReponseGithub>;
+
+export type Ecriture = (chemin: string, corps: unknown) => Promise<ReponseGithub>;
+
+interface Appartenance {
+  etat: string | null;
+  role: string | null;
+}
+
+/**
+ * Le vocabulaire des invitations et celui des adhésions ne coïncident pas : ce que
+ * l'un appelle « direct_member », l'autre l'appelle « member ». Les tenir pour
+ * distincts ferait passer chaque invitation ordinaire pour un écart de rôle.
+ */
+function roleLu(valeur: unknown): string | null {
+  if (typeof valeur !== "string" || valeur.length === 0) {
+    return null;
+  }
+  return valeur === "direct_member" ? "member" : valeur;
+}
+
+function appartenanceLue(corps: unknown): Appartenance {
+  const objet =
+    typeof corps === "object" && corps !== null ? (corps as Record<string, unknown>) : {};
+  const etat = objet["state"];
+
+  return {
+    etat: typeof etat === "string" && etat.length > 0 ? etat : null,
+    role: roleLu(objet["role"]),
+  };
+}
+
+/** Les deux états sous lesquels GitHub rend un accès accordé, accepté ou non. */
+const ETATS_PRESENTS: readonly string[] = ["active", "pending"];
+
+/**
+ * Ce que la lecture d'une appartenance dit de l'étape, et rien d'autre : pure, sans
+ * horloge ni réseau, parce que c'est la ligne qui arrête l'escalade silencieuse et
+ * qu'elle doit se prouver sans rien brancher.
+ *
+ * Un `PUT` sur une adhésion existante avec un autre rôle ne proteste pas : il change le
+ * rôle en place et répond 200. C'est une escalade de privilège que rien ne signalerait,
+ * et `STALE` est ce qui l'empêche. Cette ligne ne s'assouplit jamais au motif que
+ * l'étape serait idempotente : elle ne l'est pas.
+ *
+ * Une réponse dont l'état ne se lit pas vaut écart et non absence : ne pas savoir
+ * n'autorise pas à écrire.
+ */
+export function interpreterAppartenance(
+  statut: number,
+  corps: unknown,
+  attendu: { role: string },
+): PrecheckResult {
+  // Ni membre, ni invité : il reste quelque chose à faire, et c'est le seul cas où
+  // l'écriture est sûre de n'écraser aucun rôle en place.
+  if (statut === 404) {
+    return { state: "READY" };
+  }
+
+  if (statut !== 200) {
+    throw new GithubError(
+      "memberships",
+      `${statut} : l'appartenance n'a pas pu être constatée, rien n'est décidé dessus`,
+    );
+  }
+
+  const lue = appartenanceLue(corps);
+
+  if (lue.etat !== null && ETATS_PRESENTS.includes(lue.etat) && lue.role === attendu.role) {
+    return { state: "ALREADY_PRESENT" };
+  }
+
+  return {
+    state: "STALE",
+    expected: { etat: "active ou pending", role: attendu.role },
+    actual: { etat: lue.etat, role: lue.role },
+  };
+}
+
+/**
+ * Le précheck, qui est une lecture et rien d'autre.
+ *
+ * Il tourne dans les deux régimes, simulation comprise, et jusque sur une étape
+ * manuelle : éviter d'envoyer un humain faire ce qui est déjà fait en est le meilleur
+ * usage.
+ */
+export async function constaterAppartenance(
+  sonder: Sonde,
+  step: PlannedStep,
+): Promise<PrecheckResult> {
+  const cible = cibleDOctroi(step);
+
+  // Rien à constater n'est pas un échec : l'étape reste ce qu'elle était, et la main
+  // qui la coche décidera. Lever ici ferait compter un échec à chaque passage sur une
+  // étape dont on sait déjà qu'elle est manuelle.
+  if (!cible) {
+    return { state: "READY" };
+  }
+
+  const { statut, corps } = await sonder(cheminDAppartenance(cible));
+
+  return interpreterAppartenance(statut, corps, { role: cible.role });
+}
+
+function messageDuCorps(corps: unknown): string | null {
+  if (typeof corps !== "object" || corps === null) {
+    return null;
+  }
+
+  const dit = (corps as Record<string, unknown>)["message"];
+  return typeof dit === "string" && dit.length > 0 ? dit : null;
+}
+
+/** Les statuts dont la cause peut disparaître d'elle-même, et eux seuls. */
+function reprenable(statut: number): boolean {
+  return statut === 408 || statut === 429 || statut >= 500;
+}
+
+/**
+ * Ce qu'un octroi écrit devient dans le dossier. Pure, horloge comprise : la fenêtre de
+ * réversibilité se compte depuis l'instant du run, qui arrive par paramètre.
+ *
+ * Un `PUT` sur quelqu'un qui n'est pas membre n'ouvre pas un accès, il envoie une
+ * invitation, et l'évidence le dit en toutes lettres : sans quoi le dossier annoncerait
+ * un accès ouvert que personne n'a encore accepté.
+ */
+export function interpreterOctroi(statut: number, corps: unknown, maintenant: Date): StepOutcome {
+  if (statut < 200 || statut >= 300) {
+    const dit = messageDuCorps(corps);
+
+    return {
+      state: "FAILED",
+      error: `GitHub a répondu ${statut}${dit === null ? "" : ` : ${dit}`}`,
+      retryable: reprenable(statut),
+    };
+  }
+
+  const lue = appartenanceLue(corps);
+  const role = lue.role ?? "inconnu";
+
+  const evidence =
+    lue.etat === "pending"
+      ? `Invitation envoyée avec le rôle ${role}. Elle reste en attente tant que la personne ne l'a pas acceptée, et c'est déjà un accès accordé.`
+      : lue.etat === "active"
+        ? `Adhésion active avec le rôle ${role}.`
+        : `GitHub a répondu ${statut} sans état lisible : l'écriture a eu lieu, l'état constaté reste à vérifier.`;
+
+  return {
+    state: "SUCCEEDED",
+    reversibleUntil: new Date(maintenant.getTime() + REVERSIBLE_MS),
+    evidence,
+  };
+}
+
+const REFUS_SIMULATION =
+  "ACTIONS_ENABLED n'autorise aucune écriture : une exécution a été demandée en simulation, et aucun appel n'est parti. Le garde-fou est ici autant que chez l'appelant, pour qu'aucun appelant n'ait à s'en souvenir.";
+
+/**
+ * L'octroi écrit, et les trois refus qui le précèdent.
+ *
+ * La simulation d'abord, avant même de regarder ce que l'étape demande : ce qui ne
+ * part pas ne peut pas partir par erreur. Puis le credential, dont l'absence est
+ * définitive au sens de la reprise, la même exécution échouant de la même façon. Puis
+ * l'étape elle-même : un connecteur qui exécuterait un geste qu'il ne reconnaît pas
+ * écrirait au hasard sur un système tiers.
+ */
+export async function executerOctroi(
+  ecrire: Ecriture,
+  ecriturePossible: boolean,
+  step: PlannedStep,
+  ctx: RunContext,
+): Promise<StepOutcome> {
+  if (ctx.dryRun) {
+    throw new Error(REFUS_SIMULATION);
+  }
+
+  if (!ecriturePossible) {
+    return {
+      state: "FAILED",
+      error: `${CREDENTIAL_ADMIN} n'est pas configuré : aucune écriture n'est possible sur les membres de l'organisation, et l'étape est à faire à la main. ${RUNBOOK_OCTROI}`,
+      retryable: false,
+    };
+  }
+
+  if (step.action !== ACTION_OCTROI) {
+    return {
+      state: "FAILED",
+      error: `Le connecteur GitHub ne sait pas exécuter l'action « ${step.action} » : elle ne vient pas de lui, et la reprendre telle quelle échouerait de la même façon.`,
+      retryable: false,
+    };
+  }
+
+  const cible = cibleDOctroi(step);
+
+  if (!cible) {
+    return {
+      state: "FAILED",
+      error: `Cette étape ne désigne aucun compte GitHub sûr : il n'y a personne à inviter, et c'est à l'opérateur de le faire. ${RUNBOOK_OCTROI}`,
+      retryable: false,
+    };
+  }
+
+  let reponse: ReponseGithub;
+  try {
+    reponse = await ecrire(cheminDAppartenance(cible), { role: cible.role });
+  } catch (cause: unknown) {
+    // Une panne de transport ne dit rien de l'écriture, et surtout pas qu'elle n'a pas
+    // eu lieu : la reprise repassera par le précheck, qui constatera.
+    return { state: "FAILED", error: message(cause), retryable: true };
+  }
+
+  return interpreterOctroi(reponse.statut, reponse.corps, ctx.now);
+}
+
+/**
+ * Un appel unitaire qui rend le statut au lieu de lever dessus : ce qu'une lecture
+ * d'appartenance doit décider tient dans le code de retour, un 404 y disant « personne
+ * n'est là » et non « la lecture a échoué ».
+ */
+async function appeler(
+  methode: "GET" | "PUT",
+  chemin: string,
+  jeton: string | undefined,
+  corps?: unknown,
+): Promise<ReponseGithub> {
+  if (!jeton) {
+    throw new GithubError(chemin, "aucun jeton GitHub configuré");
+  }
+
+  let reponse: Response;
+  try {
+    reponse = await fetch(`${API}${chemin}`, {
+      method: methode,
+      headers: {
+        authorization: `Bearer ${jeton}`,
+        accept: "application/vnd.github+json",
+        "x-github-api-version": "2022-11-28",
+        ...(corps === undefined ? {} : { "content-type": "application/json" }),
+      },
+      ...(corps === undefined ? {} : { body: JSON.stringify(corps) }),
+      signal: AbortSignal.timeout(DELAI_MS),
+    });
+  } catch (cause: unknown) {
+    throw new GithubError(chemin, message(cause));
+  }
+
+  return { statut: reponse.status, corps: analyser(await reponse.text().catch(() => "")) };
+}
+
+/**
+ * Un corps illisible n'est pas une panne : plusieurs réponses de l'API n'en portent
+ * aucun, et leur statut suffit à les interpréter.
+ */
+function analyser(texte: string): unknown {
+  try {
+    return texte.length > 0 ? JSON.parse(texte) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * La lecture qui autorise une écriture passe par le jeton qui écrira, et ne se rabat
+ * sur celui de collecte qu'à défaut : un 404 ne vaut « personne n'est là » que lu par
+ * ce jeton-là. Deux jetons émis séparément peuvent voir deux périmètres
+ * d'organisations, et GitHub rend 404 aussi bien pour « aucune adhésion » que pour
+ * « hors du périmètre de ce jeton ». Lu par le plus étroit des deux, ce 404 ferait
+ * passer un membre en place pour un absent, et l'écriture élèverait son rôle au lieu
+ * de l'inviter.
+ *
+ * Le repli garde exactement ce qui le justifie : sans jeton d'écriture, l'étape est
+ * manuelle et aucune écriture ne peut suivre le constat, donc le précheck tourne quand
+ * même et évite d'envoyer quelqu'un faire ce qui est déjà fait.
+ */
+const sonder: Sonde = (chemin) =>
+  appeler("GET", chemin, env.GITHUB_ADMIN_TOKEN ?? env.GITHUB_TOKEN);
+
+const ecrire: Ecriture = (chemin, corps) => appeler("PUT", chemin, env.GITHUB_ADMIN_TOKEN, corps);
+
 export const CONTRAT_GITHUB: ConnectorContract = {
   key: "github",
   label: "GitHub",
@@ -503,7 +926,12 @@ export const CONTRAT_GITHUB: ConnectorContract = {
     // elle un jeton d'administration absent ferait disparaître l'octroi au lieu de le
     // dégrader.
     grant: [
-      { requires: [CREDENTIAL_ADMIN], tier: "auto", reversibleForDays: 7, runbook: RUNBOOK_OCTROI },
+      {
+        requires: [CREDENTIAL_ADMIN],
+        tier: "auto",
+        reversibleForDays: REVERSIBLE_JOURS,
+        runbook: RUNBOOK_OCTROI,
+      },
       { requires: [], tier: "manual", runbook: RUNBOOK_OCTROI },
     ],
     // Aucune voie automatique en v1 : retirer quelqu'un d'une organisation se fait
@@ -549,8 +977,23 @@ export function creerGithub(lireConfig: () => ConfigGithub): Connector {
     list: (): Promise<CollectResult> => collecter(lireTout, lireConfig().organisations),
 
     plan: (intent) => {
-      if (intent.kind !== "revoke" || intent.subject.kind !== "person") {
+      if (intent.subject.kind !== "person") {
         return Promise.resolve([]);
+      }
+
+      // Un octroi ne se décide qu'avec son scope, et le scope vient du profil : il
+      // passe donc par `planifierOctroi`, qui appelle la même fonction que voici. Sans
+      // scope, aucune étape : émettre ici une adhésion par défaut donnerait à toute
+      // arrivée un accès que personne n'a demandé, et ferait sortir le même octroi
+      // sous deux clés que le dédoublonnage ne rapprocherait pas.
+      if (intent.kind === "grant") {
+        const lu = SCOPE.safeParse(intent.scope);
+
+        return Promise.resolve(
+          lu.success
+            ? planifierOctroiGithub(lu.data, intent.subject, Boolean(env.GITHUB_ADMIN_TOKEN))
+            : [],
+        );
       }
 
       const username = intent.subject.username;
@@ -575,5 +1018,17 @@ export function creerGithub(lireConfig: () => ConfigGithub): Connector {
         })),
       );
     },
+
+    /**
+     * Le tier se décide ici parce que le connecteur est le seul à connaître les deux
+     * faits qui le fixent : son credential d'écriture, qu'il sonde déjà, et
+     * l'identifiant sûr que le socle lui passe ou ne lui passe pas.
+     */
+    planifierOctroi: (scope, sujet) =>
+      planifierOctroiGithub(scope as ScopeGithub, sujet, Boolean(env.GITHUB_ADMIN_TOKEN)),
+
+    precheck: (step) => constaterAppartenance(sonder, step),
+
+    execute: (step, ctx) => executerOctroi(ecrire, Boolean(env.GITHUB_ADMIN_TOKEN), step, ctx),
   };
 }

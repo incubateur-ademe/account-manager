@@ -8,6 +8,7 @@ import type { SensDossier } from "@/core/dossier";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 import style from "@/ui/Actions.module.css";
 import { Aide } from "@/ui/Aide";
+import type { ChoixDeProfils } from "@/ui/profils";
 
 /**
  * Hors du composant, et une par sens : `createModal` enregistre la modale une fois
@@ -29,15 +30,13 @@ const MODALES_DE_DOSSIER: Record<SensDossier, ReturnType<typeof createModal>> = 
  * d'ouvrir, et le doute qui suit fait recliquer : le dossier ne se dédouble pas,
  * mais on ne l'apprend qu'après coup.
  */
-export function BoutonDossier({
-  username,
-  sens,
-  priorite = "primary",
-}: {
-  username: string;
-  sens: SensDossier;
-  priorite?: "primary" | "secondary";
-}) {
+export function BoutonDossier(
+  proprietes: {
+    username: string;
+    priorite?: "primary" | "secondary";
+  } & ({ sens: "OFFBOARDING" } | { sens: "ONBOARDING"; profils: ChoixDeProfils }),
+) {
+  const { username, sens, priorite = "primary" } = proprietes;
   const mots = LIBELLE_DOSSIER[sens];
   const modale = MODALES_DE_DOSSIER[sens];
 
@@ -56,7 +55,11 @@ export function BoutonDossier({
       </span>
 
       <modale.Component title={mots.ouvrir}>
-        <FormulaireOuverture username={username} sens={sens} />
+        {proprietes.sens === "ONBOARDING" ? (
+          <FormulaireOuverture username={username} sens="ONBOARDING" profils={proprietes.profils} />
+        ) : (
+          <FormulaireOuverture username={username} sens="OFFBOARDING" />
+        )}
       </modale.Component>
     </>
   );

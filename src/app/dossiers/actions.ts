@@ -2,11 +2,19 @@
 
 import { redirect } from "next/navigation";
 
+import { catalogueDOctroi } from "@/connectors";
 import type { SensDossier } from "@/core/dossier";
+import { verifierProfils } from "@/core/octroi";
 import { echeanceEffective } from "@/core/rattachement-startup";
 import { actionTracee } from "@/lib/actions";
+import { profilDeLaPolitique } from "@/lib/arrivee";
 import { prisma } from "@/lib/db";
-import { calculerPlan, enregistrerPlanDOuverture, ouvrirDossier } from "@/lib/dossier";
+import {
+  calculerPlan,
+  enregistrerPlanDOuverture,
+  messageDeRefus,
+  ouvrirDossier,
+} from "@/lib/dossier";
 import { requireOperateur } from "@/lib/session";
 
 export interface EtatDossier {
@@ -23,6 +31,26 @@ async function ouvrir(sens: SensDossier, formData: FormData): Promise<EtatDossie
   const username = String(formData.get("username") ?? "").trim();
   if (!username) {
     return { erreur: "Personne introuvable." };
+  }
+
+  // Le profil ne vaut que pour une arrivée : un départ retire ce qui est observé, il
+  // n'applique aucun rôle.
+  const profilChoisi = sens === "ONBOARDING" ? String(formData.get("profil") ?? "").trim() : "";
+  const profil = profilDeLaPolitique(profilChoisi);
+
+  if (profilChoisi && !profil) {
+    return {
+      erreur: `Le profil « ${profilChoisi} » n'existe pas dans la politique : choisissez-en un dans la liste, ou déclarez-le sous profiles.`,
+    };
+  }
+
+  // La seconde passe de la validation d'une politique, ici et pas au chargement : elle
+  // refuse ce profil sans faire tomber le reste, là où `policy()` qui lèverait
+  // arrêterait net la collecte nocturne de tout le parc. Elle précède l'ouverture, pour
+  // que le refus arrive sous le formulaire plutôt qu'au milieu d'une écriture.
+  const refusDeProfil = profil ? verifierProfils([profil], catalogueDOctroi()) : [];
+  if (refusDeProfil.length > 0) {
+    return { erreur: messageDeRefus(refusDeProfil) };
   }
 
   const personne = await prisma.person.findUnique({
@@ -57,10 +85,14 @@ async function ouvrir(sens: SensDossier, formData: FormData): Promise<EtatDossie
     action: "dossier.ouverture",
     targetType: "personne",
     targetId: personne.username,
-    after: { sens, echeance: echeance?.toISOString().slice(0, 10) ?? null },
+    after: {
+      sens,
+      echeance: echeance?.toISOString().slice(0, 10) ?? null,
+      profil: profil?.key ?? null,
+    },
     revalider: [`/personnes/${personne.username}`],
     ecrire: async (operateur) => {
-      const dossier = await ouvrirDossier(personne.id, sens, echeance);
+      const dossier = await ouvrirDossier(personne.id, sens, echeance, profil?.key ?? null);
       if (dossier.deja) {
         dejaOuvert = true;
 
@@ -72,7 +104,14 @@ async function ouvrir(sens: SensDossier, formData: FormData): Promise<EtatDossie
         }
       }
 
-      const calcule = await calculerPlan(sens, personne.id, personne.username, maintenant);
+      const calcule = await calculerPlan(sens, personne.id, personne.username, maintenant, profil);
+
+      // La construction échoue et rien ne s'enregistre : un profil dont un accès ne
+      // s'applique pas n'ouvre pas les autres à moitié.
+      if (calcule.refus.length > 0) {
+        throw new Error(messageDeRefus(calcule.refus));
+      }
+
       await enregistrerPlanDOuverture(dossier.id, calcule, operateur.username, maintenant);
       return dossier.id;
     },

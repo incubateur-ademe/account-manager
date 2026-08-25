@@ -5,6 +5,7 @@ import { Button } from "@codegouvfr/react-dsfr/Button";
 import { createModal } from "@codegouvfr/react-dsfr/Modal";
 import style from "@/ui/Actions.module.css";
 import { Aide } from "@/ui/Aide";
+import type { ChoixDeProfils } from "@/ui/profils";
 
 import { Appartenance, type SurchargePosee } from "./Appartenance";
 import { BoutonDossier } from "./BoutonDossier";
@@ -27,18 +28,26 @@ export function ActionsDePage({
   editable,
   raisonNonEditable,
   surcharge,
+  profils,
 }: {
   username: string;
   editable: boolean;
   /** Pourquoi la fiche ne s'édite pas, à dire plutôt qu'à taire. */
   raisonNonEditable?: string;
   surcharge: SurchargePosee | null;
+  /** Les profils qu'une arrivée peut appliquer, lus par le serveur : un composant client n'atteint pas la politique. */
+  profils: ChoixDeProfils;
 }) {
   return (
     <>
       <div className={fr.cx("fr-grid-row", "fr-grid-row--right", "fr-grid-row--middle")}>
         <BoutonDossier username={username} sens="OFFBOARDING" />
-        <BoutonDossier username={username} sens="ONBOARDING" priorite="secondary" />
+        <BoutonDossier
+          username={username}
+          sens="ONBOARDING"
+          priorite="secondary"
+          profils={profils}
+        />
 
         <span className={style["geste"]}>
           {/* Le bouton reste, même inerte : absent, il laissait chercher ce qui

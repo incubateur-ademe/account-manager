@@ -51,6 +51,13 @@ thresholds:
   # de quelqu'un.
   maxNewPersonShare: 0.2
 
+  # Plafond de masse : nombre d'etapes qu'un plan peut faire executer d'un coup avant
+  # d'exiger une confirmation explicite en plus de la sienne. Seul garde-fou conserve
+  # a la place des approbateurs multiples, de la fenetre de retractation et du quorum.
+  # Un plan anormalement gros est le plus souvent le signe d'un calcul qui a derape,
+  # et le relire ligne a ligne coute moins que de le defaire.
+  maxPlanSteps: 20
+
   # Age au-dela duquel les ecrans cessent d'affirmer et previennent que la collecte ne
   # tourne plus. Deux fois la periode du traitement quotidien : une nuit sautee arrive,
   # deux de suite est une panne.

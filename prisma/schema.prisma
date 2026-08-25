@@ -401,6 +401,20 @@ model AccessCase {
   /// le premier create ecrit un peu vite.
   state CaseState
 
+  /// Le profil que cette arrivee applique, tel qu'il est declare dans la politique.
+  /// Il vit sur le dossier et pas sur le plan : c'est lui qui rend le recalcul
+  /// reproductible, un plan recalcule sans savoir quel profil l'a produit ne
+  /// retrouverait aucune de ses etapes d'octroi et se declarerait obsolete tout seul.
+  ///
+  /// Une cle et non une relation : les profils vivent dans le fichier de politique,
+  /// pas en base. Un profil retire de la politique laisse donc une cle qui ne resout
+  /// plus, et c'est le comportement voulu, le dossier disant ce qui a ete choisi ce
+  /// jour-la plutot que ce qui existe aujourd'hui.
+  ///
+  /// Nulle pour un depart, qui n'applique aucun profil, et pour une arrivee ouverte
+  /// avant que le choix n'existe.
+  profileKey String?
+
   firstSignalAt   DateTime  @default(now())
   effectiveDate   DateTime? @db.Date
   cancelledReason String?

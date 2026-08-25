@@ -9,6 +9,8 @@ import type {
   NonEmptyArray,
   ObservedGrant,
   ObservedIdentity,
+  PlannedStep,
+  SubjectRef,
 } from "@/core/connector";
 import { lireChaque } from "@/core/lecture";
 import { env } from "@/lib/env";
@@ -404,6 +406,43 @@ export async function diagnostiquer(lire: LecteurScim): Promise<Diagnosis> {
   };
 }
 
+const SCOPE = z.strictObject({});
+
+/**
+ * L'étape qu'un accès de profil ouvre sur Notion, et il n'y en a jamais qu'une : être
+ * membre du workspace est tout ce qu'il y a à donner, si bien qu'aucune portée n'entre
+ * dans cette décision.
+ *
+ * Manuelle toujours, comme la capacité le déclare, et sans compte à viser : Notion
+ * invite sur une adresse et non sur un identifiant rapproché. Le risque est moindre que
+ * celui du retrait, et ce n'est pas une contradiction : une porte laissée ouverte après
+ * un départ coûte plus qu'un siège de membre ordinaire ouvert de trop, lequel se solde
+ * d'un clic sur « déjà présent ».
+ */
+export function planifierOctroiNotion(sujet: SubjectRef): readonly PlannedStep[] {
+  const qui = sujet.kind === "person" ? sujet.username : sujet.key;
+
+  return [
+    {
+      systemKey: "notion",
+      capability: "grant",
+      tier: "manual",
+      action: "inviter-dans-le-workspace",
+      label: `Inviter ${qui} dans le workspace Notion`,
+      params: { beneficiaire: qui },
+      riskLevel: "medium",
+      expectedState: { membre: true },
+      idempotencyKey: `notion:grant:${qui}`,
+      manual: {
+        title: `Inviter ${qui} dans le workspace Notion`,
+        runbook: RUNBOOK_OCTROI,
+        deeplink: MEMBRES,
+        doneWhen: `${qui} figure dans la liste des membres du workspace, invitation non acceptée comprise : Notion l'y affiche dès l'envoi, et l'accès est accordé à ce moment-là.`,
+      },
+    },
+  ];
+}
+
 export const CONTRAT_NOTION: ConnectorContract = {
   key: "notion",
   label: "Notion",
@@ -434,7 +473,7 @@ export const CONTRAT_NOTION: ConnectorContract = {
   // Un membre l'est du workspace entier : un octroi Notion n'a pas de portée à
   // décrire. Strict quand même, comme l'exige le contrat : sans clé attendue, c'est
   // la seule chose que ce schéma ait encore à dire.
-  scopeSchema: z.strictObject({}),
+  scopeSchema: SCOPE,
 };
 
 export const notion: Connector = {
@@ -457,8 +496,17 @@ export const notion: Connector = {
   list: (): Promise<CollectResult> => collecter(lireTout),
 
   plan: (intent) => {
-    if (intent.kind !== "revoke" || intent.subject.kind !== "person") {
+    if (intent.subject.kind !== "person") {
       return Promise.resolve([]);
+    }
+
+    // Même règle que sur les autres systèmes : un octroi ne sort que sous un scope
+    // validé, et le scope vient du profil. Sans lui, aucune étape, faute de quoi le
+    // même octroi sortirait sous deux clés que le dédoublonnage ne rapprocherait pas.
+    if (intent.kind === "grant") {
+      const lu = SCOPE.safeParse(intent.scope);
+
+      return Promise.resolve(lu.success ? planifierOctroiNotion(intent.subject) : []);
     }
 
     const username = intent.subject.username;
@@ -483,4 +531,6 @@ export const notion: Connector = {
       },
     ]);
   },
+
+  planifierOctroi: (_scope, sujet) => planifierOctroiNotion(sujet),
 };

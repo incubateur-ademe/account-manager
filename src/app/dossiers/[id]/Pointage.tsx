@@ -7,6 +7,8 @@ import { useActionState, useState } from "react";
 import type { SensDossier } from "@/core/dossier";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 import type { SaisieAttendue } from "@/core/modele-plan";
+import type { Masse } from "@/core/plan";
+import type { ResultatDExecution } from "@/lib/execution";
 
 import { messageObligatoire } from "@/ui/validation";
 
@@ -16,6 +18,7 @@ import {
   cloreDossier,
   confirmerPlan,
   type EtatAction,
+  lancerExecution,
   pointerEtape,
   recalculerPlan,
 } from "./actions";
@@ -213,6 +216,100 @@ export function Pointage({
   );
 }
 
+/**
+ * Ce qu'un passage de la boucle a fait, dit à celui qui vient de le lancer.
+ *
+ * En simulation, la page n'a rien à montrer d'elle-même : aucune étape prête n'a
+ * changé d'état, c'est le seul état honnête, et sans cette phrase le lancement
+ * passerait pour un clic sans effet.
+ */
+function compteRendu({ simulation, executees, soldees, echecs }: ResultatDExecution): string {
+  const solde = `${soldees} étape${soldees > 1 ? "s" : ""} soldée${soldees > 1 ? "s" : ""} par le précheck, sans appel d'écriture`;
+  const echec = echecs === 0 ? "" : ` ${echecs} étape${echecs > 1 ? "s" : ""} en échec.`;
+
+  if (simulation) {
+    return `Simulation : rien n'a été écrit. ${solde}. Les étapes prêtes restent à faire, leur état ne bouge pas, et le journal dit étape par étape ce qui aurait été appelé.${echec}`;
+  }
+
+  return `${executees} appel${executees > 1 ? "s" : ""} parti${executees > 1 ? "s" : ""} vers les systèmes couverts, ${solde}.${echec}`;
+}
+
+/**
+ * Le geste qui lance la boucle d'exécution.
+ *
+ * Au-delà du plafond de masse, il exige une seconde parole : une case que l'opérateur
+ * coche lui-même, jamais pré-cochée, jamais un paramètre d'URL. Le bouton attend
+ * qu'elle le soit, et le refus du serveur reste la vraie garde : ce qui se voit ici
+ * n'empêche que le clic, pas l'appel.
+ */
+export function BoutonExecuter({
+  planId,
+  masse,
+  raisonDeMasse,
+  simulation,
+}: {
+  planId: string;
+  masse: Masse;
+  /** La phrase du plafond, telle que le noyau la rédige, ou rien si le plan tient dessous. */
+  raisonDeMasse: string | null;
+  simulation: boolean;
+}) {
+  const [etat, formAction, pending] = useActionState<EtatAction | null, FormData>(
+    lancerExecution,
+    null,
+  );
+  const [confirmee, setConfirmee] = useState(false);
+  const bloque = masse.depasse && !confirmee;
+
+  return (
+    <form action={formAction} className={fr.cx("fr-mt-2w")}>
+      <input type="hidden" name="planId" value={planId} />
+
+      {raisonDeMasse ? (
+        <>
+          <p className={fr.cx("fr-text--sm", "fr-mb-1w")}>{raisonDeMasse}</p>
+          <div className={fr.cx("fr-checkbox-group", "fr-mb-2w")}>
+            <input
+              type="checkbox"
+              id="masse-confirmee"
+              name="masse"
+              value="confirmee"
+              checked={confirmee}
+              onChange={(evenement) => setConfirmee(evenement.target.checked)}
+            />
+            <label className={fr.cx("fr-label")} htmlFor="masse-confirmee">
+              J'ai relu les {masse.executables} étapes que cette exécution toucherait, et j'en
+              réponds.
+            </label>
+          </div>
+        </>
+      ) : null}
+
+      <Button type="submit" disabled={pending || bloque}>
+        {pending
+          ? simulation
+            ? "Simulation…"
+            : "Exécution…"
+          : simulation
+            ? "Lancer la simulation"
+            : "Lancer l'exécution"}
+      </Button>
+
+      {etat?.execution ? (
+        <p className={fr.cx("fr-text--sm", "fr-mt-1w")} role="status">
+          {compteRendu(etat.execution)}
+        </p>
+      ) : null}
+
+      {etat?.erreur ? (
+        <p className={fr.cx("fr-error-text", "fr-mt-1v")} role="alert">
+          {etat.erreur}
+        </p>
+      ) : null}
+    </form>
+  );
+}
+
 export function BoutonClore({ dossierId }: { dossierId: string }) {
   const [etat, formAction, pending] = useActionState<EtatAction | null, FormData>(
     cloreDossier,
@@ -247,7 +344,13 @@ export function BoutonRecalculer({ planId }: { planId: string }) {
         {pending ? "Recalcul…" : "Recalculer le plan"}
       </Button>
       {etat?.erreur ? (
-        <p className={fr.cx("fr-error-text", "fr-mt-1v")} role="alert">
+        // Le refus de construction énumère un accès de profil par ligne : replié en un
+        // seul paragraphe, il devient la bouillie qu'on cesse de lire.
+        <p
+          className={fr.cx("fr-error-text", "fr-mt-1v")}
+          style={{ whiteSpace: "pre-line" }}
+          role="alert"
+        >
           {etat.erreur}
         </p>
       ) : null}

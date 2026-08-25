@@ -9,6 +9,7 @@ import { useState } from "react";
 import { ClotureConstat } from "@/app/constats/ClotureConstat";
 import { FormulaireOuverture } from "@/app/dossiers/FormulaireOuverture";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
+import type { ChoixDeProfils } from "@/ui/profils";
 
 import { modaleRattacherStartup } from "./ModaleRattacherStartup";
 import type { Geste, MotifDAction } from "./motifs";
@@ -47,9 +48,12 @@ type GesteDeCloture = Extract<Geste, { nom: "clore" }>;
 export function CeQuiAppelleUneAction({
   username,
   motifs,
+  profils,
 }: {
   username: string;
   motifs: readonly MotifDAction[];
+  /** Les profils qu'une arrivée peut appliquer, lus par le serveur qui monte ce bloc. */
+  profils: ChoixDeProfils;
 }) {
   const [choisi, setChoisi] = useState<GesteDeCloture | null>(null);
 
@@ -155,7 +159,7 @@ export function CeQuiAppelleUneAction({
       </modaleCloture.Component>
 
       <modaleArrivee.Component title={LIBELLE_DOSSIER.ONBOARDING.ouvrir}>
-        <FormulaireOuverture username={username} sens="ONBOARDING" />
+        <FormulaireOuverture username={username} sens="ONBOARDING" profils={profils} />
       </modaleArrivee.Component>
     </section>
   );
