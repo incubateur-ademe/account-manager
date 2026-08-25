@@ -64,6 +64,46 @@ systems:
     criticality: medium
     runbook: https://exemple.org/procedures/mon-systeme
 
+# Ensembles d'acces qu'une arrivee ouvre d'un coup. Un profil est un role et ne nomme
+# personne : c'est ce qui lui permet de vivre ici, dans le fichier qui ne designe
+# personne, plutot qu'en base.
+#
+# Le scope d'un acces appartient au connecteur vise, qui seul sait le valider : ce
+# fichier n'en verifie que la structure. Une faute de frappe dedans est signalee par
+# `pnpm policy:check` et non au demarrage, faute de quoi elle arreterait la collecte
+# nocturne de tout le parc au lieu du seul octroi qu'elle abime.
+profiles:
+  - key: developpeur
+    label: Developpeur d'une startup d'Etat
+    accesses:
+      - system: github
+        scope:
+          organisation: incubateur-ademe
+          role: member
+
+      # Un connecteur dont l'octroi n'a pas de perimetre a choisir n'attend aucun
+      # scope : etre membre du workspace, c'est tout ce qu'il y a a donner. La cle
+      # s'omet donc, et c'est la forme que ce modele recommande. Une cle ecrite puis
+      # laissee vide vaut la meme chose au chargement, mais la saisie assistee la
+      # signale. Une cle en trop, elle, est refusee ici comme sur n'importe quel autre
+      # systeme : dans un fichier ecrit a la main, c'est une faute de frappe.
+      - system: notion
+
+  - key: administration-github
+    label: Administration de l'organisation GitHub
+    accesses:
+      - system: github
+        scope:
+          organisation: incubateur-ademe
+          role: admin
+
+        # Obligatoire ici et pas au-dessus : le connecteur tient le role admin pour un
+        # acces eleve, et un acces eleve sans terme ne se referme jamais de lui-meme.
+        # L'echeance se compte depuis l'ouverture du plan et jamais depuis la fin de
+        # mission : prolonger une mission ne reconduit pas une administration, il faut
+        # la redemander.
+        expiresInDays: 180
+
 # Reglages propres a chaque connecteur, sous sa cle. Chaque connecteur decide de la
 # forme de la sienne et la valide lui-meme : une cle qu'aucun connecteur ne porte fait
 # refuser le demarrage, plutot que de laisser croire a un reglage applique.

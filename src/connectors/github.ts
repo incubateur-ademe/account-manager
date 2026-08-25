@@ -10,6 +10,7 @@ import type {
   ObservedIdentity,
   ObservedResource,
 } from "@/core/connector";
+import type { ExamenDeScope } from "@/core/octroi";
 import { env } from "@/lib/env";
 
 /**
@@ -39,6 +40,14 @@ const CONFIG = z.strictObject({
 export type ConfigGithub = z.infer<typeof CONFIG>;
 
 const CREDENTIAL = "github-token";
+
+/**
+ * Un second jeton, et non un droit de plus sur le premier : la collecte tourne toutes
+ * les nuits sans personne pour la surveiller, elle n'a aucune raison de détenir de
+ * quoi écrire.
+ */
+const CREDENTIAL_ADMIN = "github-token-admin";
+
 const API = "https://api.github.com";
 
 /**
@@ -50,6 +59,67 @@ const DELAI_MS = 15_000;
 
 const RUNBOOK =
   "Retirer la personne dans Settings > People de l'organisation, puis vérifier qu'elle ne figure plus dans la liste des membres ni dans les invitations en attente.";
+
+const RUNBOOK_OCTROI =
+  "Inviter la personne dans Settings > People de l'organisation, avec le rôle demandé, puis vérifier qu'elle figure parmi les membres avec ce rôle ou parmi les invitations en attente. Une invitation reste en attente tant qu'elle n'est pas acceptée : c'est un accès accordé, pas un accès en suspens.";
+
+/**
+ * Strict, et sans clé facultative : dans un profil écrit à la main, une clé inconnue
+ * est une faute de frappe, et une faute de frappe ignorée en silence donne un octroi
+ * qui ne fait pas ce que son auteur croit avoir écrit.
+ *
+ * L'organisation reste une chaîne libre plutôt qu'une énumération : les organisations
+ * suivies sont déclarées dans la politique, donc inconnues à la compilation. Qu'une
+ * valeur figure bien parmi elles se vérifie contre la configuration résolue, ailleurs :
+ * ce schéma est statique et déclaratif, il ne connaît aucune configuration.
+ */
+const SCOPE = z.strictObject({
+  organisation: z
+    .string()
+    .min(1)
+    .meta({
+      description:
+        "Organisation GitHub visée par l'octroi. Elle doit figurer parmi celles déclarées sous connectors.github.organisations.",
+      examples: ["incubateur-ademe"],
+    }),
+  role: z.enum(["member", "admin"]).meta({
+    description:
+      "Rôle dans l'organisation. « admin » porte sur l'organisation entière, ses dépôts et ses membres compris.",
+    examples: ["member"],
+  }),
+});
+
+export type ScopeGithub = z.infer<typeof SCOPE>;
+
+/**
+ * Ce que `SCOPE` ne peut pas dire de lui-même : les organisations suivies sont
+ * déclarées dans la politique, donc inconnues à la compilation, et le schéma reste
+ * statique pour que `z.toJSONSchema` le rende. L'appartenance se vérifie donc ici,
+ * contre la configuration résolue, et le connecteur est le seul à savoir lequel de ses
+ * champs de scope en dépend.
+ *
+ * Le scope arrive tel que `SCOPE` l'a rendu et jamais autrement : c'est le contrat de
+ * `examinerScope`, qui n'est appelé qu'après validation.
+ */
+export function examinerScopeGithub(
+  organisations: readonly string[],
+): (scope: unknown) => ExamenDeScope {
+  return (scope) => {
+    const { organisation, role } = scope as ScopeGithub;
+
+    return {
+      refus: organisations.includes(organisation)
+        ? []
+        : [
+            `scope.organisation : « ${organisation} » ne figure pas parmi les organisations déclarées sous connectors.github.organisations (${organisations.join(", ")}).`,
+          ],
+      // Un membre ordinaire d'une organisation n'ouvre pas ce qu'ouvre son
+      // administration, qui porte sur l'organisation entière, ses dépôts et ses membres.
+      risque: role === "admin" ? "high" : "medium",
+      libelle: `le rôle ${role} sur l'organisation ${organisation}`,
+    };
+  };
+}
 
 interface MembreApi {
   id: number;
@@ -418,17 +488,29 @@ export const CONTRAT_GITHUB: ConnectorContract = {
         "Jeton fine-grained restreint, en lecture seule, aux organisations déclarées sous connectors.github.organisations. Seul système du catalogue dont le fournisseur sait émettre un credential nativement restreint, donc sans proxy.",
       nominative: false,
     },
+    {
+      id: CREDENTIAL_ADMIN,
+      source: "env",
+      scopeNote:
+        "Jeton fine-grained restreint aux mêmes organisations, mais porteur de l'écriture sur leurs membres : il sait inviter, changer un rôle et retirer. Distinct du jeton de lecture pour que la collecte nocturne n'en dispose jamais.",
+      nominative: false,
+    },
   ],
   capabilities: {
     list: [{ requires: [CREDENTIAL], tier: "auto" }],
+    // La voie manuelle est inconditionnelle et reste déclarée sous la voie
+    // automatique : un chemin auto qui tombe redevient un chemin manuel, et sans
+    // elle un jeton d'administration absent ferait disparaître l'octroi au lieu de le
+    // dégrader.
+    grant: [
+      { requires: [CREDENTIAL_ADMIN], tier: "auto", reversibleForDays: 7, runbook: RUNBOOK_OCTROI },
+      { requires: [], tier: "manual", runbook: RUNBOOK_OCTROI },
+    ],
     // Aucune voie automatique en v1 : retirer quelqu'un d'une organisation se fait
     // à la main, et le socle rend la tâche plutôt qu'un appel d'API.
     revoke: [{ requires: [], tier: "manual", runbook: RUNBOOK }],
   },
-  // Une chaîne et non l'énumération des organisations : celles-ci sont désormais
-  // déclarées, donc inconnues à la compilation. La contrainte se réintroduira contre
-  // la configuration résolue le jour où l'octroi lira ce schéma, ce que rien ne fait.
-  scopeSchema: z.object({ organisation: z.string().min(1).optional() }),
+  scopeSchema: SCOPE,
   configSchema: CONFIG,
 };
 
@@ -452,6 +534,14 @@ export function creerGithub(lireConfig: () => ConfigGithub): Connector {
           ...(env.GITHUB_TOKEN
             ? {}
             : { unavailableReason: "GITHUB_TOKEN absent de l'environnement" }),
+          checkedAt: new Date(),
+        },
+        {
+          id: CREDENTIAL_ADMIN,
+          available: Boolean(env.GITHUB_ADMIN_TOKEN),
+          ...(env.GITHUB_ADMIN_TOKEN
+            ? {}
+            : { unavailableReason: "GITHUB_ADMIN_TOKEN absent de l'environnement" }),
           checkedAt: new Date(),
         },
       ]),

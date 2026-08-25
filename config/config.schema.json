@@ -173,6 +173,83 @@
         "description": "Un système couvert par le catalogue."
       }
     },
+    "profiles": {
+      "description": "Ensembles d'accès qu'une arrivée ouvre d'un coup. Le scope de chaque accès n'est vérifié que par le connecteur visé, et ailleurs : une faute de frappe ici ne doit pas empêcher la politique de se charger, sans quoi elle arrêterait la collecte de tout le parc au lieu du seul octroi qu'elle abîme.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Identifiant stable du profil, qui est ce qu'une arrivée désigne. Le changer ne renomme rien : les plans déjà ouverts continuent de citer l'ancien.",
+            "examples": [
+              "developpeur"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Nom lisible, tel qu'il apparaît au moment de choisir.",
+            "examples": [
+              "Développeur d'une startup d'État"
+            ]
+          },
+          "accesses": {
+            "description": "Les accès que ce profil ouvre. Un profil sans accès reste licite : il dit qu'une arrivée de ce type n'ouvre rien sur les systèmes couverts, ce qui n'est pas la même chose que ne pas exister.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "system": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Clé du système visé, telle que la déclare son connecteur.",
+                  "examples": [
+                    "github"
+                  ]
+                },
+                "scope": {
+                  "default": {},
+                  "description": "Ce que l'accès ouvre sur ce système. Sa forme appartient au connecteur visé, qui seul sait la valider : ce fichier n'en vérifie rien, et une clé laissée vide y vaut un scope vide. Un scope faux se signale à la vérification de la politique et non au démarrage, faute de quoi une faute de frappe dans un profil arrêterait la collecte de tout le parc.",
+                  "examples": [
+                    {
+                      "organisation": "mon-organisation",
+                      "role": "member"
+                    }
+                  ],
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "expiresInDays": {
+                  "description": "Durée de l'accès en jours, comptée depuis l'ouverture du plan et jamais depuis la fin de mission : un accès élevé ne se reconduit pas par simple prolongation de mission, il se redemande. Obligatoire dès que le connecteur tient cet accès pour élevé.",
+                  "examples": [
+                    180
+                  ],
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "system"
+              ],
+              "additionalProperties": false,
+              "description": "Un accès ouvert sur un système couvert par un connecteur."
+            }
+          }
+        },
+        "required": [
+          "key",
+          "label"
+        ],
+        "additionalProperties": false,
+        "description": "Un ensemble d'accès qu'une arrivée ouvre d'un coup. Il ne nomme personne : c'est un rôle, pas une liste de gens."
+      }
+    },
     "connectors": {
       "type": "object",
       "default": {},

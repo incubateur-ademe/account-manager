@@ -90,7 +90,12 @@ export interface PlanCalcule {
    */
   ecartees: readonly EtapeEcartee[];
   empreinte: string;
-  /** Systèmes couverts par un connecteur, sur lesquels la personne a un compte. */
+  /**
+   * Les systèmes qu'un connecteur a interrogés pour ce plan, et ils ne se choisissent
+   * pas de la même façon dans les deux sens : au départ, ceux où la personne a un
+   * compte qu'on a le droit de couper ; à l'arrivée, ceux qui déclarent savoir donner,
+   * sans qu'aucun compte n'ait été regardé et sans qu'aucune étape n'en sorte encore.
+   */
   systemes: readonly string[];
   /** Systèmes où elle a un compte, mais qu'aucun connecteur ne sait traiter. */
   sansConnecteur: readonly string[];
@@ -107,9 +112,9 @@ export interface PlanCalcule {
  * les modèles déclarent et ce que les connecteurs disent aujourd'hui. Ne touche à
  * rien, ni ici ni ailleurs.
  *
- * Aucun connecteur ne déclare encore `grant` : la substance d'une arrivée vient donc
- * des seuls modèles, et le mécanisme se remplira du reste le jour où l'un d'eux
- * saura ouvrir un accès.
+ * Les connecteurs déclarent l'octroi sans en rendre encore les étapes : la substance
+ * d'une arrivée vient donc des seuls modèles, et le mécanisme se remplira du reste
+ * sans rien changer ici.
  */
 export async function calculerPlan(
   sens: SensDossier,
