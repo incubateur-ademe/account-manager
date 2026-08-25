@@ -2,7 +2,7 @@
 
 import { fr } from "@codegouvfr/react-dsfr";
 import { Button } from "@codegouvfr/react-dsfr/Button";
-import { useActionState, useState } from "react";
+import { useActionState, useId, useState } from "react";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 import type { ChoixDeProfils } from "@/ui/profils";
 
@@ -30,6 +30,11 @@ const SANS_PROFIL = "";
 function ChoixDeProfil({ profils }: { profils: ChoixDeProfils }) {
   const [choisi, setChoisi] = useState(SANS_PROFIL);
 
+  // La fiche d'une personne monte ce formulaire deux fois, dans son en-tête et dans le
+  // bloc des gestes à faire : un identifiant écrit en dur les ferait partager le même,
+  // et cliquer sur l'un des deux libellés donnerait le focus à l'autre menu.
+  const champ = useId();
+
   const lus = profils.etat === "lus" ? profils : null;
   const retenu = lus?.offerts.find(({ cle }) => cle === choisi) ?? null;
 
@@ -53,7 +58,7 @@ function ChoixDeProfil({ profils }: { profils: ChoixDeProfils }) {
           politique ne déclare rien qui s'applique, la phrase remplace le contrôle. */}
       {lus && lus.offerts.length > 0 ? (
         <div className={fr.cx("fr-select-group", "fr-mb-1w")}>
-          <label className={fr.cx("fr-label")} htmlFor="profil-arrivee">
+          <label className={fr.cx("fr-label")} htmlFor={champ}>
             Profil appliqué
             <span className={fr.cx("fr-hint-text")}>
               Il dit quel accès ouvrir sur quel système. Sans lui, le plan ne portera que ce que les
@@ -62,7 +67,7 @@ function ChoixDeProfil({ profils }: { profils: ChoixDeProfils }) {
           </label>
           <select
             className={fr.cx("fr-select")}
-            id="profil-arrivee"
+            id={champ}
             name="profil"
             value={choisi}
             onChange={(evenement) => setChoisi(evenement.target.value)}

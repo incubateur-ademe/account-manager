@@ -31,19 +31,6 @@ export function peutExecuter(etat: EtatPlan): Verdict {
 }
 
 /**
- * L'écart entre ce qui a été approuvé et ce qu'on s'apprête à faire, et le refus en
- * bloc qu'il entraîne.
- *
- * `confirmedDigest` est écrit à la confirmation et relu ici, une seule fois pour les
- * deux sens : c'est la seule question à laquelle une empreinte répond, et la poser à
- * l'exécution plutôt qu'à la seule confirmation est ce qui empêche une collecte passée
- * entre-temps de faire exécuter autre chose que la liste relue.
- *
- * En bloc et non étape par étape : un plan dont une ligne a changé n'est plus le plan
- * qui a été approuvé, et en exécuter les lignes inchangées reviendrait à laisser
- * quelqu'un approuver une liste dont on retirerait ensuite les éléments gênants.
- */
-/**
  * Un plan cesse de valoir de deux façons qu'il ne faut pas confondre, et la seconde
  * manquait au seul chemin qui écrit : il périme par le temps, ce qu'il décrit devenant
  * trop vieux pour qu'on agisse dessus sans regarder à nouveau, et il devient obsolète
@@ -62,6 +49,19 @@ export function refusDePeremption(expiresAt: Date, maintenant: Date): string | n
   return `Ce plan valait jusqu'au ${expiresAt.toISOString().slice(0, 10)} : ce qu'il décrit a été constaté il y a trop longtemps pour qu'on agisse dessus sans regarder à nouveau. Rien n'a été ni lu ni écrit. Un plan confirmé ne se recalcule plus : pointez à la main ce qui a été fait, clôturez ce dossier, et rouvrez-en un pour repartir d'un plan à jour.`;
 }
 
+/**
+ * L'écart entre ce qui a été approuvé et ce qu'on s'apprête à faire, et le refus en
+ * bloc qu'il entraîne.
+ *
+ * `confirmedDigest` est écrit à la confirmation et relu ici, une seule fois pour les
+ * deux sens : c'est la seule question à laquelle une empreinte répond, et la poser à
+ * l'exécution plutôt qu'à la seule confirmation est ce qui empêche une collecte passée
+ * entre-temps de faire exécuter autre chose que la liste relue.
+ *
+ * En bloc et non étape par étape : un plan dont une ligne a changé n'est plus le plan
+ * qui a été approuvé, et en exécuter les lignes inchangées reviendrait à laisser
+ * quelqu'un approuver une liste dont on retirerait ensuite les éléments gênants.
+ */
 export function refusDEcart(
   confirmedDigest: string | null,
   empreinteActuelle: string,

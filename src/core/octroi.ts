@@ -496,9 +496,16 @@ function signatureDeScope(scope: unknown): string {
  * L'étape qu'un octroi produit quand son connecteur n'en propose aucune, faute de voie
  * praticable ou faute de savoir la décrire.
  *
- * Elle est émise malgré tout, à son tier réel : une ligne d'arrivée qui manque est
- * précisément le mode de panne que cet outil existe pour éviter, là où une ligne qui
- * dit « à faire à la main, voici la marche à suivre, voici ce qui manque » se traite.
+ * Elle est émise malgré tout : une ligne d'arrivée qui manque est précisément le mode
+ * de panne que cet outil existe pour éviter, là où une ligne qui dit « à faire à la
+ * main, voici la marche à suivre, voici ce qui manque » se traite.
+ *
+ * Jamais au tier automatique, même quand la capacité y résout : cette étape porte une
+ * action que le socle a inventée, et que le connecteur n'a jamais planifiée. La laisser
+ * au tier de la capacité ferait appeler son exécution avec un ordre qu'il ne connaît
+ * pas, et la ferait compter dans le plafond de masse comme si elle partait toute seule.
+ * Le tier `none` se conserve, lui, parce qu'il dit quelque chose de vrai : aucune voie
+ * n'existe, pas même manuelle.
  */
 function etapeSansVoie(
   systeme: SystemeOctroyeur,
@@ -519,7 +526,7 @@ function etapeSansVoie(
   return {
     systemKey: systeme.key,
     capability: "grant",
-    tier: systeme.capacite.tier,
+    tier: systeme.capacite.tier === "none" ? "none" : "manual",
     action: ACTION_OCTROI,
     label: `Ouvrir ${libelle} à ${qui}`,
     params: { beneficiaire: qui, ...aplatirScope(scope) },

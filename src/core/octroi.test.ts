@@ -869,6 +869,40 @@ describe("un octroi impossible produit une étape, jamais une omission", () => {
     // Then le terme du profil s'y pose comme sur n'importe quelle autre
     expect(etapes[0]?.grantExpiresAt).toEqual(echeanceDOctroi(90, LE_5_JANVIER));
   });
+
+  it("ne laisse jamais l'étape de repli au tier automatique, même quand la capacité y résout", () => {
+    // Given un système dont l'octroi résout en automatique, credential présent, mais
+    // dont le connecteur ne sait pas décrire l'étape : c'est la configuration où un
+    // connecteur déclare savoir donner avant de savoir planifier.
+    const muetMaisArme = octroyeur({
+      capacite: resolveCapability(
+        "grant",
+        [
+          { requires: ["jeton-admin"], tier: "auto", runbook: "Inviter depuis la console." },
+          { requires: [], tier: "manual", runbook: "Inviter à la main." },
+        ],
+        [{ id: "jeton-admin", available: true, checkedAt: new Date(0) }],
+        "Marche à suivre du contrat.",
+      ),
+      planifier: () => [],
+    });
+
+    // When on assemble un profil qui vise ce système
+    const { etapes } = assemblerOctrois(
+      profil("developpeur", [{ system: "github", scope: MEMBRE }]),
+      [muetMaisArme],
+      ALICE,
+      LE_5_JANVIER,
+    );
+
+    // Then l'étape existe, mais à la main : elle porte une action que le socle a
+    // inventée et que le connecteur n'a jamais planifiée. Au tier automatique, la
+    // boucle la lui enverrait avec un ordre qu'il ne connaît pas, et le plafond de
+    // masse la compterait comme si elle partait toute seule.
+    expect(etapes).toHaveLength(1);
+    expect(etapes[0]?.tier).toBe("manual");
+    expect(etapes[0]?.manual).toBeDefined();
+  });
 });
 
 describe("l'arrivée ne se prive pas d'un accès sur un doute d'identité", () => {

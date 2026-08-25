@@ -654,6 +654,10 @@ export default async function DossierPage({
                   recalcule plus, d'où deux issues distinctes selon l'état. */}
               {brouillon && plan && !etat.obsolete ? (
                 <BoutonRecalculer planId={plan.id} />
+              ) : brouillon ? (
+                <p className={fr.cx("fr-mb-0")}>
+                  Le recalcul est proposé plus haut, avec la dérive qui le motive.
+                </p>
               ) : (
                 <p className={fr.cx("fr-mb-0")}>
                   Il ne partira pas et ne se recalcule plus : pointez à la main ce qui a été fait,

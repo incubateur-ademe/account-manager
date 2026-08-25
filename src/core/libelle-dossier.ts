@@ -65,7 +65,7 @@ export const LIBELLE_DOSSIER: Record<SensDossier, LibelleDossier> = {
     restant: "Ce qu'il reste à donner",
     propose: "Ce que ce plan proposait de donner",
     planVide:
-      "Aucune étape : aucun profil n'a été appliqué à l'ouverture, et aucun modèle d'arrivée ne concerne cette personne. Le dossier est bien ouvert, sa liste viendra de l'un ou de l'autre.",
+      "Aucune étape : le profil retenu à l'ouverture n'ouvre rien sur les systèmes couverts, ou aucun ne l'a été, et aucun modèle d'arrivée ne concerne cette personne. Le dossier est bien ouvert, sa liste viendra de l'un ou de l'autre.",
     sansPlanIssue: " L'annuler est la seule issue, une nouvelle arrivée restant ouvrable ensuite.",
     derive:
       "Ce que les systèmes savent donner a changé depuis son calcul : il ne peut plus être confirmé en l'état.",
