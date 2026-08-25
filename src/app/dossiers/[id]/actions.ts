@@ -223,16 +223,27 @@ export async function pointerEtape(
 
   const saisie = origine.data?.saisie ?? null;
 
+  // « Déjà présent » et « déjà absent » affirment que le geste a eu lieu, quelqu'un
+  // d'autre étant passé avant : ils soldent l'étape au même titre que « fait », donc
+  // ils lui réclament la même valeur. « Écartée » et « échec » n'affirment rien, et
+  // sont les seuls à s'en dispenser.
+  const critereConstate =
+    nouvelEtat === "SUCCEEDED" ||
+    nouvelEtat === "ALREADY_PRESENT" ||
+    nouvelEtat === "ALREADY_ABSENT";
+
   // Même refus que celui de la note, pour la même raison : sans la valeur qu'elle
-  // demandait, « fait » ne dit pas ce qui a été fait.
-  if (nouvelEtat === "SUCCEEDED" && saisie?.obligatoire === true && reponse.length === 0) {
-    return { erreur: `Renseignez « ${saisie.libelle} » avant de déclarer cette étape faite.` };
+  // demandait, l'étape ne dit pas ce qui a été fait.
+  if (critereConstate && saisie?.obligatoire === true && reponse.length === 0) {
+    return {
+      erreur: `Renseignez « ${saisie.libelle} » : sans elle, personne ne saura ce qui a été fait.`,
+    };
   }
 
-  // Rattachée à « fait » et non à la seule présence d'une saisie : corrigée en écart ou
-  // en échec, l'étape garderait sinon la valeur du pointage précédent, affichée sous un
-  // geste que personne n'a fait.
-  const valeur = nouvelEtat === "SUCCEEDED" && saisie && reponse ? reponse : null;
+  // Rattachée au constat du critère et non à la seule présence d'une saisie : corrigée
+  // en écart ou en échec, l'étape garderait sinon la valeur du pointage précédent,
+  // affichée sous un geste que personne n'a fait.
+  const valeur = critereConstate && saisie && reponse ? reponse : null;
 
   const maintenant = new Date();
 

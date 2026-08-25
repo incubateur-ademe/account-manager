@@ -1,6 +1,7 @@
 import {
   CLE_INCUBATEUR,
   cleDEtape,
+  lienDEtapeSchema,
   type SaisieAttendue,
   saisieAttendueSchema,
 } from "@/core/modele-plan";
@@ -194,13 +195,23 @@ function valider(valeurs: EtapeSaisie, cleFigee: string | null): EtapeValidee | 
     );
   }
 
+  const lien = valeurs.lien?.trim() || null;
+
+  // Le message de Zod est en anglais et nomme des schémas d'URI : il ne remonte pas à
+  // l'écran, une phrase le remplace, comme pour le critère et pour la saisie.
+  if (lien !== null && !lienDEtapeSchema.safeParse(lien).success) {
+    return refus(
+      "Donnez au lien une adresse complète en http ou https : c'est elle qui s'ouvrira depuis le dossier.",
+    );
+  }
+
   return {
     ...valeurs,
     titre,
     critere,
     cle,
     marcheASuivre: valeurs.marcheASuivre?.trim() || null,
-    lien: valeurs.lien?.trim() || null,
+    lien,
     // Dernier passage avant la colonne : une saisie que rien n'aurait relue s'y
     // figerait telle quelle et ferait lever la relecture d'un dossier, des mois plus
     // tard, loin de l'écran qui l'a écrite.

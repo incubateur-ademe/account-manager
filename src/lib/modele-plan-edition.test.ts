@@ -299,6 +299,25 @@ describe("l'édition d'une étape de modèle", () => {
     );
     expect(sansCritere.ok).toBe(false);
     expect(repose?.doneWhen).toBe("Rendre le badge : c'est fait.");
+
+    // Then un lien qui n'est pas une adresse http ou https se refuse de même : c'est
+    // le seul champ d'une étape qui finisse dans un `href`, et le seul qu'un opérateur
+    // écrive à la main.
+    const lienDouteux = await modifierEtape(
+      repose?.id ?? "",
+      saisie("Rendre le badge", { lien: "javascript:alert(1)" }),
+    );
+    expect(lienDouteux.ok).toBe(false);
+    expect(repose?.deeplink).toBeNull();
+
+    // Then une vraie adresse passe, espaces compris, et atteint la colonne
+    expect(
+      await modifierEtape(
+        repose?.id ?? "",
+        saisie("Rendre le badge", { lien: "  https://exemple.fr/badges  " }),
+      ),
+    ).toEqual({ ok: true });
+    expect(repose?.deeplink).toBe("https://exemple.fr/badges");
   });
 
   it("oppose à la réécriture d'une étape de startup le refus qu'elle oppose à son ajout", async () => {

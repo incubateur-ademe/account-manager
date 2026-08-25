@@ -78,6 +78,16 @@ export function cleDEtape(titre: string): string {
 }
 
 /**
+ * Le lien facultatif d'une étape, borné à http et https.
+ *
+ * C'est le seul champ d'un modèle qui finisse dans un `href`, et c'est un opérateur
+ * qui l'écrit, pas le code. Le refus se joue à l'écriture et une seule fois : filtrer
+ * à l'affichage masquerait sans le dire les liens déjà en base, au lieu de dire à
+ * celui qui les pose ce qui ne va pas.
+ */
+export const lienDEtapeSchema = z.url({ protocol: /^https?$/ });
+
+/**
  * Ce qu'une étape déclarée réclame en plus d'une case cochée.
  *
  * Deux champs et pas un de plus : le libellé de ce qu'on demande, et si l'on peut

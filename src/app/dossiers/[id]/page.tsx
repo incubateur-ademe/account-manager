@@ -223,7 +223,7 @@ function Etape({
       {saisie ? (
         <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
           Valeur demandée : {saisie.libelle}
-          {saisie.obligatoire ? " (sans elle, l'étape ne peut pas être déclarée faite)" : ""}.
+          {saisie.obligatoire ? " (sans elle, l'étape ne peut pas être donnée pour faite)" : ""}.
         </p>
       ) : null}
       {etape.reponse ? (

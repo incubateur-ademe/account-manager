@@ -138,9 +138,9 @@ export function Pointage({
   const [choix, setChoix] = useState("fait");
   const justification = choix === "ignoree" || choix === "echec";
   const constat = LIBELLE_DOSSIER[sens].constat;
-  // La valeur ne se demande que sous « c'est fait » : elle dit ce qui a été fait, et
-  // sous un échec ou un écart il n'y a rien à en dire.
-  const valeur = saisie !== null && choix === "fait";
+  // La valeur se demande sous « c'est fait » comme sous le constat : les deux disent
+  // que le geste a eu lieu. Sous un échec ou un écart, il n'y a rien à en dire.
+  const valeur = saisie !== null && !justification;
 
   return (
     <form action={formAction} className={fr.cx("fr-mt-1w")}>
@@ -191,7 +191,7 @@ export function Pointage({
               aria-label={saisie.libelle}
               autoComplete="off"
               {...messageObligatoire(
-                `Renseignez « ${saisie.libelle} » avant de déclarer cette étape faite.`,
+                `Renseignez « ${saisie.libelle} » : sans elle, personne ne saura ce qui a été fait.`,
               )}
             />
           </div>

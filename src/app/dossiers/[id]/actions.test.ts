@@ -603,6 +603,74 @@ describe("pointer une étape qui réclame une valeur", () => {
     expect(base.journal.at(-1)?.after).not.toHaveProperty("reponse");
   });
 
+  it("tient le constat pour un aveu que le geste a eu lieu, et lui réclame la même valeur", async () => {
+    // Given le même plan d'arrivée, porteur d'une étape à saisie obligatoire
+    base.modeles.push({
+      ownerKey: "*incubateur",
+      kind: "ONBOARDING",
+      startupsMayExtend: false,
+      steps: [
+        {
+          key: "signer-la-charte",
+          position: 0,
+          title: "Signer la charte",
+          runbook: null,
+          deeplink: null,
+          doneWhen: "La charte signée est au dossier.",
+          input: { libelle: "Date de signature", obligatoire: true },
+          riskLevel: "LOW",
+        },
+      ],
+    });
+
+    const { plan } = await dossierAvecPlan("ONBOARDING");
+    plan.state = "EXECUTING";
+    const etape = base.etapes.find((candidat) => candidat.systemKey === "modele");
+
+    // When on constate que quelqu'un est passé avant, sans rien renseigner
+    const muet = await pointerEtape(
+      null,
+      formulaire({ etapeId: etape?.id ?? "", pointage: "deja-present" }),
+    );
+
+    // Then le refus est celui de « c'est fait » : le constat solde l'étape autant que
+    // lui, il ne peut donc pas se dispenser de ce que lui doit fournir
+    expect(muet.erreur).toContain("Date de signature");
+    expect(etape?.state).toBe("PENDING");
+    expect(etape?.reponse).toBeNull();
+
+    // When la valeur vient avec le constat
+    const constate = await pointerEtape(
+      null,
+      formulaire({
+        etapeId: etape?.id ?? "",
+        pointage: "deja-present",
+        reponse: "12 mars 2026, avant son arrivée",
+      }),
+    );
+
+    // Then l'étape est soldée en constat, et la valeur y reste
+    expect(constate.erreur).toBeUndefined();
+    expect(etape?.state).toBe("ALREADY_PRESENT");
+    expect(etape?.reponse).toBe("12 mars 2026, avant son arrivée");
+
+    // When l'opératrice se reprend et déclare l'échec
+    const echec = await pointerEtape(
+      null,
+      formulaire({
+        etapeId: etape?.id ?? "",
+        pointage: "echec",
+        note: "La charte n'a jamais été signée.",
+      }),
+    );
+
+    // Then la valeur s'efface avec le constat qu'elle documentait : elle ne survit
+    // qu'aux pointages qui affirment que le geste a eu lieu
+    expect(echec.erreur).toBeUndefined();
+    expect(etape?.state).toBe("FAILED");
+    expect(etape?.reponse).toBeNull();
+  });
+
   it("laisse une étape de connecteur se pointer sans rien réclamer", async () => {
     // Given un plan dont les étapes viennent des connecteurs, sans origine déclarée
     const { plan } = await dossierAvecPlan("ONBOARDING");
