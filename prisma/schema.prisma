@@ -502,6 +502,16 @@ model PlanStep {
   // changer ce qui a ete approuve. Nulle pour une etape automatique.
   manual Json?
 
+  /// L'origine declaree de l'etape, gelee au meme titre que le reste : quel modele
+  /// l'a demandee, sous quelle cle, et quelle saisie elle attendait ce jour-la.
+  /// Forme { owner, stepKey, saisie? }. Nulle signifie « vient d'un connecteur ».
+  template Json?
+
+  /// Ce que l'operateur a saisi au pointage, quand l'etape declaree attendait une
+  /// valeur. Une saisie obligatoire refuse le pointage tant que cette colonne est
+  /// vide, sur le modele du refus de note.
+  reponse String?
+
   state     StepState @default(PENDING)
   attempts  Int       @default(0)
   lastError String?
@@ -514,6 +524,74 @@ model PlanStep {
 
   @@index([planId])
   @@index([state])
+}
+
+/// Le moment qu'un modele sert. Enum propre et non PlanKind : un modele n'a rien a
+/// dire d'un DRIFT_FIX ni d'un MANUAL_OP, et la conversion se fait par une fonction
+/// pure qui rend null pour ces deux-la.
+enum TemplateKind {
+  ONBOARDING
+  OFFBOARDING
+}
+
+model PlanTemplate {
+  id String @id @default(cuid())
+
+  /// ghid de la startup proprietaire, ou la constante reservee "*incubateur".
+  /// Chaine non nullable : dans PostgreSQL deux NULL ne s'egalent pas, et une
+  /// colonne nullable laisserait creer plusieurs modeles d'incubateur pour un meme
+  /// moment. Le caractere * est impossible dans un ghid beta.gouv, la collision est
+  /// donc exclue par construction. Pas de cle etrangere vers Startup : Person.startups
+  /// porte deja des ghid sans FK, et l'assemblage compare des ghid a des ghid. Un ghid
+  /// devenu orphelin se signale a l'ecran, c'est le seul endroit ou un renommage amont
+  /// se verra.
+  ownerKey String
+  kind     TemplateKind
+
+  /// N'a de sens que sur le modele de l'incubateur. Ferme par defaut : un plan
+  /// assemble ne gagne pas une etape que personne n'a admise. Refermer neutralise les
+  /// etapes de startup sans rien supprimer, rouvrir rend tout a l'identique.
+  startupsMayExtend Boolean @default(false)
+
+  steps PlanTemplateStep[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([ownerKey, kind])
+}
+
+model PlanTemplateStep {
+  id String @id @default(cuid())
+
+  templateId String
+
+  /// Titre slugifie, calcule a l'ecriture. C'est la cle de deduplication entre
+  /// modeles : deux startups qui declarent le meme geste ne le font faire qu'une fois.
+  key      String
+  position Int
+
+  title    String
+  runbook  String?
+  deeplink String?
+
+  /// Ce qu'il faut constater pour cocher. Obligatoire : sans lui, « fait » ne veut
+  /// rien dire.
+  doneWhen String
+
+  /// Saisie attendue au pointage, validee par saisieAttendueSchema. Nulle quand
+  /// l'etape ne demande qu'une case.
+  input Json?
+
+  riskLevel RiskLevel @default(LOW)
+
+  template PlanTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([templateId, key])
+  @@index([templateId, position])
 }
 
 enum FindingKind {

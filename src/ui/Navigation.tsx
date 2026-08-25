@@ -10,6 +10,7 @@ const LIENS = [
   { text: "Personnes", href: "/personnes" },
   { text: "Startups", href: "/startups" },
   { text: "Dossiers", href: "/dossiers" },
+  { text: "Modèles", href: "/modeles" },
   { text: "Constats", href: "/constats" },
   { text: "Comptes isolés", href: "/comptes-isoles" },
   { text: "Comptes de service", href: "/comptes-de-service" },

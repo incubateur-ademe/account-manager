@@ -1,6 +1,7 @@
 import type { z } from "zod";
 
 import type { AuditInput } from "@/core/audit";
+import type { OrigineFigee } from "@/core/modele-plan";
 
 export type Capability = "list" | "grant" | "revoke" | "verify";
 
@@ -230,7 +231,12 @@ export interface Intent {
 
 export interface ManualTask {
   title: string;
-  runbook: string;
+  /**
+   * Obligatoire pour un connecteur, qui doit dire comment faire ce que son API ne
+   * fait pas. Facultatif pour une étape déclarée dans un modèle, dont le critère de
+   * complétion suffit souvent à dire ce qu'il y a à faire.
+   */
+  runbook?: string;
   deeplink?: string;
   /** Ce que l'opérateur doit constater pour cocher. Sans ça, « fait » ne veut rien dire. */
   doneWhen: string;
@@ -250,6 +256,12 @@ export interface PlannedStep {
   idempotencyKey: string;
   /** Présent dès que le tier n'est pas "auto". */
   manual?: ManualTask;
+  /**
+   * L'origine déclarée de l'étape : quel modèle l'a demandée, sous quelle clé, et
+   * quelle saisie elle attendait. Un connecteur ne le pose jamais, et son absence
+   * signifie exactement « cette étape vient d'un système ».
+   */
+  template?: OrigineFigee;
 }
 
 /**

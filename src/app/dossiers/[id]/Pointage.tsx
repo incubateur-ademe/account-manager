@@ -6,6 +6,7 @@ import { createModal } from "@codegouvfr/react-dsfr/Modal";
 import { useActionState, useState } from "react";
 import type { SensDossier } from "@/core/dossier";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
+import type { SaisieAttendue } from "@/core/modele-plan";
 
 import { messageObligatoire } from "@/ui/validation";
 
@@ -120,10 +121,15 @@ export function Pointage({
   etapeId,
   faite,
   sens,
+  saisie,
+  reponse,
 }: {
   etapeId: string;
   faite: boolean;
   sens: SensDossier;
+  /** Ce que l'étape déclarée réclame en plus d'une case cochée, ou rien. */
+  saisie: SaisieAttendue | null;
+  reponse: string | null;
 }) {
   const [etat, formAction, pending] = useActionState<EtatAction | null, FormData>(
     pointerEtape,
@@ -132,6 +138,9 @@ export function Pointage({
   const [choix, setChoix] = useState("fait");
   const justification = choix === "ignoree" || choix === "echec";
   const constat = LIBELLE_DOSSIER[sens].constat;
+  // La valeur se demande sous « c'est fait » comme sous le constat : les deux disent
+  // que le geste a eu lieu. Sous un échec ou un écart, il n'y a rien à en dire.
+  const valeur = saisie !== null && !justification;
 
   return (
     <form action={formAction} className={fr.cx("fr-mt-1w")}>
@@ -166,6 +175,23 @@ export function Pointage({
                 choix === "ignoree"
                   ? "Dites pourquoi cette étape est écartée : sans raison, elle deviendra un accès oublié."
                   : "Dites ce qui a échoué, sinon personne ne saura quoi reprendre.",
+              )}
+            />
+          </div>
+        ) : null}
+
+        {valeur && saisie ? (
+          <div className={fr.cx("fr-col-12", "fr-col-md-5")}>
+            <input
+              className={fr.cx("fr-input")}
+              name="reponse"
+              defaultValue={reponse ?? ""}
+              required={saisie.obligatoire}
+              placeholder={saisie.libelle}
+              aria-label={saisie.libelle}
+              autoComplete="off"
+              {...messageObligatoire(
+                `Renseignez « ${saisie.libelle} » : sans elle, personne ne saura ce qui a été fait.`,
               )}
             />
           </div>

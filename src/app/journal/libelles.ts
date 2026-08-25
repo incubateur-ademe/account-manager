@@ -30,6 +30,11 @@ const LIBELLE_ACTION: Record<string, string> = {
   "depart.cloture": "Clôture d'un dossier de départ",
   "depart.recalcul": "Recalcul d'un plan de départ",
   "depart.annulation": "Annulation d'un dossier de départ",
+  "modele.creation": "Création d'un modèle de plan",
+  "modele.autorisation": "Autorisation des startups à compléter un modèle",
+  "modele.etape.ajout": "Ajout d'une étape à un modèle",
+  "modele.etape.modification": "Modification d'une étape d'un modèle",
+  "modele.etape.retrait": "Retrait d'une étape d'un modèle",
   "identite.rattachement": "Rattachement d'un compte à une personne",
   "identite.detachement": "Détachement d'un compte",
   "identite.rapprochement": "Rapprochement automatique d'un compte",
@@ -55,6 +60,7 @@ const LIBELLE_CIBLE: Record<string, string> = {
   rattachement: "Rattachement à une startup",
   plan: "Plan",
   etape: "Étape",
+  modele: "Modèle de plan",
 };
 
 const SEVERITE_RESULTAT: Record<string, "success" | "error" | "info"> = {
