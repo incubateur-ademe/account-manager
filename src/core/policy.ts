@@ -159,6 +159,81 @@ const systemSchema = z
   })
   .meta({ description: "Un système couvert par le catalogue." });
 
+const accesDeProfilSchema = z
+  .strictObject({
+    system: z
+      .string()
+      .min(1)
+      .meta({
+        description: "Clé du système visé, telle que la déclare son connecteur.",
+        examples: ["github"],
+      }),
+    // Tout ce qui n'est pas un objet vaut ici le scope vide, et la faute se dit à la
+    // seconde passe. Une clé écrite puis laissée vide rend `null` en YAML, une valeur
+    // posée sans accolades rend une chaîne : refuser l'une ou l'autre au chargement
+    // ferait cesser de se charger la politique entière pour la faute d'un seul profil,
+    // soit exactement ce que les deux passes existent pour éviter. Le `.default({})`
+    // reste posé sur le noeud interne, le seul dont `z.toJSONSchema` rende encore la
+    // valeur implicite.
+    scope: z.preprocess(
+      (brut) => (brut !== null && typeof brut === "object" && !Array.isArray(brut) ? brut : {}),
+      z
+        .record(z.string(), z.unknown())
+        .default({})
+        .meta({
+          description:
+            "Ce que l'accès ouvre sur ce système. Sa forme appartient au connecteur visé, qui seul sait la valider : ce fichier n'en vérifie que la structure, et une clé laissée vide y vaut un scope vide. Un scope faux se signale à la vérification de la politique et non au démarrage, faute de quoi une faute de frappe dans un profil arrêterait la collecte de tout le parc.",
+          examples: [{ organisation: "mon-organisation", role: "member" }],
+        }),
+    ),
+    expiresInDays: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .meta({
+        description:
+          "Durée de l'accès en jours, comptée depuis l'ouverture du plan et jamais depuis la fin de mission : un accès élevé ne se reconduit pas par simple prolongation de mission, il se redemande. Obligatoire dès que le connecteur tient cet accès pour élevé.",
+        examples: [180],
+      }),
+  })
+  .meta({ description: "Un accès ouvert sur un système couvert par un connecteur." });
+
+const profileSchema = z
+  .strictObject({
+    key: z
+      .string()
+      .min(1)
+      .meta({
+        description:
+          "Identifiant stable du profil, qui est ce qu'une arrivée désigne. Le changer ne renomme rien : les plans déjà ouverts continuent de citer l'ancien.",
+        examples: ["developpeur"],
+      }),
+    label: z
+      .string()
+      .min(1)
+      .meta({
+        description: "Nom lisible, tel qu'il apparaît au moment de choisir.",
+        examples: ["Développeur d'une startup d'État"],
+      }),
+    accesses: z
+      .array(accesDeProfilSchema)
+      .default([])
+      .meta({
+        description:
+          "Les accès que ce profil ouvre. Un profil sans accès reste licite : il dit qu'une arrivée de ce type n'ouvre rien sur les systèmes couverts, ce qui n'est pas la même chose que ne pas exister.",
+        examples: [
+          [{ system: "github", scope: { organisation: "mon-organisation", role: "member" } }],
+        ],
+      }),
+  })
+  .meta({
+    description:
+      "Un ensemble d'accès qu'une arrivée ouvre d'un coup. Il ne nomme personne : c'est un rôle, pas une liste de gens.",
+  });
+
+export type Profil = z.infer<typeof profileSchema>;
+
 /**
  * Qui l'incubateur suit, et quels comptes machine il détient. Tout ce fichier nomme :
  * des personnes, des propriétaires, des jetons. C'est ce qui le rend sensible et ce
@@ -340,6 +415,29 @@ export const configSchema = z
               label: "Mon système",
               criticality: "medium",
               runbook: "https://exemple.org/procedures/mon-systeme",
+            },
+          ],
+        ],
+      }),
+
+    profiles: z
+      .array(profileSchema)
+      .refine(
+        (profils) => new Set(profils.map((profil) => profil.key)).size === profils.length,
+        "deux profils ne peuvent pas partager la même clé, qui est ce qu'une arrivée désigne",
+      )
+      .default([])
+      .meta({
+        description:
+          "Ensembles d'accès qu'une arrivée ouvre d'un coup. Le scope de chaque accès n'est vérifié que par le connecteur visé, et ailleurs : une faute de frappe ici ne doit pas empêcher la politique de se charger, sans quoi elle arrêterait la collecte de tout le parc au lieu du seul octroi qu'elle abîme.",
+        examples: [
+          [
+            {
+              key: "developpeur",
+              label: "Développeur d'une startup d'État",
+              accesses: [
+                { system: "github", scope: { organisation: "mon-organisation", role: "member" } },
+              ],
             },
           ],
         ],

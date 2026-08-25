@@ -1,4 +1,5 @@
-import { CONNECTEURS } from "@/connectors";
+import { CONNECTEURS, catalogueDOctroi } from "@/connectors";
+import { verifierProfils } from "@/core/octroi";
 import { verifierConfigurations } from "@/lib/configuration-connecteur";
 import { loadPolicy } from "@/lib/policy";
 
@@ -18,6 +19,22 @@ function resume(): string[] {
   // seul « avant demarrage » qui existe reellement : aucun conteneur ne la lance.
   verifierConfigurations(contrats);
 
+  // Seconde passe : les scopes des profils contre les schemas des connecteurs. Elle
+  // ne peut pas vivre dans le schema Zod de la politique, qui leve : une faute de
+  // frappe dans un profil arreterait alors la collecte nocturne de tout le parc au
+  // lieu du seul octroi qu'elle abime.
+  const refus = verifierProfils(politique.profiles, catalogueDOctroi());
+
+  if (refus.length > 0) {
+    throw new Error(
+      `Profils invalides :\n${refus
+        .map((refuse) => `  profiles.${refuse.profil} > ${refuse.systeme} : ${refuse.motif}`)
+        .join(
+          "\n",
+        )}\n\nIls se corrigent dans la cle profiles du fichier config.yaml de la politique.`,
+    );
+  }
+
   return [
     `incubateur          ${politique.scope.incubator}`,
     `transverses         ${politique.scope.transverse.length}`,
@@ -31,6 +48,8 @@ function resume(): string[] {
     `arrivees maximales  ${Math.round(politique.thresholds.maxNewPersonShare * 100)} %`,
     `collecte perimee    ${politique.thresholds.collectStaleHours} h`,
     `systemes            ${politique.systems.length}`,
+    `profils             ${politique.profiles.length}`,
+    `acces de profil     ${politique.profiles.reduce((total, profil) => total + profil.accesses.length, 0)}`,
     `derogations         ${politique.permanentDerogations.length}`,
     `connecteurs regles  ${contrats.filter((contrat) => contrat.configSchema).length}`,
   ];

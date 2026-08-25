@@ -32,3 +32,28 @@ jobs:
       - run: pnpm db:generate
 
       - run: pnpm verify
+
+      # `pnpm verify` ne joue que la première passe, celle du schéma Zod. La seconde,
+      # qui confronte le scope de chaque profil au schéma du connecteur visé, ne
+      # tourne que dans cette commande : sans elle ici, un profil fautif commité
+      # passerait la CI et ne se verrait qu'à l'octroi. La politique d'exemple est le
+      # seul exemplaire versionné de ce que les instances écrivent, et la commande
+      # attend les noms réels des fichiers, d'où la copie.
+      - name: La politique d'exemple se charge, et ses profils se valident
+        run: |
+          mkdir -p "${RUNNER_TEMP}/politique"
+          cp config/accounts.exemple.yaml "${RUNNER_TEMP}/politique/accounts.yaml"
+          cp config/config.exemple.yaml "${RUNNER_TEMP}/politique/config.yaml"
+          POLICY_DIR="${RUNNER_TEMP}/politique" pnpm policy:check
+
+      # Les JSON Schema sont dérivés des schémas Zod et versionnés pour servir un
+      # dépôt qui n'a pas le code sous la main. Commités périmés, ils font refuser par
+      # l'éditeur ce que le démarrage accepte, ou l'inverse, et personne ne s'en
+      # aperçoit avant d'écrire une politique.
+      - name: Les JSON Schema commités sont ceux que la génération produit
+        run: |
+          pnpm policy:schema
+          if ! git diff --exit-code -- config/accounts.schema.json config/config.schema.json; then
+            echo "Les schémas versionnés ne suivent plus les schémas Zod : lancez pnpm policy:schema et commitez le résultat."
+            exit 1
+          fi

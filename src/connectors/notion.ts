@@ -28,6 +28,9 @@ const MEMBRES = "https://www.notion.so/settings/members";
 const RUNBOOK =
   "Retirer la personne dans Paramètres > Membres du workspace Notion, puis vérifier qu'elle ne figure plus dans la liste. Deux limites : le propriétaire qui a créé le jeton SCIM ne se retire pas par ce chemin, et les invités n'y figurent pas, si bien qu'une fiche sans compte Notion peut garder un accès invité.";
 
+const RUNBOOK_OCTROI =
+  "Inviter la personne dans Paramètres > Membres du workspace Notion, sur son adresse beta.gouv, puis vérifier qu'elle figure dans la liste des membres. Une invitation non acceptée y apparaît déjà : l'accès est accordé, il n'attend qu'une connexion.";
+
 const PAR_PAGE = 100;
 
 /** Large pour une page de cent fiches, court devant une nuit de collecte bloquée. */
@@ -419,12 +422,19 @@ export const CONTRAT_NOTION: ConnectorContract = {
   ],
   capabilities: {
     list: [{ requires: [CREDENTIAL], tier: "auto" }],
+    // Manuel comme la révocation, et pour la même raison : le jeton SCIM sait créer
+    // un membre, mais il est nominatif et porte le workspace entier, si bien qu'une
+    // voie automatique adossée à lui s'éteindrait au premier changement de rôle de
+    // la personne qui l'a créé.
+    grant: [{ requires: [], tier: "manual", runbook: RUNBOOK_OCTROI }],
     // SCIM sait retirer un membre, mais rien dans cet outil n'appelle `execute` :
     // afficher un tier automatique que personne n'exécute serait un tier théorique.
     revoke: [{ requires: [], tier: "manual", runbook: RUNBOOK }],
   },
-  // Un membre l'est du workspace entier : un octroi Notion n'a pas de portée à décrire.
-  scopeSchema: z.object({}),
+  // Un membre l'est du workspace entier : un octroi Notion n'a pas de portée à
+  // décrire. Strict quand même, comme l'exige le contrat : sans clé attendue, c'est
+  // la seule chose que ce schéma ait encore à dire.
+  scopeSchema: z.strictObject({}),
 };
 
 export const notion: Connector = {

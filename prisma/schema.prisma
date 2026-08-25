@@ -533,6 +533,16 @@ model PlanStep {
   /// vide, sur le modele du refus de note.
   reponse String?
 
+  /// L'echeance decidee d'un octroi. Elle vit ici et pas sur AccessGrant : cette
+  /// table est reconstruite par la collecte, une echeance decidee y serait effacee a
+  /// la premiere nuit.
+  grantExpiresAt DateTime?
+
+  /// Pourquoi cet acces a ete accorde, quand il ne vient d'aucun profil. Jamais
+  /// remplie automatiquement depuis un profil : le profil est la justification, et la
+  /// recopier ferait naitre la file des acces a justifier deja pleine de faux.
+  justification String?
+
   state     StepState @default(PENDING)
   attempts  Int       @default(0)
   lastError String?
@@ -545,6 +555,7 @@ model PlanStep {
 
   @@index([planId])
   @@index([state])
+  @@index([grantExpiresAt])
 }
 
 /// Le moment qu'un modele sert. Enum propre et non PlanKind : un modele n'a rien a

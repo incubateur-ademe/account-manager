@@ -64,7 +64,19 @@ export interface ConnectorContract {
   credentials: readonly CredentialRef[];
   /** Ordonné du meilleur tier au moins bon. Une capability absente vaut "none". */
   capabilities: Partial<Record<Capability, NonEmptyArray<CapabilityDecl>>>;
-  /** Valide les scopes de grant. Converti en JSON Schema par z.toJSONSchema pour générer les formulaires. */
+  /**
+   * Valide les scopes de grant, et fait foi sur ceux qu'un profil de la politique
+   * déclare pour ce système. Converti en JSON Schema par `z.toJSONSchema` pour
+   * générer les formulaires et pour afficher le scope attendu.
+   *
+   * Déclaratif, sans `.transform()`, pour la même raison que `configSchema`. Il ne
+   * connaît pas la configuration résolue : ce qui s'y vérifie est la forme, jamais
+   * l'appartenance d'une valeur à une liste déclarée ailleurs.
+   *
+   * Strict, y compris quand il n'attend aucun champ : dans un profil écrit à la
+   * main, une clé inconnue est une faute de frappe, et un scope recopié d'un autre
+   * système passerait sans un mot sous un schéma qui se contente de l'ignorer.
+   */
   scopeSchema: z.ZodType;
   /**
    * Contrat de la clé `connectors.<key>` du fichier de politique. Absent quand le
@@ -221,7 +233,23 @@ export type CollectResult =
 // Planification et exécution
 // ---------------------------------------------------------------------------
 
-export type SubjectRef = { kind: "person"; username: string } | { kind: "service"; key: string };
+export type SubjectRef =
+  | {
+      kind: "person";
+      username: string;
+      /**
+       * Les identifiants de la personne sur les systèmes, indexés par clé de système,
+       * et seulement ceux dont on répond. Une identité rapprochée par ressemblance
+       * n'y entre jamais : accorder un accès d'administration au compte de quelqu'un
+       * d'autre parce qu'il lui ressemble est plus grave que de couper le mauvais.
+       *
+       * Une clé absente vaut « aucun identifiant fiable », et le connecteur dégrade
+       * alors son octroi en manuel de lui-même : ce qui manque ici est une donnée, pas
+       * un credential, donc ce n'est pas à `resolveCapability` de le dire.
+       */
+      handles?: Readonly<Record<string, string>>;
+    }
+  | { kind: "service"; key: string };
 
 export interface Intent {
   kind: "grant" | "revoke";

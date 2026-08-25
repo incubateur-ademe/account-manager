@@ -46,6 +46,13 @@ const coreSchema = z.object({
   GITHUB_TOKEN: jetonFacultatif,
 
   /**
+   * Facultatif pour la même raison, et il porte l'écriture là où le précédent ne
+   * porte que la lecture. Son absence dégrade l'octroi GitHub en manuel, elle
+   * n'empêche ni le démarrage ni la collecte.
+   */
+  GITHUB_ADMIN_TOKEN: jetonFacultatif,
+
+  /**
    * Facultatif pour la même raison. Nominatif malgré les apparences : Notion le
    * révoque au départ de la personne qui l'a créé comme à son changement de rôle,
    * et il porte l'écriture sur le workspace entier.

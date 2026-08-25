@@ -298,6 +298,28 @@ async function ancienCalcul(): Promise<{ etapes: PlannedStep[]; empreinte: strin
   return { etapes, empreinte: empreinteDuPlan(etapes) };
 }
 
+/**
+ * Un connecteur qui ne sait que retirer. Il tient le filtre d'une arrivée : sans lui
+ * dans le registre, « seuls les connecteurs qui déclarent l'octroi sont interrogés »
+ * s'affirmerait sans que rien ne puisse le démentir.
+ */
+const SANS_OCTROI: Connector = {
+  contract: {
+    key: "coffre",
+    label: "Coffre",
+    criticality: "low",
+    runbook: "Retirer la personne des collections du coffre.",
+    credentials: [],
+    capabilities: { revoke: [{ requires: [], tier: "manual" }] },
+    scopeSchema: z.object({}),
+  },
+  probe: () => Promise.resolve([]),
+  plan: (_intent: Intent, ctx: RunContext) => {
+    contextes.push(ctx);
+    return Promise.resolve([]);
+  },
+};
+
 const GITHUB = creerGithub(() => ({ organisations: ["incubateur-ademe", "betagouv"] }));
 
 function registre(...connecteurs: readonly Connector[]): void {
@@ -412,16 +434,17 @@ describe("un plan de départ, après que le dossier a gagné un sens", () => {
 });
 
 /**
- * L'arrivée emprunte le même mécanisme que le départ. Elle sort vide aujourd'hui,
- * faute de connecteur qui sache ouvrir un accès, et ce vide est le résultat attendu
- * plutôt qu'une panne : ce qui se prouve ici, c'est que le mécanisme se remplira
- * tout seul le jour où l'un d'eux le déclarera.
+ * L'arrivée emprunte le même mécanisme que le départ. Elle sort vide aujourd'hui :
+ * les connecteurs déclarent l'octroi mais n'en rendent pas encore les étapes, et ce
+ * vide est le résultat attendu plutôt qu'une panne. Ce qui se prouve ici, c'est que
+ * le mécanisme se remplira tout seul le jour où l'un d'eux rendra quelque chose.
  */
 describe("un plan d'arrivée", () => {
   it("s'instancie, assemble ce qui existe, et se laisse confirmer", async () => {
-    // Given un connecteur qui sait ouvrir un accès, aux côtés de ceux qui n'en
-    // savent rien, et une personne dont on ignore tout des comptes
-    registre(GITHUB, notion, ATELIER);
+    // Given des connecteurs qui déclarent l'octroi, dont un seul en rend aujourd'hui
+    // les étapes, un dernier qui ne sait que retirer, et une personne dont on ignore
+    // tout des comptes
+    registre(GITHUB, notion, ATELIER, SANS_OCTROI);
 
     // When on ouvre son arrivée et qu'on calcule son plan
     const dossier = await ouvrirDossier(PERSONNE, "ONBOARDING", new Date("2026-09-01"));
@@ -433,7 +456,7 @@ describe("un plan d'arrivée", () => {
 
     // Then seuls les connecteurs qui déclarent l'octroi sont interrogés, et aucune
     // étape de retrait ne s'est glissée dans une arrivée
-    expect(calcule.systemes).toEqual(["atelier"]);
+    expect(calcule.systemes).toEqual(["github", "notion", "atelier"]);
     expect(calcule.etapes.map(({ etape }) => etape.capability)).toEqual(["grant", "grant"]);
     expect(calcule.etapes.map(({ etape }) => etape.idempotencyKey)).toEqual([
       `atelier:lecture:grant:${USERNAME}`,
@@ -466,17 +489,18 @@ describe("un plan d'arrivée", () => {
   });
 
   it("sort vide quand rien ne le remplit, et se clôt quand même", async () => {
-    // Given le dépôt tel qu'il est aujourd'hui : deux connecteurs, aucune capacité
-    // d'octroi déclarée, et aucun modèle d'arrivée
+    // Given le dépôt tel qu'il est aujourd'hui : deux connecteurs qui déclarent
+    // l'octroi sans en rendre encore les étapes, et aucun modèle d'arrivée
     base.identites.push(identite({ provider: "github", matchMethod: "GITHUB_LOGIN" }));
 
     // When on calcule l'arrivée de la même personne
     const calcule = await calculerPlan("ONBOARDING", PERSONNE, USERNAME, MAINTENANT);
 
-    // Then le plan est vide, et il l'est parce que personne ne sait encore donner,
-    // pas parce que la personne n'aurait besoin de rien
+    // Then le plan est vide, et il l'est parce que personne ne rend encore d'étape
+    // d'octroi, pas parce que la personne n'aurait besoin de rien : les deux systèmes
+    // ont bien été interrogés
     expect(calcule.etapes).toEqual([]);
-    expect(calcule.systemes).toEqual([]);
+    expect(calcule.systemes).toEqual(["github", "notion"]);
     expect(calcule.ecartees).toEqual([]);
 
     // Then la confirmation le refuse, à raison : confirmer « rien à faire » donnerait
