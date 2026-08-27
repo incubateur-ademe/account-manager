@@ -4,13 +4,22 @@ import { CONNECTEURS } from "@/connectors";
 import type { Connector, Intent, PlannedStep, RunContext } from "@/core/connector";
 import {
   ETATS_VIVANTS,
+  type EtatEtape,
+  type EtatValidation,
+  etatApresPointage,
   etatDeNaissance,
   type SensDossier,
   type SystemesDuDepart,
   systemesDuDepart,
 } from "@/core/dossier";
 import type { RefusDOctroi } from "@/core/octroi";
-import { assembler, type EtapeAssemblee, type EtapeEcartee, empreinteDuPlan } from "@/core/plan";
+import {
+  assembler,
+  type EtapeAssemblee,
+  type EtapeEcartee,
+  empreinteDuPlan,
+  exigerDesCombinaisonsValides,
+} from "@/core/plan";
 import type { Profil } from "@/core/policy";
 import { Prisma } from "@/generated/prisma/client";
 import { octroisDUnProfil } from "@/lib/arrivee";
@@ -279,6 +288,59 @@ export async function ouvrirDossier(
 }
 
 /**
+ * Assez de tentatives pour que deux clics simultanés se rangent, pas assez pour qu'une
+ * boucle d'écriture continue accapare la requête : au-delà, le pointage suivant
+ * reposera l'état de toute façon.
+ */
+const TENTATIVES_DETAT = 5;
+
+/**
+ * Repose l'état d'un plan sur ce que ses étapes disent maintenant.
+ *
+ * La relecture suit l'écriture au lieu de la précéder, et c'est tout l'objet de cette
+ * fonction : deux pointages simultanés sur deux étapes du même plan calculaient sinon
+ * chacun sur une photo prise avant que l'autre n'écrive, et le dernier posait un état
+ * que le détail dément, « en cours » sur un plan dont plus rien n'attend.
+ *
+ * L'état et les étapes se lisent d'une seule requête : lus séparément, l'état
+ * servirait de témoin à une photo qu'il n'a pas vue, et la condition d'écriture ne
+ * garderait plus rien.
+ *
+ * Le conflit se rejoue plutôt qu'il ne s'abandonne, à la différence des trois autres
+ * courses de ce dépôt : celles-là résolvent un doublon, où le gagnant a raison et le
+ * perdant n'a plus rien à faire. Ici le perdant porte une étape que le gagnant n'a pas
+ * vue, et renoncer laisserait l'état muet sur elle.
+ */
+export async function reposerLEtatDuPlan(planId: string): Promise<void> {
+  for (let tentative = 0; tentative < TENTATIVES_DETAT; tentative += 1) {
+    const plan = await prisma.plan.findUnique({
+      where: { id: planId },
+      select: { state: true, steps: { select: { state: true, validation: true } } },
+    });
+
+    if (!plan) {
+      return;
+    }
+
+    const { count } = await prisma.plan.updateMany({
+      where: { id: planId, state: plan.state },
+      data: {
+        state: etatApresPointage(
+          plan.steps.map((etape) => ({
+            etat: etape.state as EtatEtape,
+            validation: etape.validation as EtatValidation,
+          })),
+        ),
+      },
+    });
+
+    if (count > 0) {
+      return;
+    }
+  }
+}
+
+/**
  * Ce qu'un refus de construction dit, et il nomme tout ce qu'il faut pour le corriger :
  * le profil, le rang de l'accès dans sa liste, le système, et le motif.
  */
@@ -318,6 +380,12 @@ export async function enregistrerPlan(
     throw new Error(messageDeRefus(calcule.refus));
   }
 
+  // Le seul garde de la répartition des rôles, la base n'en portant aucun : elle est
+  // écrite ici et nulle part ailleurs, donc c'est ici qu'une combinaison impossible
+  // doit mourir. Plus loin, elle attendrait pour toujours un validateur qui ne peut
+  // pas exister.
+  exigerDesCombinaisonsValides(calcule.etapes.map(({ etape }) => etape));
+
   const expiresAt = new Date(maintenant.getTime() + VALIDITE_JOURS * 24 * 60 * 60_000);
 
   // L'identifiant est tiré ici pour entrer dans les clés d'idempotence, uniques en
@@ -346,6 +414,12 @@ export async function enregistrerPlan(
           riskLevel: RISQUE[etape.riskLevel],
           expectedState: (etape.expectedState ?? {}) as object,
           idempotencyKey: `${etape.idempotencyKey}:${planId}`,
+          // Recopie directe, sans table de traduction : `Acteur` et `StepActor`
+          // portent les mêmes littéraux, comme `EtatEtape` et `StepState`. Le détour
+          // par un dictionnaire d'identité aurait été une liste de plus à tenir à
+          // jour, pas une garde.
+          ...(etape.expectedActor ? { expectedActor: etape.expectedActor } : {}),
+          ...(etape.validationBy ? { validationBy: etape.validationBy } : {}),
           ...(etape.grantExpiresAt ? { grantExpiresAt: etape.grantExpiresAt } : {}),
           ...(etape.manual ? { manual: etape.manual as object } : {}),
           ...(etape.template ? { template: etape.template as object } : {}),

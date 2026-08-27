@@ -1,6 +1,7 @@
 import type { z } from "zod";
 
 import type { AuditInput } from "@/core/audit";
+import type { Acteur } from "@/core/dossier";
 import type { OrigineFigee } from "@/core/modele-plan";
 
 export type Capability = "list" | "grant" | "revoke" | "verify";
@@ -300,6 +301,18 @@ export interface PlannedStep {
    * signifie exactement « cette étape vient d'un système ».
    */
   template?: OrigineFigee;
+  /**
+   * Qui doit faire ce geste, et qui doit contrôler ce qui en sera déclaré. Absents,
+   * l'étape revient à l'opérateur et se croit sur parole, ce qu'ont toujours été les
+   * étapes qu'un connecteur calcule.
+   *
+   * Dans l'empreinte, à la différence de `grantExpiresAt` : qui doit agir et qui doit
+   * contrôler font partie de ce qu'un opérateur approuve en confirmant, là où une
+   * échéance absolue comptée depuis l'instant du calcul rendrait tout plan obsolète
+   * une seconde plus tard.
+   */
+  expectedActor?: Acteur;
+  validationBy?: Acteur;
 }
 
 /**

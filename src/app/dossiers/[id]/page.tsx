@@ -7,12 +7,19 @@ import { notFound } from "next/navigation";
 import { CONNECTEURS } from "@/connectors";
 import { type Capability, type ResolvedCapability, resolveCapability } from "@/core/connector";
 import {
+  type Acteur,
   type EtatEtape,
+  type EtatPlan,
+  type EtatValidation,
   estSoldee,
   peutAnnuler,
   peutClore,
   peutPointer,
+  peutValider,
+  planPointable,
+  roleSurDossier,
   type SensDossier,
+  type Valideur,
 } from "@/core/dossier";
 import { peutExecuter } from "@/core/execution";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
@@ -44,6 +51,7 @@ import {
   BoutonExecuter,
   BoutonRecalculer,
   Pointage,
+  Validation,
 } from "./Pointage";
 
 export const dynamic = "force-dynamic";
@@ -77,6 +85,24 @@ const ETAPE: Record<EtatEtape, { libelle: string; severite: "success" | "warning
   SKIPPED: { libelle: "écartée", severite: "warning" },
   FAILED: { libelle: "échec", severite: "error" },
   STALE: { libelle: "situation changée", severite: "warning" },
+};
+
+/**
+ * À qui l'étape revient. Rien sous un opérateur : c'est le cas nominal de ce plan, et
+ * décorer chaque ligne d'un badge que toutes portent n'apprend rien à personne, tout
+ * en noyant les deux qui disent quelque chose.
+ */
+const ACTEUR: Record<Acteur, { libelle: string; severite: "info" } | null> = {
+  OPERATOR: null,
+  SUBJECT: { libelle: "à la personne concernée", severite: "info" },
+  DELEGATE: { libelle: "à un délégué", severite: "info" },
+};
+
+/** Qui porte le second regard, dit dans une phrase. */
+const CONTROLEUR: Record<Acteur, string> = {
+  OPERATOR: "d'un opérateur",
+  SUBJECT: "de la personne concernée",
+  DELEGATE: "d'un délégué",
 };
 
 const ECART: Record<RaisonDEcart, string> = {
@@ -117,6 +143,13 @@ interface EtapeFigee {
   tier: string;
   riskLevel: string;
   state: string;
+  validation: string;
+  expectedActor: string;
+  validationBy: string | null;
+  declaredBy: string | null;
+  validatedBy: string | null;
+  validatedAt: Date | null;
+  validationNote: string | null;
   manual: unknown;
   reponse: string | null;
   lastError: string | null;
@@ -263,25 +296,79 @@ function titreDuGroupe(proprietaire: string | null, nomsDeStartup: ReadonlyMap<s
   return `Ce que la startup ${nomsDeStartup.get(proprietaire) ?? proprietaire} demande`;
 }
 
+/**
+ * Ce que les restantes attendent d'un contrôle, dit relativement à leur nombre.
+ *
+ * « L'une d'elles » sous une seule étape restante se lit comme une faute, et c'est le
+ * cas le plus fréquent en fin de dossier : quand l'attente est la totalité des
+ * restantes, la phrase le dit plutôt que d'en désigner une partie.
+ */
+function attenteDeControle(enAttente: number, restantes: number): string {
+  if (enAttente === 0) {
+    return "";
+  }
+
+  let sujet: string;
+  if (enAttente === restantes) {
+    sujet =
+      enAttente === 1
+        ? "Elle a été déclarée faite et attend"
+        : "Toutes ont été déclarées faites et attendent";
+  } else if (enAttente === 1) {
+    sujet = "L'une d'elles a été déclarée faite et attend";
+  } else {
+    sujet = `${enAttente} d'entre elles ont été déclarées faites et attendent`;
+  }
+
+  return ` ${sujet} un second regard : une déclaration que personne n'a contrôlée ne solde pas son étape.`;
+}
+
 /** Une étape figée, telle qu'elle se lit et telle qu'elle se pointe. */
 function Etape({
   etape,
   saisie,
   voie,
   pointable,
+  etatPlan,
   sens,
+  valideur,
 }: {
   etape: EtapeFigee;
   saisie: SaisieAttendue | null;
   /** L'écart entre le tier figé et la voie du jour, ou ce qui manque pour faire mieux. */
   voie: string | null;
   pointable: boolean;
+  /** L'état du plan, tel que la garde de pointage a besoin de le lire. */
+  etatPlan: EtatPlan;
   sens: SensDossier;
+  /** Celui qui lit, tel que les deux gardes ont besoin de le connaître. */
+  valideur: Valideur;
 }) {
   const aide = marche(etape.manual);
   const tier = TIER[etape.tier] ?? { libelle: etape.tier, severite: "info" as const };
   const pointee = ETAPE[etape.state as EtatEtape];
-  const soldee = estSoldee(etape.state as EtatEtape);
+  const validation = etape.validation as EtatValidation;
+  const soldee = estSoldee({ etat: etape.state as EtatEtape, validation });
+  const acteur = ACTEUR[etape.expectedActor as Acteur];
+  const controleur = etape.validationBy ? CONTROLEUR[etape.validationBy as Acteur] : null;
+
+  // Adossé à la garde comme la validation l'est déjà : offrir le pointage puis le
+  // refuser au clic est exactement ce que cet écran évite partout ailleurs.
+  const pointage = peutPointer(etatPlan, etape.expectedActor as Acteur, valideur.role);
+
+  // Adossé à la garde plutôt que rejoué ici : l'écran qui connaît la règle de son côté
+  // est ce qui a muré ce dossier le jour où une étape a échoué.
+  const controle =
+    validation === "AWAITING"
+      ? peutValider(
+          {
+            validation,
+            validationBy: etape.validationBy as Acteur | null,
+            declaredBy: etape.declaredBy,
+          },
+          valideur,
+        )
+      : null;
 
   return (
     <li className={fr.cx("fr-mb-4w")}>
@@ -292,6 +379,29 @@ function Etape({
       <Badge severity={tier.severite} small noIcon>
         {tier.libelle}
       </Badge>{" "}
+      {acteur ? (
+        <>
+          <Badge severity={acteur.severite} small noIcon>
+            {acteur.libelle}
+          </Badge>{" "}
+        </>
+      ) : null}
+      {validation === "AWAITING" ? (
+        <>
+          <Badge severity="warning" small noIcon>
+            en attente de validation
+          </Badge>{" "}
+        </>
+      ) : null}
+      {/* Un refus a renvoyé l'étape à faire : sans ce badge, elle se relit comme une
+          étape que personne n'a jamais pointée. */}
+      {validation === "REFUSED" ? (
+        <>
+          <Badge severity="error" small noIcon>
+            preuve refusée
+          </Badge>{" "}
+        </>
+      ) : null}
       {etape.riskLevel === "HIGH" ? (
         <Badge severity="error" small noIcon>
           risque élevé
@@ -344,16 +454,49 @@ function Etape({
       ) : null}
       {etape.executedAt ? (
         <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-          Pointée le {dateLocale.format(etape.executedAt)}.
+          Pointée le {dateLocale.format(etape.executedAt)}
+          {etape.declaredBy ? ` par ${etape.declaredBy}` : ""}.
+        </p>
+      ) : null}
+      {validation === "AWAITING" ? (
+        <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
+          Cette déclaration attend le regard {controleur ?? "de quelqu'un d'autre"}. Tant qu'il n'a
+          pas eu lieu, l'étape reste à solder et le dossier ne se clôt pas.
+        </p>
+      ) : null}
+      {validation === "REFUSED" ? (
+        <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
+          <strong>Preuve refusée</strong>
+          {etape.validatedBy ? ` par ${etape.validatedBy}` : ""}
+          {etape.validatedAt ? ` le ${dateLocale.format(etape.validatedAt)}` : ""}
+          {etape.validationNote ? ` : ${etape.validationNote}` : ""}. L'étape est de nouveau à
+          faire.
+        </p>
+      ) : null}
+      {validation === "ACCEPTED" && etape.validatedBy ? (
+        <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
+          Validée par {etape.validatedBy}
+          {etape.validatedAt ? ` le ${dateLocale.format(etape.validatedAt)}` : ""}.
         </p>
       ) : null}
       {pointable ? (
         <Pointage
           etapeId={etape.id}
-          faite={soldee}
+          // Une déclaration en attente de contrôle a bel et bien eu lieu : le bouton
+          // corrige ce qui a été dit, il n'enregistre pas une première parole.
+          faite={soldee || validation === "AWAITING"}
           sens={sens}
           saisie={saisie}
           reponse={etape.reponse}
+          possible={pointage.possible}
+          raison={pointage.possible ? null : pointage.raison}
+        />
+      ) : null}
+      {pointable && controle ? (
+        <Validation
+          etapeId={etape.id}
+          possible={controle.possible}
+          raison={controle.possible ? null : controle.raison}
         />
       ) : null}
     </li>
@@ -367,7 +510,7 @@ export default async function DossierPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireOperateur();
+  const operateur = await requireOperateur();
   const { id } = await params;
   const { deja } = await searchParams;
 
@@ -410,6 +553,13 @@ export default async function DossierPage({
               idempotencyKey: true,
               riskLevel: true,
               state: true,
+              validation: true,
+              expectedActor: true,
+              validationBy: true,
+              declaredBy: true,
+              validatedBy: true,
+              validatedAt: true,
+              validationNote: true,
               manual: true,
               template: true,
               reponse: true,
@@ -466,8 +616,27 @@ export default async function DossierPage({
     plan !== undefined && !annule && !clos && !brouillon && !remplace && plan.state !== "CANCELLED";
   // Adossé à la garde plutôt que recopié : l'écran connaissait la règle de son côté,
   // et c'est cet écart qui a muré le dossier le jour où une étape a échoué.
-  const pointable = plan !== undefined && !annule && peutPointer(plan.state).possible;
-  const restantes = plan?.steps.filter((etape) => !estSoldee(etape.state as EtatEtape)).length ?? 0;
+  const pointable = plan !== undefined && !annule && planPointable(plan.state).possible;
+  const restantes =
+    plan?.steps.filter(
+      (etape) =>
+        !estSoldee({
+          etat: etape.state as EtatEtape,
+          validation: etape.validation as EtatValidation,
+        }),
+    ).length ?? 0;
+  // Comptées à part parce qu'elles ne se lisent pas comme les autres restantes : rien
+  // n'y reste à faire, quelqu'un a déjà déclaré le geste, et c'est le contrôle qui
+  // manque. Sans ce décompte, l'écran dirait « à faire » d'une étape faite.
+  const enAttenteDeControle =
+    plan?.steps.filter((etape) => etape.validation === "AWAITING").length ?? 0;
+
+  // Le porteur passe avant l'opérateur : sans cette priorité, quelqu'un validerait ses
+  // propres cases sur son propre dossier.
+  const valideur: Valideur = {
+    username: operateur.username,
+    role: roleSurDossier(operateur.username, { porteur: dossier.person.username }, true),
+  };
 
   // Sur les étapes figées, qui sont celles dont l'écran parle. La boucle, elle,
   // recalcule : d'où l'écart que `voieLisible` dit ligne à ligne.
@@ -783,7 +952,9 @@ export default async function DossierPage({
                       voies.get(`${etape.systemKey}:${etape.capability}`),
                     )}
                     pointable={pointable}
+                    etatPlan={plan.state as EtatPlan}
                     sens={dossier.kind}
+                    valideur={valideur}
                   />
                 ))}
               </ol>
@@ -806,8 +977,9 @@ export default async function DossierPage({
               se cloturait. */}
           {pointable && restantes > 0 ? (
             <p className={fr.cx("fr-text--sm")}>
-              {restantes} étape{restantes > 1 ? "s" : ""} en attente. Le dossier se clôt quand il
-              n'en reste aucune.
+              {restantes} étape{restantes > 1 ? "s" : ""} restante{restantes > 1 ? "s" : ""}. Le
+              dossier se clôt quand il n'en reste aucune.
+              {attenteDeControle(enAttenteDeControle, restantes)}
             </p>
           ) : null}
 

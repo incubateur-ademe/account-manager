@@ -4,7 +4,7 @@ import { z } from "zod";
 import { creerGithub } from "@/connectors/github";
 import { notion } from "@/connectors/notion";
 import type { Connector, Intent, PlannedStep, RunContext } from "@/core/connector";
-import type { EtatDossier } from "@/core/dossier";
+import type { Acteur, EtatDossier } from "@/core/dossier";
 import { peutClore, peutConfirmer, systemesDuDepart } from "@/core/dossier";
 import { CLE_INCUBATEUR } from "@/core/modele-plan";
 import { empreinteDuPlan } from "@/core/plan";
@@ -47,6 +47,8 @@ interface EtapeEcrite {
   idempotencyKey: string;
   manual?: object;
   template?: object;
+  expectedActor?: string;
+  validationBy?: string;
 }
 
 interface EtapeDeModeleEnBase {
@@ -1064,5 +1066,131 @@ describe("un plan qui porte ce qu'aucun système ne connaît", () => {
     // les étapes nues, et ne bouge pas d'un dossier à l'autre.
     expect(calculeSecond.empreinte).toBe(calculePremier.empreinte);
     expect(base.plans[1]?.planDigest).toBe(base.plans[0]?.planDigest);
+  });
+});
+
+/**
+ * Un connecteur qui confie ses étapes à qui on lui dit, et les fait contrôler par qui
+ * on lui dit. Aucun connecteur du dépôt ne nomme encore d'acteur : sans celui-ci, la
+ * recopie de la répartition en base ne pourrait ni se prouver ni se démentir.
+ */
+function connecteurQuiRepartit(
+  ...repartitions: readonly { acteur?: Acteur; valideur?: Acteur }[]
+): Connector {
+  return {
+    contract: {
+      key: "atelier",
+      label: "Atelier",
+      criticality: "low",
+      runbook: "Inviter la personne depuis la console de l'atelier.",
+      credentials: [],
+      capabilities: { grant: [{ requires: [], tier: "manual" }] },
+      scopeSchema: z.object({}),
+    },
+    probe: () => Promise.resolve([]),
+    plan: (intent: Intent) => {
+      if (intent.kind !== "grant" || intent.subject.kind !== "person") {
+        return Promise.resolve([]);
+      }
+
+      return Promise.resolve(
+        repartitions.map((repartition, rang) => ({
+          systemKey: "atelier",
+          capability: "grant" as const,
+          tier: "manual" as const,
+          action: "inviter",
+          label: `Geste n°${rang + 1} de l'atelier`,
+          params: { rang },
+          riskLevel: "low" as const,
+          expectedState: {},
+          idempotencyKey: `atelier:${rang}:grant:${USERNAME}`,
+          ...(repartition.acteur ? { expectedActor: repartition.acteur } : {}),
+          ...(repartition.valideur ? { validationBy: repartition.valideur } : {}),
+        })),
+      );
+    },
+  };
+}
+
+/**
+ * Qui doit agir et qui doit contrôler se figent avec le reste de l'étape, et la
+ * répartition impossible meurt là où elle est écrite : aucune contrainte de base ne
+ * double cette garde, la combinaison n'étant produite qu'ici.
+ */
+describe("la répartition des rôles, au moment de figer les étapes", () => {
+  it("recopie ce que l'étape nomme, laisse le défaut à ce qu'elle tait, et refuse l'impossible", async () => {
+    // Given une arrivée dont les trois gestes se répartissent différemment : un que
+    // l'opérateur fait et que personne ne contrôle, un que la personne concernée fait
+    // sous le regard de l'opérateur, un qu'elle fait et qu'on croit sur parole.
+    registre(
+      connecteurQuiRepartit({}, { acteur: "SUBJECT", valideur: "OPERATOR" }, { acteur: "SUBJECT" }),
+    );
+    const dossier = await ouvrirDossier(PERSONNE, "ONBOARDING", null);
+    const calcule = await calculerPlan("ONBOARDING", PERSONNE, USERNAME, MAINTENANT);
+
+    // When on fige le plan
+    await enregistrerPlan(dossier.id, calcule, "operatrice.exemple", MAINTENANT);
+
+    // Then chaque étape porte sa répartition, sans table de traduction : les valeurs
+    // du cœur et celles de l'énumération Prisma sont les mêmes littéraux.
+    const etapes = base.plans[0]?.steps ?? [];
+    expect(etapes.map((etape) => etape.expectedActor)).toEqual([undefined, "SUBJECT", "SUBJECT"]);
+    expect(etapes.map((etape) => etape.validationBy)).toEqual([undefined, "OPERATOR", undefined]);
+
+    // Then ce qui ne nomme personne ne s'écrit pas : la colonne porte son défaut,
+    // « à faire par l'opérateur, sans contrôle », et non une valeur recopiée à la main.
+    expect(etapes[0]).not.toHaveProperty("expectedActor");
+
+    // Then la répartition entre dans l'empreinte : elle fait partie de ce qu'un
+    // opérateur approuve en confirmant.
+    registre(connecteurQuiRepartit({}, { acteur: "SUBJECT" }, { acteur: "SUBJECT" }));
+    const autre = await calculerPlan("ONBOARDING", PERSONNE, USERNAME, MAINTENANT);
+    expect(autre.empreinte).not.toBe(calcule.empreinte);
+  });
+
+  it("refuse net un plan qui confie le contrôle d'une déclaration à qui la fait", async () => {
+    // Given une arrivée dont un geste se ferait contrôler par celui qui le fait
+    registre(connecteurQuiRepartit({ acteur: "SUBJECT", valideur: "SUBJECT" }));
+    const dossier = await ouvrirDossier(PERSONNE, "ONBOARDING", null);
+    const calcule = await calculerPlan("ONBOARDING", PERSONNE, USERNAME, MAINTENANT);
+
+    // When on tente de le figer
+    // Then il meurt là où il est écrit, et le message nomme l'étape et sa répartition :
+    // ce qui sort d'ici est un défaut de construction, et le corriger demande de savoir
+    // laquelle des origines l'a proposé.
+    await expect(
+      enregistrerPlan(dossier.id, calcule, "operatrice.exemple", MAINTENANT),
+    ).rejects.toThrow(/Geste n°1 de l'atelier.*SUBJECT agit, SUBJECT contrôle/s);
+
+    // Then rien n'a été écrit : un plan à moitié figé attendrait pour toujours un
+    // validateur qui ne peut pas exister.
+    expect(base.plans).toEqual([]);
+  });
+
+  it("refuse qu'un délégué relise un opérateur, et fige le geste d'opérateur qu'un opérateur relit", async () => {
+    // Given une arrivée où un délégué relirait ce que l'opérateur a fait
+    registre(connecteurQuiRepartit({ acteur: "OPERATOR", valideur: "DELEGATE" }));
+    const dossier = await ouvrirDossier(PERSONNE, "ONBOARDING", null);
+    const calcule = await calculerPlan("ONBOARDING", PERSONNE, USERNAME, MAINTENANT);
+
+    // Then le plan ne se fige pas : faire contrôler l'équipe transverse par quelqu'un
+    // d'extérieur au dossier inverse la responsabilité.
+    await expect(
+      enregistrerPlan(dossier.id, calcule, "operatrice.exemple", MAINTENANT),
+    ).rejects.toThrow(/OPERATOR agit, DELEGATE contrôle/);
+    expect(base.plans).toEqual([]);
+
+    // Given la même arrivée, mais relue par un opérateur : c'est « j'ai retiré l'accès
+    // administrateur », le geste qui ne se croit pas sur parole
+    registre(connecteurQuiRepartit({ acteur: "OPERATOR", valideur: "OPERATOR" }));
+    const relu = await calculerPlan("ONBOARDING", PERSONNE, USERNAME, MAINTENANT);
+
+    // Then il se fige, et l'étape porte les deux rôles : ce n'est pas une déclaration
+    // que son auteur redirait, la règle qui l'interdit portant sur le username.
+    await enregistrerPlan(dossier.id, relu, "operatrice.exemple", MAINTENANT);
+    expect(base.plans[0]?.steps[0]).toMatchObject({
+      expectedActor: "OPERATOR",
+      validationBy: "OPERATOR",
+    });
   });
 });

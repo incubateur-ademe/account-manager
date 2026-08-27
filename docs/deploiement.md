@@ -295,6 +295,70 @@ pnpm db:migrate    # cree prisma/migrations/<timestamp>_init
 git add prisma/migrations && git commit
 ```
 
+### Avant la mise en service de l'acteur attendu et du valideur
+
+**Consigne à usage unique**, pour la release qui introduit `expectedActor` et
+`validationBy` sur les étapes. Ce n'est pas un défaut de code, c'est un effet de bord de
+déploiement, et il se lit avant qu'on le découvre en production.
+
+Qui doit agir et qui doit contrôler entrent désormais dans l'empreinte du plan
+(`empreinteDuPlan`, `src/core/plan.ts`). L'empreinte qu'un plan a figée sous l'ancien
+code ne vaut donc plus celle que le nouveau recalcule, même sur des étapes strictement
+identiques. Quatre conséquences :
+
+- **Tout plan déjà confirmé devient inexécutable.** `refusDEcart` compare le
+  `confirmedDigest` figé à la confirmation avec l'empreinte recalculée, en bloc et non
+  étape par étape : elles diffèrent, et la boucle refuse le plan entier sur « Ce plan ne
+  décrit plus ce qui a été approuvé ».
+- **Et il ne se recalcule pas.** `peutRecalculer` ne rend un verdict favorable que sur un
+  brouillon : un plan confirmé porte des pointages, et le refaire effacerait ce que
+  quelqu'un a déclaré avoir fait.
+- **Les brouillons, eux, se réparent seuls.** Ils s'affichent obsolètes, et l'écran du
+  dossier offre « Recalculer le plan ». Rien à faire à la main, rien à surveiller.
+- **Le pointage à la main n'est pas touché.** Ni lui ni la validation ne regardent une
+  empreinte : un plan confirmé continue de se pointer étape par étape, de se faire
+  contrôler, et de se clore.
+
+**Voir les dossiers concernés, avant de déployer.** La requête ne dépend d'aucune
+colonne nouvelle, elle se lance donc sur la base en l'état :
+
+```bash
+ssh scw-tools 'docker exec -i <uuid-base> psql -U <user> -d <db>' <<'SQL'
+SELECT c.id AS dossier, c.kind AS sens, p.state AS etat_plan,
+       count(*) AS etapes,
+       count(*) FILTER (WHERE s.state = 'PENDING')      AS a_faire
+FROM "Plan" p
+JOIN "AccessCase" c ON c.id = p."accessCaseId"
+JOIN "PlanStep" s ON s."planId" = p.id
+WHERE p.state IN ('EXECUTING', 'PARTIALLY_EXECUTED')
+GROUP BY c.id, c.kind, p.id, p.state
+ORDER BY a_faire DESC;
+SQL
+```
+
+Aucune ligne : rien à faire, on déploie. Sinon, ligne par ligne :
+
+- **`a_faire` à zéro.** Rien à reprendre : plus aucune étape n'attend un geste, ce qui
+  reste attend un second regard, et la validation se moque de l'empreinte. Le dossier
+  suit son cours et se clôt normalement.
+- **`a_faire` non nul.** Ces étapes ne partiront plus par la boucle. La sortie est celle
+  que `refusDePeremption` énonce déjà à l'écran pour un plan périmé : **pointer à la main
+  chaque étape restante**, « c'est fait » quand le geste a eu lieu, « écartée » avec sa
+  raison quand il n'aura pas lieu, **puis clore le dossier**. Si des accès restent à
+  traiter, **rouvrir un dossier** : son plan sera calculé par le nouveau code, et son
+  empreinte sera la bonne.
+
+Deux fausses sorties, à ne pas chercher. **L'annulation n'en est pas une** : `peutAnnuler`
+la refuse dès qu'un plan est engagé, parce qu'elle ne défait pas ce qui a été déclaré
+fait. Elle ne reste ouverte que sur les brouillons, qui n'en ont pas besoin. **La clôture
+sèche non plus** : `peutClore` exige que toutes les étapes soient soldées, donc le
+pointage à la main précède la clôture, il ne s'y substitue pas.
+
+Un dossier dont toutes les étapes reviennent de toute façon à un humain ne perd rien de
+concret : la boucle n'y faisait que le précheck. Ce qui se perd sur un plan confirmé,
+c'est l'écriture automatique de ce qui restait, et le solde gratuit des étapes que le
+précheck aurait trouvées déjà en place.
+
 ---
 
 ## 4. La tâche planifiée de collecte

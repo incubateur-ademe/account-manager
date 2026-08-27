@@ -33,6 +33,8 @@ interface EtapeEnBase {
   executedAt: Date | null;
   lastError: string | null;
   reversibleUntil: Date | null;
+  validation: string;
+  declaredBy: string | null;
 }
 
 interface PlanEnBase {
@@ -70,6 +72,8 @@ const base = vi.hoisted(() => ({
   sujets: [] as SubjectRef[],
   intentions: [] as string[],
   echeancesRecues: {} as Record<string, Date | undefined>,
+  /** Les rôles de la forge dont le plan exige qu'un autre opérateur relise le geste. */
+  relectureExigee: [] as string[],
 }));
 
 vi.mock("@/lib/env", () => ({
@@ -127,6 +131,25 @@ vi.mock("@/lib/db", () => ({
         base.etatsDePlanEcrits.push(data.state);
         return Promise.resolve({ id: where.id });
       },
+      // La boucle repose l'état par une relecture suivie d'une écriture conditionnée,
+      // pour qu'un pointage survenu pendant qu'elle interrogeait les connecteurs ne
+      // soit pas écrasé par sa photo de départ.
+      updateMany: ({
+        where,
+        data,
+      }: {
+        where: { id: string; state: string };
+        data: { state: string };
+      }) => {
+        if (base.plan?.id !== where.id || base.plan.state !== where.state) {
+          return Promise.resolve({ count: 0 });
+        }
+        if (base.plan.state !== data.state) {
+          base.plan.state = data.state;
+          base.etatsDePlanEcrits.push(data.state);
+        }
+        return Promise.resolve({ count: 1 });
+      },
     },
     planStep: {
       update: ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
@@ -145,6 +168,12 @@ vi.mock("@/lib/db", () => ({
         }
         if (data["executedAt"] instanceof Date) {
           etape.executedAt = data["executedAt"];
+        }
+        if (typeof data["validation"] === "string") {
+          etape.validation = data["validation"];
+        }
+        if (typeof data["declaredBy"] === "string") {
+          etape.declaredBy = data["declaredBy"];
         }
         if ("lastError" in data) {
           etape.lastError = (data["lastError"] as string | null) ?? null;
@@ -239,6 +268,7 @@ const FORGE: Connector = {
         riskLevel: RISQUE_DU_ROLE[role] ?? "medium",
         expectedState: { role },
         idempotencyKey: `forge:grant:${role}`,
+        ...(base.relectureExigee.includes(role) ? { validationBy: "OPERATOR" as const } : {}),
         ...(reversibilite === undefined ? {} : { reversibleForDays: reversibilite }),
         ...(compte === null
           ? {
@@ -361,6 +391,8 @@ async function figerLePlan(
       executedAt: null,
       lastError: null,
       reversibleUntil: null,
+      validation: "NONE",
+      declaredBy: null,
     })),
   };
 
@@ -413,6 +445,7 @@ beforeEach(() => {
   base.sujets.length = 0;
   base.intentions.length = 0;
   base.echeancesRecues = {};
+  base.relectureExigee.length = 0;
 });
 
 describe("la simulation lit tout et n'écrit rien", () => {
@@ -543,6 +576,41 @@ describe("l'exécution autorisée", () => {
     // Then l'état du plan se déduit de ses étapes et ne se pose jamais à la main
     expect(base.etatsDePlanEcrits).toEqual(["PARTIALLY_EXECUTED"]);
     expect(resultat).toMatchObject({ simulation: false, executees: 2, soldees: 2, echecs: 1 });
+  });
+
+  it("ne solde pas ce que le plan a confié au regard d'un autre, même exécuté sans faute", async () => {
+    // Given un plan dont le rôle d'administration de la forge demande qu'un autre
+    // opérateur relise le geste, et dont tout le reste se solde
+    base.actionsAutorisees = true;
+    base.relectureExigee.push("admin");
+    base.prechecks[CLE_ATELIER] = { state: "ALREADY_PRESENT" };
+    await figerLePlan();
+
+    // When on lance l'exécution, et que tout réussit
+    const resultat = await lancer();
+
+    // Then le geste a bien eu lieu, et l'étape n'est pas soldée pour autant : la
+    // machine ne porte aucun second regard, et l'opérateur qui a lancé la reprise est
+    // justement celui dont on attend qu'un autre relise ce qu'il a déclenché.
+    expect(appels()).toContain(`execute:${CLE_ADMIN}`);
+    expect(etape(CLE_ADMIN).state).toBe("SUCCEEDED");
+    expect(etape(CLE_ADMIN).validation).toBe("AWAITING");
+    expect(etape(CLE_ADMIN).declaredBy).toBe(OPERATEUR);
+
+    // Then ce qui ne demandait aucune relecture reste muet : la colonne ne s'invente
+    // pas sur les étapes que personne n'a confiées à un regard.
+    expect(etape(CLE_LECTEUR).validation).toBe("NONE");
+    expect(etape(CLE_LECTEUR).declaredBy).toBeNull();
+    expect(etape(CLE_ATELIER).validation).toBe("NONE");
+
+    // Then le plan reste en cours alors que ses quatre étapes ont été touchées sans
+    // le moindre échec : sans cette attente, `validationBy` serait une colonne morte
+    // sur la ligne, jamais à `AWAITING` donc jamais validable, et l'accès
+    // d'administration serait soldé sans que personne ne l'ait revu.
+    expect(resultat).toMatchObject({ simulation: false, echecs: 0 });
+    expect(base.plan?.steps.every((etape) => etape.state !== "PENDING")).toBe(true);
+    expect(base.etatsDePlanEcrits).toEqual([]);
+    expect(base.plan?.state).toBe("EXECUTING");
   });
 
   it("reprend une étape retenue en écart, et lui laisse de quoi comprendre l'écart", async () => {

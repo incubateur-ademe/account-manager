@@ -4,7 +4,13 @@ import { Table } from "@codegouvfr/react-dsfr/Table";
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { dossierVivant, type EtatDossier, type EtatEtape, estSoldee } from "@/core/dossier";
+import {
+  dossierVivant,
+  type EtatDossier,
+  type EtatEtape,
+  type EtatValidation,
+  estSoldee,
+} from "@/core/dossier";
 import { LIBELLE_DOSSIER, LIBELLE_ETAT_DOSSIER } from "@/core/libelle-dossier";
 import { prisma } from "@/lib/db";
 import { requireOperateur } from "@/lib/session";
@@ -38,7 +44,7 @@ export default async function DossiersPage() {
       plans: {
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: 1,
-        select: { steps: { select: { state: true } } },
+        select: { steps: { select: { state: true, validation: true } } },
       },
     },
   });
@@ -52,7 +58,13 @@ export default async function DossiersPage() {
       firstSignalAt: dossier.firstSignalAt,
       person: dossier.person,
       etapes: etapes.length,
-      restantes: etapes.filter((etape) => !estSoldee(etape.state as EtatEtape)).length,
+      restantes: etapes.filter(
+        (etape) =>
+          !estSoldee({
+            etat: etape.state as EtatEtape,
+            validation: etape.validation as EtatValidation,
+          }),
+      ).length,
       vivant: dossierVivant(dossier.state),
     };
   });

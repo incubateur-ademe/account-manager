@@ -4,6 +4,7 @@ import type { PlannedStep } from "./connector";
 import {
   assembler,
   empreinteDuPlan,
+  exigerDesCombinaisonsValides,
   masseDuPlan,
   type OrigineDEtapes,
   peremptionDuPlan,
@@ -87,17 +88,47 @@ describe("empreinte d'un plan", () => {
       empreinteDuPlan([etape({ params: { equipe: { role: "member", slug: "produit" } } })]),
     ).toBe(empreinteDuPlan([etape({ params: { equipe: { slug: "produit", role: "member" } } })]));
 
-    // Then l'empreinte d'un plan aux paramètres plats ne bouge pas d'un caractère. Ces
-    // valeurs sont celles que les plans déjà confirmés portent en base : les déplacer
-    // dirait obsolète, d'un seul coup, tout plan en attente d'exécution.
-    expect(empreinteDuPlan([etape()])).toBe("9ce27f80");
-    expect(empreinteDuPlan([etape({ params: {} })])).toBe("18947b65");
+    // Then l'empreinte d'un plan aux paramètres plats ne bouge pas d'un caractère.
+    // Ces valeurs sont celles que les plans confirmés portent en base : les déplacer
+    // dirait obsolète, d'un seul coup, tout plan en attente d'exécution. Elles ont été
+    // déplacées une fois, sciemment, par l'entrée de l'acteur attendu dans l'empreinte,
+    // et le scénario suivant en garde la preuve.
+    expect(empreinteDuPlan([etape()])).toBe("f142c4c0");
+    expect(empreinteDuPlan([etape({ params: {} })])).toBe("2ab0f825");
     expect(
       empreinteDuPlan([
         etape(),
         etape({ systemKey: "notion", idempotencyKey: "notion:revoke:jean.dupont" }),
       ]),
-    ).toBe("5be04c6e");
+    ).toBe("a09048a6");
+  });
+
+  it("suit qui doit agir et qui doit contrôler", () => {
+    // Given deux calculs identiques au seul acteur attendu près
+    const parLOperateur = empreinteDuPlan([etape()]);
+    const parLePorteur = empreinteDuPlan([etape({ expectedActor: "SUBJECT" })]);
+
+    // Then ce ne sont pas les mêmes plans : qui doit agir fait partie de ce qu'un
+    // opérateur approuve en confirmant, et un brouillon dont la répartition des rôles
+    // a changé n'est plus confirmable en l'état.
+    expect(parLePorteur).not.toBe(parLOperateur);
+
+    // Then qui doit contrôler aussi, à acteur égal
+    expect(
+      empreinteDuPlan([etape({ expectedActor: "SUBJECT", validationBy: "OPERATOR" })]),
+    ).not.toBe(parLePorteur);
+
+    // Then une étape muette vaut une étape d'opérateur sans contrôle, la valeur que la
+    // ligne prendra en base : dire l'implicite ne déplace rien.
+    expect(empreinteDuPlan([etape({ expectedActor: "OPERATOR" })])).toBe(parLOperateur);
+
+    // Then l'ajout de ces deux champs a bel et bien déplacé l'empreinte de tout plan
+    // existant. Ces trois valeurs sont celles d'avant la livraison, gardées pour ce
+    // qu'elles prouvent : les brouillons en vol sont devenus non confirmables et se
+    // recalculent d'un clic.
+    const avantLesActeurs = ["9ce27f80", "18947b65", "5be04c6e"];
+    expect(avantLesActeurs).not.toContain(parLOperateur);
+    expect(avantLesActeurs).not.toContain(empreinteDuPlan([etape({ params: {} })]));
   });
 });
 
@@ -352,5 +383,73 @@ describe("plafond de masse d'un plan", () => {
     // quoi le nombre écrit dans la politique ne serait pas celui qu'elle dit
     expect(refusDeMasse(masseDuPlan(juste, 20), false)).toBeNull();
     expect(refusDeMasse(masseDuPlan(une, 20), false)).not.toBeNull();
+  });
+});
+
+/**
+ * L'unique garde de la répartition des rôles : rien en base ne la double. Une étape
+ * dont le contrôle revient à un rôle qui ne peut pas le porter attendrait pour toujours
+ * un validateur qui n'existe pas, et le dossier ne se clôturerait jamais.
+ */
+describe("répartition des rôles au moment de figer les étapes", () => {
+  it("laisse passer les quatre répartitions prévues, et tout ce qui se croit sur parole", () => {
+    // Given un plan mêlant des étapes de connecteur, muettes, et des étapes déclarées
+    // qui nomment qui agit et qui contrôle
+    const plan = [
+      etape(),
+      etape({
+        idempotencyKey: "modele:charte",
+        expectedActor: "SUBJECT",
+        validationBy: "OPERATOR",
+      }),
+      etape({ idempotencyKey: "modele:cle", expectedActor: "DELEGATE", validationBy: "OPERATOR" }),
+      etape({ idempotencyKey: "modele:acces", expectedActor: "SUBJECT", validationBy: "DELEGATE" }),
+      // Le geste d'opérateur qu'un opérateur relit : « j'ai retiré l'accès
+      // administrateur » ne se croit pas sur parole, et deux opérateurs sont deux
+      // personnes, ce dont `peutValider` répond sur le username.
+      etape({
+        idempotencyKey: "modele:admin",
+        expectedActor: "OPERATOR",
+        validationBy: "OPERATOR",
+      }),
+      etape({ idempotencyKey: "modele:mot", expectedActor: "SUBJECT" }),
+    ];
+
+    // Then rien ne s'y oppose
+    expect(() => exigerDesCombinaisonsValides(plan)).not.toThrow();
+  });
+
+  it("refuse net les répartitions qui n'existent pas, et nomme l'étape fautive", () => {
+    // Given une étape que la personne concernée contrôlerait elle-même
+    const parLeSujet = [
+      etape(),
+      etape({
+        label: "Signer la charte",
+        idempotencyKey: "modele:charte",
+        expectedActor: "SUBJECT",
+        validationBy: "SUBJECT",
+      }),
+    ];
+
+    // Then le plan ne se fige pas, et le message nomme l'étape fautive : ce qui sort
+    // d'ici est un défaut de construction, et le corriger demande de savoir laquelle
+    // des origines l'a proposée.
+    expect(() => exigerDesCombinaisonsValides(parLeSujet)).toThrow(/Signer la charte/);
+
+    // Then un délégué ne contrôle pas un délégué : rien ne sait aujourd'hui les
+    // distinguer l'un de l'autre, `roleSurDossier` ne rendant jamais `DELEGATE`.
+    expect(() =>
+      exigerDesCombinaisonsValides([
+        etape({ expectedActor: "DELEGATE", validationBy: "DELEGATE" }),
+      ]),
+    ).toThrow();
+
+    // Then un délégué ne relit pas un opérateur : faire contrôler l'équipe transverse
+    // par quelqu'un d'extérieur au dossier inverse la responsabilité.
+    expect(() =>
+      exigerDesCombinaisonsValides([
+        etape({ expectedActor: "OPERATOR", validationBy: "DELEGATE" }),
+      ]),
+    ).toThrow();
   });
 });

@@ -21,6 +21,7 @@ import {
   lancerExecution,
   pointerEtape,
   recalculerPlan,
+  validerEtape,
 } from "./actions";
 
 // Hors du composant, comme partout ailleurs dans ce dépôt : `createModal` enregistre
@@ -119,6 +120,11 @@ export function BoutonConfirmer({ planId }: { planId: string }) {
  *
  * Ce constat se dit dans le sens du dossier, jamais dans les deux : proposer « déjà
  * absent » sous une étape d'octroi ferait signer l'inverse de ce qui a été fait.
+ *
+ * Le verdict vient du serveur et ne se rejoue pas ici, comme pour la validation.
+ * Quand il refuse, les commandes restent affichées et désactivées avec sa raison :
+ * un geste proposé puis refusé au clic est exactement ce que cet écran évite ailleurs,
+ * et un geste absent sans explication se cherche.
  */
 export function Pointage({
   etapeId,
@@ -126,6 +132,8 @@ export function Pointage({
   sens,
   saisie,
   reponse,
+  possible,
+  raison,
 }: {
   etapeId: string;
   faite: boolean;
@@ -133,6 +141,8 @@ export function Pointage({
   /** Ce que l'étape déclarée réclame en plus d'une case cochée, ou rien. */
   saisie: SaisieAttendue | null;
   reponse: string | null;
+  possible: boolean;
+  raison: string | null;
 }) {
   const [etat, formAction, pending] = useActionState<EtatAction | null, FormData>(
     pointerEtape,
@@ -155,6 +165,7 @@ export function Pointage({
             className={fr.cx("fr-select")}
             name="pointage"
             value={choix}
+            disabled={!possible}
             onChange={(evenement) => setChoix(evenement.target.value)}
             aria-label="Ce qui a été fait"
           >
@@ -172,6 +183,7 @@ export function Pointage({
               name="note"
               required
               minLength={3}
+              disabled={!possible}
               placeholder={choix === "ignoree" ? "Pourquoi ?" : "Qu'est-ce qui a échoué ?"}
               aria-label="Raison"
               {...messageObligatoire(
@@ -190,6 +202,7 @@ export function Pointage({
               name="reponse"
               defaultValue={reponse ?? ""}
               required={saisie.obligatoire}
+              disabled={!possible}
               placeholder={saisie.libelle}
               aria-label={saisie.libelle}
               autoComplete="off"
@@ -201,11 +214,98 @@ export function Pointage({
         ) : null}
 
         <div className={fr.cx("fr-col-12", "fr-col-md-3")}>
-          <Button type="submit" priority="secondary" size="small" disabled={pending}>
+          <Button type="submit" priority="secondary" size="small" disabled={pending || !possible}>
             {pending ? "Enregistrement…" : faite ? "Corriger" : "Enregistrer"}
           </Button>
         </div>
       </div>
+
+      {raison ? <p className={fr.cx("fr-text--sm", "fr-mt-1v")}>{raison}</p> : null}
+
+      {etat?.erreur ? (
+        <p className={fr.cx("fr-error-text", "fr-mt-1v")} role="alert">
+          {etat.erreur}
+        </p>
+      ) : null}
+    </form>
+  );
+}
+
+/**
+ * Le second regard porté sur une déclaration : la preuve est faite, ou elle ne l'est
+ * pas. Rien n'est exécuté ici non plus, pas davantage qu'au pointage.
+ *
+ * Le verdict de la garde vient du serveur et ne se rejoue pas ici : l'écran qui
+ * connaissait la règle de son côté est exactement ce qui a muré un dossier ailleurs
+ * dans cet écran. Quand elle refuse, les commandes restent affichées et désactivées,
+ * avec sa raison : un geste absent sans explication se cherche, et celui qui a déclaré
+ * l'étape croirait à une panne plutôt qu'à la règle qui lui interdit de se relire.
+ */
+export function Validation({
+  etapeId,
+  possible,
+  raison,
+}: {
+  etapeId: string;
+  possible: boolean;
+  raison: string | null;
+}) {
+  const [etat, formAction, pending] = useActionState<EtatAction | null, FormData>(
+    validerEtape,
+    null,
+  );
+  const [choix, setChoix] = useState("accepter");
+  const refus = choix === "refuser";
+
+  return (
+    <form action={formAction} className={fr.cx("fr-mt-1w")}>
+      <input type="hidden" name="etapeId" value={etapeId} />
+
+      <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
+        Votre avis sur cette déclaration : le formulaire au-dessus dit ce qui a été fait, celui-ci
+        dit ce que cela vaut.
+      </p>
+
+      <div className={fr.cx("fr-grid-row", "fr-grid-row--gutters")}>
+        <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
+          <select
+            className={fr.cx("fr-select")}
+            name="verdict"
+            value={choix}
+            disabled={!possible}
+            onChange={(evenement) => setChoix(evenement.target.value)}
+            aria-label="Ce que vaut cette déclaration"
+          >
+            <option value="accepter">La preuve est faite</option>
+            <option value="refuser">La preuve n'est pas faite</option>
+          </select>
+        </div>
+
+        {refus ? (
+          <div className={fr.cx("fr-col-12", "fr-col-md-5")}>
+            <input
+              className={fr.cx("fr-input")}
+              name="note"
+              required
+              minLength={3}
+              disabled={!possible}
+              placeholder="Qu'est-ce qui manque ?"
+              aria-label="Motif du refus"
+              {...messageObligatoire(
+                "Dites ce qui manque : sans motif, le refus renvoie l'étape à faire sans dire quoi.",
+              )}
+            />
+          </div>
+        ) : null}
+
+        <div className={fr.cx("fr-col-12", "fr-col-md-3")}>
+          <Button type="submit" priority="secondary" size="small" disabled={pending || !possible}>
+            {pending ? "Enregistrement…" : "Enregistrer cet avis"}
+          </Button>
+        </div>
+      </div>
+
+      {raison ? <p className={fr.cx("fr-text--sm", "fr-mt-1v")}>{raison}</p> : null}
 
       {etat?.erreur ? (
         <p className={fr.cx("fr-error-text", "fr-mt-1v")} role="alert">

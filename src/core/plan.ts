@@ -1,4 +1,5 @@
 import type { PlannedStep, Tier } from "@/core/connector";
+import { type Acteur, combinaisonValide } from "@/core/dossier";
 
 /**
  * Empreinte d'un plan, calculée sur ce qui engage : quelle action, sur quel système,
@@ -47,6 +48,9 @@ function parametresCanoniques(params: Record<string, unknown>): string {
   return JSON.stringify(params, [...cles].sort());
 }
 
+/** L'acteur d'une étape qui n'en nomme pas : celui à qui tout revenait avant que la question se pose. */
+const ACTEUR_PAR_DEFAUT: Acteur = "OPERATOR";
+
 export function empreinteDuPlan(etapes: readonly PlannedStep[]): string {
   const empreintes = etapes
     .map((etape) =>
@@ -55,6 +59,12 @@ export function empreinteDuPlan(etapes: readonly PlannedStep[]): string {
         etape.capability,
         etape.action,
         etape.idempotencyKey,
+        // Qui doit agir et qui doit contrôler entrent dans ce qu'on approuve : une
+        // étape confiée à la personne concernée n'est pas la même étape que la même
+        // confiée à un opérateur. Une étape muette compte comme une étape d'opérateur
+        // sans contrôle, la valeur qu'elle prendra en base.
+        etape.expectedActor ?? ACTEUR_PAR_DEFAUT,
+        etape.validationBy ?? "",
         parametresCanoniques(etape.params),
       ].join(" "),
     )
@@ -188,6 +198,39 @@ export function assembler({ origines }: { origines: readonly OrigineDEtapes[] })
   }
 
   return { etapes, ecartees };
+}
+
+/**
+ * Refuse net un plan dont une étape porte une répartition des rôles qui n'existe pas.
+ *
+ * Elle lève au lieu de rendre un motif, et c'est voulu : elle tient seule un invariant
+ * que la base ne double pas, là où le reste des refus de construction se lit dans une
+ * liste que l'appelant regarde. Une étape impossible doit mourir là où elle est
+ * écrite, pas à l'affichage, sans quoi elle attendrait pour toujours un validateur qui
+ * ne peut pas exister.
+ *
+ * Le message nomme l'étape et la répartition qu'elle porte : ce qui sort d'ici est un
+ * défaut de construction du plan, et le corriger demande de savoir laquelle des trois
+ * origines l'a proposée.
+ */
+export function exigerDesCombinaisonsValides(etapes: readonly PlannedStep[]): void {
+  const impossibles = etapes.filter(
+    (etape) =>
+      !combinaisonValide(etape.expectedActor ?? ACTEUR_PAR_DEFAUT, etape.validationBy ?? null),
+  );
+
+  if (impossibles.length === 0) {
+    return;
+  }
+
+  const lignes = impossibles.map(
+    (etape) =>
+      `  ${etape.systemKey} / ${etape.action} « ${etape.label} » : ${etape.expectedActor ?? ACTEUR_PAR_DEFAUT} agit, ${etape.validationBy} contrôle`,
+  );
+
+  throw new Error(
+    `Ce plan porte une répartition des rôles qui n'existe pas :\n${lignes.join("\n")}`,
+  );
 }
 
 /**

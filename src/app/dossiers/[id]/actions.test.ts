@@ -3,11 +3,18 @@ import { z } from "zod";
 
 import { notion } from "@/connectors/notion";
 import type { Connector, Intent } from "@/core/connector";
-import type { EtatDossier, EtatEtape, EtatPlan, SensDossier } from "@/core/dossier";
+import type {
+  Acteur,
+  EtatDossier,
+  EtatEtape,
+  EtatPlan,
+  EtatValidation,
+  SensDossier,
+} from "@/core/dossier";
 import { peutClore } from "@/core/dossier";
 import { calculerPlan, enregistrerPlan } from "@/lib/dossier";
 
-import { confirmerPlan, pointerEtape } from "./actions";
+import { cloreDossier, confirmerPlan, pointerEtape, validerEtape } from "./actions";
 
 process.env["DATABASE_URL"] ??= "postgresql://localhost:5432/inutilise";
 process.env["ESPACE_MEMBRE_API_KEY"] ??= "inutilisee";
@@ -29,6 +36,14 @@ interface EtapeEnBase {
   lastError: string | null;
   template: unknown;
   reponse: string | null;
+  attempts: number;
+  expectedActor: Acteur;
+  validationBy: Acteur | null;
+  validation: EtatValidation;
+  declaredBy: string | null;
+  validatedBy: string | null;
+  validatedAt: Date | null;
+  validationNote: string | null;
 }
 
 interface PlanEnBase {
@@ -51,11 +66,15 @@ interface DossierEnBase {
 
 interface TraceEnBase {
   action: string;
+  actorUsername: string | null;
   result: string;
+  before: unknown;
   after: unknown;
 }
 
 const base = vi.hoisted(() => ({
+  /** Qui est devant l'écran. Mutable : le contrôle d'une déclaration demande un autre nom. */
+  operateur: "operatrice.exemple",
   identites: [] as IdentiteEnBase[],
   dossiers: [] as DossierEnBase[],
   plans: [] as PlanEnBase[],
@@ -63,6 +82,12 @@ const base = vi.hoisted(() => ({
   journal: [] as TraceEnBase[],
   /** L'ordre réel des écritures, pour dire si la trace a bien précédé l'action. */
   gestes: [] as string[],
+  /**
+   * Ce qui s'intercale entre la lecture d'une étape et son écriture, une seule fois.
+   * C'est la seule façon de jouer deux validations simultanées sur un faux dépôt
+   * séquentiel : sans ce point, chacune verrait toujours ce que l'autre a déjà écrit.
+   */
+  pendantLEcritureDeLEtape: null as (() => Promise<void>) | null,
   connecteurs: [] as Connector[],
   modeles: [] as {
     ownerKey: string;
@@ -77,8 +102,7 @@ vi.mock("@/connectors", () => ({ CONNECTEURS: base.connecteurs }));
 vi.mock("next/cache", () => ({ revalidatePath: () => undefined }));
 
 vi.mock("@/lib/session", () => ({
-  requireOperateur: () =>
-    Promise.resolve({ username: "operatrice.exemple", email: null, nom: null }),
+  requireOperateur: () => Promise.resolve({ username: base.operateur, email: null, nom: null }),
 }));
 
 function dossierDuPlan(plan: PlanEnBase) {
@@ -93,11 +117,16 @@ function dossierDuPlan(plan: PlanEnBase) {
   };
 }
 
+/**
+ * Une lecture rend des copies et non les lignes elles-mêmes, comme le ferait une vraie
+ * base : sans cela, ce qu'une action a lu changerait sous ses pieds dès qu'une autre
+ * écrit, et aucune course ne serait jouable ici.
+ */
 function planComplet(plan: PlanEnBase) {
   return {
     ...plan,
     accessCase: dossierDuPlan(plan),
-    steps: base.etapes.filter((etape) => etape.planId === plan.id),
+    steps: base.etapes.filter((etape) => etape.planId === plan.id).map((etape) => ({ ...etape })),
   };
 }
 
@@ -129,6 +158,8 @@ vi.mock("@/lib/db", () => ({
               label: string;
               ordre: number;
               template?: unknown;
+              expectedActor?: Acteur;
+              validationBy?: Acteur;
             }[];
           };
         };
@@ -146,6 +177,16 @@ vi.mock("@/lib/db", () => ({
             lastError: null,
             template: etape.template ?? null,
             reponse: null,
+            attempts: 0,
+            // Les défauts de la colonne, et non ceux du test : une étape muette est
+            // « à faire par l'opérateur, sans contrôle », ce qu'elle a toujours été.
+            expectedActor: etape.expectedActor ?? "OPERATOR",
+            validationBy: etape.validationBy ?? null,
+            validation: "NONE",
+            declaredBy: null,
+            validatedBy: null,
+            validatedAt: null,
+            validationNote: null,
           });
         });
         return Promise.resolve({ id: data.id });
@@ -162,31 +203,78 @@ vi.mock("@/lib/db", () => ({
         }
         return Promise.resolve(plan);
       },
+      // Deux formes, la confirmation et la repose de l'état : toutes deux
+      // conditionnées sur l'état lu, la première ajoutant la vivacité du dossier.
       updateMany: ({
         where,
         data,
       }: {
-        where: { id: string; state: EtatPlan; accessCase: { state: { in: readonly string[] } } };
-        data: { state: EtatPlan; confirmedDigest: string; confirmedBy: string };
+        where: {
+          id: string;
+          state: EtatPlan;
+          accessCase?: { state: { in: readonly string[] } };
+        };
+        data: { state: EtatPlan; confirmedDigest?: string; confirmedBy?: string };
       }) => {
         const plan = base.plans.find(
           (candidat) => candidat.id === where.id && candidat.state === where.state,
         );
         const dossier = plan && dossierDuPlan(plan);
 
-        if (!plan || !dossier || !where.accessCase.state.in.includes(dossier.state)) {
+        if (!plan || !dossier) {
+          return Promise.resolve({ count: 0 });
+        }
+        if (where.accessCase && !where.accessCase.state.in.includes(dossier.state)) {
           return Promise.resolve({ count: 0 });
         }
 
         base.gestes.push(`plan:${data.state}`);
         plan.state = data.state;
-        plan.confirmedDigest = data.confirmedDigest;
-        plan.confirmedBy = data.confirmedBy;
+        plan.confirmedDigest = data.confirmedDigest ?? plan.confirmedDigest;
+        plan.confirmedBy = data.confirmedBy ?? plan.confirmedBy;
         return Promise.resolve({ count: 1 });
       },
     },
     person: {
       findUnique: () => Promise.resolve({ startups: [], startupAssignments: [] }),
+    },
+    accessCase: {
+      findUnique: ({ where }: { where: { id: string } }) => {
+        const dossier = base.dossiers.find((candidat) => candidat.id === where.id);
+        if (!dossier) {
+          return Promise.resolve(null);
+        }
+
+        // Le dernier plan écrit, celui que `orderBy createdAt desc` puis `take: 1`
+        // ramène : les plans se poussent dans l'ordre où ils sont enregistrés.
+        const dernier = base.plans.filter((plan) => plan.accessCaseId === dossier.id).at(-1);
+
+        return Promise.resolve({
+          id: dossier.id,
+          kind: dossier.kind,
+          state: dossier.state,
+          person: { username: USERNAME },
+          plans: dernier
+            ? [
+                {
+                  id: dernier.id,
+                  state: dernier.state,
+                  _count: {
+                    steps: base.etapes.filter((etape) => etape.planId === dernier.id).length,
+                  },
+                },
+              ]
+            : [],
+        });
+      },
+      update: ({ where, data }: { where: { id: string }; data: { state: EtatDossier } }) => {
+        const dossier = base.dossiers.find((candidat) => candidat.id === where.id);
+        if (dossier) {
+          base.gestes.push(`dossier:${data.state}`);
+          dossier.state = data.state;
+        }
+        return Promise.resolve(dossier);
+      },
     },
     planTemplate: {
       findMany: () => Promise.resolve(base.modeles),
@@ -207,20 +295,88 @@ vi.mock("@/lib/db", () => ({
         data,
       }: {
         where: { id: string };
-        data: { state: EtatEtape; lastError?: string; reponse?: string | null };
+        data: {
+          state: EtatEtape;
+          lastError?: string;
+          reponse?: string | null;
+          attempts?: { increment: number };
+          declaredBy?: string;
+          validation?: EtatValidation;
+          validatedBy?: string | null;
+          validatedAt?: Date | null;
+          validationNote?: string | null;
+        };
       }) => {
         const etape = base.etapes.find((candidat) => candidat.id === where.id);
         if (etape) {
           base.gestes.push(`etape:${data.state}`);
           etape.state = data.state;
           etape.lastError = data.lastError ?? etape.lastError;
+          etape.attempts += data.attempts?.increment ?? 0;
           // Une colonne absente du `data` se tait, une colonne à `null` efface : c'est
           // ce que fait Prisma, et c'est ce qui se joue quand un pointage se corrige.
           if ("reponse" in data) {
             etape.reponse = data.reponse ?? null;
           }
+          if (data.declaredBy !== undefined) {
+            etape.declaredBy = data.declaredBy;
+          }
+          if (data.validation !== undefined) {
+            etape.validation = data.validation;
+          }
+          if ("validatedBy" in data) {
+            etape.validatedBy = data.validatedBy ?? null;
+          }
+          if ("validatedAt" in data) {
+            etape.validatedAt = data.validatedAt ?? null;
+          }
+          if ("validationNote" in data) {
+            etape.validationNote = data.validationNote ?? null;
+          }
         }
         return Promise.resolve(etape);
+      },
+      updateMany: async ({
+        where,
+        data,
+      }: {
+        where: {
+          id: string;
+          validation: EtatValidation;
+          state: EtatEtape;
+          declaredBy: string | null;
+        };
+        data: {
+          validation: EtatValidation;
+          state: EtatEtape;
+          validatedBy: string;
+          validatedAt: Date;
+          validationNote: string | null;
+        };
+      }) => {
+        const pendant = base.pendantLEcritureDeLEtape;
+        base.pendantLEcritureDeLEtape = null;
+        await pendant?.();
+
+        const etape = base.etapes.find(
+          (candidat) =>
+            candidat.id === where.id &&
+            candidat.validation === where.validation &&
+            candidat.state === where.state &&
+            candidat.declaredBy === where.declaredBy,
+        );
+
+        if (!etape) {
+          return Promise.resolve({ count: 0 });
+        }
+
+        base.gestes.push(`etape:${data.state}:${data.validation}`);
+        etape.validation = data.validation;
+        etape.state = data.state;
+        etape.validatedBy = data.validatedBy;
+        etape.validatedAt = data.validatedAt;
+        etape.validationNote = data.validationNote;
+        return Promise.resolve({ count: 1 });
       },
     },
   },
@@ -302,12 +458,14 @@ async function dossierAvecPlan(sens: SensDossier): Promise<{
 }
 
 beforeEach(() => {
+  base.operateur = "operatrice.exemple";
   base.identites.length = 0;
   base.dossiers.length = 0;
   base.plans.length = 0;
   base.etapes.length = 0;
   base.journal.length = 0;
   base.gestes.length = 0;
+  base.pendantLEcritureDeLEtape = null;
   base.modeles.length = 0;
   base.connecteurs.length = 0;
   base.connecteurs.push(notion, ATELIER);
@@ -688,5 +846,531 @@ describe("pointer une étape qui réclame une valeur", () => {
     expect(pointee.erreur).toBeUndefined();
     expect(etape?.state).toBe("SUCCEEDED");
     expect(etape?.reponse).toBeNull();
+  });
+});
+
+/**
+ * Un connecteur qui confie ses gestes à qui on lui dit, et les fait contrôler par qui
+ * on lui dit. Aucun connecteur du dépôt ne nomme encore d'acteur : sans celui-ci, la
+ * validation n'aurait rien sur quoi se jouer.
+ */
+function connecteurQuiRepartit(
+  ...repartitions: readonly { acteur?: Acteur; valideur?: Acteur }[]
+): Connector {
+  return {
+    contract: {
+      key: "atelier",
+      label: "Atelier",
+      criticality: "low",
+      runbook: "Inviter la personne depuis la console de l'atelier.",
+      credentials: [],
+      capabilities: { grant: [{ requires: [], tier: "manual" }] },
+      scopeSchema: z.object({}),
+    },
+    probe: () => Promise.resolve([]),
+    plan: (intent: Intent) => {
+      if (intent.kind !== "grant" || intent.subject.kind !== "person") {
+        return Promise.resolve([]);
+      }
+
+      return Promise.resolve(
+        repartitions.map((repartition, rang) => ({
+          systemKey: "atelier",
+          capability: "grant" as const,
+          tier: "manual" as const,
+          action: "inviter",
+          label: `Geste n°${rang + 1} de l'atelier`,
+          params: { rang },
+          riskLevel: "low" as const,
+          expectedState: {},
+          idempotencyKey: `atelier:${rang}:grant:${USERNAME}`,
+          ...(repartition.acteur ? { expectedActor: repartition.acteur } : {}),
+          ...(repartition.valideur ? { validationBy: repartition.valideur } : {}),
+        })),
+      );
+    },
+  };
+}
+
+function etapeEnBase(rang: number): EtapeEnBase {
+  const etape = base.etapes[rang];
+  if (!etape) {
+    throw new Error(`aucune étape au rang ${rang}`);
+  }
+  return etape;
+}
+
+/** Une arrivée confirmée, dont les gestes se répartissent comme on le demande. */
+async function arriveeRepartie(
+  ...repartitions: readonly { acteur?: Acteur; valideur?: Acteur }[]
+): Promise<{ dossier: DossierEnBase; plan: PlanEnBase }> {
+  base.connecteurs.length = 0;
+  base.connecteurs.push(connecteurQuiRepartit(...repartitions));
+
+  const ouvert = await dossierAvecPlan("ONBOARDING");
+  await confirmerPlan(null, formulaire({ planId: ouvert.plan.id }));
+  return ouvert;
+}
+
+/**
+ * Deux dimensions orthogonales : l'état dit ce qui a été déclaré, la validation dit où
+ * en est le contrôle de cette déclaration. Une case « j'ai signé la charte » se croit
+ * sur parole, un « j'ai retiré l'accès administrateur » ne se croit pas.
+ */
+describe("le contrôle d'une déclaration, étape par étape", () => {
+  it("suit une étape confiée à la personne concernée jusqu'au bout, refus compris", async () => {
+    // Given une arrivée dont un geste revient à la personne concernée sous le regard
+    // d'un opérateur, et dont un autre se croit sur parole
+    const { dossier, plan } = await arriveeRepartie(
+      { acteur: "SUBJECT", valideur: "OPERATOR" },
+      { acteur: "SUBJECT" },
+    );
+    const controlee = etapeEnBase(0);
+    const surParole = etapeEnBase(1);
+
+    // When la personne concernée, opératrice de surcroît, pointe les deux
+    base.operateur = USERNAME;
+    await pointerEtape(null, formulaire({ etapeId: controlee.id, pointage: "fait" }));
+    await pointerEtape(null, formulaire({ etapeId: surParole.id, pointage: "fait" }));
+
+    // Then celle qui se croit sur parole est soldée sans que personne n'ait à parler :
+    // la validation reste à « aucune » tant qu'aucun contrôle n'est attendu.
+    expect(surParole.validation).toBe("NONE");
+    expect(surParole.validatedBy).toBeNull();
+
+    // Then l'autre attend un second regard, et porte le nom de qui a déclaré : c'est
+    // sur le username que « personne ne valide sa propre déclaration » se comparera.
+    expect(controlee.state).toBe("SUCCEEDED");
+    expect(controlee.validation).toBe("AWAITING");
+    expect(controlee.declaredBy).toBe(USERNAME);
+
+    // Then le plan ne se dit pas exécuté pour autant : tout est coché, et quelque
+    // chose bouge encore. Le dossier ne se clôt donc pas.
+    expect(plan.state).toBe("EXECUTING");
+    expect(peutClore("ONBOARDING", dossier.state, plan.state, base.etapes.length)).toMatchObject({
+      possible: false,
+    });
+
+    // When l'opératrice refuse sans dire ce qui manque
+    base.operateur = "operatrice.exemple";
+    const muet = await validerEtape(
+      null,
+      formulaire({ etapeId: controlee.id, verdict: "refuser" }),
+    );
+
+    // Then le refus du refus : sans motif, l'étape repartirait à faire sans dire quoi
+    expect(muet.erreur).toContain("Dites ce qui manque");
+    expect(controlee.validation).toBe("AWAITING");
+
+    // When elle refuse en le disant
+    const refus = await validerEtape(
+      null,
+      formulaire({
+        etapeId: controlee.id,
+        verdict: "refuser",
+        note: "La capture ne montre pas le compte.",
+      }),
+    );
+
+    // Then l'étape redevient à faire, et jamais en échec : « échoué » dirait que le
+    // geste a été tenté et que l'accès est resté ce qu'il était, un refus dit
+    // seulement que la preuve n'est pas faite.
+    expect(refus.erreur).toBeUndefined();
+    expect(controlee.state).toBe("PENDING");
+    expect(controlee.validation).toBe("REFUSED");
+    expect(controlee.validationNote).toBe("La capture ne montre pas le compte.");
+    expect(controlee.validatedBy).toBe("operatrice.exemple");
+
+    // Then il ne compte pas pour une tentative : `attempts` mesure les gestes de
+    // l'acteur, pas les avis du contrôleur.
+    expect(controlee.attempts).toBe(1);
+
+    // Then il se journalise en succès, ce champ disant si l'action a eu lieu et non
+    // quel avis elle portait, et la trace précède l'écriture.
+    expect(base.journal.at(-1)).toMatchObject({ action: "dossier.validation", result: "SUCCESS" });
+    expect(base.gestes.slice(-3)).toEqual([
+      "journal:dossier.validation:SUCCESS",
+      "etape:PENDING:REFUSED",
+      "plan:EXECUTING",
+    ]);
+
+    // Then un second clic sur le même formulaire ne repasse pas : l'écriture est
+    // conditionnée sur la déclaration qui a été lue, si bien qu'une course ne tranche
+    // pas deux fois la même parole.
+    const rejoue = await validerEtape(
+      null,
+      formulaire({ etapeId: controlee.id, verdict: "accepter" }),
+    );
+    expect(rejoue.erreur).toBe("Cette étape n'attend aucune validation.");
+    expect(controlee.validation).toBe("REFUSED");
+
+    // When la personne refait le geste et le repointe
+    base.operateur = USERNAME;
+    await pointerEtape(null, formulaire({ etapeId: controlee.id, pointage: "fait" }));
+
+    // Then l'avis d'hier ne reste pas affiché sous le geste d'aujourd'hui, et la
+    // seconde tentative se compte, elle.
+    expect(controlee.validation).toBe("AWAITING");
+    expect(controlee.validationNote).toBeNull();
+    expect(controlee.validatedBy).toBeNull();
+    expect(controlee.attempts).toBe(2);
+
+    // When l'opératrice accepte
+    base.operateur = "operatrice.exemple";
+    const accepte = await validerEtape(
+      null,
+      formulaire({ etapeId: controlee.id, verdict: "accepter" }),
+    );
+
+    // Then plus rien n'attend : le plan est exécuté et le dossier se clôt
+    expect(accepte.erreur).toBeUndefined();
+    expect(controlee.validation).toBe("ACCEPTED");
+    expect(controlee.validatedBy).toBe("operatrice.exemple");
+    expect(plan.state).toBe("EXECUTED");
+    expect(peutClore("ONBOARDING", dossier.state, plan.state, base.etapes.length)).toEqual({
+      possible: true,
+    });
+  });
+
+  it("refuse à chacun de valider sa propre déclaration, sans bloquer le dossier", async () => {
+    // Given une arrivée dont le geste revient à la personne concernée sous le regard
+    // d'un délégué, et qu'aucun délégué n'existe encore
+    const { plan } = await arriveeRepartie({ acteur: "SUBJECT", valideur: "DELEGATE" });
+    const etape = etapeEnBase(0);
+
+    // When une opératrice pointe à la place de la personne, en substitution
+    await pointerEtape(null, formulaire({ etapeId: etape.id, pointage: "fait" }));
+
+    // Then l'étape attend : celle qui a déclaré n'est pas celle qu'on attendait
+    expect(etape.validation).toBe("AWAITING");
+    expect(etape.declaredBy).toBe("operatrice.exemple");
+
+    // When elle tente de valider ce qu'elle vient de déclarer
+    const soi = await validerEtape(null, formulaire({ etapeId: etape.id, verdict: "accepter" }));
+
+    // Then refusé sur le nom et non sur le rôle : sans `declaredBy`, la règle serait
+    // déclarative et fausse, un opérateur pouvant pointer puis valider la même étape.
+    expect(soi.erreur).toContain("Personne ne valide sa propre déclaration");
+    expect(etape.validation).toBe("AWAITING");
+
+    // When la personne concernée, opératrice elle aussi, tente de valider son dossier
+    base.operateur = USERNAME;
+    const porteuse = await validerEtape(
+      null,
+      formulaire({ etapeId: etape.id, verdict: "accepter" }),
+    );
+
+    // Then refusé : le porteur passe avant l'opérateur, sans quoi quelqu'un
+    // instruirait son propre dossier et validerait ses propres cases.
+    expect(porteuse.erreur).toContain("La personne concernée ne contrôle pas");
+
+    // When un second opérateur regarde
+    base.operateur = "autre.exemple";
+    const tiers = await validerEtape(null, formulaire({ etapeId: etape.id, verdict: "accepter" }));
+
+    // Then un opérateur fait ce qu'un délégué aurait dû faire, et l'inverse ne serait
+    // pas vrai : le contraire coincerait le dossier dès que le délégué s'évapore.
+    expect(tiers.erreur).toBeUndefined();
+    expect(etape.validation).toBe("ACCEPTED");
+    expect(etape.validatedBy).toBe("autre.exemple");
+    expect(plan.state).toBe("EXECUTED");
+  });
+
+  it("fait relire par un second opérateur le geste qu'un opérateur déclare", async () => {
+    // Given une arrivée dont un geste revient à l'opérateur sous le regard d'un
+    // opérateur, l'exemple qui a fait naître tout ceci : « j'ai retiré l'accès
+    // administrateur » est un geste d'opérateur, et c'est justement celui qui ne se
+    // croit pas sur parole. À côté, un geste d'opérateur ordinaire.
+    const { dossier, plan } = await arriveeRepartie(
+      { acteur: "OPERATOR", valideur: "OPERATOR" },
+      {},
+    );
+    const controlee = etapeEnBase(0);
+    const ordinaire = etapeEnBase(1);
+
+    // When la personne concernée tente de pointer ce qui ne lui revient pas
+    base.operateur = USERNAME;
+    const porteuse = await pointerEtape(
+      null,
+      formulaire({ etapeId: controlee.id, pointage: "fait" }),
+    );
+
+    // Then refusé : la répartition n'ouvre rien de nouveau au porteur, le geste reste
+    // celui de l'équipe transverse.
+    expect(porteuse.erreur).toContain("Cette étape ne vous revient pas");
+    expect(controlee.validation).toBe("NONE");
+
+    // When une opératrice pointe les deux
+    base.operateur = "operatrice.exemple";
+    await pointerEtape(null, formulaire({ etapeId: controlee.id, pointage: "fait" }));
+    await pointerEtape(null, formulaire({ etapeId: ordinaire.id, pointage: "fait" }));
+
+    // Then celui qui se croit sur parole est soldé, l'autre attend : elle a fait le
+    // geste, elle ne l'a pas contrôlé. Porter le rôle qui contrôle ne suffit pas quand
+    // c'est son propre geste, sans quoi la répartition ne demanderait jamais rien.
+    expect(ordinaire.validation).toBe("NONE");
+    expect(controlee.state).toBe("SUCCEEDED");
+    expect(controlee.validation).toBe("AWAITING");
+    expect(controlee.declaredBy).toBe("operatrice.exemple");
+    expect(controlee.validatedBy).toBeNull();
+
+    // Then le plan reste en cours et le dossier ne se clôt pas : un accès
+    // d'administration déclaré retiré et que personne n'a revu n'est qu'une parole.
+    expect(plan.state).toBe("EXECUTING");
+    expect(peutClore("ONBOARDING", dossier.state, plan.state, base.etapes.length)).toMatchObject({
+      possible: false,
+    });
+
+    // When elle tente de contrôler ce qu'elle vient de déclarer
+    const soi = await validerEtape(
+      null,
+      formulaire({ etapeId: controlee.id, verdict: "accepter" }),
+    );
+
+    // Then refusé sur le nom : c'est cette règle, et elle seule, qui rend la
+    // répartition tenable entre deux personnes du même rôle.
+    expect(soi.erreur).toContain("Personne ne valide sa propre déclaration");
+    expect(controlee.validation).toBe("AWAITING");
+
+    // When un second opérateur regarde
+    base.operateur = "autre.exemple";
+    const tiers = await validerEtape(
+      null,
+      formulaire({ etapeId: controlee.id, verdict: "accepter" }),
+    );
+
+    // Then la preuve est faite, le plan est exécuté et le dossier se clôt
+    expect(tiers.erreur).toBeUndefined();
+    expect(controlee.validation).toBe("ACCEPTED");
+    expect(controlee.validatedBy).toBe("autre.exemple");
+    expect(plan.state).toBe("EXECUTED");
+    expect(peutClore("ONBOARDING", dossier.state, plan.state, base.etapes.length)).toEqual({
+      possible: true,
+    });
+  });
+
+  it("ne pose pas un état faux quand deux validations tombent en même temps", async () => {
+    // Given une arrivée dont les deux gestes reviennent à la personne concernée sous
+    // le regard d'un opérateur, tous deux déclarés faits et en attente
+    const { dossier, plan } = await arriveeRepartie(
+      { acteur: "SUBJECT", valideur: "OPERATOR" },
+      { acteur: "SUBJECT", valideur: "OPERATOR" },
+    );
+    const premiere = etapeEnBase(0);
+    const seconde = etapeEnBase(1);
+
+    base.operateur = USERNAME;
+    await pointerEtape(null, formulaire({ etapeId: premiere.id, pointage: "fait" }));
+    await pointerEtape(null, formulaire({ etapeId: seconde.id, pointage: "fait" }));
+    expect(plan.state).toBe("EXECUTING");
+
+    // When deux opérateurs valident les deux étapes en même temps : le second
+    // s'intercale entre la lecture du premier et son écriture, si bien que chacun
+    // calcule sur un plan où l'étape de l'autre attend encore
+    base.operateur = "operatrice.exemple";
+    base.pendantLEcritureDeLEtape = async () => {
+      base.operateur = "autre.exemple";
+      await validerEtape(null, formulaire({ etapeId: seconde.id, verdict: "accepter" }));
+      base.operateur = "operatrice.exemple";
+    };
+
+    const premier = await validerEtape(
+      null,
+      formulaire({ etapeId: premiere.id, verdict: "accepter" }),
+    );
+
+    // Then les deux validations sont passées, chacune signée de son contrôleur
+    expect(premier.erreur).toBeUndefined();
+    expect(premiere.validation).toBe("ACCEPTED");
+    expect(premiere.validatedBy).toBe("operatrice.exemple");
+    expect(seconde.validation).toBe("ACCEPTED");
+    expect(seconde.validatedBy).toBe("autre.exemple");
+
+    // Then l'état du plan dit ce que ses étapes disent, et non ce que l'un des deux
+    // calculs avait sous les yeux : la relecture suit l'écriture, et l'écriture est
+    // conditionnée sur l'état relu. Sans cela, le dernier arrivé posait « en cours »
+    // sur un plan dont plus rien n'attend, et le dossier ne se serait jamais clos.
+    expect(plan.state).toBe("EXECUTED");
+    expect(peutClore("ONBOARDING", dossier.state, plan.state, base.etapes.length)).toEqual({
+      possible: true,
+    });
+
+    // Then le point d'entrelacement a bien servi une fois, et une seule
+    expect(base.pendantLEcritureDeLEtape).toBeNull();
+  });
+
+  it("tient pour validé ce que le contrôleur attendu pointe lui-même", async () => {
+    // Given une arrivée dont le geste revient à la personne concernée sous le regard
+    // d'un opérateur, et dont un second geste reste à faire
+    const { plan } = await arriveeRepartie({ acteur: "SUBJECT", valideur: "OPERATOR" }, {});
+    const etape = etapeEnBase(0);
+
+    // When l'opératrice le pointe en substitution : elle est justement le regard
+    // qu'on attendait
+    const pointee = await pointerEtape(null, formulaire({ etapeId: etape.id, pointage: "fait" }));
+
+    // Then la validation est acquise du même coup, et signée : exiger qu'un second
+    // opérateur confirme bloquerait un outil à un seul mainteneur, qui est le cas
+    // nominal ici.
+    expect(pointee.erreur).toBeUndefined();
+    expect(etape.validation).toBe("ACCEPTED");
+    expect(etape.declaredBy).toBe("operatrice.exemple");
+    expect(etape.validatedBy).toBe("operatrice.exemple");
+
+    // Then le plan reste en cours, l'autre geste n'ayant pas été fait : rien n'attend
+    // plus sur celui-ci, ce qui n'est pas la même chose que tout avoir soldé.
+    expect(plan.state).toBe("EXECUTING");
+
+    // Then le journal du pointage dit les deux dimensions, et non le seul état
+    expect(base.journal.at(-1)?.after).toMatchObject({
+      etat: "SUCCEEDED",
+      validation: "ACCEPTED",
+    });
+
+    // Then il n'y a plus rien à contrôler, et le dire est le refus
+    const rien = await validerEtape(null, formulaire({ etapeId: etape.id, verdict: "accepter" }));
+    expect(rien.erreur).toBe("Cette étape n'attend aucune validation.");
+
+    // Then un verdict que personne ne connaît ne touche à rien
+    const inconnu = await validerEtape(
+      null,
+      formulaire({ etapeId: etape.id, verdict: "peut-etre" }),
+    );
+    expect(inconnu.erreur).toBe("Verdict inconnu.");
+  });
+});
+
+/**
+ * Un dossier clos affirme que l'affaire est réglée. Tant qu'une déclaration attend
+ * d'être contrôlée, l'affaire ne l'est pas : elle ne repose que sur une parole que
+ * personne n'a vérifiée, et c'est exactement ce qu'un dossier ne peut pas taire.
+ */
+describe("la clôture d'un dossier, quand tout est coché mais que quelqu'un attend", () => {
+  it("ne clôt que lorsque plus rien n'attend, et laisse le geste de l'opérateur à l'opérateur", async () => {
+    // Given une arrivée dont un geste revient à la personne concernée sous le regard
+    // d'un opérateur, et dont l'autre revient à l'opérateur seul
+    const { dossier, plan } = await arriveeRepartie(
+      { acteur: "SUBJECT", valideur: "OPERATOR" },
+      {},
+    );
+    const controlee = etapeEnBase(0);
+    const parLOperateur = etapeEnBase(1);
+
+    // When la personne concernée, opératrice de surcroît, tente le geste qui ne lui
+    // revient pas
+    base.operateur = USERNAME;
+    const usurpe = await pointerEtape(
+      null,
+      formulaire({ etapeId: parLOperateur.id, pointage: "fait" }),
+    );
+
+    // Then refusé, et rien n'a été écrit : le porteur passe avant l'opérateur, sans
+    // quoi quelqu'un instruirait son propre dossier de bout en bout.
+    expect(usurpe.erreur).toContain("Cette étape ne vous revient pas");
+    expect(parLOperateur.state).toBe("PENDING");
+
+    // When chacun pointe ce qui lui revient
+    await pointerEtape(null, formulaire({ etapeId: controlee.id, pointage: "fait" }));
+    base.operateur = "operatrice.exemple";
+    await pointerEtape(null, formulaire({ etapeId: parLOperateur.id, pointage: "fait" }));
+
+    // Then toutes les étapes sont pointées, et le plan ne se déclare pas exécuté pour
+    // autant : une déclaration attend encore un second regard.
+    expect(base.etapes.map((etape) => etape.state)).toEqual(["SUCCEEDED", "SUCCEEDED"]);
+    expect(controlee.validation).toBe("AWAITING");
+    expect(parLOperateur.validation).toBe("NONE");
+    expect(plan.state).toBe("EXECUTING");
+
+    // When on tente de clore le dossier
+    const trop = await cloreDossier(null, formulaire({ dossierId: dossier.id }));
+
+    // Then refus, et rien n'a bougé : ni le dossier, ni le journal, qui raconte des
+    // gestes et non des tentatives refusées avant d'atteindre la base.
+    expect(trop.erreur).toBe(
+      "Toutes les étapes ne sont pas soldées : des accès n'ont pas été donnés.",
+    );
+    expect(dossier.state).toBe("CONFIRMED");
+    expect(base.journal.map((trace) => trace.action)).not.toContain("dossier.cloture");
+
+    // When l'opératrice porte le second regard
+    const accepte = await validerEtape(
+      null,
+      formulaire({ etapeId: controlee.id, verdict: "accepter" }),
+    );
+
+    // Then plus rien n'attend, et le dossier se clôt
+    expect(accepte.erreur).toBeUndefined();
+    expect(plan.state).toBe("EXECUTED");
+
+    const close = await cloreDossier(null, formulaire({ dossierId: dossier.id }));
+    expect(close.erreur).toBeUndefined();
+    expect(dossier.state).toBe("DONE");
+
+    // Then la trace de la clôture porte le nom de qui l'a faite, et précède l'écriture
+    expect(base.journal.at(-1)).toMatchObject({
+      action: "dossier.cloture",
+      actorUsername: "operatrice.exemple",
+      result: "SUCCESS",
+    });
+    expect(base.gestes.slice(-2)).toEqual(["journal:dossier.cloture:SUCCESS", "dossier:DONE"]);
+  });
+});
+
+/**
+ * Deux gestes humains distincts, donc deux traces distinctes : le journal doit pouvoir
+ * redire dans deux ans qui a déclaré et qui a contrôlé. Les confondre ferait
+ * disparaître la signature qui donne sa valeur au second regard.
+ */
+describe("ce que le journal garde d'une déclaration et de son contrôle", () => {
+  it("écrit deux traces nominatives, chacune avant l'écriture qu'elle documente", async () => {
+    // Given une arrivée dont le geste revient à la personne concernée sous le regard
+    // d'un opérateur, et un journal remis à zéro après la confirmation
+    const { plan } = await arriveeRepartie({ acteur: "SUBJECT", valideur: "OPERATOR" });
+    const etape = etapeEnBase(0);
+    base.journal.length = 0;
+    base.gestes.length = 0;
+
+    // When la personne concernée déclare le geste fait
+    base.operateur = USERNAME;
+    await pointerEtape(null, formulaire({ etapeId: etape.id, pointage: "fait" }));
+
+    // When un opérateur, qui n'est pas elle, porte le second regard
+    base.operateur = "autre.exemple";
+    await validerEtape(
+      null,
+      formulaire({ etapeId: etape.id, verdict: "accepter", note: "Le compte apparaît bien." }),
+    );
+
+    // Then deux traces, deux verbes, deux noms : ni le pointage ni la validation ne
+    // s'écrit sous le nom de l'autre.
+    expect(base.journal.map((trace) => trace.action)).toEqual([
+      "dossier.pointage",
+      "dossier.validation",
+    ]);
+    expect(base.journal.map((trace) => trace.actorUsername)).toEqual([USERNAME, "autre.exemple"]);
+    expect(base.journal.every((trace) => trace.result === "SUCCESS")).toBe(true);
+
+    // Then chacune dit les deux dimensions de l'étape, avant et après, et celle du
+    // contrôle nomme de qui est la parole qu'elle juge.
+    expect(base.journal[0]).toMatchObject({
+      before: { etat: "PENDING", validation: "NONE" },
+      after: { etat: "SUCCEEDED", validation: "AWAITING" },
+    });
+    expect(base.journal[1]).toMatchObject({
+      before: { etat: "SUCCEEDED", validation: "AWAITING", declarePar: USERNAME },
+      after: { etat: "SUCCEEDED", validation: "ACCEPTED", note: "Le compte apparaît bien." },
+    });
+
+    // Then chaque trace précède l'écriture qu'elle documente : une panne du journal ne
+    // doit jamais faire échouer l'action, l'inverse n'étant pas vrai.
+    expect(base.gestes).toEqual([
+      "journal:dossier.pointage:SUCCESS",
+      "etape:SUCCEEDED",
+      "plan:EXECUTING",
+      "journal:dossier.validation:SUCCESS",
+      "etape:SUCCEEDED:ACCEPTED",
+      "plan:EXECUTED",
+    ]);
+    expect(plan.state).toBe("EXECUTED");
   });
 });

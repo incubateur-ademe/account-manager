@@ -2,18 +2,21 @@
 
 import { revalidatePath } from "next/cache";
 
-import type { EtatEtape, SensDossier } from "@/core/dossier";
+import type { Acteur, EtatEtape, EtatValidation, SensDossier } from "@/core/dossier";
 import {
   dossierVivant,
   ETATS_VIVANTS,
-  etatApresPointage,
   etatDUnPlanRemplace,
   peutAnnuler,
   peutClore,
   peutConfirmer,
   peutPointer,
   peutRecalculer,
+  peutValider,
   planAAnnuler,
+  planPointable,
+  roleSurDossier,
+  validationApresPointage,
 } from "@/core/dossier";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 import { origineFigeeSchema } from "@/core/modele-plan";
@@ -21,7 +24,7 @@ import { peremptionDuPlan } from "@/core/plan";
 import { actionTracee } from "@/lib/actions";
 import { profilDeLaPolitique } from "@/lib/arrivee";
 import { prisma } from "@/lib/db";
-import { calculerPlan, enregistrerPlan, messageDeRefus } from "@/lib/dossier";
+import { calculerPlan, enregistrerPlan, messageDeRefus, reposerLEtatDuPlan } from "@/lib/dossier";
 import { executerPlan, type ResultatDExecution } from "@/lib/execution";
 import { requireOperateur } from "@/lib/session";
 
@@ -56,6 +59,26 @@ const CONSTAT_DU_SENS: Record<SensDossier, EtatEtape> = {
   OFFBOARDING: "ALREADY_ABSENT",
 };
 
+const VERDICTS: Record<string, "ACCEPTED" | "REFUSED"> = {
+  accepter: "ACCEPTED",
+  refuser: "REFUSED",
+};
+
+/**
+ * Ce que l'opérateur courant est devant ce dossier.
+ *
+ * `roleSurDossier` rend `null` pour qui n'est ni le porteur ni un opérateur, et ce cas
+ * n'existe pas ici : `requireOperateur` a muré l'écran avant. Un plan dont le dossier
+ * a disparu n'a plus de porteur devant qui se situer, et il ne reste alors que
+ * l'opérateur.
+ */
+function roleDeLOperateur(username: string, porteur: string | null): Acteur {
+  if (porteur === null) {
+    return "OPERATOR";
+  }
+  return roleSurDossier(username, { porteur }, true) ?? "OPERATOR";
+}
+
 async function planDuDossier(planId: string) {
   return prisma.plan.findUnique({
     where: { id: planId },
@@ -73,7 +96,22 @@ async function planDuDossier(planId: string) {
           person: { select: { id: true, username: true } },
         },
       },
-      steps: { select: { id: true, state: true, ordre: true, label: true, systemKey: true } },
+      steps: {
+        select: {
+          id: true,
+          state: true,
+          ordre: true,
+          label: true,
+          systemKey: true,
+          expectedActor: true,
+          validationBy: true,
+          validation: true,
+          declaredBy: true,
+          validatedBy: true,
+          validatedAt: true,
+          validationNote: true,
+        },
+      },
     },
   });
 }
@@ -162,7 +200,9 @@ export async function pointerEtape(
   _etat: EtatAction | null,
   formData: FormData,
 ): Promise<EtatAction> {
-  await requireOperateur();
+  // La garde précède la trace : `peutPointer` a besoin de savoir qui pointe avant
+  // qu'on écrive quoi que ce soit, et `declaredBy` a besoin de son nom.
+  const operateur = await requireOperateur();
 
   const etapeId = String(formData.get("etapeId") ?? "").trim();
   const choix = String(formData.get("pointage") ?? "").trim();
@@ -182,13 +222,17 @@ export async function pointerEtape(
       systemKey: true,
       state: true,
       template: true,
+      expectedActor: true,
+      validationBy: true,
+      validation: true,
       plan: {
         select: {
           id: true,
           state: true,
           accessCaseId: true,
-          accessCase: { select: { kind: true, state: true } },
-          steps: { select: { id: true, state: true } },
+          accessCase: {
+            select: { kind: true, state: true, person: { select: { username: true } } },
+          },
         },
       },
     },
@@ -214,7 +258,9 @@ export async function pointerEtape(
     return { erreur: "Ce constat ne vaut pas dans le sens de ce dossier." };
   }
 
-  const verdict = peutPointer(etape.plan.state);
+  const role = roleDeLOperateur(operateur.username, etape.plan.accessCase?.person.username ?? null);
+
+  const verdict = peutPointer(etape.plan.state, etape.expectedActor as Acteur, role);
   if (!verdict.possible) {
     return { erreur: verdict.raison };
   }
@@ -263,16 +309,27 @@ export async function pointerEtape(
   // affichée sous un geste que personne n'a fait.
   const valeur = critereConstate && saisie && reponse ? reponse : null;
 
+  // Le contrôle ne commence qu'une fois la déclaration faite, et il est déjà fait
+  // quand celui qui déclare se substitue à l'acteur attendu tout en portant le rôle
+  // qui contrôle : le journal montre alors les deux gestes d'une seule main, ce qui
+  // est le cas nominal d'un outil à un seul mainteneur.
+  const validation = validationApresPointage(
+    etape.expectedActor as Acteur,
+    etape.validationBy as Acteur | null,
+    role,
+  );
+
   const maintenant = new Date();
 
   await actionTracee({
     action: "dossier.pointage",
     targetType: "etape",
     targetId: `${etape.systemKey}:${etape.label}`,
-    before: { etat: etape.state },
+    before: { etat: etape.state, validation: etape.validation },
     after: {
       sens,
       etat: nouvelEtat,
+      validation,
       ...(note ? { note } : {}),
       ...(valeur ? { reponse: valeur } : {}),
     },
@@ -286,18 +343,154 @@ export async function pointerEtape(
           attempts: { increment: 1 },
           ...(note ? { lastError: note } : {}),
           reponse: valeur,
+          declaredBy: operateur.username,
+          validation,
+          // L'avis du contrôleur porte sur une déclaration précise : le laisser en
+          // place sous un geste repointé l'afficherait comme s'il jugeait celui-ci.
+          // Le validateur attendu qui pointe lui-même signe du même coup, et c'est
+          // le seul cas où sa signature s'écrit ici.
+          validatedBy: validation === "ACCEPTED" ? operateur.username : null,
+          validatedAt: validation === "ACCEPTED" ? maintenant : null,
+          validationNote: null,
         },
       });
 
-      // L'état du plan se déduit de ses étapes, il ne se pose jamais à la main.
-      const etats = etape.plan.steps.map((autre) =>
-        autre.id === etape.id ? nouvelEtat : (autre.state as EtatEtape),
-      );
+      // L'état du plan se déduit de ses étapes et jamais à la main. La relecture suit
+      // l'écriture, et non l'inverse : voir `reposerLEtatDuPlan`.
+      await reposerLEtatDuPlan(etape.plan.id);
+    },
+  });
 
-      await prisma.plan.update({
-        where: { id: etape.plan.id },
-        data: { state: etatApresPointage(etats) },
+  return {};
+}
+
+/**
+ * Porte le second regard sur une déclaration : la preuve est faite, ou elle ne l'est
+ * pas. Rien n'est exécuté ici non plus, pas davantage qu'au pointage.
+ *
+ * Un refus renvoie l'étape à `PENDING` et jamais à `FAILED` : « échoué » dit que le
+ * geste a été tenté et que l'accès est resté ce qu'il était, un refus dit seulement
+ * que la preuve n'est pas faite, donc que l'étape est de nouveau à faire. Il
+ * n'incrémente pas `attempts`, qui compte les tentatives de l'acteur et non les avis
+ * du contrôleur, et il se journalise en `SUCCESS`, ce champ disant si l'action a eu
+ * lieu et non quel avis elle portait.
+ */
+export async function validerEtape(
+  _etat: EtatAction | null,
+  formData: FormData,
+): Promise<EtatAction> {
+  const operateur = await requireOperateur();
+
+  const etapeId = String(formData.get("etapeId") ?? "").trim();
+  const choix = String(formData.get("verdict") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim();
+
+  const avis = VERDICTS[choix];
+  if (!avis) {
+    return { erreur: "Verdict inconnu." };
+  }
+
+  const etape = await prisma.planStep.findUnique({
+    where: { id: etapeId },
+    select: {
+      id: true,
+      label: true,
+      systemKey: true,
+      state: true,
+      validation: true,
+      validationBy: true,
+      declaredBy: true,
+      plan: {
+        select: {
+          id: true,
+          state: true,
+          accessCaseId: true,
+          accessCase: {
+            select: { kind: true, state: true, person: { select: { username: true } } },
+          },
+        },
+      },
+    },
+  });
+
+  if (!etape) {
+    return { erreur: "Cette étape n'existe plus." };
+  }
+
+  if (etape.plan.accessCase && !dossierVivant(etape.plan.accessCase.state)) {
+    return { erreur: "Ce dossier n'est plus ouvert." };
+  }
+
+  const pointable = planPointable(etape.plan.state);
+  if (!pointable.possible) {
+    return { erreur: pointable.raison };
+  }
+
+  const role = roleDeLOperateur(operateur.username, etape.plan.accessCase?.person.username ?? null);
+
+  const verdict = peutValider(
+    {
+      validation: etape.validation as EtatValidation,
+      validationBy: etape.validationBy as Acteur | null,
+      declaredBy: etape.declaredBy,
+    },
+    { username: operateur.username, role },
+  );
+
+  if (!verdict.possible) {
+    return { erreur: verdict.raison };
+  }
+
+  // Même exigence que le refus de note d'un pointage, et pour la même raison : un
+  // refus muet renvoie l'étape à faire sans dire ce qui manque, et son déclarant
+  // referait le même geste.
+  if (avis === "REFUSED" && note.length < 3) {
+    return {
+      erreur: "Dites ce qui manque : sans motif, le refus renvoie l'étape à faire sans dire quoi.",
+    };
+  }
+
+  const etatApres: EtatEtape = avis === "REFUSED" ? "PENDING" : (etape.state as EtatEtape);
+  const maintenant = new Date();
+
+  await actionTracee({
+    action: "dossier.validation",
+    targetType: "etape",
+    targetId: `${etape.systemKey}:${etape.label}`,
+    before: { etat: etape.state, validation: etape.validation, declarePar: etape.declaredBy },
+    after: {
+      sens: etape.plan.accessCase?.kind ?? null,
+      etat: etatApres,
+      validation: avis,
+      ...(note ? { note } : {}),
+    },
+    revalider: [`/dossiers/${etape.plan.accessCaseId}`],
+    ecrire: async () => {
+      // Conditionnée sur la déclaration lue, et pas seulement sur l'identifiant :
+      // entre la lecture et l'écriture, un second contrôleur a pu trancher, ou le
+      // déclarant repointer son étape. Écrire sans regarder poserait un avis sur une
+      // déclaration que personne n'a vue.
+      const { count } = await prisma.planStep.updateMany({
+        where: {
+          id: etape.id,
+          validation: "AWAITING",
+          state: etape.state,
+          declaredBy: etape.declaredBy,
+        },
+        data: {
+          validation: avis,
+          state: etatApres,
+          validatedBy: operateur.username,
+          validatedAt: maintenant,
+          validationNote: note.length > 0 ? note : null,
+        },
       });
+
+      if (count === 0) {
+        throw new Error("Cette étape a changé pendant la validation.");
+      }
+
+      await reposerLEtatDuPlan(etape.plan.id);
     },
   });
 
