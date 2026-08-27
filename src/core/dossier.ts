@@ -15,6 +15,37 @@ export type EtatDossier = "WATCH" | "CANDIDATE" | "CONFIRMED" | "CANCELLED" | "D
 /** Le sens d'un dossier : ce qu'il faudra donner, ou ce qu'il faudra retirer. */
 export type SensDossier = "ONBOARDING" | "OFFBOARDING";
 
+/**
+ * Qui agit sur une étape, et qui contrôle ce qui y a été déclaré.
+ *
+ * `DELEGATE` existe sans qu'aucun chemin de code ne le produise : `roleSurDossier` ne
+ * le rend jamais tant qu'un droit par objet n'existe pas. Une valeur inerte coûte
+ * zéro, une valeur ajoutée après coup coûte un incident.
+ */
+export type Acteur = "OPERATOR" | "SUBJECT" | "DELEGATE";
+
+/**
+ * Où en est le contrôle d'une déclaration.
+ *
+ * Dimension orthogonale à `EtatEtape`, qui dit ce qui a été déclaré : une case « j'ai
+ * signé la charte » se croit sur parole, un « j'ai retiré l'accès administrateur » ne
+ * se croit pas. Les fusionner obligerait à décliner chaque déclaration validable en
+ * deux valeurs, et l'énumération dirait deux choses à la fois.
+ */
+export type EtatValidation = "NONE" | "AWAITING" | "ACCEPTED" | "REFUSED";
+
+/** Une étape lue sur ses deux dimensions : ce qui a été déclaré, et où en est son contrôle. */
+export interface EtapeSuivie {
+  etat: EtatEtape;
+  validation: EtatValidation;
+}
+
+/** Ce qu'il faut savoir d'un dossier pour dire qui est qui devant lui. */
+export interface DossierConcerne {
+  /** Le username beta.gouv de la personne dont le dossier parle. */
+  porteur: string;
+}
+
 export type EtatPlan =
   | "DRAFT"
   | "CONFIRMABLE"
@@ -61,11 +92,13 @@ export function peutConfirmer(etat: EtatPlan, peremption: Peremption, etapes: nu
 }
 
 /**
- * Pointer une étape est une déclaration humaine, pas une exécution : l'outil ne
- * touche à aucun système ici. On ne pointe donc que ce qui a été confirmé, sans quoi
- * on consignerait des gestes faits d'après un brouillon que personne n'a approuvé.
+ * Ce que l'état du plan autorise, sans regarder qui demande.
+ *
+ * Séparé de `peutPointer` parce que l'écran a besoin de la réponse avant de connaître
+ * la moindre étape : il annonce d'un mot qu'un dossier se pointe ou non, là où la
+ * garde d'écriture juge une étape précise pour une personne précise.
  */
-export function peutPointer(etat: EtatPlan): Verdict {
+export function planPointable(etat: EtatPlan): Verdict {
   // `PARTIALLY_EXECUTED` autant qu'`EXECUTING` : c'est l'état d'un plan dont une
   // étape a échoué, et le refuser murait le dossier. Plus rien ne se pointait, donc
   // plus rien ne se soldait, donc la clôture restait hors d'atteinte, l'annulation
@@ -80,13 +113,203 @@ export function peutPointer(etat: EtatPlan): Verdict {
   return { possible: false, raison: "Ce plan est clos." };
 }
 
-/** Une étape qu'on ne reverra plus : elle a été traitée, ou écartée en connaissance de cause. */
-export function estSoldee(etat: EtatEtape): boolean {
+/**
+ * Pointer une étape est une déclaration humaine, pas une exécution : l'outil ne
+ * touche à aucun système ici. On ne pointe donc que ce qui a été confirmé, sans quoi
+ * on consignerait des gestes faits d'après un brouillon que personne n'a approuvé.
+ *
+ * L'état du plan d'abord, la personne ensuite : un refus qui parlerait du rôle sur un
+ * plan encore en brouillon désignerait le mauvais obstacle.
+ *
+ * Un opérateur pointe n'importe quelle étape, y compris celle d'un délégué : sans
+ * cette substitution, une étape confiée à quelqu'un qui s'évapore murerait le dossier,
+ * et aucun délégué n'existe encore.
+ */
+export function peutPointer(etat: EtatPlan, acteurAttendu: Acteur, role: Acteur | null): Verdict {
+  const plan = planPointable(etat);
+  if (!plan.possible) {
+    return plan;
+  }
+  if (role === null) {
+    return { possible: false, raison: "Ce dossier ne vous concerne pas." };
+  }
+  if (role !== acteurAttendu && role !== "OPERATOR") {
+    return {
+      possible: false,
+      raison: "Cette étape ne vous revient pas : elle attend quelqu'un d'autre.",
+    };
+  }
+  return { possible: true };
+}
+
+/**
+ * Ce que quelqu'un est devant un dossier donné.
+ *
+ * Le porteur passe avant l'opérateur, et cette priorité est la règle : sans elle,
+ * quelqu'un instruirait son propre départ et validerait ses propres cases. La
+ * conséquence est assumée, un opérateur qui part a besoin d'un autre opérateur pour
+ * valider ses étapes sensibles, et c'est exactement le but.
+ *
+ * `DELEGATE` n'en sort jamais : il n'existe aucun droit par objet à lire. Une étape
+ * confiée à un délégué reste donc pointable par un opérateur en substitution, si bien
+ * qu'aucun dossier ne se bloque en attendant ce droit.
+ */
+export function roleSurDossier(
+  username: string,
+  dossier: DossierConcerne,
+  estOperateur: boolean,
+): Acteur | null {
+  if (username === dossier.porteur) {
+    return "SUBJECT";
+  }
+  return estOperateur ? "OPERATOR" : null;
+}
+
+/**
+ * Les quatre répartitions de rôles qu'une étape peut porter, et elles seules : un
+ * opérateur contrôle le porteur, un opérateur contrôle le délégué, un délégué contrôle
+ * le porteur, un opérateur contrôle un opérateur.
+ *
+ * Cette dernière est l'exemple qui a fait naître tout ceci : « j'ai retiré l'accès
+ * administrateur » est un geste d'opérateur, et c'est justement celui qui ne se croit
+ * pas sur parole. Ce n'est pas une déclaration que son auteur redirait une seconde
+ * fois : la règle qui l'interdit porte sur le username et non sur le rôle, et c'est
+ * `peutValider` qui la tient. Deux opérateurs sont deux personnes.
+ *
+ * Trois répartitions restent refusées, chacune pour sa raison. La personne concernée
+ * ne contrôle jamais, quel que soit l'acteur : c'est elle qu'on contrôle. Un délégué
+ * ne contrôle jamais un opérateur : faire relire l'équipe transverse par quelqu'un
+ * d'extérieur au dossier inverse la responsabilité. Un délégué ne contrôle pas non
+ * plus un délégué, faute de quoi que ce soit qui sache aujourd'hui distinguer deux
+ * délégués l'un de l'autre : `roleSurDossier` ne rend jamais `DELEGATE`, là où
+ * `OPERATOR` sort d'une liste nommée. Elle s'ouvrira le jour où un droit par objet
+ * existe, et l'ordre des choses est celui-là : ouvrir une répartition ne coûte rien,
+ * en fermer une après coup demande de reprendre les lignes déjà écrites.
+ *
+ * Une étape sans contrôle est valide quel que soit son acteur, c'est le cas de tout ce
+ * qui se croit sur parole.
+ *
+ * Cette fonction tient l'invariant à elle seule : aucune contrainte en base ne le
+ * double, la combinaison n'étant écrite qu'ici, au moment de figer les étapes, et
+ * aucune course ne pouvant donc en produire une invalide.
+ */
+export function combinaisonValide(acteurAttendu: Acteur, validationBy: Acteur | null): boolean {
+  if (validationBy === null) {
+    return true;
+  }
+  if (validationBy === "SUBJECT") {
+    return false;
+  }
+  if (validationBy === "OPERATOR") {
+    return true;
+  }
+  // Reste le délégué au contrôle, et il ne relit que le porteur.
+  return acteurAttendu === "SUBJECT";
+}
+
+/**
+ * Où en est le contrôle juste après qu'une déclaration a été faite.
+ *
+ * Le contrôleur attendu qui pointe à la place de quelqu'un d'autre vaut validation :
+ * il a vu la chose, et exiger qu'un second opérateur le confirme bloquerait un outil à
+ * un seul mainteneur, qui est le cas nominal ici. Le journal montre alors les deux
+ * gestes d'une seule main.
+ *
+ * Encore faut-il qu'il y ait eu substitution, et c'est là que le rôle attendu compte :
+ * sur une étape dont l'acteur et le contrôleur portent le même rôle, personne ne se
+ * substitue à personne, et un opérateur qui pointe son propre geste n'a rien contrôlé
+ * du tout. Le second regard reste à venir, et il viendra d'un autre nom.
+ */
+export function validationApresPointage(
+  acteurAttendu: Acteur,
+  validationBy: Acteur | null,
+  roleDuDeclarant: Acteur,
+): "NONE" | "AWAITING" | "ACCEPTED" {
+  if (validationBy === null) {
+    return "NONE";
+  }
+  return roleDuDeclarant === validationBy && roleDuDeclarant !== acteurAttendu
+    ? "ACCEPTED"
+    : "AWAITING";
+}
+
+/** Une étape telle que la garde de validation a besoin de la lire. */
+export interface EtapeAValider {
+  validationBy: Acteur | null;
+  validation: EtatValidation;
+  /** Qui a déclaré, par son nom : la règle se compare sur le username, pas sur le rôle. */
+  declaredBy: string | null;
+}
+
+/** Qui prétend contrôler, par son nom et par son rôle sur ce dossier. */
+export interface Valideur {
+  username: string;
+  role: Acteur | null;
+}
+
+/**
+ * Contrôler une déclaration, c'est porter un second regard sur elle. Il n'y a donc
+ * rien à contrôler tant que personne n'a parlé, et le regard doit venir d'ailleurs.
+ *
+ * La règle porte sur le nom et non sur le rôle : c'est la raison d'être de
+ * `declaredBy`, sans laquelle « personne ne valide sa propre déclaration » serait
+ * déclarative et fausse, un opérateur pouvant pointer puis valider la même étape.
+ *
+ * Un opérateur valide ce qu'un délégué aurait dû valider, l'inverse n'étant pas vrai :
+ * le contraire coincerait un dossier dès que le délégué s'évapore, au moment précis où
+ * l'outil sert.
+ */
+export function peutValider(etape: EtapeAValider, valideur: Valideur): Verdict {
+  if (etape.validation !== "AWAITING" || etape.validationBy === null) {
+    return { possible: false, raison: "Cette étape n'attend aucune validation." };
+  }
+  if (valideur.role === null) {
+    return { possible: false, raison: "Ce dossier ne vous concerne pas." };
+  }
+  if (valideur.role === "SUBJECT") {
+    return {
+      possible: false,
+      raison: "La personne concernée ne contrôle pas ce qu'on déclare sur son propre dossier.",
+    };
+  }
+  if (valideur.role === "DELEGATE" && etape.validationBy === "OPERATOR") {
+    return { possible: false, raison: "Cette étape attend le regard d'un opérateur." };
+  }
+  // Sans nom de déclarant, la règle qui interdit de valider sa propre déclaration n'a
+  // rien à comparer : valider serait alors approuver une parole que personne ne porte.
+  if (etape.declaredBy === null) {
+    return {
+      possible: false,
+      raison:
+        "Cette déclaration ne porte le nom de personne : elle est à refaire avant d'être validée.",
+    };
+  }
+  if (etape.declaredBy === valideur.username) {
+    return {
+      possible: false,
+      raison: "Personne ne valide sa propre déclaration : cette étape attend un autre regard.",
+    };
+  }
+  return { possible: true };
+}
+
+/**
+ * Une étape qu'on ne reverra plus : elle a été traitée, ou écartée en connaissance de
+ * cause, et rien n'attend plus sur ce qui en a été dit.
+ *
+ * Une déclaration suspendue n'est ni soldée ni en échec : elle a été faite, et son
+ * contrôle n'a pas eu lieu. Un refus non plus : il dit que la preuve n'est pas faite,
+ * donc que l'étape est de nouveau à faire.
+ */
+export function estSoldee(etape: EtapeSuivie): boolean {
+  if (etape.validation === "AWAITING" || etape.validation === "REFUSED") {
+    return false;
+  }
   return (
-    etat === "SUCCEEDED" ||
-    etat === "ALREADY_ABSENT" ||
-    etat === "ALREADY_PRESENT" ||
-    etat === "SKIPPED"
+    etape.etat === "SUCCEEDED" ||
+    etape.etat === "ALREADY_ABSENT" ||
+    etape.etat === "ALREADY_PRESENT" ||
+    etape.etat === "SKIPPED"
   );
 }
 
@@ -99,14 +322,17 @@ export function estSoldee(etat: EtatEtape): boolean {
  * quelqu'un d'autre est passé avant. « Ignorée » aussi, à la différence près qu'elle
  * porte une raison.
  */
-export function etatApresPointage(etapes: readonly EtatEtape[]): EtatPlan {
+export function etatApresPointage(etapes: readonly EtapeSuivie[]): EtatPlan {
   if (etapes.length === 0) {
     return "EXECUTED";
   }
-  if (etapes.some((etat) => etat === "PENDING")) {
+  // Une attente de validation compte comme une étape à faire, et non comme un échec :
+  // une étape en échec et une étape en attente donnent `EXECUTING`, jamais
+  // `PARTIALLY_EXECUTED`, parce que quelque chose bouge encore.
+  if (etapes.some((etape) => etape.etat === "PENDING" || etape.validation === "AWAITING")) {
     return "EXECUTING";
   }
-  return etapes.every((etat) => estSoldee(etat)) ? "EXECUTED" : "PARTIALLY_EXECUTED";
+  return etapes.every((etape) => estSoldee(etape)) ? "EXECUTED" : "PARTIALLY_EXECUTED";
 }
 
 /**

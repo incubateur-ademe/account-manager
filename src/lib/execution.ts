@@ -2,7 +2,13 @@ import { randomUUID } from "node:crypto";
 
 import { connecteur } from "@/connectors";
 import type { PlannedStep, PrecheckResult, RiskLevel, RunContext } from "@/core/connector";
-import { dossierVivant, type EtatEtape, etatApresPointage } from "@/core/dossier";
+import {
+  dossierVivant,
+  type EtapeSuivie,
+  type EtatEtape,
+  type EtatValidation,
+  estSoldee,
+} from "@/core/dossier";
 import {
   decider,
   type IssueDEtape,
@@ -18,7 +24,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { profilDeLaPolitique } from "@/lib/arrivee";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
-import { calculerPlan } from "@/lib/dossier";
+import { calculerPlan, reposerLEtatDuPlan } from "@/lib/dossier";
 import { env } from "@/lib/env";
 import { policy } from "@/lib/policy";
 
@@ -81,6 +87,7 @@ async function planEnBase(planId: string) {
           id: true,
           label: true,
           state: true,
+          validation: true,
           ordre: true,
           riskLevel: true,
           idempotencyKey: true,
@@ -270,7 +277,15 @@ export async function executerPlan(
   let executees = 0;
   let soldees = 0;
   let echecs = 0;
-  const etats = new Map(plan.steps.map((etape) => [etape.id, etape.state as EtatEtape]));
+  // Les deux dimensions, et pas seulement l'état : une étape déclarée par quelqu'un
+  // d'autre et encore en attente de validation garde le plan en cours, quand bien même
+  // la boucle aurait soldé tout ce qu'elle touche.
+  const etats = new Map<string, EtapeSuivie>(
+    plan.steps.map((etape) => [
+      etape.id,
+      { etat: etape.state as EtatEtape, validation: etape.validation as EtatValidation },
+    ]),
+  );
 
   for (const { id, label, etape } of aTraiter) {
     const systeme = connecteur(etape.systemKey);
@@ -343,9 +358,31 @@ export async function executerPlan(
     const etat = issue?.etat ?? decision.etat;
     const appele = issue !== null;
 
+    // Une étape que quelqu'un doit contrôler n'est pas soldée du seul fait que la
+    // boucle l'a faite. La machine ne porte aucun second regard, et l'opérateur qui a
+    // lancé la reprise est justement celui dont on attend qu'un autre relise le geste :
+    // sans cette attente, `validationBy` serait une colonne morte sur la ligne, jamais
+    // à `AWAITING` donc jamais validable, et l'étape se solderait au mépris de ce que
+    // le plan approuvé demandait.
+    const declare = etat === "SUCCEEDED" || etat === "ALREADY_PRESENT" || etat === "ALREADY_ABSENT";
+    const validation: EtatValidation =
+      etape.validationBy && declare ? "AWAITING" : (etats.get(id)?.validation ?? "NONE");
+
     if (etat !== null || appele) {
       const data: Prisma.PlanStepUpdateInput = {
         ...(etat === null ? {} : { state: etat }),
+        // La signature du contrôleur précédent s'efface avec l'attente qu'on repose :
+        // un avis porte sur une déclaration précise, et le laisser en place le ferait
+        // lire comme s'il jugeait celle-ci. Le journal, lui, garde tout.
+        ...(validation === "AWAITING"
+          ? {
+              validation,
+              declaredBy: operateur,
+              validatedBy: null,
+              validatedAt: null,
+              validationNote: null,
+            }
+          : {}),
         ...(appele
           ? {
               attempts: { increment: 1 },
@@ -361,11 +398,14 @@ export async function executerPlan(
 
       await prisma.planStep.update({ where: { id }, data });
       if (etat !== null) {
-        etats.set(id, etat);
+        etats.set(id, { etat, validation });
       }
     }
 
-    if (etat === "SUCCEEDED" || etat === "ALREADY_PRESENT" || etat === "ALREADY_ABSENT") {
+    // Soldée au sens de `estSoldee` et non du seul état : une étape exécutée sans
+    // faute mais confiée au regard d'un autre n'est pas finie, et l'annoncer soldée
+    // ferait dire au compte rendu l'inverse de ce que l'écran montrera.
+    if (etat !== null && estSoldee({ etat, validation })) {
       soldees += 1;
     }
     if (etat === "FAILED") {
@@ -379,12 +419,11 @@ export async function executerPlan(
     });
   }
 
-  // L'état du plan se déduit de ses étapes et ne se pose jamais à la main. En
-  // simulation, rien n'a bougé, donc il ne bouge pas non plus.
-  const etatDuPlan = etatApresPointage([...etats.values()]);
-  if (etatDuPlan !== plan.state) {
-    await prisma.plan.update({ where: { id: plan.id }, data: { state: etatDuPlan } });
-  }
+  // L'état du plan se déduit de ses étapes et ne se pose jamais à la main. Il se relit
+  // après coup plutôt que depuis la photo prise au début de ce passage : entre les deux,
+  // les connecteurs ont été interrogés, et un opérateur a eu tout ce temps pour pointer
+  // ou valider une étape que cette boucle ne verrait pas.
+  await reposerLEtatDuPlan(plan.id);
 
   return { masse, simulation: dryRun, executees, soldees, echecs };
 }

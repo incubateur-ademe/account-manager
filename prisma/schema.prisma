@@ -510,6 +510,25 @@ enum StepState {
   FAILED
 }
 
+/// Qui agit sur une etape, et qui controle ce qui y a ete declare. DELEGATE est pose
+/// des la premiere migration alors qu'aucun chemin de code ne l'atteint : une valeur
+/// inerte coute zero, une valeur ajoutee apres coup coute un incident.
+enum StepActor {
+  OPERATOR
+  SUBJECT
+  DELEGATE
+}
+
+/// Ou en est le controle d'une declaration. Dimension orthogonale a StepState, qui
+/// dit ce qui a ete declare : les fusionner obligerait a decliner chaque declaration
+/// validable en deux valeurs, et l'enum dirait deux choses a la fois.
+enum StepValidation {
+  NONE
+  AWAITING
+  ACCEPTED
+  REFUSED
+}
+
 model PlanStep {
   id String @id @default(cuid())
 
@@ -557,6 +576,35 @@ model PlanStep {
   /// recopier ferait naitre la file des acces a justifier deja pleine de faux.
   justification String?
 
+  /// Qui doit faire cette etape. Une case « j'ai signe la charte » se croit sur
+  /// parole, un « j'ai retire l'acces administrateur » ne se croit pas.
+  expectedActor StepActor @default(OPERATOR)
+
+  /// Qui doit controler la declaration, ou NULL quand elle se croit sur parole.
+  /// Jamais SUBJECT, c'est la personne qu'on controle. Un DELEGATE ne relit qu'un
+  /// SUBJECT. Un OPERATOR relit n'importe qui, y compris un autre operateur : « j'ai
+  /// retire l'acces administrateur » est un geste d'operateur, et c'est justement
+  /// celui qui ne se croit pas sur parole. Ce n'est pas son auteur qui le redit, la
+  /// regle qui l'interdit portant sur declaredBy et non sur le role.
+  /// Aucune contrainte CHECK ne le garde : la combinaison est ecrite par le code a la
+  /// construction du plan, a partir d'une fonction pure qui refuse, donc aucune
+  /// course ne peut en produire une invalide. Une CHECK qui reference une valeur
+  /// d'enum se desynchronise en outre en silence apres un ALTER TYPE RENAME VALUE,
+  /// PostgreSQL en stockant l'OID et Prisma etant aveugle aux CHECK.
+  validationBy StepActor?
+
+  /// Ou en est ce controle. Stocke et non deduit : un refus est un fait date et
+  /// signe, pas l'absence des autres possibilites.
+  validation StepValidation @default(NONE)
+
+  /// Qui a declare, et qui a controle. Le nom et pas le role : « personne ne valide
+  /// sa propre declaration » se compare sur le username, sans quoi la regle serait
+  /// declarative et fausse.
+  declaredBy     String?
+  validatedBy    String?
+  validatedAt    DateTime?
+  validationNote String?
+
   state     StepState @default(PENDING)
   attempts  Int       @default(0)
   lastError String?
@@ -570,6 +618,9 @@ model PlanStep {
   @@index([planId])
   @@index([state])
   @@index([grantExpiresAt])
+  /// Sert la file « ce qui attend quelqu'un », que #13 et #14 liront par dossier et
+  /// par personne.
+  @@index([validation])
 }
 
 /// Le moment qu'un modele sert. Enum propre et non PlanKind : un modele n'a rien a

@@ -410,7 +410,17 @@ function retenirLaPlusRecente(dates: Map<string, Date>, cle: string, date: Date 
  */
 async function actionsDeclarees(): Promise<ActionDeclaree[]> {
   const etapes = await prisma.planStep.findMany({
-    where: { state: "SUCCEEDED", executedAt: { not: null } },
+    // Les deux dimensions, exactement la règle d'`estSoldee` : une étape déclarée
+    // faite dont personne n'a encore contrôlé la preuve n'est qu'une parole en
+    // suspens, et la confronter à ce qu'on observe fermerait un constat sur elle. Un
+    // refus rend d'ailleurs l'étape à `PENDING`, si bien que seul `AWAITING` se
+    // rencontre ici : le dire des deux valeurs garde cette lecture alignée sur
+    // `estSoldee` le jour où l'une d'elles change de sens.
+    where: {
+      state: "SUCCEEDED",
+      executedAt: { not: null },
+      validation: { notIn: ["AWAITING", "REFUSED"] },
+    },
     select: {
       label: true,
       systemKey: true,

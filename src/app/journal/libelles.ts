@@ -21,6 +21,7 @@ const LIBELLE_ACTION: Record<string, string> = {
   "dossier.cloture": "Clôture d'un dossier d'accès",
   "dossier.recalcul": "Recalcul d'un plan",
   "dossier.annulation": "Annulation d'un dossier d'accès",
+  "dossier.validation": "Validation d'une étape",
   // Les six verbes que le dossier d'accès remplace. Le journal est en écriture seule
   // à rétention indéfinie : une ligne d'il y a six mois doit rester lisible telle
   // qu'elle a été écrite, et ces libellés ne s'effacent donc jamais.
