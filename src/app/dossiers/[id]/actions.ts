@@ -225,6 +225,7 @@ export async function pointerEtape(
       expectedActor: true,
       validationBy: true,
       validation: true,
+      declaredBy: true,
       plan: {
         select: {
           id: true,
@@ -341,8 +342,17 @@ export async function pointerEtape(
     },
     revalider: [`/dossiers/${etape.plan.accessCaseId}`],
     ecrire: async () => {
-      await prisma.planStep.update({
-        where: { id: etape.id },
+      // Conditionnée sur la déclaration lue, comme celle du verdict : entre la lecture
+      // et l'écriture, un contrôleur a pu trancher, et écrire par le seul identifiant
+      // effacerait son avis en silence. Celui qui repointe après un refus l'a lu, lui,
+      // donc sa condition porte ce refus.
+      const { count } = await prisma.planStep.updateMany({
+        where: {
+          id: etape.id,
+          state: etape.state,
+          validation: etape.validation,
+          declaredBy: etape.declaredBy,
+        },
         data: {
           state: nouvelEtat,
           executedAt: maintenant,
@@ -360,6 +370,10 @@ export async function pointerEtape(
           validationNote: null,
         },
       });
+
+      if (count === 0) {
+        throw new Error("Cette étape a changé pendant le pointage.");
+      }
 
       // L'état du plan se déduit de ses étapes et jamais à la main. La relecture suit
       // l'écriture, et non l'inverse : voir `reposerLEtatDuPlan`.
@@ -406,6 +420,7 @@ export async function validerEtape(
       validation: true,
       validationBy: true,
       declaredBy: true,
+      attempts: true,
       plan: {
         select: {
           id: true,
@@ -476,12 +491,19 @@ export async function validerEtape(
       // entre la lecture et l'écriture, un second contrôleur a pu trancher, ou le
       // déclarant repointer son étape. Écrire sans regarder poserait un avis sur une
       // déclaration que personne n'a vue.
+      //
+      // `attempts` s'y ajoute parce que les trois autres colonnes ne suffisent pas :
+      // un même déclarant qui repointe le même choix les repose à l'identique, et le
+      // verdict signerait alors une valeur que le contrôleur n'a jamais lue. Le
+      // pointage, lui, s'en dispense : le double clic sur un même formulaire repose
+      // les mêmes valeurs, l'y compter le ferait échouer sans rien protéger.
       const { count } = await prisma.planStep.updateMany({
         where: {
           id: etape.id,
           validation: "AWAITING",
           state: etape.state,
           declaredBy: etape.declaredBy,
+          attempts: etape.attempts,
         },
         data: {
           validation: avis,

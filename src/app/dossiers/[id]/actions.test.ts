@@ -290,68 +290,28 @@ vi.mock("@/lib/db", () => ({
 
         return Promise.resolve({ ...etape, plan: planComplet(plan) });
       },
-      update: ({
-        where,
-        data,
-      }: {
-        where: { id: string };
-        data: {
-          state: EtatEtape;
-          lastError?: string;
-          reponse?: string | null;
-          attempts?: { increment: number };
-          declaredBy?: string;
-          validation?: EtatValidation;
-          validatedBy?: string | null;
-          validatedAt?: Date | null;
-          validationNote?: string | null;
-        };
-      }) => {
-        const etape = base.etapes.find((candidat) => candidat.id === where.id);
-        if (etape) {
-          base.gestes.push(`etape:${data.state}`);
-          etape.state = data.state;
-          etape.lastError = data.lastError ?? etape.lastError;
-          etape.attempts += data.attempts?.increment ?? 0;
-          // Une colonne absente du `data` se tait, une colonne à `null` efface : c'est
-          // ce que fait Prisma, et c'est ce qui se joue quand un pointage se corrige.
-          if ("reponse" in data) {
-            etape.reponse = data.reponse ?? null;
-          }
-          if (data.declaredBy !== undefined) {
-            etape.declaredBy = data.declaredBy;
-          }
-          if (data.validation !== undefined) {
-            etape.validation = data.validation;
-          }
-          if ("validatedBy" in data) {
-            etape.validatedBy = data.validatedBy ?? null;
-          }
-          if ("validatedAt" in data) {
-            etape.validatedAt = data.validatedAt ?? null;
-          }
-          if ("validationNote" in data) {
-            etape.validationNote = data.validationNote ?? null;
-          }
-        }
-        return Promise.resolve(etape);
-      },
       updateMany: async ({
         where,
         data,
       }: {
         where: {
           id: string;
-          validation: EtatValidation;
           state: EtatEtape;
+          validation: EtatValidation;
           declaredBy: string | null;
+          attempts?: number;
         };
         data: {
-          validation: EtatValidation;
           state: EtatEtape;
-          validatedBy: string;
-          validatedAt: Date;
-          validationNote: string | null;
+          validation: EtatValidation;
+          executedAt?: Date;
+          attempts?: { increment: number };
+          lastError?: string;
+          reponse?: string | null;
+          declaredBy?: string;
+          validatedBy?: string | null;
+          validatedAt?: Date | null;
+          validationNote?: string | null;
         };
       }) => {
         const pendant = base.pendantLEcritureDeLEtape;
@@ -361,9 +321,10 @@ vi.mock("@/lib/db", () => ({
         const etape = base.etapes.find(
           (candidat) =>
             candidat.id === where.id &&
-            candidat.validation === where.validation &&
             candidat.state === where.state &&
-            candidat.declaredBy === where.declaredBy,
+            candidat.validation === where.validation &&
+            candidat.declaredBy === where.declaredBy &&
+            (where.attempts === undefined || candidat.attempts === where.attempts),
         );
 
         if (!etape) {
@@ -371,11 +332,27 @@ vi.mock("@/lib/db", () => ({
         }
 
         base.gestes.push(`etape:${data.state}:${data.validation}`);
-        etape.validation = data.validation;
         etape.state = data.state;
-        etape.validatedBy = data.validatedBy;
-        etape.validatedAt = data.validatedAt;
-        etape.validationNote = data.validationNote;
+        etape.validation = data.validation;
+        etape.lastError = data.lastError ?? etape.lastError;
+        etape.attempts += data.attempts?.increment ?? 0;
+        // Une colonne absente du `data` se tait, une colonne à `null` efface : c'est
+        // ce que fait Prisma, et c'est ce qui se joue quand un pointage se corrige.
+        if ("reponse" in data) {
+          etape.reponse = data.reponse ?? null;
+        }
+        if (data.declaredBy !== undefined) {
+          etape.declaredBy = data.declaredBy;
+        }
+        if ("validatedBy" in data) {
+          etape.validatedBy = data.validatedBy ?? null;
+        }
+        if ("validatedAt" in data) {
+          etape.validatedAt = data.validatedAt ?? null;
+        }
+        if ("validationNote" in data) {
+          etape.validationNote = data.validationNote ?? null;
+        }
         return Promise.resolve({ count: 1 });
       },
     },
@@ -594,7 +571,7 @@ describe("pointer une étape, dans le sens du dossier", () => {
     expect(plan.state).toBe("EXECUTING");
     expect(base.gestes).toEqual([
       "journal:dossier.pointage:SUCCESS",
-      "etape:ALREADY_PRESENT",
+      "etape:ALREADY_PRESENT:NONE",
       "plan:EXECUTING",
     ]);
     expect(base.journal[0]?.after).toMatchObject({
@@ -1239,6 +1216,78 @@ describe("le contrôle d'une déclaration, étape par étape", () => {
     expect(base.pendantLEcritureDeLEtape).toBeNull();
   });
 
+  it("refuse le pointage qui effacerait un verdict, et le verdict qui signerait un autre geste", async () => {
+    // Given une arrivée dont un geste revient à la personne concernée sous le regard
+    // d'un opérateur, déclarée une première fois
+    const { plan } = await arriveeRepartie({ acteur: "SUBJECT", valideur: "OPERATOR" }, {});
+    const controlee = etapeEnBase(0);
+
+    base.operateur = USERNAME;
+    await pointerEtape(null, formulaire({ etapeId: controlee.id, pointage: "fait" }));
+    expect(controlee.validation).toBe("AWAITING");
+
+    // When la personne repointe pendant que l'opératrice refuse : le refus s'intercale
+    // entre la lecture du repointage et son écriture
+    base.pendantLEcritureDeLEtape = async () => {
+      base.operateur = "operatrice.exemple";
+      await validerEtape(
+        null,
+        formulaire({
+          etapeId: controlee.id,
+          verdict: "refuser",
+          note: "La capture ne montre pas le compte.",
+        }),
+      );
+      base.operateur = USERNAME;
+    };
+
+    // Then le repointage ne passe pas : écrire par le seul identifiant remettrait
+    // l'étape en attente, effacerait le motif et la signature, et la personne referait
+    // son geste sans avoir jamais lu ce qu'on lui reprochait.
+    await expect(
+      pointerEtape(null, formulaire({ etapeId: controlee.id, pointage: "fait" })),
+    ).rejects.toThrow("Cette étape a changé pendant le pointage.");
+    expect(controlee.state).toBe("PENDING");
+    expect(controlee.validation).toBe("REFUSED");
+    expect(controlee.validationNote).toBe("La capture ne montre pas le compte.");
+    expect(controlee.validatedBy).toBe("operatrice.exemple");
+
+    // Then le journal porte l'entrelacement lui-même : l'intention du pointage, le
+    // refus qui s'est glissé au milieu, puis l'échec du pointage. Sans cette dernière
+    // trace, l'intention y resterait comme un fait accompli.
+    expect(base.journal.slice(-3).map((ligne) => `${ligne.action}:${ligne.result}`)).toEqual([
+      "dossier.pointage:SUCCESS",
+      "dossier.validation:SUCCESS",
+      "dossier.pointage:FAILURE",
+    ]);
+
+    // When la personne refait le geste, le motif lu cette fois, puis le repointe une
+    // seconde fois pendant que l'opératrice signe
+    await pointerEtape(null, formulaire({ etapeId: controlee.id, pointage: "fait" }));
+    const tentatives = controlee.attempts;
+
+    base.pendantLEcritureDeLEtape = async () => {
+      base.operateur = USERNAME;
+      await pointerEtape(null, formulaire({ etapeId: controlee.id, pointage: "fait" }));
+      base.operateur = "operatrice.exemple";
+    };
+    base.operateur = "operatrice.exemple";
+
+    // Then le verdict ne passe pas davantage : un même déclarant qui repointe le même
+    // choix repose l'état, la validation et son nom à l'identique, si bien que seule
+    // la tentative distingue la déclaration signée de celle qui a été lue.
+    await expect(
+      validerEtape(null, formulaire({ etapeId: controlee.id, verdict: "accepter" })),
+    ).rejects.toThrow("Cette étape a changé pendant la validation.");
+    expect(controlee.validation).toBe("AWAITING");
+    expect(controlee.validatedBy).toBeNull();
+    expect(controlee.attempts).toBe(tentatives + 1);
+
+    // Then rien n'est soldé, et le point d'entrelacement a servi une fois par course
+    expect(plan.state).toBe("EXECUTING");
+    expect(base.pendantLEcritureDeLEtape).toBeNull();
+  });
+
   it("tient pour validé ce que le contrôleur attendu pointe lui-même", async () => {
     // Given une arrivée dont le geste revient à la personne concernée sous le regard
     // d'un opérateur, et dont un second geste reste à faire
@@ -1405,7 +1454,7 @@ describe("ce que le journal garde d'une déclaration et de son contrôle", () =>
     // doit jamais faire échouer l'action, l'inverse n'étant pas vrai.
     expect(base.gestes).toEqual([
       "journal:dossier.pointage:SUCCESS",
-      "etape:SUCCEEDED",
+      "etape:SUCCEEDED:AWAITING",
       "plan:EXECUTING",
       "journal:dossier.validation:SUCCESS",
       "etape:SUCCEEDED:ACCEPTED",

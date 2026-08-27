@@ -326,7 +326,7 @@ colonne nouvelle, elle se lance donc sur la base en l'état :
 ssh scw-tools 'docker exec -i <uuid-base> psql -U <user> -d <db>' <<'SQL'
 SELECT c.id AS dossier, c.kind AS sens, p.state AS etat_plan,
        count(*) AS etapes,
-       count(*) FILTER (WHERE s.state = 'PENDING')      AS a_faire
+       count(*) FILTER (WHERE s.state IN ('PENDING', 'FAILED', 'STALE')) AS a_faire
 FROM "Plan" p
 JOIN "AccessCase" c ON c.id = p."accessCaseId"
 JOIN "PlanStep" s ON s."planId" = p.id
@@ -337,6 +337,11 @@ SQL
 ```
 
 Aucune ligne : rien à faire, on déploie. Sinon, ligne par ligne :
+
+Les trois états comptés sont ceux que la boucle reprend : une étape à faire, une étape
+dont le geste a échoué, et une étape que le système a démentie. Aucun n'est soldé, tous
+appellent une reprise, et n'en compter qu'un ferait conclure « rien à faire » sur un
+dossier qui en attend.
 
 - **`a_faire` à zéro.** Aucun geste ne manque. Le dossier suit son cours, sous la réserve
   ci-dessous sur les étapes qui attendent un second regard : la validation, elle, ne
