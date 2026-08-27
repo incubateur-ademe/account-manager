@@ -133,6 +133,22 @@ produit de l'incubateur. Leur fiche complète est donc lue à part, sans quoi l'
 transverse n'aurait aucune échéance et ne sortirait jamais. La concurrence reste
 bornée à huit : rien ne se gagne à aller plus vite qu'un traitement nocturne.
 
+**Et cette lecture manquée ne s'écrit pas.** Quand la fiche complète ne répond pas, la
+collecte ne retombe sur les missions de la liste scopée pour personne : l'échéance reste
+inconnue et n'est pas réécrite, si bien que la dernière lue tient jusqu'au passage qui saura
+relire. Le repli, lui, ne se trompait jamais dans les deux sens. Il rendait nul pour qui ne
+relève que d'une équipe, dont la liste ne porte aucune mission, et l'échéance de la seule
+voie startup pour qui relève des deux, ce qui la raccourcit quand la mission beta.gouv va
+plus loin et en invente une quand la fiche n'en datait aucune. Les trois formes font couper
+trop tôt, ou plus couper du tout.
+
+Ce refus est le plus discret des trois : les deux autres laissent en base de quoi les
+relire, une fiche retenue par sa dernière vue, un retour non daté par la disparition qu'il
+efface, alors qu'une échéance non écrite ne se distingue par rien d'une échéance fraîche. Il
+ne vit donc que dans la trace du passage, et il y nomme aussi celui qu'il n'a pas pu servir :
+une fiche qui naît pendant la panne n'a aucune échéance à conserver, et c'est la seule que
+rien ne rattrapera.
+
 **Une chute du périmètre ne fait disparaître personne.** Le périmètre arrivant en un
 seul appel, une réponse tronquée mais valide ferait sortir tout le monde à la fois
 sans qu'aucune erreur ne soit levée. Au-delà d'un cinquième perdu d'un coup, la
@@ -497,7 +513,7 @@ référentiel. L'échéance effective est la plus lointaine entre la fin de miss
 l'amont donne et les rattachements manuels en cours. Un rattachement court ne rogne donc
 jamais une mission longue, et prolonger un accès est permis, tracé et daté, mais se voit
 partout où le statut se lit. Rien n'est écrit dans `Person.missionEnd`, qui reste ce que
-l'amont dit.
+l'amont a dit la dernière fois qu'on a su le lire, voir §2.2.
 
 | Statut | Signification |
 |---|---|

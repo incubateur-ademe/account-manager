@@ -79,6 +79,16 @@ describe("ce que la collecte réécrit sur une fiche", () => {
     // La collecte adopte la fiche : l'identifiant cesse d'être une construction
     // locale et redevient un pivot que rien ne renomme.
     expect(champs.usernameFabricated).toBe(false);
+
+    // La même liste, exactement, quand la source qui portait l'échéance n'a pas été
+    // lue : `undefined` laisse la clé en place et Prisma n'y touche pas, comme pour le
+    // retour plus bas. C'est ce qui fait qu'un champ nouvellement porté par une lecture
+    // faillible hérite du silence sans une ligne de plus ici. Un spread conditionnel
+    // écrirait la même chose en base et ferait disparaître la clé, donc ce garde-fou
+    // avec elle : c'est exactement ce qu'on veut voir.
+    const nonLue = champsCollectes(resolue({ missionEnd: undefined }), MAINTENANT, false);
+    expect(Object.keys(nonLue).sort()).toEqual(Object.keys(champs).sort());
+    expect(nonLue.missionEnd).toBeUndefined();
   });
 
   it("remet à vide les startups d'une personne déclarée dans la politique", () => {

@@ -361,6 +361,26 @@ export const REFUS_DE_DISPARITION = "fiches non lues";
 export const REFUS_DE_RETOUR = "retours non datés";
 
 /**
+ * Ce par quoi commence la phrase qu'un passage laisse quand il n'écrit pas l'échéance
+ * de quelqu'un, faute d'avoir obtenu la fiche qui la porte.
+ *
+ * Le plus discret des trois refus. Les deux autres portent sur une existence et
+ * laissent en base de quoi les relire : une fiche retenue n'a pas vu sa dernière vue
+ * bouger, un retour non daté a laissé la date de sa disparition dans la phrase. Une
+ * échéance non écrite, elle, ne se distingue par rien d'une échéance fraîche, la
+ * personne ayant bel et bien été rendue par la source et la plupart des échéances ne
+ * bougeant pas d'une nuit à l'autre. Sans cette ligne, la nuit où les accès cessent
+ * d'expirer ressemble à une nuit ordinaire.
+ *
+ * La phrase dit ce que le passage n'a pas fait et non ce qu'il a gardé, parce que les
+ * deux ne coïncident pas : une fiche vue pour la première fois pendant la panne est
+ * dans la même liste sans avoir la moindre échéance à conserver. Annoncer d'elle une
+ * conservation ferait mentir la trace, et l'en retirer la rendrait invisible alors
+ * qu'elle est le cas qui ne se rattrape pas.
+ */
+export const REFUS_D_ECHEANCE = "échéances non écrites";
+
+/**
  * Le refus d'arrivées qu'une trace de run porte, s'il y en a un.
  *
  * Ce refus ne bascule pas le statut du run, contrairement à celui des disparitions :

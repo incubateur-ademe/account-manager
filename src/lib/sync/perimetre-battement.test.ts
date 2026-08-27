@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { REFUS_DE_DISPARITION, REFUS_DE_RETOUR } from "@/core/collecte";
+import { REFUS_D_ECHEANCE, REFUS_DE_DISPARITION, REFUS_DE_RETOUR } from "@/core/collecte";
 import type { MembreDetaille, MembreIncubateur } from "@/core/membre";
 
 import { syncPerimetre } from "./perimetre";
@@ -353,21 +353,23 @@ describe("ce qu'une absence doit avoir duré pour valoir un départ", () => {
     expect(fiche(TRANSVERSE).vanishedAt).toBeNull();
     expect(ceQuiAEteDit(muet.runId)).toEqual([
       `${REFUS_DE_DISPARITION} : ${TRANSVERSE} ; aucune disparition datée`,
+      `${REFUS_D_ECHEANCE} : ${PAR_EQUIPE} ; fiche complète non lue`,
     ]);
 
-    // Then la rattachée par équipe n'est ni perdue ni annoncée : la liste scopée la
-    // rend encore, seule sa fiche complète manque, donc elle reste du périmètre et il
-    // n'y avait rien à retenir pour elle. L'annoncer ferait mentir la trace.
+    // Then la rattachée par équipe n'est ni perdue ni retenue : la liste scopée la rend
+    // encore, seule sa fiche complète manque, donc elle reste du périmètre et il n'y a
+    // aucune disparition à retenir pour elle. La retenir ferait mentir la trace. Ce que
+    // le passage dit d'elle plus haut est l'autre refus, celui de son échéance.
     expect(fiche(PAR_EQUIPE).lastSeenAt).toEqual(NUITS[1]);
     expect(fiche(PAR_EQUIPE).vanishedAt).toBeNull();
 
-    // Then son échéance, en revanche, est écrasée : elle ne vivait que dans la fiche
-    // complète, et la liste scopée n'associe aucune mission à qui relève d'une équipe.
-    // Le sursis ne la rattrape pas, il épargne des existences et non des champs. Sans
-    // échéance, la personne est SANS_ECHEANCE tant que la source ne rend pas sa fiche,
-    // donc jamais EN_SURSIS ni A_TRAITER : c'est un trou distinct de celui que cette
-    // règle ferme, asséré ici pour qu'on cesse de croire ce chemin entièrement couvert.
-    expect(fiche(PAR_EQUIPE).missionEnd).toBeNull();
+    // Then son échéance est conservée telle que le passage précédent l'avait lue. Le
+    // sursis n'y est pour rien, il épargne des existences et non des champs : c'est une
+    // règle distincte qui retient cette écriture, et le passage la nomme dans sa trace
+    // à côté de ce qu'il a refusé de faire disparaître. Ce trou-là était asséré ouvert
+    // ici, il est refermé.
+    expect(fiche(PAR_EQUIPE).missionEnd).toEqual(new Date("2027-12-31T00:00:00Z"));
+    expect(muet.echeancesNonEcrites).toEqual([PAR_EQUIPE]);
 
     // Then l'omise, elle, disparaît le soir même : rien ne la nomme, son absence ne se
     // distingue pas d'un départ, et retarder chaque disparition retarderait chaque
