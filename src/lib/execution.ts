@@ -382,8 +382,12 @@ export async function executerPlan(
       // Ce que le geste constate, et qui s'écrit sans condition : quand cette écriture
       // part, le connecteur a déjà agi sur le système cible, et un accès ouvert ou
       // coupé sans que rien ne l'enregistre est plus grave que n'importe quel conflit.
-      const geste: Prisma.PlanStepUpdateManyMutationInput = {
-        ...(etat === null ? {} : { state: etat }),
+      //
+      // L'état s'en détache, parce qu'il ne dit pas tout à fait la même chose que le
+      // reste : la tentative, sa date et sa cause d'échec constatent ce qui a eu lieu,
+      // l'état dit en plus ce qu'il reste à faire, et c'est à ce titre qu'un refus le
+      // pose lui aussi.
+      const traceDuGeste: Prisma.PlanStepUpdateManyMutationInput = {
         ...(appele
           ? {
               attempts: { increment: 1 },
@@ -395,6 +399,11 @@ export async function executerPlan(
             // qui n'affiche ni l'attendu ni le constaté est une étape bloquée sans raison.
             { lastError: decision.motif }),
         ...(issue?.reversibleUntil ? { reversibleUntil: issue.reversibleUntil } : {}),
+      };
+
+      const geste: Prisma.PlanStepUpdateManyMutationInput = {
+        ...(etat === null ? {} : { state: etat }),
+        ...traceDuGeste,
       };
 
       // Ce que le contrôle juge, et qui porte sur une déclaration précise : la
@@ -443,8 +452,22 @@ export async function executerPlan(
           // passage, alors qu'une seule d'entre elles est en cause. Le geste s'écrit
           // seul, l'avis signé reste en place, et `reposerLEtatDuPlan` reprend l'état
           // d'ensemble depuis les étapes elles-mêmes.
+          //
+          // Un refus garde en revanche l'état qu'il a posé. Il renvoie l'étape à faire,
+          // et lui rendre celui du geste la laisserait soldée sous un avis qui la
+          // refuse : couple qu'aucun autre chemin ne produit, que l'état du plan lit
+          // comme un échec au lieu d'un refus, et qui sortirait l'étape des états que
+          // la reprise reprend, donc du seul chemin qui pouvait la rattraper.
           if (reposee === 0) {
-            await prisma.planStep.update({ where: { id }, data: geste });
+            const { count: avecEtat } = await prisma.planStep.updateMany({
+              where: { id, validation: { not: "REFUSED" } },
+              data: geste,
+            });
+
+            if (avecEtat === 0) {
+              await prisma.planStep.update({ where: { id }, data: traceDuGeste });
+            }
+
             audit({
               ...trace,
               before: lue,

@@ -11,6 +11,7 @@ import type {
   StepOutcome,
   SubjectRef,
 } from "@/core/connector";
+import { type EtatEtape, type EtatValidation, estSoldee, etatApresPointage } from "@/core/dossier";
 import type { Profil } from "@/core/policy";
 import { calculerPlan } from "@/lib/dossier";
 import { executerPlan } from "@/lib/execution";
@@ -208,9 +209,13 @@ function intercaler(id: string): void {
 
 /** Une condition d'écriture, colonne par colonne : ce qui n'y figure pas ne filtre rien. */
 function correspond(etape: EtapeEnBase, where: Record<string, unknown>): boolean {
-  return Object.entries(where).every(
-    ([colonne, attendu]) => etape[colonne as keyof EtapeEnBase] === attendu,
-  );
+  return Object.entries(where).every(([colonne, attendu]) => {
+    const valeur = etape[colonne as keyof EtapeEnBase];
+    if (attendu !== null && typeof attendu === "object" && "not" in attendu) {
+      return valeur !== (attendu as { not: unknown }).not;
+    }
+    return valeur === attendu;
+  });
 }
 
 /** Ce qu'une écriture pose sur la ligne, `null` effaçant et une colonne absente se taisant. */
@@ -728,9 +733,24 @@ describe("l'exécution autorisée", () => {
     // écriture, et donc de lever comme le font le pointage et le verdict de l'écran.
     expect(dejaFait).toContain(`execute:${CLE_ADMIN}`);
     expect(appels()).toContain(`execute:${CLE_ADMIN}`);
-    expect(controlee.state).toBe("SUCCEEDED");
     expect(controlee.attempts).toBe(tentatives + 2);
     expect(controlee.executedAt).toEqual(PLUS_TARD);
+
+    // Then l'état, lui, reste celui que le refus a posé : c'est le seul du geste qui
+    // dise ce qu'il reste à faire, et le rendre à celui de la boucle laisserait l'étape
+    // soldée sous un avis qui la refuse. Ce couple-là ferait lire un refus comme un
+    // échec, et sortirait l'étape des états que la reprise reprend.
+    expect(controlee.state).toBe("PENDING");
+
+    // Then la déduction de l'état du plan lit bien un refus, et non un échec. L'autre
+    // moitié de la première série le masquerait : l'étape manuelle y attend encore, et
+    // son `PENDING` suffirait à rendre « en cours » quoi qu'il arrive à celle-ci.
+    const suivie = {
+      etat: controlee.state as EtatEtape,
+      validation: controlee.validation as EtatValidation,
+    };
+    expect(estSoldee(suivie)).toBe(false);
+    expect(etatApresPointage([suivie])).toBe("EXECUTING");
 
     // Then le conflit se lit dans le journal, il ne se tait pas, et il dit sur quelle
     // déclaration la boucle croyait écrire : un conflit sans son avant se lit comme un
