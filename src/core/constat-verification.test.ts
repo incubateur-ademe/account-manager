@@ -8,6 +8,9 @@ const declaration = (over: Partial<ActionDeclaree> = {}): ActionDeclaree => ({
   username: "jean.dupont",
   sens: "OFFBOARDING",
   declareeLe: new Date("2026-08-18T10:00:00Z"),
+  dossierEncoreVivant: true,
+  retourLe: null,
+  inverseeLe: null,
   compteToujoursLa: true,
   relueLe: new Date("2026-08-19T04:30:00Z"),
   ...over,
@@ -75,5 +78,68 @@ describe("confrontation entre ce qui est déclaré et ce qui est observé", () =
     ]);
 
     expect(new Set(constats.map((constat) => constat.dedupKey)).size).toBe(1);
+  });
+
+  it("ne cesse de démentir une parole qu'une fois son dossier retombé et la personne revenue", () => {
+    // Given un retrait GitHub pointé le 20 janvier, et le compte de nouveau observé à
+    // la lecture d'août
+    const retraitDeJanvier = declaration({ declareeLe: new Date("2026-01-20T10:00:00Z") });
+
+    // When la personne est revenue le 1er juin, alors que ce départ est toujours en cours
+    const enCours = { ...retraitDeJanvier, retourLe: new Date("2026-06-01T02:00:00Z") };
+
+    // Then le démenti tient : un dossier vivant est le dernier de son sens, ce qu'il
+    // demande reste attendu, et le retour d'une fiche qui saute une collecte ou d'un
+    // renouvellement signé en retard ne décide de rien.
+    const [enSuspens] = constatsDActionsDeclarees([enCours]);
+    expect(enSuspens?.kind).toBe("OVERDUE_MANUAL_ACTION");
+    expect(enSuspens?.dedupKey).toBe("OVERDUE_MANUAL_ACTION:github:jean.dupont");
+
+    // When le départ est soldé, et elle revient ensuite
+    const soldePuisRevenue = { ...enCours, dossierEncoreVivant: false };
+
+    // Then ce retrait a bien eu lieu, et le compte rouvert ne le dément pas : c'est la
+    // personne qui est revenue, et sans cette borne le démenti la suivrait de séjour
+    // en séjour.
+    expect(constatsDActionsDeclarees([soldePuisRevenue])).toEqual([]);
+
+    // And le retrait du séjour en cours, lui, est toujours démenti : c'est le vrai cas,
+    // celui de l'accès qu'on a cru couper, que le faux positif noyait.
+    expect(
+      constatsDActionsDeclarees([
+        { ...soldePuisRevenue, declareeLe: new Date("2026-08-18T10:00:00Z") },
+      ]),
+    ).toHaveLength(1);
+
+    // And sans retour, rien ne s'éteint, dossier clos ou non : une fusion déplace les
+    // dossiers d'une fiche fabriquée vers la vraie, plus jeune qu'eux, et seule la
+    // réapparition de quelqu'un dit qu'un séjour a recommencé.
+    expect(
+      constatsDActionsDeclarees([{ ...retraitDeJanvier, dossierEncoreVivant: false }]),
+    ).toHaveLength(1);
+
+    // And le retour ne suffit pas : celui de quelqu'un qu'on offboarde puis qu'on
+    // réaccueille sans que sa fiche ait quitté le référentiel n'a jamais lieu. Son
+    // invitation de juin est démentie tant qu'aucun départ n'a été exécuté, et cesse de
+    // l'être dès que le départ de septembre a défait ce qu'elle avait donné, que le
+    // dossier d'arrivée soit resté ouvert ou non.
+    const invitation = declaration({
+      sens: "ONBOARDING",
+      label: "Inviter jean.dupont dans l'organisation incubateur-ademe",
+      declareeLe: new Date("2026-06-10T10:00:00Z"),
+      compteToujoursLa: false,
+      relueLe: new Date("2026-09-20T04:30:00Z"),
+    });
+
+    expect(constatsDActionsDeclarees([invitation])).toHaveLength(1);
+    expect(
+      constatsDActionsDeclarees([{ ...invitation, inverseeLe: new Date("2026-09-15T09:00:00Z") }]),
+    ).toEqual([]);
+
+    // And un mouvement opposé antérieur à la déclaration ne l'éteint pas : c'est la
+    // parole qui est venue après, et elle a encore quelque chose à prouver.
+    expect(
+      constatsDActionsDeclarees([{ ...invitation, inverseeLe: new Date("2026-06-05T09:00:00Z") }]),
+    ).toHaveLength(1);
   });
 });

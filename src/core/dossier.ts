@@ -16,6 +16,20 @@ export type EtatDossier = "WATCH" | "CANDIDATE" | "CONFIRMED" | "CANCELLED" | "D
 export type SensDossier = "ONBOARDING" | "OFFBOARDING";
 
 /**
+ * Le mouvement qui défait celui-ci. Un dictionnaire exhaustif plutôt qu'un ternaire :
+ * le jour où un troisième sens existe, le typecheck tombe ici au lieu de rendre
+ * silencieusement le mauvais opposé.
+ */
+const OPPOSE: Record<SensDossier, SensDossier> = {
+  ONBOARDING: "OFFBOARDING",
+  OFFBOARDING: "ONBOARDING",
+};
+
+export function sensOppose(sens: SensDossier): SensDossier {
+  return OPPOSE[sens];
+}
+
+/**
  * Qui agit sur une étape, et qui contrôle ce qui y a été déclaré.
  *
  * `DELEGATE` existe sans qu'aucun chemin de code ne le produise : `roleSurDossier` ne
