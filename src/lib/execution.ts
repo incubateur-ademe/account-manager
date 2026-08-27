@@ -7,6 +7,7 @@ import {
   type EtapeSuivie,
   type EtatEtape,
   type EtatValidation,
+  estSoldee,
 } from "@/core/dossier";
 import {
   decider,
@@ -401,7 +402,10 @@ export async function executerPlan(
       }
     }
 
-    if (etat === "SUCCEEDED" || etat === "ALREADY_PRESENT" || etat === "ALREADY_ABSENT") {
+    // Soldée au sens de `estSoldee` et non du seul état : une étape exécutée sans
+    // faute mais confiée au regard d'un autre n'est pas finie, et l'annoncer soldée
+    // ferait dire au compte rendu l'inverse de ce que l'écran montrera.
+    if (etat !== null && estSoldee({ etat, validation })) {
       soldees += 1;
     }
     if (etat === "FAILED") {

@@ -1032,6 +1032,46 @@ describe("le contrôle d'une déclaration, étape par étape", () => {
     });
   });
 
+  it("n'attend aucun contrôle sur un geste que personne n'affirme avoir fait", async () => {
+    // Given deux gestes confiés à la personne concernée sous le regard d'un opérateur
+    const { plan } = await arriveeRepartie(
+      { acteur: "SUBJECT", valideur: "OPERATOR" },
+      { acteur: "SUBJECT", valideur: "OPERATOR" },
+    );
+    const ecartee = etapeEnBase(0);
+    const tentee = etapeEnBase(1);
+    base.operateur = USERNAME;
+
+    // When le premier est déclaré impossible, et le second tenté sans aboutir
+    await pointerEtape(
+      null,
+      formulaire({ etapeId: ecartee.id, pointage: "ignoree", note: "L'outil a été résilié." }),
+    );
+    await pointerEtape(
+      null,
+      formulaire({ etapeId: tentee.id, pointage: "echec", note: "La console a refusé." }),
+    );
+
+    // Then ni l'un ni l'autre n'attend un second regard : contrôler la parole de
+    // quelqu'un qui n'affirme rien n'aurait pas d'objet, et l'attente empêcherait la
+    // clôture au nom d'une preuve qui n'a rien à prouver.
+    expect(ecartee.state).toBe("SKIPPED");
+    expect(ecartee.validation).toBe("NONE");
+    expect(tentee.state).toBe("FAILED");
+    expect(tentee.validation).toBe("NONE");
+
+    // When celui qui a échoué est repris et déclaré fait
+    await pointerEtape(null, formulaire({ etapeId: tentee.id, pointage: "fait" }));
+
+    // Then le contrôle commence à ce moment-là, et pas avant
+    expect(tentee.state).toBe("SUCCEEDED");
+    expect(tentee.validation).toBe("AWAITING");
+    expect(tentee.declaredBy).toBe(USERNAME);
+
+    // Then le plan attend ce regard, et rien d'autre
+    expect(plan.state).toBe("EXECUTING");
+  });
+
   it("refuse à chacun de valider sa propre déclaration, sans bloquer le dossier", async () => {
     // Given une arrivée dont le geste revient à la personne concernée sous le regard
     // d'un délégué, et qu'aucun délégué n'existe encore

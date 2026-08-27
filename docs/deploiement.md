@@ -338,15 +338,24 @@ SQL
 
 Aucune ligne : rien à faire, on déploie. Sinon, ligne par ligne :
 
-- **`a_faire` à zéro.** Rien à reprendre : plus aucune étape n'attend un geste, ce qui
-  reste attend un second regard, et la validation se moque de l'empreinte. Le dossier
-  suit son cours et se clôt normalement.
+- **`a_faire` à zéro.** Aucun geste ne manque. Le dossier suit son cours, sous la réserve
+  ci-dessous sur les étapes qui attendent un second regard : la validation, elle, ne
+  regarde pas l'empreinte et reste possible sur un plan devenu inexécutable.
 - **`a_faire` non nul.** Ces étapes ne partiront plus par la boucle. La sortie est celle
   que `refusDePeremption` énonce déjà à l'écran pour un plan périmé : **pointer à la main
-  chaque étape restante**, « c'est fait » quand le geste a eu lieu, « écartée » avec sa
-  raison quand il n'aura pas lieu, **puis clore le dossier**. Si des accès restent à
-  traiter, **rouvrir un dossier** : son plan sera calculé par le nouveau code, et son
-  empreinte sera la bonne.
+  chaque étape restante**, « c'est fait » quand le geste a eu lieu, « échec » avec sa
+  raison quand il a été tenté sans aboutir, « écartée » avec sa raison quand il n'aura pas
+  lieu. Les trois ne disent pas la même chose et le journal les distingue : consigner
+  « écartée » sur un geste tenté laisserait croire que personne n'a rien essayé.
+  Puis **clore le dossier**. Si des accès restent à traiter, **rouvrir un dossier** : son
+  plan sera calculé par le nouveau code, et son empreinte sera la bonne.
+
+Une étape peut aussi attendre un second regard. Le compte ci-dessus ne les voit pas, cette
+colonne n'existant pas encore au moment où la requête se lance, mais elles empêchent la
+clôture au même titre qu'un geste manquant. Après avoir pointé, **faire valider par
+quelqu'un d'autre que le déclarant** : personne ne valide sa propre déclaration, et l'écran
+le refuse. Un refus renvoie l'étape à faire, avec sa raison, et se repointe. Le dossier ne
+se clôt que quand plus rien n'attend, ni geste ni regard.
 
 Deux fausses sorties, à ne pas chercher. **L'annulation n'en est pas une** : `peutAnnuler`
 la refuse dès qu'un plan est engagé, parce qu'elle ne défait pas ce qui a été déclaré
