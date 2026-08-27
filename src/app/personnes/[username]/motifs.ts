@@ -209,7 +209,7 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
       severite: "warning",
       titre: "Le dernier passage complet ne l'a pas rendue",
       description:
-        "La source ne l'a pas donnée, et l'outil n'en a rien conclu : une absence d'un seul passage ne vaut pas départ. Si elle manque encore au prochain, sa sortie du référentiel sera constatée. En attendant, ce qu'affiche cette fiche date de sa dernière observation.",
+        "La source ne l'a pas donnée, et l'outil n'en a rien conclu : une absence d'un seul passage ne vaut pas départ. Si elle manque encore au prochain passage complet, sa sortie du référentiel sera constatée. En attendant, ce qu'affiche cette fiche date de sa dernière observation.",
     });
   }
 

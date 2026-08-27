@@ -117,7 +117,7 @@ async function upsert(
   personne: PersonneResolue,
   now: Date,
   dernierPassageComplet: Date | null,
-): Promise<{ outcome: "created" | "updated"; retourNonDate: Date | null }> {
+): Promise<{ issue: "created" | "updated"; retourNonDate: Date | null }> {
   const existing = await prisma.person.findUnique({
     where: { username: personne.username },
     select: { id: true, vanishedAt: true },
@@ -133,7 +133,7 @@ async function upsert(
       where: { id: existing.id },
       data: champsCollectes(personne, now, retour),
     });
-    return { outcome: "updated", retourNonDate: retour ? null : disparueLe };
+    return { issue: "updated", retourNonDate: retour ? null : disparueLe };
   }
 
   await prisma.person.create({
@@ -143,7 +143,7 @@ async function upsert(
       firstSeenAt: now,
     },
   });
-  return { outcome: "created", retourNonDate: null };
+  return { issue: "created", retourNonDate: null };
 }
 
 /**
@@ -289,12 +289,8 @@ export async function syncPerimetre(
 
     for (const personne of resolues) {
       try {
-        const { outcome, retourNonDate } = await upsert(
-          personne,
-          now,
-          precedent?.startedAt ?? null,
-        );
-        if (outcome === "created") {
+        const { issue, retourNonDate } = await upsert(personne, now, precedent?.startedAt ?? null);
+        if (issue === "created") {
           created += 1;
         } else {
           updated += 1;
