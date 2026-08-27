@@ -35,6 +35,9 @@ interface EtapeEnBase {
   reversibleUntil: Date | null;
   validation: string;
   declaredBy: string | null;
+  validatedBy: string | null;
+  validatedAt: Date | null;
+  validationNote: string | null;
 }
 
 interface PlanEnBase {
@@ -74,6 +77,14 @@ const base = vi.hoisted(() => ({
   echeancesRecues: {} as Record<string, Date | undefined>,
   /** Les rôles de la forge dont le plan exige qu'un autre opérateur relise le geste. */
   relectureExigee: [] as string[],
+  /**
+   * Ce qui s'intercale entre la lecture du plan et l'écriture de l'étape visée, une
+   * fois. C'est la seule façon de jouer un contrôle simultané sur un faux dépôt
+   * séquentiel : sans ce point, la boucle verrait toujours ce que le contrôleur a déjà
+   * écrit. Clé par identifiant, sans quoi il partirait sur la première écriture du
+   * passage, c'est-à-dire avant que le connecteur de l'étape en cause ait agi.
+   */
+  pendantLEcritureDeLEtape: null as { etape: string; jouer: () => void } | null,
 }));
 
 vi.mock("@/lib/env", () => ({
@@ -152,45 +163,96 @@ vi.mock("@/lib/db", () => ({
       },
     },
     planStep: {
+      updateMany: ({
+        where,
+        data,
+      }: {
+        where: { id: string } & Record<string, unknown>;
+        data: Record<string, unknown>;
+      }) => {
+        intercaler(where.id);
+
+        const etape = base.plan?.steps.find((candidate) => correspond(candidate, where));
+
+        if (!etape) {
+          return Promise.resolve({ count: 0 });
+        }
+
+        ecrire(etape, where.id, data);
+        return Promise.resolve({ count: 1 });
+      },
       update: ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+        intercaler(where.id);
+
         const etape = base.plan?.steps.find((candidate) => candidate.id === where.id);
         if (!etape) {
           return Promise.reject(new Error(`étape inconnue : ${where.id}`));
         }
 
-        base.ecritures.push({ id: where.id, data });
-
-        if (typeof data["state"] === "string") {
-          etape.state = data["state"];
-        }
-        if (data["attempts"] !== undefined) {
-          etape.attempts += 1;
-        }
-        if (data["executedAt"] instanceof Date) {
-          etape.executedAt = data["executedAt"];
-        }
-        if (typeof data["validation"] === "string") {
-          etape.validation = data["validation"];
-        }
-        if (typeof data["declaredBy"] === "string") {
-          etape.declaredBy = data["declaredBy"];
-        }
-        if ("lastError" in data) {
-          etape.lastError = (data["lastError"] as string | null) ?? null;
-        }
-        if (data["reversibleUntil"] instanceof Date) {
-          etape.reversibleUntil = data["reversibleUntil"];
-        }
-
+        ecrire(etape, where.id, data);
         return Promise.resolve(etape);
       },
     },
   },
 }));
 
+/** Ce que le contrôleur simultané écrit, s'il porte bien sur l'étape qu'on écrit. */
+function intercaler(id: string): void {
+  const pendant = base.pendantLEcritureDeLEtape;
+  if (pendant?.etape !== id) {
+    return;
+  }
+  base.pendantLEcritureDeLEtape = null;
+  pendant.jouer();
+}
+
+/** Une condition d'écriture, colonne par colonne : ce qui n'y figure pas ne filtre rien. */
+function correspond(etape: EtapeEnBase, where: Record<string, unknown>): boolean {
+  return Object.entries(where).every(
+    ([colonne, attendu]) => etape[colonne as keyof EtapeEnBase] === attendu,
+  );
+}
+
+/** Ce qu'une écriture pose sur la ligne, `null` effaçant et une colonne absente se taisant. */
+function ecrire(etape: EtapeEnBase, id: string, data: Record<string, unknown>): void {
+  base.ecritures.push({ id, data });
+
+  if (typeof data["state"] === "string") {
+    etape.state = data["state"];
+  }
+  if (data["attempts"] !== undefined) {
+    etape.attempts += 1;
+  }
+  if (data["executedAt"] instanceof Date) {
+    etape.executedAt = data["executedAt"];
+  }
+  if (typeof data["validation"] === "string") {
+    etape.validation = data["validation"];
+  }
+  if (typeof data["declaredBy"] === "string") {
+    etape.declaredBy = data["declaredBy"];
+  }
+  if ("lastError" in data) {
+    etape.lastError = (data["lastError"] as string | null) ?? null;
+  }
+  if (data["reversibleUntil"] instanceof Date) {
+    etape.reversibleUntil = data["reversibleUntil"];
+  }
+  if ("validatedBy" in data) {
+    etape.validatedBy = (data["validatedBy"] as string | null) ?? null;
+  }
+  if ("validatedAt" in data) {
+    etape.validatedAt = (data["validatedAt"] as Date | null) ?? null;
+  }
+  if ("validationNote" in data) {
+    etape.validationNote = (data["validationNote"] as string | null) ?? null;
+  }
+}
+
 const PERSONNE = "personne-1";
 const USERNAME = "camille.exemple";
 const OPERATEUR = "operatrice.exemple";
+const CONTROLEUR = "autre.exemple";
 const DOSSIER = "dossier-1";
 const PLAN = "plan-1";
 const MAINTENANT = new Date("2026-08-24T09:00:00Z");
@@ -393,6 +455,9 @@ async function figerLePlan(
       reversibleUntil: null,
       validation: "NONE",
       declaredBy: null,
+      validatedBy: null,
+      validatedAt: null,
+      validationNote: null,
     })),
   };
 
@@ -446,6 +511,7 @@ beforeEach(() => {
   base.intentions.length = 0;
   base.echeancesRecues = {};
   base.relectureExigee.length = 0;
+  base.pendantLEcritureDeLEtape = null;
 });
 
 describe("la simulation lit tout et n'écrit rien", () => {
@@ -609,6 +675,134 @@ describe("l'exécution autorisée", () => {
     // d'administration serait soldé sans que personne ne l'ait revu.
     expect(resultat).toMatchObject({ simulation: false, echecs: 0 });
     expect(base.plan?.steps.every((etape) => etape.state !== "PENDING")).toBe(true);
+    expect(base.etatsDePlanEcrits).toEqual([]);
+    expect(base.plan?.state).toBe("EXECUTING");
+  });
+
+  it("laisse en place le verdict tombé pendant son passage, et repose l'attente quand rien n'a été signé", async () => {
+    // Given un plan dont le rôle d'administration de la forge est confié au regard d'un
+    // opérateur, et une étape que la boucle reprend
+    base.actionsAutorisees = true;
+    base.relectureExigee.push("admin");
+    await figerLePlan();
+
+    const controlee = etape(CLE_ADMIN);
+    const tentatives = controlee.attempts;
+
+    // When, pendant que la boucle interroge le connecteur, le porteur déclare l'étape
+    // faite et un second opérateur refuse sa déclaration avec son motif : ce que
+    // `pointerEtape` puis `validerEtape` écrivent, joué entre la lecture et l'écriture
+    const dejaFait: string[] = [];
+
+    base.pendantLEcritureDeLEtape = {
+      etape: controlee.id,
+      jouer: () => {
+        dejaFait.push(...appels());
+
+        controlee.state = "SUCCEEDED";
+        controlee.validation = "AWAITING";
+        controlee.declaredBy = USERNAME;
+        controlee.attempts += 1;
+
+        controlee.state = "PENDING";
+        controlee.validation = "REFUSED";
+        controlee.validatedBy = CONTROLEUR;
+        controlee.validatedAt = PLUS_TARD;
+        controlee.validationNote = "La capture ne montre pas le compte.";
+      },
+    };
+
+    const resultat = await lancer();
+
+    // Then le refus est intact : son motif, sa signature et sa date. Sans la garde,
+    // l'étape repassait en attente sous le nom de celui qui a lancé la reprise, et le
+    // porteur ne saurait jamais ce qu'on lui reprochait.
+    expect(controlee.validation).toBe("REFUSED");
+    expect(controlee.validatedBy).toBe(CONTROLEUR);
+    expect(controlee.validationNote).toBe("La capture ne montre pas le compte.");
+    expect(controlee.declaredBy).toBe(USERNAME);
+
+    // Then la trace du geste s'écrit quand même : le connecteur avait déjà agi sur le
+    // système cible quand le verdict est tombé, et un accès ouvert que rien
+    // n'enregistre est pire qu'un avis perdu. C'est ce qui interdit de refuser cette
+    // écriture, et donc de lever comme le font le pointage et le verdict de l'écran.
+    expect(dejaFait).toContain(`execute:${CLE_ADMIN}`);
+    expect(appels()).toContain(`execute:${CLE_ADMIN}`);
+    expect(controlee.state).toBe("SUCCEEDED");
+    expect(controlee.attempts).toBe(tentatives + 2);
+    expect(controlee.executedAt).toEqual(PLUS_TARD);
+
+    // Then le conflit se lit dans le journal, il ne se tait pas, et il dit sur quelle
+    // déclaration la boucle croyait écrire : un conflit sans son avant se lit comme un
+    // fait sans cause
+    const conflit = base.journal.filter(
+      (ligne) => ligne.targetId === controlee.id && ligne.result === "SKIPPED",
+    );
+    expect(conflit).toHaveLength(1);
+    expect(conflit[0]?.before).toEqual({
+      etat: "PENDING",
+      validation: "NONE",
+      declaredBy: null,
+      attempts: tentatives,
+    });
+
+    // Then les étapes suivantes du passage ne sont pas abandonnées : une seule d'entre
+    // elles était en cause, et lever au milieu aurait laissé les autres en plan
+    expect(resultat.refus).toBeUndefined();
+    expect(resultat.executees).toBe(3);
+    expect(etape(CLE_LECTEUR).state).toBe("SUCCEEDED");
+    expect(etape(CLE_MEMBRE).state).toBe("SUCCEEDED");
+
+    // Then l'état du plan se relit depuis les étapes et non depuis la photo du départ :
+    // l'étape manuelle attend toujours la main d'un opérateur, et le compte rendu ne
+    // solde pas ce qu'un contrôleur vient de refuser
+    expect(resultat.soldees).toBe(2);
+    expect(base.plan?.state).toBe("EXECUTING");
+    expect(base.pendantLEcritureDeLEtape).toBeNull();
+
+    // Given le même plan, et cette fois tout le reste déjà soldé : l'étape confiée au
+    // regard d'un autre est la seule dont dépende l'état du plan
+    base.prechecks[CLE_ATELIER] = { state: "ALREADY_PRESENT" };
+    await figerLePlan();
+
+    const seule = etape(CLE_ADMIN);
+
+    // When c'est un pointage qui tombe pendant le passage, et non un verdict : un
+    // opérateur écarte l'étape avec son motif, ce que `pointerEtape` écrit pour ce
+    // choix, qui ne laisse aucune signature derrière lui
+    base.pendantLEcritureDeLEtape = {
+      etape: seule.id,
+      jouer: () => {
+        seule.state = "SKIPPED";
+        seule.declaredBy = USERNAME;
+        seule.attempts += 1;
+        seule.lastError = "Le compte n'existe pas encore sur la forge.";
+      },
+    };
+
+    const seconde = await lancer();
+
+    // Then la déclaration lue n'est plus celle qui est en base, et l'attente est
+    // reposée quand même : personne n'a signé, et y renoncer solderait un accès élevé
+    // que le plan approuvé confiait à un second regard, sans que rien ne puisse plus
+    // jamais l'ouvrir puisque le contrôle exige `AWAITING`
+    expect(seule.state).toBe("SUCCEEDED");
+    expect(seule.validation).toBe("AWAITING");
+    expect(seule.declaredBy).toBe(OPERATEUR);
+    expect(seule.validatedBy).toBeNull();
+
+    // Then rien ne se journalise en conflit : il n'y a aucun avis à laisser en place,
+    // et l'écrire affirmerait une chose que la ligne dément
+    expect(
+      base.journal.filter((ligne) => ligne.targetId === seule.id && ligne.result === "SKIPPED"),
+    ).toEqual([]);
+
+    // Then le plan ne se déclare pas exécuté sur un geste que personne n'a relu, alors
+    // que ses trois autres étapes, elles, sont bien soldées
+    expect(etape(CLE_ATELIER).state).toBe("ALREADY_PRESENT");
+    expect(etape(CLE_LECTEUR).state).toBe("SUCCEEDED");
+    expect(etape(CLE_MEMBRE).state).toBe("SUCCEEDED");
+    expect(seconde.soldees).toBe(3);
     expect(base.etatsDePlanEcrits).toEqual([]);
     expect(base.plan?.state).toBe("EXECUTING");
   });

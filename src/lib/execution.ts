@@ -2,13 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { connecteur } from "@/connectors";
 import type { PlannedStep, PrecheckResult, RiskLevel, RunContext } from "@/core/connector";
-import {
-  dossierVivant,
-  type EtapeSuivie,
-  type EtatEtape,
-  type EtatValidation,
-  estSoldee,
-} from "@/core/dossier";
+import { dossierVivant, type EtatEtape, type EtatValidation, estSoldee } from "@/core/dossier";
 import {
   decider,
   type IssueDEtape,
@@ -55,6 +49,20 @@ export interface ResultatDExecution {
   echecs: number;
 }
 
+/**
+ * L'étape telle que ce passage l'a lue, avant d'interroger le moindre connecteur.
+ *
+ * Les quatre colonnes sur lesquelles la garde du contrôle se conditionne, et pas une
+ * de moins : l'état, l'attente et le nom du déclarant disent quelle déclaration on a
+ * lue, la tentative distingue deux déclarations identiques d'un même déclarant.
+ */
+interface DeclarationLue {
+  etat: EtatEtape;
+  validation: EtatValidation;
+  declaredBy: string | null;
+  attempts: number;
+}
+
 interface EtapeAExecuter {
   id: string;
   label: string;
@@ -63,6 +71,7 @@ interface EtapeAExecuter {
   ordre: number;
   riskLevel: RiskLevel;
   reversibleForDays?: number | undefined;
+  lue: DeclarationLue;
 }
 
 async function planEnBase(planId: string) {
@@ -88,6 +97,8 @@ async function planEnBase(planId: string) {
           label: true,
           state: true,
           validation: true,
+          declaredBy: true,
+          attempts: true,
           ordre: true,
           riskLevel: true,
           idempotencyKey: true,
@@ -117,6 +128,9 @@ function rapprocher(
     id: string;
     label: string;
     state: string;
+    validation: string;
+    declaredBy: string | null;
+    attempts: number;
     ordre: number;
     riskLevel: string;
     idempotencyKey: string;
@@ -153,6 +167,12 @@ function rapprocher(
         ordre: stockee.ordre,
         riskLevel: RISQUE_LU[stockee.riskLevel] ?? etape.riskLevel,
         reversibleForDays: nue.reversibleForDays,
+        lue: {
+          etat: stockee.state as EtatEtape,
+          validation: stockee.validation as EtatValidation,
+          declaredBy: stockee.declaredBy,
+          attempts: stockee.attempts,
+        },
       },
     ];
   });
@@ -277,17 +297,8 @@ export async function executerPlan(
   let executees = 0;
   let soldees = 0;
   let echecs = 0;
-  // Les deux dimensions, et pas seulement l'état : une étape déclarée par quelqu'un
-  // d'autre et encore en attente de validation garde le plan en cours, quand bien même
-  // la boucle aurait soldé tout ce qu'elle touche.
-  const etats = new Map<string, EtapeSuivie>(
-    plan.steps.map((etape) => [
-      etape.id,
-      { etat: etape.state as EtatEtape, validation: etape.validation as EtatValidation },
-    ]),
-  );
 
-  for (const { id, label, etape } of aTraiter) {
+  for (const { id, label, etape, lue } of aTraiter) {
     const systeme = connecteur(etape.systemKey);
     // Le tier dit ce qui a été approuvé, la présence d'`execute` dit ce que le
     // connecteur sait faire aujourd'hui : les deux sont nécessaires, et une étape
@@ -365,24 +376,14 @@ export async function executerPlan(
     // à `AWAITING` donc jamais validable, et l'étape se solderait au mépris de ce que
     // le plan approuvé demandait.
     const declare = etat === "SUCCEEDED" || etat === "ALREADY_PRESENT" || etat === "ALREADY_ABSENT";
-    const validation: EtatValidation =
-      etape.validationBy && declare ? "AWAITING" : (etats.get(id)?.validation ?? "NONE");
+    const validation: EtatValidation = etape.validationBy && declare ? "AWAITING" : lue.validation;
 
     if (etat !== null || appele) {
-      const data: Prisma.PlanStepUpdateInput = {
+      // Ce que le geste constate, et qui s'écrit sans condition : quand cette écriture
+      // part, le connecteur a déjà agi sur le système cible, et un accès ouvert ou
+      // coupé sans que rien ne l'enregistre est plus grave que n'importe quel conflit.
+      const geste: Prisma.PlanStepUpdateManyMutationInput = {
         ...(etat === null ? {} : { state: etat }),
-        // La signature du contrôleur précédent s'efface avec l'attente qu'on repose :
-        // un avis porte sur une déclaration précise, et le laisser en place le ferait
-        // lire comme s'il jugeait celle-ci. Le journal, lui, garde tout.
-        ...(validation === "AWAITING"
-          ? {
-              validation,
-              declaredBy: operateur,
-              validatedBy: null,
-              validatedAt: null,
-              validationNote: null,
-            }
-          : {}),
         ...(appele
           ? {
               attempts: { increment: 1 },
@@ -396,9 +397,66 @@ export async function executerPlan(
         ...(issue?.reversibleUntil ? { reversibleUntil: issue.reversibleUntil } : {}),
       };
 
-      await prisma.planStep.update({ where: { id }, data });
-      if (etat !== null) {
-        etats.set(id, { etat, validation });
+      // Ce que le contrôle juge, et qui porte sur une déclaration précise : la
+      // signature du contrôleur précédent s'efface avec l'attente qu'on repose, sans
+      // quoi son avis se lirait comme s'il jugeait celle-ci. Le journal, lui, garde tout.
+      const controle =
+        validation === "AWAITING"
+          ? {
+              validation,
+              declaredBy: operateur,
+              validatedBy: null,
+              validatedAt: null,
+              validationNote: null,
+            }
+          : null;
+
+      if (controle === null) {
+        await prisma.planStep.update({ where: { id }, data: geste });
+      } else {
+        // Conditionnée sur la déclaration lue, comme le pointage et le verdict de
+        // l'écran : entre cette lecture et ici, les connecteurs ont été interrogés, et
+        // un contrôleur a eu tout ce temps pour trancher.
+        const { count } = await prisma.planStep.updateMany({
+          where: {
+            id,
+            state: lue.etat,
+            validation: lue.validation,
+            declaredBy: lue.declaredBy,
+            attempts: lue.attempts,
+          },
+          data: { ...geste, ...controle },
+        });
+
+        // La déclaration lue n'est plus celle qui est en base. Seule une signature
+        // interdit d'y reposer l'attente : y renoncer sur un simple pointage
+        // solderait en silence une étape que le plan approuvé confiait à un second
+        // regard, et plus rien ne pourrait l'ouvrir puisque `peutValider` exige
+        // `AWAITING`. Un verdict, lui, porte toujours son signataire.
+        if (count === 0) {
+          const { count: reposee } = await prisma.planStep.updateMany({
+            where: { id, validatedBy: null },
+            data: { ...geste, ...controle },
+          });
+
+          // Le refus ne lève pas : lever abandonnerait les étapes suivantes du
+          // passage, alors qu'une seule d'entre elles est en cause. Le geste s'écrit
+          // seul, l'avis signé reste en place, et `reposerLEtatDuPlan` reprend l'état
+          // d'ensemble depuis les étapes elles-mêmes.
+          if (reposee === 0) {
+            await prisma.planStep.update({ where: { id }, data: geste });
+            audit({
+              ...trace,
+              before: lue,
+              after: {
+                ...contexte,
+                motif:
+                  "Un avis signé portait sur cette étape à l'écriture : le geste est consigné, l'avis est laissé en place, et l'étape n'est pas remise en attente.",
+              },
+              result: "SKIPPED",
+            });
+          }
+        }
       }
     }
 
