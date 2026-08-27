@@ -396,6 +396,24 @@ L'empreinte est recalculée au démarrage de l'exécution, pas seulement à la c
 système à ce moment-là, et le dire à l'écran évite qu'une case cochée passe pour un accès
 coupé.
 
+**Une écriture d'étape dit deux choses de nature différente**, et elles ne s'écrivent pas
+sous le même régime. Ce que le geste constate, l'état, la tentative, sa date et sa cause
+d'échec, est un fait accompli : quand la boucle d'exécution l'écrit, le connecteur a déjà
+agi sur le système visé, et cette moitié s'écrit donc sans condition. Un accès ouvert ou
+coupé sans que rien ne l'enregistre est plus grave que n'importe quel conflit d'écriture.
+
+Ce que le contrôle juge, l'attente d'un second regard sur ce qui a été déclaré et le nom
+de qui l'a déclaré, porte au contraire sur une déclaration précise : cette moitié ne
+s'écrit que si la déclaration lue est encore celle qui est en base. Entre la lecture d'un
+passage et son écriture, les connecteurs ont été interrogés, ce qui laisse tout le temps
+à un contrôleur de trancher, et écrire sans regarder effacerait son avis en silence.
+
+Sur conflit, l'attente d'un second regard **se repose malgré tout** tant qu'aucun avis
+n'a été signé. Y renoncer solderait une étape que le plan approuvé confiait à un autre
+regard sans qu'aucun regard ait eu lieu, et plus rien ne pourrait l'ouvrir, un verdict
+n'étant recevable que sur une étape qui l'attend. Un avis signé, lui, reste en place : le
+geste s'écrit seul et le conflit se journalise.
+
 ### 3.5 Reconstructibilité
 
 Tout est reconstructible en rejouant les connecteurs, sauf le journal, les
