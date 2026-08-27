@@ -127,9 +127,13 @@ export async function syncConstats(
   // Les deux sens se lisent d'un coup : l'arrivée décide du constat d'arrivée, et
   // chacun borne les déclarations de l'autre, un départ exécuté défaisant à bon droit
   // ce qu'une arrivée avait donné et réciproquement.
+  const [arrivees, departs] = await Promise.all([
+    plansExecutes("ONBOARDING"),
+    plansExecutes("OFFBOARDING"),
+  ]);
   const traitees: Record<SensDossier, ReadonlyMap<string, Date>> = {
-    ONBOARDING: await plansExecutes("ONBOARDING"),
-    OFFBOARDING: await plansExecutes("OFFBOARDING"),
+    ONBOARDING: arrivees,
+    OFFBOARDING: departs,
   };
   const observees: PersonneConstatable[] = personnes.map((personne) => ({
     ...personne,
