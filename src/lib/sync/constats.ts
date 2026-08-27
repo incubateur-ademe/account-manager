@@ -18,6 +18,7 @@ import {
   typesReconcilies,
   verrousDeCloture,
 } from "@/core/constat";
+import { dossierVivant, type SensDossier, sensOppose } from "@/core/dossier";
 import type { FindingKind } from "@/generated/prisma/enums";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
@@ -123,10 +124,20 @@ export async function syncConstats(
 ): Promise<ConstatsResult> {
   const phaseParStartup = new Map(startups.map((s) => [s.ghid, s.currentPhase]));
 
-  const traitees = await arriveesTraitees();
+  // Les deux sens se lisent d'un coup : l'arrivée décide du constat d'arrivée, et
+  // chacun borne les déclarations de l'autre, un départ exécuté défaisant à bon droit
+  // ce qu'une arrivée avait donné et réciproquement.
+  const [arrivees, departs] = await Promise.all([
+    plansExecutes("ONBOARDING"),
+    plansExecutes("OFFBOARDING"),
+  ]);
+  const traitees: Record<SensDossier, ReadonlyMap<string, Date>> = {
+    ONBOARDING: arrivees,
+    OFFBOARDING: departs,
+  };
   const observees: PersonneConstatable[] = personnes.map((personne) => ({
     ...personne,
-    arriveeTraiteeLe: traitees.get(personne.username) ?? null,
+    arriveeTraiteeLe: traitees.ONBOARDING.get(personne.username) ?? null,
   }));
 
   // Un périmètre tronqué ne conclut rien sur les arrivées : les fiches qui manquent à
@@ -173,7 +184,7 @@ export async function syncConstats(
       ? calcul
       : constatsDe(observees, phaseParStartup, phasesTerminales, now, regleRetenue)),
     ...constatsDIdentites(identites),
-    ...constatsDActionsDeclarees(await actionsDeclarees()),
+    ...constatsDActionsDeclarees(await actionsDeclarees(traitees)),
   ];
   const parCle = new Map<string, Constat>(constats.map((c) => [c.dedupKey, c]));
 
@@ -347,21 +358,22 @@ export async function dateDAmorcage(): Promise<Date | null> {
 }
 
 /**
- * Quand l'arrivée de chacun a été traitée, pour ceux dont elle l'a été.
+ * Quand le dernier mouvement de ce sens a été exécuté pour chacun, pour ceux dont il
+ * l'a été.
  *
  * Une seule requête pour tout le périmètre : interroger par personne ferait cent
  * allers-retours pour une règle qui tient en une comparaison de dates. `EXECUTED` et
  * lui seul, un plan à moitié exécuté laissant la personne sans une partie de ses
- * accès ; le sens se lit sur le dossier comme ailleurs, et le plan doit être un plan
- * d'arrivée, non une réparation de dérive posée sous le même dossier.
+ * accès ; le sens se lit sur le dossier comme ailleurs, et le plan doit porter le même
+ * sens que lui, non une réparation de dérive posée sous le même dossier.
  *
  * La date retenue est celle du dernier pointage et non celle de la confirmation :
  * c'est le pointage qui a fait passer le plan en `EXECUTED`, la confirmation ne dit
  * que le moment où il a été approuvé. Un plan sans étape datée retombe sur elle.
  */
-async function arriveesTraitees(): Promise<Map<string, Date>> {
+async function plansExecutes(sens: SensDossier): Promise<Map<string, Date>> {
   const plans = await prisma.plan.findMany({
-    where: { kind: "ONBOARDING", state: "EXECUTED", accessCase: { kind: "ONBOARDING" } },
+    where: { kind: sens, state: "EXECUTED", accessCase: { kind: sens } },
     select: {
       confirmedAt: true,
       steps: { select: { executedAt: true } },
@@ -408,7 +420,9 @@ function retenirLaPlusRecente(dates: Map<string, Date>, cle: string, date: Date 
  * du dossier, l'existence du compte de la personne sur ce système, et la date de la
  * dernière relecture.
  */
-async function actionsDeclarees(): Promise<ActionDeclaree[]> {
+async function actionsDeclarees(
+  traitees: Readonly<Record<SensDossier, ReadonlyMap<string, Date>>>,
+): Promise<ActionDeclaree[]> {
   const etapes = await prisma.planStep.findMany({
     // Les deux dimensions, exactement la règle d'`estSoldee` : une étape déclarée
     // faite dont personne n'a encore contrôlé la preuve n'est qu'une parole en
@@ -430,9 +444,11 @@ async function actionsDeclarees(): Promise<ActionDeclaree[]> {
           accessCase: {
             select: {
               kind: true,
+              state: true,
               person: {
                 select: {
                   username: true,
+                  returnedAt: true,
                   identities: { select: { provider: true, vanishedAt: true } },
                 },
               },
@@ -471,6 +487,9 @@ async function actionsDeclarees(): Promise<ActionDeclaree[]> {
       // n'entre pas ici.
       sens: dossier.kind,
       declareeLe: etape.executedAt,
+      dossierEncoreVivant: dossierVivant(dossier.state),
+      retourLe: personne.returnedAt,
+      inverseeLe: traitees[sensOppose(dossier.kind)].get(personne.username) ?? null,
       compteToujoursLa: personne.identities.some(
         (identite) => identite.provider === etape.systemKey && identite.vanishedAt === null,
       ),

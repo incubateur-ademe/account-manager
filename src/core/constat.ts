@@ -356,6 +356,23 @@ export interface ActionDeclaree {
   /** Le sens du dossier dont l'étape vient : il décide de ce qui contredit la parole. */
   sens: SensDossier;
   declareeLe: Date;
+  /**
+   * Vrai tant que le dossier dont l'étape vient n'est ni clos ni annulé. Un index
+   * unique partiel garantit qu'il n'y en a qu'un vivant par personne et par sens :
+   * vivant vaut donc exactement « c'est encore le dossier en cours de ce sens ».
+   */
+  dossierEncoreVivant: boolean;
+  /**
+   * Quand la collecte a revu la personne après l'avoir vue disparaître, la même notion
+   * que pour son arrivée et la seule qui dise qu'un séjour a recommencé. Nulle pour qui
+   * n'a jamais quitté le référentiel.
+   */
+  retourLe: Date | null;
+  /**
+   * Quand un mouvement de sens opposé a été exécuté pour cette personne, et donc quand
+   * ce que l'étape avait produit a été défait à bon droit. Nul quand il n'y en a aucun.
+   */
+  inverseeLe: Date | null;
   /** Vrai quand le compte visé est toujours observé sur ce système. */
   compteToujoursLa: boolean;
   /** Dernière lecture complète du système, ou null s'il n'a pas été relu depuis. */
@@ -381,6 +398,43 @@ const DETAIL: Record<SensDossier, (label: string, systemKey: string) => string> 
 };
 
 /**
+ * Une parole reste opposable tant que ce qu'elle a produit est censé durer, et pas une
+ * minute de plus. Un retrait soldé en janvier se fait démentir par le compte que le
+ * retour de la personne rouvre en juin, alors qu'il a bien eu lieu : c'est la personne
+ * qui est revenue, et sans borne le démenti la suivrait de séjour en séjour.
+ *
+ * Deux façons de défaire une parole, et une seule de la garder debout.
+ *
+ * Un mouvement de sens opposé exécuté depuis l'éteint, quoi qu'il arrive par ailleurs :
+ * ce qu'elle avait produit a été défait à bon droit, et les deux sens peuvent avoir un
+ * dossier vivant en même temps. Sans cette borne, chaque arrivée soldée se ferait
+ * démentir par le départ qui la défait, dès le premier départ correctement traité.
+ *
+ * Le retour de la personne l'éteint aussi, mais seulement quand le dossier dont elle
+ * vient est retombé. Un dossier encore vivant est le dernier de son sens, et ce qu'il
+ * demande n'a donc pas cessé d'être attendu : c'est là qu'un renouvellement signé en
+ * retard, ou une fiche qui saute une collecte et revient, poseraient un retour sans que
+ * personne n'ait rien décidé. Éteindre sur cette seule date rendait muet pour toujours
+ * le démenti d'un départ toujours en cours, exactement le cas que ce constat existe
+ * pour porter.
+ *
+ * Et le retour, jamais la première vue. `firstSeenAt` ne dit pas qu'un séjour a
+ * recommencé, il dit quand la fiche a été créée, et une fiche peut naître après le
+ * dossier qu'elle porte : une fusion déplace les dossiers d'une fiche fabriquée vers la
+ * vraie, plus jeune qu'eux, et le lire ici faisait taire tout ce que la fiche source
+ * avait déclaré.
+ */
+function encoreOpposable(action: ActionDeclaree): boolean {
+  if (action.inverseeLe !== null && action.inverseeLe.getTime() > action.declareeLe.getTime()) {
+    return false;
+  }
+  if (action.dossierEncoreVivant) {
+    return true;
+  }
+  return action.retourLe === null || action.retourLe.getTime() <= action.declareeLe.getTime();
+}
+
+/**
  * L'outil n'exécute rien : il enregistre ce qu'un opérateur déclare avoir fait. Sans
  * contrepartie, une case cochée vaudrait donc preuve, alors qu'elle ne vaut que
  * parole, et un accès resté ouvert par oubli passerait pour un accès coupé.
@@ -394,6 +448,9 @@ export function constatsDActionsDeclarees(actions: readonly ActionDeclaree[]): C
   const constats: Constat[] = [];
 
   for (const action of actions) {
+    if (!encoreOpposable(action)) {
+      continue;
+    }
     if (!DEMENTIE[action.sens](action.compteToujoursLa)) {
       continue;
     }

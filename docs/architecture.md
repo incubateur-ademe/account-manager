@@ -513,10 +513,36 @@ la dit mieux ; la comparaison tronque au jour UTC, si bien que le dernier jour t
 compte encore comme travaillé. Et une **phase inconnue interdit de conclure** : on ne
 propose pas une coupure sur une supposition.
 
-`OVERDUE_MANUAL_ACTION`, gravité haute : une étape de départ a été pointée comme faite,
-et le compte est toujours là quand le système a été relu. Une case cochée vaut parole,
-pas preuve, et c'est la collecte qui tranche. C'est le seul constat qui naisse d'une
-déclaration humaine plutôt que d'un écart entre le collecté et le périmètre.
+`OVERDUE_MANUAL_ACTION`, gravité haute : une étape a été pointée comme faite, et la
+collecte dit le contraire. Le sens du dossier décide de ce qui la dément : pour un
+départ, le compte est toujours là quand le système a été relu ; pour une arrivée, il n'y
+est toujours pas. Une case cochée vaut parole, pas preuve, et c'est la collecte qui
+tranche. C'est le seul constat qui naisse d'une déclaration humaine plutôt que d'un écart
+entre le collecté et le périmètre.
+
+**Une parole n'est opposable que tant que ce qu'elle a produit est censé durer.** Un
+mouvement de sens opposé exécuté depuis l'éteint, quoi qu'il arrive par ailleurs : ce
+qu'elle avait produit a été défait à bon droit, et sans cette borne chaque arrivée soldée
+se ferait démentir par le premier départ correctement traité.
+
+Le retour de la personne l'éteint aussi, mais seulement une fois retombé le dossier dont
+elle vient. Un dossier vivant est le dernier de son sens, l'index unique partiel le
+garantit, donc ce qu'il demande n'a pas cessé d'être attendu : éteindre sur la seule date
+de retour rendrait muet pour toujours le démenti d'un départ encore en cours, c'est-à-dire
+le cas même que ce constat existe pour porter. C'est aussi ce qui protège d'une fiche qui
+saute une collecte et revient, laquelle date un retour sans que personne n'ait rien
+décidé.
+
+Le retour, et **jamais la première vue** : la date de création d'une fiche ne dit pas
+qu'un séjour a recommencé, elle dit quand la fiche est née, et une fusion déplace les
+dossiers d'une fiche fabriquée vers la vraie, plus jeune qu'eux. La lire ici ferait taire
+tout ce que la fiche source avait déclaré.
+
+Sans ces bornes, une étape restait confrontée à la collecte indéfiniment : un retrait
+soldé en janvier se faisait démentir par le compte que le retour de juin rouvre à bon
+droit, le constat se réconciliait à la sortie suivante, et revenait à l'entrée d'après.
+Un contrôle qui crie au loup sur des gestes corrects finit par ne plus être lu, et le
+vrai cas se noie avec lui.
 
 Poser ou retirer un rattachement manuel ne lève ni ne ferme ce constat sur le champ, et
 c'est délibéré : il dépend des phases de toutes les startups et d'une date qui passe
