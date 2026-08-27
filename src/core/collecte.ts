@@ -1,5 +1,5 @@
 import type { ObservedDetail, ObservedIdentity } from "@/core/connector";
-import type { IdKind } from "@/generated/prisma/enums";
+import type { IdKind, PersonSource } from "@/generated/prisma/enums";
 
 /**
  * Une collecte qui rapporte beaucoup moins que la précédente n'est pas distinguable
@@ -58,6 +58,62 @@ export function chuteExcessive(reference: number, observe: number, partMax: numb
     return false;
   }
   return observe < Math.floor(reference * (1 - partMax));
+}
+
+/**
+ * Un autre passage complet est-il venu depuis ce constat ?
+ *
+ * Une seule question sert deux règles, parce que c'est la même : ce qu'un passage a
+ * constaté, seul un autre passage complet peut le confirmer. Lue sur la disparition
+ * d'une fiche, elle dit qu'une absence a duré et vaut départ, donc que la revoir sera
+ * un retour. Lue sur sa dernière vue, elle dit qu'un angle mort a duré, et que ce
+ * qu'un passage a avoué ne pas savoir lire, il peut cesser de l'épargner.
+ *
+ * Les deux dates comparées sont des instants de passage : `vanishedAt` comme
+ * `lastSeenAt` portent le `startedAt` du passage qui les a écrits. Une égalité dit
+ * donc que le dernier passage complet est celui-là même, et qu'aucun autre n'est venu
+ * depuis : la comparaison est stricte pour cette raison, et non par prudence.
+ *
+ * Ce qui se compte est un passage et non un délai : la période du traitement vit dans
+ * l'orchestrateur et aucun code d'ici ne la lit, et une relance à la main met deux
+ * passages à quelques minutes l'un de l'autre. Un passage complet est exigé par
+ * symétrie avec le garde-fou du dessus : un passage qui ne date aucune disparition
+ * n'en confirme aucune. Sans passage complet connu il n'y a rien à confirmer, comme
+ * une première collecte n'est pas une chute.
+ */
+export function autrePassageCompletDepuis(
+  constat: Date | null,
+  dernierPassageComplet: Date | null,
+): boolean {
+  if (constat === null || dernierPassageComplet === null) {
+    return false;
+  }
+  return constat.getTime() < dernierPassageComplet.getTime();
+}
+
+/**
+ * Une fiche que le dernier passage complet n'a pas rendue, alors que rien ne dit
+ * qu'elle est partie.
+ *
+ * C'est le seul état qu'un refus de disparition laisse en base : le passage n'écrit
+ * rien, il s'abstient d'écrire. L'état se relit donc tel quel, sans compteur ni
+ * colonne, et l'écran qui l'annonce lit exactement ce que la collecte a lu pour
+ * décider.
+ *
+ * Bornée aux fiches que la collecte est censée lire. Une fiche fabriquée à la main
+ * pour nommer un compte n'est réclamée par aucune source amont : sa dernière vue est
+ * celle de sa création et ne bougera plus, si bien qu'elle serait annoncée non rendue
+ * à chaque passage, pour toujours. Une fiche déjà datée disparue est passée sous
+ * l'autorité du constat de sortie, qui dit la même chose en disant quoi faire.
+ */
+export function nonRendueAuDernierPassage(
+  fiche: { source: PersonSource; lastSeenAt: Date; vanishedAt: Date | null },
+  dernierPassageComplet: Date | null,
+): boolean {
+  if (fiche.source !== "BETA" || fiche.vanishedAt !== null) {
+    return false;
+  }
+  return autrePassageCompletDepuis(fiche.lastSeenAt, dernierPassageComplet);
 }
 
 /**
@@ -278,6 +334,31 @@ export function refusDeLaTrace(error: unknown, famille: FamilleDeChute): RefusDe
 
 /** Ce par quoi commence la phrase qu'un passage laisse quand il refuse une vague. */
 export const REFUS_DE_VAGUE = "vague d'arrivées";
+
+/**
+ * Ce par quoi commence la phrase qu'un passage laisse quand il refuse de faire
+ * disparaître une fiche qu'il sait ne pas avoir lue.
+ *
+ * Comme le refus de vague, elle rejoint les messages du run sans basculer son statut :
+ * le périmètre a bien été collecté, c'est d'une fiche nommée que rien n'a été conclu,
+ * et dégrader le run pour autant le rendrait aveugle à tous les vrais départs de la
+ * nuit. Sans cette ligne, une disparition non datée ressemblerait trait pour trait à
+ * une fiche qui n'a pas bougé.
+ */
+export const REFUS_DE_DISPARITION = "fiches non lues";
+
+/**
+ * Ce par quoi commence la phrase qu'un passage laisse quand il revoit une fiche
+ * disparue sans dater son retour.
+ *
+ * Ce refus-là efface ce qu'il refuse : le passage qui s'abstient d'écrire le retour
+ * a effacé la disparition dans la même écriture, si bien que plus rien en base ne
+ * distingue une absence réelle de trois semaines d'une fiche qui n'a jamais bougé.
+ * La date de la disparition va donc dans la phrase, seule à séparer le battement
+ * d'une nuit, qui est le comportement voulu et se lit à un jour d'écart, de
+ * l'absence longue qu'aucun passage complet n'a traversée, qui en est le prix.
+ */
+export const REFUS_DE_RETOUR = "retours non datés";
 
 /**
  * Le refus d'arrivées qu'une trace de run porte, s'il y en a un.

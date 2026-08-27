@@ -34,6 +34,7 @@ function fiche(over: Partial<EtatDeLaFiche> = {}): EtatDeLaFiche {
     ouverts: [],
     fermes: [],
     fraicheur: { perimee: false, heures: 2 },
+    nonRendue: false,
     toutesStartupsTerminees: false,
     parEquipe: false,
     departVivant: null,
@@ -217,6 +218,11 @@ describe("les gestes que porte le bloc d'action d'une fiche", () => {
       fiche({
         statut: "A_TRAITER",
         fraicheur: { perimee: true, heures: 96 },
+        // Deux voisins qui parlent tous les deux de ce que la fiche ne sait plus, et
+        // qui ne disent pas la même chose : la fraîcheur date le dernier passage, ce
+        // motif-ci dit que le dernier passage complet n'a pas rendu cette personne et
+        // que rien n'en a été conclu.
+        nonRendue: true,
         toutesStartupsTerminees: true,
         appartenance: {
           dans: false,
@@ -238,6 +244,7 @@ describe("les gestes que porte le bloc d'action d'une fiche", () => {
     expect(sansConstat.map((motif) => motif.cle)).toEqual([
       "statut",
       "fraicheur",
+      "non-rendue",
       "startups-terminees",
       "surcharge",
       "sortie-contre-equipe",

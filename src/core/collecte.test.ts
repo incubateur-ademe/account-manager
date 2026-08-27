@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   arriveeMassive,
+  autrePassageCompletDepuis,
   blocagesInstalles,
   champsConstates,
   chuteExcessive,
   chuteInstallee,
   fraicheurDe,
+  nonRendueAuDernierPassage,
   PLANCHER_ARRIVEES,
   type RefusDeDatation,
   type ReleveSysteme,
@@ -77,6 +79,56 @@ describe("chute d'une collecte d'un relevé à l'autre", () => {
 
   it("ne bronche pas quand la collecte grossit", () => {
     expect(chuteExcessive(100, 500, PART_MAX)).toBe(false);
+  });
+});
+
+/**
+ * Deux règles lisent ce prédicat, et c'est la même question : ce qu'un passage a
+ * constaté, seul un autre passage complet peut le confirmer. Lu sur la disparition
+ * d'une fiche, il dit qu'une absence a duré et vaut départ. Lu sur sa dernière vue, il
+ * dit qu'un angle mort a duré et que le passage peut cesser de l'épargner.
+ */
+describe("ce qu'un autre passage complet vient confirmer", () => {
+  const NOCTURNE = new Date("2026-09-02T04:30:00.000Z");
+  const VEILLE = new Date("2026-09-01T04:30:00.000Z");
+
+  it("exige un autre passage complet, et ne se fie à aucun délai", () => {
+    // Un constat égal au dernier passage complet dit que ce passage-là vient de
+    // l'écrire, et qu'aucun autre n'est venu depuis. La comparaison est stricte pour
+    // cette raison : une fiche disparue au dernier passage n'est pas confirmée partie,
+    // et une fiche non lue au dernier passage n'est pas confirmée absente.
+    expect(autrePassageCompletDepuis(NOCTURNE, NOCTURNE)).toBe(false);
+
+    // Un passage complet postérieur au constat l'a confirmé : il aurait effacé la
+    // disparition en revoyant la fiche, ou rendu la fiche lisible en la lisant.
+    expect(autrePassageCompletDepuis(VEILLE, NOCTURNE)).toBe(true);
+
+    // Une seconde d'écart suffit : ce qui se compte est un passage, pas un délai. Une
+    // relance à la main met deux passages à quelques minutes l'un de l'autre, et un
+    // seuil en heures les tiendrait alors pour un seul.
+    expect(autrePassageCompletDepuis(NOCTURNE, new Date("2026-09-02T04:30:01.000Z"))).toBe(true);
+
+    // Sans constat il n'y a rien à confirmer, et sans passage complet connu personne
+    // pour le confirmer : dans les deux cas on ne conclut pas.
+    expect(autrePassageCompletDepuis(null, NOCTURNE)).toBe(false);
+    expect(autrePassageCompletDepuis(NOCTURNE, null)).toBe(false);
+  });
+
+  it("relit sur une fiche l'angle mort dont la collecte n'a rien conclu", () => {
+    // Un refus de disparition n'écrit rien : il s'abstient d'écrire, et son seul
+    // témoin en base est une dernière vue restée derrière le dernier passage complet.
+    // C'est ce que l'écran relit pour dire, au nom d'une personne, ce que la collecte
+    // s'est refusée à conclure sur elle.
+    const retenue = { source: "BETA" as const, lastSeenAt: VEILLE, vanishedAt: null };
+    expect(nonRendueAuDernierPassage(retenue, NOCTURNE)).toBe(true);
+    expect(nonRendueAuDernierPassage({ ...retenue, lastSeenAt: NOCTURNE }, NOCTURNE)).toBe(false);
+
+    // Deux exclusions, deux raisons. Une fiche fabriquée à la main n'est réclamée par
+    // aucune source amont : sa dernière vue ne bougera plus jamais, et l'annoncer non
+    // rendue à chaque passage ferait de l'alerte un décor. Une fiche déjà datée
+    // disparue relève du constat de sortie, qui dit la même chose en disant quoi faire.
+    expect(nonRendueAuDernierPassage({ ...retenue, source: "LOCAL" }, NOCTURNE)).toBe(false);
+    expect(nonRendueAuDernierPassage({ ...retenue, vanishedAt: VEILLE }, NOCTURNE)).toBe(false);
   });
 });
 

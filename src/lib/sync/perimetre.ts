@@ -1,5 +1,11 @@
 import type { Attachment } from "@/core/appartenance";
-import { chuteExcessive, FOURNISSEUR_PERIMETRE } from "@/core/collecte";
+import {
+  autrePassageCompletDepuis,
+  chuteExcessive,
+  FOURNISSEUR_PERIMETRE,
+  REFUS_DE_DISPARITION,
+  REFUS_DE_RETOUR,
+} from "@/core/collecte";
 import {
   emailDeContact,
   type MembreDetaille,
@@ -32,8 +38,25 @@ export interface PerimetreSyncResult {
   vanished: number;
   missingDeclared: string[];
   introuvables: string[];
+  /** Celles que ce passage a refusé de faire disparaître, faute de les avoir lues. */
+  retenues: string[];
+  /** Celles dont il a effacé la disparition sans dater le retour, faute de confirmation. */
+  retoursNonDates: RetourNonDate[];
   errors: string[];
   startups: IncubatorStartup[];
+}
+
+/**
+ * Une fiche revue dont le retour n'a pas été daté, et la disparition qu'elle portait.
+ *
+ * La disparition n'existe plus nulle part une fois ce passage écrit : elle est
+ * reprise ici parce que c'est la seule chose qui dise combien de temps l'absence
+ * avait duré, et donc si ce refus est le battement d'une nuit qu'on voulait taire ou
+ * le retour réel qu'on a accepté de perdre.
+ */
+export interface RetourNonDate {
+  username: string;
+  disparueLe: Date;
 }
 
 export interface PersonneResolue {
@@ -61,7 +84,7 @@ function toDate(iso: string | null): Date | null {
  * collectée. Le jour où quelqu'un ajoute un champ à `Person`, c'est ici qu'on voit
  * si la collecte s'est mise à écraser une décision.
  */
-export function champsCollectes(personne: PersonneResolue, now: Date, vanishedAt: Date | null) {
+export function champsCollectes(personne: PersonneResolue, now: Date, retour: boolean) {
   return {
     // Le jour où une source amont connaît cet identifiant, il cesse d'être une
     // construction locale et redevient un pivot que rien n'a le droit de renommer.
@@ -78,38 +101,49 @@ export function champsCollectes(personne: PersonneResolue, now: Date, vanishedAt
     source: personne.source,
     lastSeenAt: now,
     vanishedAt: null,
-    // Une fiche revue après avoir disparu est un retour, et c'est la seule chose qui
-    // en tienne lieu : `firstSeenAt` ne bougera plus. La disparition étant effacée
-    // sur la ligne du dessus, l'état d'avant le passage est le seul témoin qui reste,
-    // d'où le paramètre. `undefined` ne touche à rien : une personne qui n'avait pas
-    // disparu garde la date de son retour précédent, et une fiche créée ici n'en a
-    // aucune, n'étant revenue de nulle part.
-    returnedAt: vanishedAt === null ? undefined : now,
+    // Une fiche revue après une disparition confirmée est un retour, et c'est la
+    // seule chose qui en tienne lieu : `firstSeenAt` ne bougera plus. La disparition
+    // étant effacée sur la ligne du dessus, ce passage est le dernier instant où le
+    // retour peut se dater, d'où le verdict en paramètre : la règle est chez
+    // l'appelant, seul à savoir ce que les passages précédents ont constaté.
+    // `undefined` ne touche à rien : une fiche revue sans retour établi garde la date
+    // de son retour précédent, et une fiche créée ici n'en a aucune, n'étant revenue
+    // de nulle part.
+    returnedAt: retour ? now : undefined,
   };
 }
 
-async function upsert(personne: PersonneResolue, now: Date): Promise<"created" | "updated"> {
+async function upsert(
+  personne: PersonneResolue,
+  now: Date,
+  dernierPassageComplet: Date | null,
+): Promise<{ issue: "created" | "updated"; retourNonDate: Date | null }> {
   const existing = await prisma.person.findUnique({
     where: { username: personne.username },
     select: { id: true, vanishedAt: true },
   });
 
   if (existing) {
+    // Relevée avant l'écriture, qui l'efface sans condition : ce passage est le dernier
+    // à savoir qu'il y avait une disparition, et sans retour daté, rien après lui ne
+    // pourra dire qu'elle a existé.
+    const disparueLe = existing.vanishedAt;
+    const retour = autrePassageCompletDepuis(disparueLe, dernierPassageComplet);
     await prisma.person.update({
       where: { id: existing.id },
-      data: champsCollectes(personne, now, existing.vanishedAt),
+      data: champsCollectes(personne, now, retour),
     });
-    return "updated";
+    return { issue: "updated", retourNonDate: retour ? null : disparueLe };
   }
 
   await prisma.person.create({
     data: {
-      ...champsCollectes(personne, now, null),
+      ...champsCollectes(personne, now, false),
       username: personne.username,
       firstSeenAt: now,
     },
   });
-  return "created";
+  return { issue: "created", retourNonDate: null };
 }
 
 /**
@@ -132,6 +166,9 @@ export async function syncPerimetre(
   let updated = 0;
   let vanished = 0;
   const resolues: PersonneResolue[] = [];
+  let precedent: PassageComplet | null = null;
+  let retenues: string[] = [];
+  const retoursNonDates: RetourNonDate[] = [];
   let absents: string[] = [];
   let startups: IncubatorStartup[] = [];
 
@@ -243,13 +280,23 @@ export async function syncPerimetre(
       config.scope.transverse,
     );
 
+    // Le dernier passage complet sert trois fois : son effectif borne la chute, son
+    // instant dit si une disparition a duré et si un angle mort a duré. Un seul relevé
+    // pour les trois, sinon des garde-fous qui se réclament du même passage finissent
+    // par ne plus parler du même. Le passage courant ne s'y voit pas : il s'ouvre en
+    // `FAILED` et n'est promu qu'à sa clôture.
+    precedent = await dernierPassageComplet();
+
     for (const personne of resolues) {
       try {
-        const outcome = await upsert(personne, now);
-        if (outcome === "created") {
+        const { issue, retourNonDate } = await upsert(personne, now, precedent?.startedAt ?? null);
+        if (issue === "created") {
           created += 1;
         } else {
           updated += 1;
+        }
+        if (retourNonDate !== null) {
+          retoursNonDates.push({ username: personne.username, disparueLe: retourNonDate });
         }
       } catch (error: unknown) {
         errors.push(
@@ -268,6 +315,8 @@ export async function syncPerimetre(
       vanished: 0,
       missingDeclared: absents,
       introuvables,
+      retenues: [],
+      retoursNonDates,
       errors,
       startups,
     };
@@ -280,7 +329,7 @@ export async function syncPerimetre(
   // Un run dégradé ne fait disparaître personne : une collecte tronquée conclurait
   // à tort que la moitié de l'incubateur est partie.
   if (status === "OK") {
-    const reference = await dernierPerimetreComplet();
+    const reference = precedent?.itemsSeen ?? 0;
 
     if (chuteExcessive(reference, resolues.length, policy().thresholds.maxScopeDrop)) {
       // Une réponse valide mais amputée ne se distingue d'un départ collectif que par
@@ -320,8 +369,18 @@ export async function syncPerimetre(
         ...adossees.map((personne) => personne.username),
       ];
 
+      // Une fiche que ce passage sait n'avoir pas lue rejoint les connues : il l'a
+      // demandée, la source a répondu qu'elle ne la connaissait pas, et un aveu
+      // d'ignorance ne vaut pas un départ tant qu'il n'a pas duré. C'est l'inverse
+      // d'une disparition ordinaire, qui se conclut d'un silence.
+      retenues = await fichesRetenues(introuvables, known, precedent?.startedAt ?? null);
+
       const gone = await prisma.person.updateMany({
-        where: { username: { notIn: known }, vanishedAt: null, source: { not: "SERVICE" } },
+        where: {
+          username: { notIn: [...known, ...retenues] },
+          vanishedAt: null,
+          source: { not: "SERVICE" },
+        },
         data: { vanishedAt: now },
       });
       vanished = gone.count;
@@ -337,6 +396,8 @@ export async function syncPerimetre(
     vanished,
     missingDeclared: absents,
     introuvables,
+    retenues,
+    retoursNonDates,
     errors,
     startups,
   };
@@ -352,23 +413,96 @@ export async function syncPerimetre(
   return result;
 }
 
-async function dernierPerimetreComplet(): Promise<number> {
-  const dernier = await prisma.syncRun.findFirst({
+/**
+ * Les fiches que ce passage sait n'avoir pas lues, et dont il n'a donc rien à conclure
+ * ce soir.
+ *
+ * Un 404 de la source n'est pas un silence : le passage nomme la fiche qui lui manque,
+ * et il conclurait un départ d'un aveu d'ignorance. La borne est celle du retour, lue
+ * sur la dernière vue au lieu de la disparition : tant qu'aucun autre passage complet
+ * n'est venu depuis, l'angle mort n'a pas duré et la fiche est retenue ; dès qu'un
+ * autre est venu sans la rendre lisible, elle reçoit sa disparition. Le sursis dure
+ * donc un passage complet et pas un de plus, et c'est ce qui le sépare d'une
+ * exemption : une fiche réellement supprimée en amont garde son départ, avec un
+ * passage de retard, là où l'épargner sans condition le lui retirerait pour toujours.
+ *
+ * Rien n'est retenu de ce que la collecte a résolu par ailleurs, une personne
+ * rattachée par une équipe restant du périmètre même quand sa fiche complète manque,
+ * ni de ce qui a déjà disparu, ni d'un compte de service, que l'`updateMany` épargne
+ * de toute façon : dans les trois cas il n'y a rien à retenir, et l'annoncer ferait
+ * mentir la trace.
+ */
+async function fichesRetenues(
+  introuvables: readonly string[],
+  known: readonly string[],
+  dernierPassage: Date | null,
+): Promise<string[]> {
+  const deja = new Set(known);
+  const candidates = introuvables.filter((username) => !deja.has(username));
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  const fiches = await prisma.person.findMany({
+    where: { username: { in: candidates }, vanishedAt: null, source: { not: "SERVICE" } },
+    select: { username: true, lastSeenAt: true },
+  });
+
+  return fiches
+    .filter((fiche) => !autrePassageCompletDepuis(fiche.lastSeenAt, dernierPassage))
+    .map((fiche) => fiche.username);
+}
+
+/** Le dernier passage dont on a le droit de tirer des conclusions. */
+export interface PassageComplet {
+  itemsSeen: number;
+  startedAt: Date;
+}
+
+export async function dernierPassageComplet(): Promise<PassageComplet | null> {
+  return prisma.syncRun.findFirst({
     where: { provider: FOURNISSEUR_PERIMETRE, capability: "list", status: "OK" },
     orderBy: { startedAt: "desc" },
-    select: { itemsSeen: true },
+    select: { itemsSeen: true, startedAt: true },
   });
-  return dernier?.itemsSeen ?? 0;
+}
+
+/** Le jour d'un instant, dans la forme que les messages du dépôt emploient déjà. */
+function jour(date: Date): string {
+  return date.toISOString().slice(0, 10);
 }
 
 async function closeRun(id: string, now: Date, result: PerimetreSyncResult): Promise<void> {
+  // Ce qu'un passage a dit, et non ce qui l'a dégradé : ni une fiche retenue ni un
+  // retour non daté ne sont des lectures ratées, ce sont des conclusions qu'on s'est
+  // refusées sur quelqu'un de nommé. Les compter dans `errors` basculerait le run en
+  // `PARTIAL` et lui ferait perdre tous les vrais départs de la nuit. Les dire ici les
+  // met dans la colonne que l'écran des collectes lit déjà, comme le refus de vague.
+  //
+  // Le second refus a plus besoin de cette ligne que le premier : une fiche retenue
+  // garde sa disparition en attente, alors qu'un retour non daté a effacé la sienne,
+  // et sans cette phrase rien ne distinguerait plus une absence de trois semaines
+  // d'une fiche qui n'a pas bougé.
+  const dits = [...result.errors];
+  if (result.retenues.length > 0) {
+    // Point-virgule et non virgule : les noms en portent déjà, et la conclusion se
+    // lirait comme un nom de plus dès qu'il y en a deux.
+    dits.push(`${REFUS_DE_DISPARITION} : ${result.retenues.join(", ")} ; aucune disparition datée`);
+  }
+  if (result.retoursNonDates.length > 0) {
+    const revenues = result.retoursNonDates
+      .map((retour) => `${retour.username} (disparue le ${jour(retour.disparueLe)})`)
+      .join(", ");
+    dits.push(`${REFUS_DE_RETOUR} : ${revenues} ; absence non confirmée`);
+  }
+
   await prisma.syncRun.update({
     where: { id },
     data: {
       finishedAt: now,
       status: result.status,
       itemsSeen: result.seen,
-      error: result.errors.length > 0 ? { messages: result.errors } : undefined,
+      error: dits.length > 0 ? { messages: dits } : undefined,
     },
   });
 }

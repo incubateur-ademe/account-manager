@@ -114,6 +114,8 @@ export interface EtatDeLaFiche {
   /** Ce qui a déjà été traité, et qui ne doit pas revenir sous un autre nom. */
   fermes: readonly ConstatFerme[];
   fraicheur: Fraicheur;
+  /** Le dernier passage complet ne l'a pas rendue, et n'en a rien conclu. */
+  nonRendue: boolean;
   toutesStartupsTerminees: boolean;
   /** Rattachée par une équipe : un titre qui ne passe par aucune startup. */
   parEquipe: boolean;
@@ -194,6 +196,20 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
         etat.fraicheur.heures === null
           ? "Aucune collecte n'a jamais eu lieu : cette fiche ne reflète aucune observation."
           : `Dernière collecte lancée il y a ${etat.fraicheur.heures} heures. Sa situation a pu changer depuis.`,
+    });
+  }
+
+  // Le seul endroit où le refus de conclure se lit au nom d'une personne. La collecte
+  // ne le dit qu'une fois, dans la trace du passage, sur un écran qui parle de
+  // passages : ici, il se lit sur la fiche même dont les dates viennent de cesser
+  // d'avancer, et où se décide une coupure.
+  if (etat.nonRendue) {
+    motifs.push({
+      cle: "non-rendue",
+      severite: "warning",
+      titre: "Le dernier passage complet ne l'a pas rendue",
+      description:
+        "La source ne l'a pas donnée, et l'outil n'en a rien conclu : une absence d'un seul passage ne vaut pas départ. Si elle manque encore au prochain passage complet, sa sortie du référentiel sera constatée. En attendant, ce qu'affiche cette fiche date de sa dernière observation.",
     });
   }
 

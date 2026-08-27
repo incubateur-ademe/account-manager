@@ -241,11 +241,21 @@ export async function executerSync(
     journal(`[sync] compte de service ${message}`);
   }
 
+  const retenues = new Set(perimetre.retenues);
   for (const username of perimetre.introuvables) {
-    journal(`[sync] fiche introuvable dans l'espace-membre : ${username}`);
+    journal(
+      `[sync] fiche introuvable dans l'espace-membre : ${username}${
+        retenues.has(username) ? ", disparition non datée, réexaminée au passage suivant" : ""
+      }`,
+    );
   }
   for (const username of perimetre.missingDeclared) {
     journal(`[sync] déclaré dans la politique mais non résolu ce passage : ${username}`);
+  }
+  for (const retour of perimetre.retoursNonDates) {
+    journal(
+      `[sync] revue après disparition, retour non daté : ${retour.username}, disparue le ${retour.disparueLe.toISOString().slice(0, 10)} sans qu'aucun autre passage complet le confirme`,
+    );
   }
   for (const message of perimetre.errors) {
     journal(`[sync] ${message}`);
