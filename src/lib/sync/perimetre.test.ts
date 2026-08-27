@@ -55,7 +55,7 @@ const resolue = (over: Partial<PersonneResolue> = {}): PersonneResolue => ({
  */
 describe("ce que la collecte réécrit sur une fiche", () => {
   it("n'écrit rien qui touche à un rattachement manuel", () => {
-    const champs = champsCollectes(resolue(), MAINTENANT, null);
+    const champs = champsCollectes(resolue(), MAINTENANT, false);
 
     expect(Object.keys(champs).sort()).toEqual([
       "attachment",
@@ -97,7 +97,7 @@ describe("ce que la collecte réécrit sur une fiche", () => {
       source: "LOCAL",
     });
 
-    const champs = champsCollectes(declaree, MAINTENANT, null);
+    const champs = champsCollectes(declaree, MAINTENANT, false);
 
     expect(champs.startups).toEqual([]);
     expect(champs.attachment).toBe("NONE");
@@ -105,19 +105,21 @@ describe("ce que la collecte réécrit sur une fiche", () => {
   });
 
   it("date le retour d'une fiche disparue, et n'en invente aucun sur les autres", () => {
-    // La disparition est effacée sans condition par ce même objet : l'état de la fiche
-    // avant le passage est le seul témoin qu'il y a eu retour, d'où le paramètre.
-    const revenue = champsCollectes(resolue(), MAINTENANT, new Date("2026-07-01T02:00:00Z"));
+    // La disparition est effacée sans condition par ce même objet : ce passage est
+    // donc le dernier instant où le retour peut se dater, d'où le verdict en
+    // paramètre. Ce qui vaut retour se décide chez l'appelant, contre le prédicat
+    // partagé `autrePassageCompletDepuis`.
+    const revenue = champsCollectes(resolue(), MAINTENANT, true);
 
     expect(revenue.vanishedAt).toBeNull();
     expect(revenue.returnedAt).toBe(MAINTENANT);
     // La première vue, elle, ne se réécrit jamais : elle n'est pas de cette liste.
     expect(Object.keys(revenue)).not.toContain("firstSeenAt");
 
-    // Personne n'est réputé revenu sans être parti. Une fiche qu'on revoit sans l'avoir
-    // vue disparaître garde la date de son retour précédent, et une fiche que ce
+    // Personne n'est réputé revenu sans être parti, ni sans que son absence ait duré.
+    // Une fiche dans ce cas garde la date de son retour précédent, et une fiche que ce
     // passage vient de créer n'en a aucune : elle ne revient de nulle part.
-    expect(champsCollectes(resolue(), MAINTENANT, null).returnedAt).toBeUndefined();
+    expect(champsCollectes(resolue(), MAINTENANT, false).returnedAt).toBeUndefined();
   });
 });
 

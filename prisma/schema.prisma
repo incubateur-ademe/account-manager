@@ -115,14 +115,23 @@ model Person {
 
   firstSeenAt DateTime  @default(now())
   lastSeenAt  DateTime  @default(now())
-  vanishedAt  DateTime?
 
-  /// Quand la collecte a revu une fiche qu'elle avait vue disparaitre. firstSeenAt ne
+  /// Quand la collecte a cesse de voir une fiche. Une fiche que le passage sait ne pas
+  /// avoir lue, parce que la source a nomme son ignorance, n'est pas datee ici le soir
+  /// meme : voir core/collecte.ts, nonRendueAuDernierPassage.
+  vanishedAt DateTime?
+
+  /// Quand la collecte a revu une fiche dont la disparition avait dure. firstSeenAt ne
   /// bouge jamais, retour compris : jugee sur elle seule, une personne revenue
   /// resterait ineligible pour toujours, alors que son retour est une arrivee a
   /// traiter. C'est le seul signe d'un nouveau sejour, et il vient de la collecte :
   /// une mission qui s'acheve ne fait pas sortir du referentiel, donc rien du cote
   /// des dossiers ne dit qu'un sejour a recommence.
+  ///
+  /// Revue au passage qui suit celui ou elle a manque, une fiche n'est pas revenue :
+  /// elle n'est jamais partie, et cette colonne reste vide. Une disparition ne vaut
+  /// depart qu'a partir du moment ou un autre passage complet l'a constatee, voir
+  /// core/collecte.ts, autrePassageCompletDepuis.
   returnedAt DateTime?
 
   identities         ExternalIdentity[]

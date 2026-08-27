@@ -139,6 +139,20 @@ sans qu'aucune erreur ne soit levée. Au-delà d'un cinquième perdu d'un coup, 
 collecte ne date aucune disparition et se déclare partielle. Ce plancher complète la
 règle générale : une collecte qui n'est pas `OK` ne pose jamais de `vanishedAt`.
 
+**Une fiche qu'un passage sait ne pas avoir lue ne disparaît pas le soir même.** Une disparition
+ordinaire se conclut d'un silence : la personne n'est plus dans la réponse, et rien ne la nomme.
+Un refus de la source est autre chose, elle nomme la fiche qu'elle ne connaît pas, et en conclure
+un départ serait conclure d'un aveu d'ignorance. Ces fiches sont donc retenues, et la borne est
+celle du retour lue sur la dernière vue au lieu de la disparition : dès qu'un autre passage
+complet est venu sans les rendre lisibles, l'angle mort a duré et la disparition se date.
+
+Le sursis dure un passage et pas un de plus, et c'est ce qui le sépare d'une exemption : une
+fiche réellement supprimée en amont garde son départ, avec un passage de retard, là où l'épargner
+sans condition le lui retirerait pour toujours. Il ne peut pas non plus s'entretenir lui-même,
+contrairement au plancher de chute : le passage qui retient détruit la condition de sa propre
+retenue en devenant, à sa clôture, le dernier passage complet qui n'a pas rendu la fiche. Ce
+qu'il a retenu se lit dans sa trace et sur la fiche de la personne, où se décide une coupure.
+
 **Une collecte qui s'arrête doit se voir.** Sans elle, les échéances ne bougent plus
 et les statuts restent au vert : les écrans continueraient d'affirmer un périmètre
 gelé avec l'assurance d'un périmètre frais, ce qui est la panne la plus discrète de
@@ -253,6 +267,33 @@ c'est ce qui distingue un séjour du suivant : `firstSeenAt` ne bouge pas au ret
 personne, et une règle qui s'y fierait seule tiendrait un retour pour un séjour ininterrompu.
 La clôture d'un départ ne dit rien de tel : une mission terminée reste dans le référentiel,
 et solder un départ pendant que la fiche est encore là est le chemin normal.
+
+**Une disparition qui n'a pas duré n'est pas un départ.** `returnedAt` ne se pose donc que si un
+autre passage complet a constaté l'absence après celui qui l'a datée : une fiche revue au passage
+qui suit celui où elle a manqué n'est pas revenue, elle n'est jamais partie. Sans cette borne, une
+fiche que la source omet une nuit et rend le lendemain traverserait un départ puis un retour
+entiers, sur des passages tous complets, et le faux séjour ainsi ouvert éteindrait le démenti
+d'une action déclarée et lèverait une arrivée sans onboarding sur quelqu'un qui n'a pas bougé.
+
+La référence est celle qui borne déjà la chute du périmètre, le dernier passage complet : un seul
+relevé, trois garde-fous. Ce qui se compte est un passage et non un délai, la période du
+traitement vivant dans l'orchestrateur et n'étant lisible d'aucun code d'ici, et une relance à la
+main mettant deux passages à quelques minutes l'un de l'autre.
+
+**Le prix est qu'une absence qu'aucun passage complet n'a traversée perd son retour, quelle que
+soit sa durée**, le passage qui revoit la fiche étant aussi celui qui efface sa disparition. Ce
+n'est pas un oubli mais le sens de la règle : avec une seule observation d'absence, rien ne
+distingue le battement d'un départ, et l'outil refuse de deviner. L'erreur va dans le sens sûr,
+un retour manqué laissant quelqu'un avec trop peu d'accès, ce qui se réclame tout seul, là où un
+faux retour éteint sans bruit le constat d'une action déclarée. Le passage le dit dans sa trace,
+avec la date de la disparition qu'il efface, seule à séparer le battement d'une nuit de l'absence
+longue.
+
+Le retour n'est pas soumis aux garde-fous de la disparition, et ce n'est pas une omission. Une
+absence se conclut d'un silence, qu'un passage tronqué imite trait pour trait, d'où le statut du
+run et le plancher de chute ; une présence se constate, et aucun passage tronqué n'invente
+personne. Un retour se date donc sur n'importe quel passage, y compris dégradé, sinon il se
+perdrait : le passage qui revoit une fiche est le dernier où son retour peut s'écrire.
 
 `attachment` dit la voie constatée par l'espace-membre, « aucune » comprise. À quel titre
 une personne appartient à l'incubateur ne s'y lit pas : cela se calcule, voir §2.3.

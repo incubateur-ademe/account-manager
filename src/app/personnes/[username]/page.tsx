@@ -12,7 +12,7 @@ import {
   libelleAppartenance,
   surchargeSuperflue,
 } from "@/core/appartenance";
-import { FOURNISSEUR_PERIMETRE, fraicheurDe } from "@/core/collecte";
+import { FOURNISSEUR_PERIMETRE, fraicheurDe, nonRendueAuDernierPassage } from "@/core/collecte";
 import type { ConstatKind } from "@/core/constat";
 import { ETATS_VIVANTS } from "@/core/dossier";
 import { ficheEditable, RAISON_NON_EDITABLE } from "@/core/fiche-manuelle";
@@ -25,6 +25,7 @@ import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
+import { dernierPassageComplet } from "@/lib/sync/perimetre";
 import { dateFr } from "@/ui/dates";
 import { SEVERITE_STATUT } from "@/ui/severites";
 import { TableCustom } from "@/ui/TableCustom";
@@ -65,7 +66,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
   const profils = profilsOfferts();
   const today = new Date();
 
-  const [personne, collectes, dernierePasse, dossiersVivants] = await Promise.all([
+  const [personne, collectes, dernierePasse, dernierComplet, dossiersVivants] = await Promise.all([
     prisma.person.findUnique({
       where: { username },
       select: {
@@ -135,6 +136,11 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
       orderBy: { startedAt: "desc" },
       select: { startedAt: true },
     }),
+    // Le relevé contre lequel la collecte décide, et non le dernier passage tout
+    // court : deux lectures de « la dernière fois qu'on a su » finiraient par ne plus
+    // parler du même passage, et l'écran dirait alors autre chose que la règle qu'il
+    // annonce.
+    dernierPassageComplet(),
     // Filtrée par la relation plutôt que par l'identifiant de la personne, que cette
     // requête ne connaît pas encore : elle part en même temps que celle qui le lit.
     // Les deux sens, chacun annoncé par son propre motif : l'index unique partiel en
@@ -214,6 +220,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
     today,
     thresholds.collectStaleHours,
   );
+  const nonRendue = nonRendueAuDernierPassage(personne, dernierComplet?.startedAt ?? null);
   const appartenance = appartenanceDeLaLigne(
     personne,
     new Map(startupsConnues.map((startup) => [startup.ghid, startup.currentPhase])),
@@ -253,6 +260,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
     libelleSansSurcharge: LIBELLE_APPARTENANCE[appartenance.sansSurcharge].libelle,
     ouverts,
     fraicheur,
+    nonRendue,
     fermes,
     toutesStartupsTerminees: toutesTerminees,
     parEquipe,
