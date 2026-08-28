@@ -1010,13 +1010,16 @@ describe("le contrôle d'une déclaration, étape par étape", () => {
   });
 
   it("n'attend aucun contrôle sur un geste que personne n'affirme avoir fait", async () => {
-    // Given deux gestes confiés à la personne concernée sous le regard d'un opérateur
+    // Given deux gestes confiés à la personne concernée sous le regard d'un opérateur,
+    // et un geste d'équipe sous le même regard
     const { plan } = await arriveeRepartie(
       { acteur: "SUBJECT", valideur: "OPERATOR" },
       { acteur: "SUBJECT", valideur: "OPERATOR" },
+      { acteur: "OPERATOR", valideur: "OPERATOR" },
     );
     const ecartee = etapeEnBase(0);
     const tentee = etapeEnBase(1);
+    const dEquipe = etapeEnBase(2);
     base.operateur = USERNAME;
 
     // When le premier est déclaré impossible, et le second tenté sans aboutir
@@ -1045,8 +1048,38 @@ describe("le contrôle d'une déclaration, étape par étape", () => {
     expect(tentee.validation).toBe("AWAITING");
     expect(tentee.declaredBy).toBe(USERNAME);
 
+    // When la porteuse, opératrice de surcroît, raye le geste que le plan confiait à
+    // l'équipe sur son propre dossier
+    await pointerEtape(
+      null,
+      formulaire({
+        etapeId: dEquipe.id,
+        pointage: "ignoree",
+        note: "Cet accès n'a jamais été ouvert.",
+      }),
+    );
+
+    // Then rien ne l'attend non plus, et c'est là que l'écart se distingue de l'échec :
+    // l'échec ne solde rien et laisse l'étape à reprendre, l'écart solde. C'est donc la
+    // seule sortie qui ferme une étape contrôlée sans qu'aucun second regard n'ait eu
+    // lieu, sa raison obligatoire et le nom de qui l'a rayée faisant tout le contrôle.
+    // Depuis que celui qui est de l'équipe pointe tout son propre dossier, cette sortie
+    // atteint aussi les gestes que le plan confiait à l'équipe : la refermer se décide,
+    // et ce scénario est là pour que la décision se voie le jour où elle se prend.
+    expect(dEquipe.state).toBe("SKIPPED");
+    expect(dEquipe.validation).toBe("NONE");
+    expect(dEquipe.declaredBy).toBe(USERNAME);
+
     // Then le plan attend ce regard, et rien d'autre
     expect(plan.state).toBe("EXECUTING");
+
+    // When l'opératrice porte le seul regard que ce plan attende encore
+    base.operateur = "operatrice.exemple";
+    await validerEtape(null, formulaire({ etapeId: tentee.id, verdict: "accepter" }));
+
+    // Then le plan est exécuté : les deux étapes rayées comptent pour soldées, celle de
+    // l'équipe l'ayant été par la personne dont c'est le dossier, sans relecture.
+    expect(plan.state).toBe("EXECUTED");
   });
 
   it("refuse à chacun de valider sa propre déclaration, sans bloquer le dossier", async () => {
@@ -1105,17 +1138,34 @@ describe("le contrôle d'une déclaration, étape par étape", () => {
     const controlee = etapeEnBase(0);
     const ordinaire = etapeEnBase(1);
 
-    // When la personne concernée tente de pointer ce qui ne lui revient pas
+    // When la personne concernée, opératrice de surcroît, pointe ce geste d'équipe sur
+    // son propre dossier
     base.operateur = USERNAME;
     const porteuse = await pointerEtape(
       null,
       formulaire({ etapeId: controlee.id, pointage: "fait" }),
     );
 
-    // Then refusé : la répartition n'ouvre rien de nouveau au porteur, le geste reste
-    // celui de l'équipe transverse.
-    expect(porteuse.erreur).toContain("Cette étape ne vous revient pas");
-    expect(controlee.validation).toBe("NONE");
+    // Then rien ne s'y oppose, et sa déclaration attend un regard : porter le dossier
+    // ne retire pas à qui est de l'équipe les gestes de l'équipe, cela lui retire la
+    // signature. Le lui refuser laissait l'unique mainteneur sans une seule case à
+    // cocher sur son propre départ, là où rien ne l'empêchait de confirmer ce plan, de
+    // l'exécuter, de l'annuler ni de le clore.
+    expect(porteuse.erreur).toBeUndefined();
+    expect(controlee.validation).toBe("AWAITING");
+    expect(controlee.declaredBy).toBe(USERNAME);
+    expect(controlee.validatedBy).toBeNull();
+
+    // When elle tente de signer ce qu'elle vient de déclarer sur son propre dossier
+    const sienne = await validerEtape(
+      null,
+      formulaire({ etapeId: controlee.id, verdict: "accepter" }),
+    );
+
+    // Then refusé : devant son dossier elle est la personne concernée, et porter le
+    // rôle d'opératrice ailleurs n'y change rien.
+    expect(sienne.erreur).toContain("La personne concernée ne contrôle pas");
+    expect(controlee.validation).toBe("AWAITING");
 
     // When une opératrice pointe les deux
     base.operateur = "operatrice.exemple";
@@ -1335,7 +1385,7 @@ describe("le contrôle d'une déclaration, étape par étape", () => {
  * personne n'a vérifiée, et c'est exactement ce qu'un dossier ne peut pas taire.
  */
 describe("la clôture d'un dossier, quand tout est coché mais que quelqu'un attend", () => {
-  it("ne clôt que lorsque plus rien n'attend, et laisse le geste de l'opérateur à l'opérateur", async () => {
+  it("ne clôt que lorsque plus rien n'attend, et laisse la signature à un autre nom", async () => {
     // Given une arrivée dont un geste revient à la personne concernée sous le regard
     // d'un opérateur, et dont l'autre revient à l'opérateur seul
     const { dossier, plan } = await arriveeRepartie(
@@ -1345,23 +1395,41 @@ describe("la clôture d'un dossier, quand tout est coché mais que quelqu'un att
     const controlee = etapeEnBase(0);
     const parLOperateur = etapeEnBase(1);
 
-    // When la personne concernée, opératrice de surcroît, tente le geste qui ne lui
-    // revient pas
+    // When la personne concernée, opératrice de surcroît, pointe le geste d'équipe de
+    // son propre dossier
     base.operateur = USERNAME;
-    const usurpe = await pointerEtape(
+    const sien = await pointerEtape(
       null,
       formulaire({ etapeId: parLOperateur.id, pointage: "fait" }),
     );
 
-    // Then refusé, et rien n'a été écrit : le porteur passe avant l'opérateur, sans
-    // quoi quelqu'un instruirait son propre dossier de bout en bout.
-    expect(usurpe.erreur).toContain("Cette étape ne vous revient pas");
-    expect(parLOperateur.state).toBe("PENDING");
+    // Then il est soldé sur-le-champ : rien ne le contrôlait, et le refuser murait le
+    // départ de l'unique mainteneur au pointage seul.
+    expect(sien.erreur).toBeUndefined();
+    expect(parLOperateur.state).toBe("SUCCEEDED");
+    expect(parLOperateur.validation).toBe("NONE");
+    expect(parLOperateur.declaredBy).toBe(USERNAME);
 
-    // When chacun pointe ce qui lui revient
+    // When elle pointe ensuite ce qui lui revient en propre, sous le regard d'un
+    // opérateur
     await pointerEtape(null, formulaire({ etapeId: controlee.id, pointage: "fait" }));
-    base.operateur = "operatrice.exemple";
-    await pointerEtape(null, formulaire({ etapeId: parLOperateur.id, pointage: "fait" }));
+
+    // Then sa déclaration attend, et ne s'accepte surtout pas d'elle-même : lui faire
+    // porter le rôle d'opératrice pour lui ouvrir le pointage l'aurait fait passer
+    // pour l'opératrice substituée à la personne concernée, et son départ se serait
+    // signé tout seul.
+    expect(controlee.validation).toBe("AWAITING");
+    expect(controlee.declaredBy).toBe(USERNAME);
+    expect(controlee.validatedBy).toBeNull();
+
+    // When elle tente de signer sa propre déclaration
+    const soi = await validerEtape(
+      null,
+      formulaire({ etapeId: controlee.id, verdict: "accepter" }),
+    );
+
+    // Then refusé : personne n'instruit son propre départ de bout en bout.
+    expect(soi.erreur).toContain("La personne concernée ne contrôle pas");
 
     // Then toutes les étapes sont pointées, et le plan ne se déclare pas exécuté pour
     // autant : une déclaration attend encore un second regard.
@@ -1382,6 +1450,7 @@ describe("la clôture d'un dossier, quand tout est coché mais que quelqu'un att
     expect(base.journal.map((trace) => trace.action)).not.toContain("dossier.cloture");
 
     // When l'opératrice porte le second regard
+    base.operateur = "operatrice.exemple";
     const accepte = await validerEtape(
       null,
       formulaire({ etapeId: controlee.id, verdict: "accepter" }),

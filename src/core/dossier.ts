@@ -128,6 +128,25 @@ export function planPointable(etat: EtatPlan): Verdict {
 }
 
 /**
+ * Qui prétend pointer une étape : ce qu'il est devant ce dossier, et son appartenance
+ * à l'équipe transverse.
+ *
+ * Deux faits et non un, parce que le rôle en cache un quand il vaut `SUBJECT` : un
+ * opérateur qui porte son propre dossier y est le porteur, et `roleSurDossier` ne dira
+ * jamais autre chose de lui. Lui faire rendre `OPERATOR` réglerait le pointage d'une
+ * ligne et ouvrirait un trou d'un cran plus loin : sur une étape confiée à la personne
+ * concernée et contrôlée par un opérateur, `validationApresPointage` y lirait une
+ * substitution et sa propre déclaration se signerait elle-même.
+ *
+ * Son appartenance à l'équipe se dit donc à côté du rôle, et ne se lit qu'ici : elle
+ * ouvre le pointage, jamais la signature.
+ */
+export interface Declarant {
+  role: Acteur | null;
+  operateur: boolean;
+}
+
+/**
  * Pointer une étape est une déclaration humaine, pas une exécution : l'outil ne
  * touche à aucun système ici. On ne pointe donc que ce qui a été confirmé, sans quoi
  * on consignerait des gestes faits d'après un brouillon que personne n'a approuvé.
@@ -137,17 +156,20 @@ export function planPointable(etat: EtatPlan): Verdict {
  *
  * Un opérateur pointe n'importe quelle étape, y compris celle d'un délégué : sans
  * cette substitution, une étape confiée à quelqu'un qui s'évapore murerait le dossier,
- * et aucun délégué n'existe encore.
+ * et aucun délégué n'existe encore. C'est l'appartenance à l'équipe qui l'ouvre et non
+ * le rôle, sans quoi l'opérateur qui porte son propre dossier ne pointerait aucune de
+ * ses étapes, pas même celles qu'aucun contrôle n'attend, là où rien ne l'empêche de
+ * confirmer ce dossier, de l'exécuter, de l'annuler ni de le clore.
  */
-export function peutPointer(etat: EtatPlan, acteurAttendu: Acteur, role: Acteur | null): Verdict {
+export function peutPointer(etat: EtatPlan, acteurAttendu: Acteur, declarant: Declarant): Verdict {
   const plan = planPointable(etat);
   if (!plan.possible) {
     return plan;
   }
-  if (role === null) {
+  if (declarant.role === null) {
     return { possible: false, raison: "Ce dossier ne vous concerne pas." };
   }
-  if (role !== acteurAttendu && role !== "OPERATOR") {
+  if (declarant.role !== acteurAttendu && !declarant.operateur) {
     return {
       possible: false,
       raison: "Cette étape ne vous revient pas : elle attend quelqu'un d'autre.",
@@ -163,6 +185,10 @@ export function peutPointer(etat: EtatPlan, acteurAttendu: Acteur, role: Acteur 
  * quelqu'un instruirait son propre départ et validerait ses propres cases. La
  * conséquence est assumée, un opérateur qui part a besoin d'un autre opérateur pour
  * valider ses étapes sensibles, et c'est exactement le but.
+ *
+ * Elle s'arrête là : c'est la signature qu'elle lui retire, pas le pointage. Ce qu'il
+ * est dans l'équipe se lit à côté de ce qu'il est devant le dossier, et la garde du
+ * pointage lit les deux, voir `Declarant`.
  *
  * `DELEGATE` n'en sort jamais : il n'existe aucun droit par objet à lire. Une étape
  * confiée à un délégué reste donc pointable par un opérateur en substitution, si bien

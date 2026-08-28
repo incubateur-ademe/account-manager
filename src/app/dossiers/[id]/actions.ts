@@ -261,7 +261,14 @@ export async function pointerEtape(
 
   const role = roleDeLOperateur(operateur.username, etape.plan.accessCase?.person.username ?? null);
 
-  const verdict = peutPointer(etape.plan.state, etape.expectedActor as Acteur, role);
+  // Opérateur sans condition : `requireOperateur` a muré l'action avant, si bien que
+  // qui arrive ici est de l'équipe transverse, y compris quand le dossier ouvert est le
+  // sien. C'est ce que le rôle tait quand il vaut `SUBJECT`, et ce qui rend le pointage
+  // de son propre dossier possible sans lui en rendre la signature.
+  const verdict = peutPointer(etape.plan.state, etape.expectedActor as Acteur, {
+    role,
+    operateur: true,
+  });
   if (!verdict.possible) {
     return { erreur: verdict.raison };
   }
