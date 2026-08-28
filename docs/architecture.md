@@ -146,8 +146,8 @@ Ce refus est le plus discret des trois : les deux autres laissent en base de quo
 relire, une fiche retenue par sa dernière vue, un retour non daté par la disparition qu'il
 efface, alors qu'une échéance non écrite ne se distingue par rien d'une échéance fraîche. Il
 ne vit donc que dans la trace du passage, et il y nomme aussi celui qu'il n'a pas pu servir :
-une fiche qui naît pendant la panne n'a aucune échéance à conserver, et c'est la seule que
-rien ne rattrapera.
+une fiche qui naît pendant la panne n'a rien à conserver, et reste sans échéance jusqu'au
+passage qui saura lire la sienne.
 
 **Une chute du périmètre ne fait disparaître personne.** Le périmètre arrivant en un
 seul appel, une réponse tronquée mais valide ferait sortir tout le monde à la fois

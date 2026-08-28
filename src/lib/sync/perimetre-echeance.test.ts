@@ -447,9 +447,10 @@ describe("ce qu'un passage écrit d'une échéance qu'il n'a pas su relire", () 
     // celle de sa seule voie startup, quand son rattachement à une équipe la retient
     // au-delà : l'écrire proposerait un départ dans vingt-huit jours au nom de
     // quelqu'un qui vient d'arriver. Ne rien écrire la laisse hors de toutes les files
-    // tant que sa fiche restera illisible, et rien ne la rattrapera puisqu'il n'y a
-    // aucune valeur précédente à garder. On échange un départ prématuré contre un accès
-    // qui n'expire pas, et l'échange ne vaut que parce que le second se dit.
+    // tant que sa fiche restera illisible : les autres traversent la panne avec leur
+    // dernière échéance lue, elle n'en a aucune, et le passage qui saura la lire est le
+    // premier à pouvoir lui en donner une. On échange un départ prématuré contre un
+    // accès qui n'expire pas, et l'échange ne vaut que parce que le second se dit.
     expect(panne.created).toBe(1);
     expect(echeance(ENTRANTE)).toBeNull();
     expect(statutDe(echeance(ENTRANTE), LE_JOUR_DIT, SEUILS)).toBe("SANS_ECHEANCE");

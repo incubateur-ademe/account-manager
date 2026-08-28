@@ -241,7 +241,8 @@ export async function syncPerimetre(
       // la recalculer finiraient par ne plus désigner les mêmes personnes. Pris avant
       // l'écriture, donc sans savoir s'il y avait une valeur précédente : une fiche
       // créée cette nuit y est aussi, sans rien à conserver, et c'est celle qui a le
-      // plus besoin d'être nommée puisque rien ne la rattrapera.
+      // plus besoin d'être nommée, les autres gardant au moins la dernière échéance
+      // lue quand elle n'a, elle, aucune.
       if (rattachement.missionEnd === undefined) {
         echeancesNonEcrites.push(membre.username);
       }
