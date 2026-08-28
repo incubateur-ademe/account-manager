@@ -108,6 +108,11 @@ model Person {
   primaryEmail       String?
   communicationEmail String?
   githubLogin        String?
+  /// Fin de mission telle que l'amont l'a dite la derniere fois que la collecte a su
+  /// lire la source qui la porte. Un passage qui n'a pas obtenu cette source ne la
+  /// reecrit pas : retomber sur ce que la liste scopee donne rendrait une echeance
+  /// raccourcie, ou inventee, jamais la vraie. Voir src/core/membre.ts,
+  /// rattachementDe.
   missionEnd         DateTime?    @db.Date
   source             PersonSource @default(BETA)
   attachment         Attachment   @default(NONE)

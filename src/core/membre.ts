@@ -89,19 +89,38 @@ export interface Rattachement {
 }
 
 /**
+ * Le même, rendu par une résolution qui a pu ne pas lire la source portant l'échéance.
+ *
+ * `undefined` dit qu'on n'en sait rien, là où `null` dit qu'il n'y en a pas. Les deux
+ * se ressemblent partout ailleurs et n'ont pas le même effet à l'écriture : `null`
+ * s'écrit et efface, `undefined` ne s'écrit pas et laisse en base ce qu'y avait mis le
+ * dernier passage qui, lui, avait su lire.
+ *
+ * Deux interfaces plutôt qu'une seule élargie, parce que les deux voies ne sont pas
+ * dans le même cas : un rattachement déclaré part d'une fiche qu'on tient déjà en
+ * main, et son échéance est toujours connue. Lui prêter une ignorance qu'il ne peut
+ * pas avoir la ferait traiter à chacun de ses appelants.
+ */
+export interface RattachementIncertain extends Omit<Rattachement, "missionEnd"> {
+  missionEnd: string | null | undefined;
+}
+
+/**
  * L'appartenance à l'incubateur n'est plus déduite ici : elle est résolue par
  * l'espace-membre, qui sait qu'une startup peut relever de plusieurs incubateurs. Ne
  * reste qu'à retenir les startups du périmètre et à dater la fin.
  *
  * `detail` porte les missions non restreintes à l'incubateur. Il est nécessaire dès
  * que le rattachement passe par une équipe : la liste scopée n'associe alors aucune
- * mission à la personne, et c'est sa fin de mission beta.gouv qui fait foi.
+ * mission à la personne, et c'est sa fin de mission beta.gouv qui fait foi. Son
+ * absence sur cette voie n'est donc pas une personne sans mission, c'est une lecture
+ * qui a manqué, et l'échéance est alors inconnue plutôt que nulle.
  */
 export function rattachementDe(
   membre: MembreIncubateur,
   ghidsIncubateur: ReadonlySet<string>,
   detail?: MembreDetaille | null,
-): Rattachement {
+): RattachementIncertain {
   const attachment = ATTACHMENT[membre.attachment];
 
   const startups = [
@@ -114,10 +133,18 @@ export function rattachementDe(
     ),
   ].sort();
 
+  // Retomber sur les missions scopées écrirait une date qu'on n'a pas lue : nulle pour
+  // qui ne relève que d'une équipe, dont la liste ne porte aucune mission, et celle de
+  // la seule voie startup pour qui relève des deux, qui la raccourcit quand la mission
+  // beta.gouv va plus loin et en invente une quand la fiche n'en portait aucune. Les
+  // deux font proposer un départ trop tôt : ce n'est pas une approximation, c'est une
+  // erreur toujours dans le même sens.
   const missionEnd =
     attachment === "STARTUPS"
       ? finDeMission(membre.missions)
-      : finDeMission(detail?.missions ?? membre.missions);
+      : detail
+        ? finDeMission(detail.missions)
+        : undefined;
 
   return { attachment, startups, missionEnd };
 }

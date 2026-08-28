@@ -115,15 +115,36 @@ describe("rattachement d'un membre rendu par l'espace-membre", () => {
     ).toEqual({ attachment: "BOTH", startups: ["produit-beta"], missionEnd: "2027-06-15" });
   });
 
-  it("retombe sur les missions scopées si la fiche complète manque", () => {
-    // La fiche a pu échouer : mieux vaut une échéance approchée qu'aucune.
-    const membre: MembreIncubateur = {
+  it("ne date rien quand la fiche complète manque, sur les deux voies qui en dépendent", () => {
+    // Ce test disait l'inverse : mieux valait une échéance approchée qu'aucune. Elle
+    // n'est pas approchée, elle est fausse et toujours dans le même sens. La liste
+    // scopée ne porte que les missions de startup : elle raccourcit l'échéance quand la
+    // mission beta.gouv va plus loin, et en invente une quand la fiche n'en portait
+    // aucune. Les deux font proposer un départ trop tôt.
+    const deuxVoies: MembreIncubateur = {
       username: "detail.indisponible",
       attachment: "both",
       missions: [{ end: "2026-05-01T00:00:00.000Z", startups: [{ ghid: "produit-beta" }] }],
     };
 
-    expect(rattachementDe(membre, ADEME, null).missionEnd).toBe("2026-05-01");
+    const sansFiche = rattachementDe(deuxVoies, ADEME, null);
+    expect(sansFiche.missionEnd).toBeUndefined();
+    // Le silence ne s'étend pas au-delà de l'échéance : le reste vient de la liste
+    // scopée, qui a bien été lue.
+    expect(sansFiche.startups).toEqual(["produit-beta"]);
+    expect(sansFiche.attachment).toBe("BOTH");
+
+    // Et sur la voie de l'équipe seule, que rien ne testait : `null` rendrait cette
+    // personne sans échéance, donc jamais à traiter, ce qui est exactement ce que la
+    // lecture de sa fiche existe pour éviter.
+    const parEquipe: MembreIncubateur = {
+      username: "transverse.pur",
+      attachment: "teams",
+      teams: ["ademe-transverse"],
+      missions: [],
+    };
+
+    expect(rattachementDe(parEquipe, ADEME, null).missionEnd).toBeUndefined();
   });
 
   it("rattache un transverse déclaré sur sa seule fiche", () => {

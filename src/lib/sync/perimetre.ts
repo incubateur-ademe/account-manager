@@ -3,6 +3,7 @@ import {
   autrePassageCompletDepuis,
   chuteExcessive,
   FOURNISSEUR_PERIMETRE,
+  REFUS_D_ECHEANCE,
   REFUS_DE_DISPARITION,
   REFUS_DE_RETOUR,
 } from "@/core/collecte";
@@ -42,6 +43,8 @@ export interface PerimetreSyncResult {
   retenues: string[];
   /** Celles dont il a effacé la disparition sans dater le retour, faute de confirmation. */
   retoursNonDates: RetourNonDate[];
+  /** Celles dont il n'a pas écrit l'échéance, faute d'avoir obtenu la fiche qui la porte. */
+  echeancesNonEcrites: string[];
   errors: string[];
   startups: IncubatorStartup[];
 }
@@ -59,6 +62,16 @@ export interface RetourNonDate {
   disparueLe: Date;
 }
 
+/**
+ * Ce qu'un passage sait d'une personne, et ce qu'il ne sait pas.
+ *
+ * Un champ qui admet `undefined` le dit au sens fort : ce passage n'a pas su lire la
+ * source qui le porte, il n'a donc rien à en écrire, et la collecte cesse d'affirmer
+ * par défaut ce qu'elle n'a pas constaté. `missionEnd` est le seul dans ce cas, la
+ * fiche complète étant la seule à le porter pour qui relève d'une équipe. Le jour où
+ * un deuxième champ passera par elle, il hérite du silence en élargissant son propre
+ * type : rien plus bas ne regarde les champs un par un.
+ */
 export interface PersonneResolue {
   username: string;
   betaUuid: string | null;
@@ -66,13 +79,16 @@ export interface PersonneResolue {
   githubLogin: string | null;
   primaryEmail: string | null;
   communicationEmail: string | null;
-  missionEnd: string | null;
+  missionEnd: string | null | undefined;
   attachment: Attachment;
   startups: string[];
   source: PersonSource;
 }
 
-function toDate(iso: string | null): Date | null {
+function toDate(iso: string | null | undefined): Date | null | undefined {
+  if (iso === undefined) {
+    return undefined;
+  }
   return iso === null ? null : new Date(`${iso}T00:00:00Z`);
 }
 
@@ -95,6 +111,10 @@ export function champsCollectes(personne: PersonneResolue, now: Date, retour: bo
     githubLogin: personne.githubLogin,
     primaryEmail: personne.primaryEmail,
     communicationEmail: personne.communicationEmail,
+    // `undefined` ne touche à rien, comme pour le retour plus bas : une échéance que ce
+    // passage n'a pas su lire garde celle du dernier passage qui l'a lue. L'effacer
+    // ferait passer une lecture manquée pour une absence de fin de mission, et une
+    // personne sans échéance ne remonte plus jamais, par aucun statut.
     missionEnd: toDate(personne.missionEnd),
     attachment: personne.attachment,
     startups: personne.startups,
@@ -169,6 +189,7 @@ export async function syncPerimetre(
   let precedent: PassageComplet | null = null;
   let retenues: string[] = [];
   const retoursNonDates: RetourNonDate[] = [];
+  const echeancesNonEcrites: string[] = [];
   let absents: string[] = [];
   let startups: IncubatorStartup[] = [];
 
@@ -215,6 +236,16 @@ export async function syncPerimetre(
 
     for (const membre of membres) {
       const rattachement = rattachementDe(membre, ghids, details.get(membre.username));
+      // Relevé sur le verdict de la résolution et non sur la carte des fiches lues :
+      // c'est la même décision qui se dit ici et s'écrit plus bas, et deux façons de
+      // la recalculer finiraient par ne plus désigner les mêmes personnes. Pris avant
+      // l'écriture, donc sans savoir s'il y avait une valeur précédente : une fiche
+      // créée cette nuit y est aussi, sans rien à conserver, et c'est celle qui a le
+      // plus besoin d'être nommée, les autres gardant au moins la dernière échéance
+      // lue quand elle n'a, elle, aucune.
+      if (rattachement.missionEnd === undefined) {
+        echeancesNonEcrites.push(membre.username);
+      }
       resolues.push({
         username: membre.username,
         betaUuid: membre.uuid ?? null,
@@ -317,6 +348,7 @@ export async function syncPerimetre(
       introuvables,
       retenues: [],
       retoursNonDates,
+      echeancesNonEcrites,
       errors,
       startups,
     };
@@ -398,6 +430,7 @@ export async function syncPerimetre(
     introuvables,
     retenues,
     retoursNonDates,
+    echeancesNonEcrites,
     errors,
     startups,
   };
@@ -494,6 +527,11 @@ async function closeRun(id: string, now: Date, result: PerimetreSyncResult): Pro
       .map((retour) => `${retour.username} (disparue le ${jour(retour.disparueLe)})`)
       .join(", ");
     dits.push(`${REFUS_DE_RETOUR} : ${revenues} ; absence non confirmée`);
+  }
+  if (result.echeancesNonEcrites.length > 0) {
+    dits.push(
+      `${REFUS_D_ECHEANCE} : ${result.echeancesNonEcrites.join(", ")} ; fiche complète non lue`,
+    );
   }
 
   await prisma.syncRun.update({
