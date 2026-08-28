@@ -877,11 +877,13 @@ un rôle d'administration se renouvelle silencieusement.
 
 ### Qui agit, et comment on valide
 
-Seule l'équipe transverse agit. La liste qui dit qui peut agir n'est pas celle qui dit
-l'appartenance à l'incubateur : la première vit dans l'environnement, voir §3.1, quand
-la seconde se calcule, voir §2.3. Il n'y a pas de délégation aux leads dans cette
-version : elle ajouterait un modèle d'autorisation et des demandes en attente pour un
-besoin qui n'est pas là.
+**Seuls agissent ceux que l'environnement autorise.** La liste qui les nomme vit hors
+du dépôt, avec la configuration de déploiement, voir §3.1. Ce n'est pas celle qui dit
+l'appartenance à l'incubateur, laquelle se déclare dans la politique et se calcule, voir
+§2.3 : rien n'oblige les deux à coïncider, et les confondre ferait lire une règle
+d'autorisation là où il n'y a qu'un rattachement. Il n'y a pas de délégation aux leads
+dans cette version : elle ajouterait un modèle d'autorisation et des demandes en attente
+pour un besoin qui n'est pas là.
 
 **Valider veut dire deux choses distinctes, à deux étages.** Sur le plan, c'est
 regarder avant d'agir : il est calculé et figé avec son empreinte, l'opérateur le lit
