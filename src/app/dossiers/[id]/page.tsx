@@ -8,6 +8,7 @@ import { CONNECTEURS } from "@/connectors";
 import { type Capability, type ResolvedCapability, resolveCapability } from "@/core/connector";
 import {
   type Acteur,
+  type Declarant,
   type EtatEtape,
   type EtatPlan,
   type EtatValidation,
@@ -331,6 +332,7 @@ function Etape({
   pointable,
   etatPlan,
   sens,
+  declarant,
   valideur,
 }: {
   etape: EtapeFigee;
@@ -341,7 +343,9 @@ function Etape({
   /** L'état du plan, tel que la garde de pointage a besoin de le lire. */
   etatPlan: EtatPlan;
   sens: SensDossier;
-  /** Celui qui lit, tel que les deux gardes ont besoin de le connaître. */
+  /** Celui qui lit, tel que la garde de pointage a besoin de le connaître. */
+  declarant: Declarant;
+  /** Le même, tel que la garde de validation a besoin de le connaître. */
   valideur: Valideur;
 }) {
   const aide = marche(etape.manual);
@@ -354,7 +358,7 @@ function Etape({
 
   // Adossé à la garde comme la validation l'est déjà : offrir le pointage puis le
   // refuser au clic est exactement ce que cet écran évite partout ailleurs.
-  const pointage = peutPointer(etatPlan, etape.expectedActor as Acteur, valideur.role);
+  const pointage = peutPointer(etatPlan, etape.expectedActor as Acteur, declarant);
 
   // Adossé à la garde plutôt que rejoué ici : l'écran qui connaît la règle de son côté
   // est ce qui a muré ce dossier le jour où une étape a échoué.
@@ -637,6 +641,11 @@ export default async function DossierPage({
     username: operateur.username,
     role: roleSurDossier(operateur.username, { porteur: dossier.person.username }, true),
   };
+
+  // Ce que le rôle tait : `requireOperateur` a muré la page avant, donc qui la lit est
+  // de l'équipe transverse même quand le dossier affiché est le sien. Le pointage s'y
+  // adosse, la validation non.
+  const declarant: Declarant = { role: valideur.role, operateur: true };
 
   // Sur les étapes figées, qui sont celles dont l'écran parle. La boucle, elle,
   // recalcule : d'où l'écart que `voieLisible` dit ligne à ligne.
@@ -954,6 +963,7 @@ export default async function DossierPage({
                     pointable={pointable}
                     etatPlan={plan.state as EtatPlan}
                     sens={dossier.kind}
+                    declarant={declarant}
                     valideur={valideur}
                   />
                 ))}

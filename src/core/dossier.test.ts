@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   type Acteur,
   combinaisonValide,
+  type Declarant,
   dossierSoldable,
   dossierVivant,
   ETATS_VIVANTS,
@@ -44,6 +45,16 @@ const suivies = (...etats: readonly EtatEtape[]): EtapeSuivie[] =>
   etats.map((etat) => suivie(etat));
 
 /**
+ * Les quatre façons d'arriver devant une étape. La quatrième est celle que le rôle
+ * seul ne sait pas dire : le porteur qui est aussi de l'équipe transverse reste le
+ * porteur, et son appartenance se lit à côté.
+ */
+const TIERS: Declarant = { role: "OPERATOR", operateur: true };
+const PORTEUR_SEUL: Declarant = { role: "SUBJECT", operateur: false };
+const PORTEUR_OPERATEUR: Declarant = { role: "SUBJECT", operateur: true };
+const INCONNU: Declarant = { role: null, operateur: false };
+
+/**
  * Confirmer engage : c'est le moment où quelqu'un dit qu'il répond de cette liste.
  * Tout ce qui rendrait la liste différente de ce qui sera fait doit donc bloquer.
  */
@@ -78,16 +89,16 @@ describe("confirmation d'un plan", () => {
 
 describe("pointage des étapes", () => {
   it("n'est ouvert qu'une fois le plan confirmé", () => {
-    expect(peutPointer("EXECUTING", "OPERATOR", "OPERATOR")).toEqual({ possible: true });
-    expect(peutPointer("DRAFT", "OPERATOR", "OPERATOR").possible).toBe(false);
-    expect(peutPointer("EXECUTED", "OPERATOR", "OPERATOR").possible).toBe(false);
+    expect(peutPointer("EXECUTING", "OPERATOR", TIERS)).toEqual({ possible: true });
+    expect(peutPointer("DRAFT", "OPERATOR", TIERS).possible).toBe(false);
+    expect(peutPointer("EXECUTED", "OPERATOR", TIERS).possible).toBe(false);
   });
 
   it("laisse reprendre une étape qui a échoué, et rouvre la sortie du dossier", () => {
     // Un plan dont une étape a échoué n'avait plus aucune sortie : il ne se pointait
     // plus, donc ne se soldait plus, donc ne se clôturait pas, et son dossier restait
     // vivant pour toujours en bloquant jusqu'à la fusion des fiches de la personne.
-    expect(peutPointer("PARTIALLY_EXECUTED", "OPERATOR", "OPERATOR")).toEqual({ possible: true });
+    expect(peutPointer("PARTIALLY_EXECUTED", "OPERATOR", TIERS)).toEqual({ possible: true });
 
     const apresEchec = suivies("SUCCEEDED", "FAILED", "SKIPPED");
     expect(etatApresPointage(apresEchec)).toBe("PARTIALLY_EXECUTED");
@@ -109,7 +120,7 @@ describe("pointage des étapes", () => {
 
     // Ce qui reste fermé le reste : un plan annulé, remplacé ou soldé ne se pointe pas.
     for (const clos of ["CANCELLED", "EXPIRED", "STALE", "EXECUTED"] as const) {
-      expect(peutPointer(clos, "OPERATOR", "OPERATOR").possible).toBe(false);
+      expect(peutPointer(clos, "OPERATOR", TIERS).possible).toBe(false);
     }
   });
 });
@@ -292,7 +303,7 @@ describe("annulation d'un dossier de départ", () => {
 
     // Ce qu'un plan annulé ne permet plus, et que rien de neuf ne doit défaire.
     expect(peutConfirmer("CANCELLED", FRAIS, 3).possible).toBe(false);
-    expect(peutPointer("CANCELLED", "OPERATOR", "OPERATOR").possible).toBe(false);
+    expect(peutPointer("CANCELLED", "OPERATOR", TIERS).possible).toBe(false);
   });
 
   it("annule un dossier sans plan, et laisse un plan remplacé porter ce qui l'a écarté", () => {
@@ -450,6 +461,33 @@ const AUTRE_OPERATEUR = "dominique.blin";
 const DOSSIER = { porteur: PORTEUR };
 
 /**
+ * Ce qu'un pointage donne, du nom de celui qui pointe jusqu'à l'état du contrôle :
+ * l'identité rend un rôle, la garde accepte ou refuse, la validation en découle.
+ *
+ * Rejoué ici parce que le défaut vivait dans l'enchaînement et non dans l'une des
+ * trois fonctions prise à part : ce qui ouvre le pointage et ce qui juge une
+ * substitution ne lisent pas la même chose de la même personne, et les confondre est
+ * précisément le trou que ces scénarios gardent fermé.
+ */
+function pointage(
+  username: string,
+  estOperateur: boolean,
+  acteurAttendu: Acteur,
+  validationBy: Acteur | null,
+): { permis: boolean; validation: EtatValidation } {
+  const role = roleSurDossier(username, DOSSIER, estOperateur);
+  const verdict = peutPointer("EXECUTING", acteurAttendu, { role, operateur: estOperateur });
+
+  if (!verdict.possible || role === null) {
+    return { permis: false, validation: "NONE" };
+  }
+  return {
+    permis: true,
+    validation: validationApresPointage(acteurAttendu, validationBy, role),
+  };
+}
+
+/**
  * Deux dimensions et non une : ce qui a été déclaré d'un côté, où en est le contrôle
  * de cette déclaration de l'autre. Les confondre ferait passer pour réglée une étape
  * dont personne n'a encore vérifié la parole, et c'est exactement ce qu'un
@@ -572,24 +610,117 @@ describe("acteur attendu et validation d'une étape", () => {
       ).possible,
     ).toBe(false);
 
-    // Then le porteur pointe ce qui lui revient, et rien d'autre
-    expect(peutPointer("EXECUTING", "SUBJECT", "SUBJECT")).toEqual({ possible: true });
-    expect(peutPointer("EXECUTING", "OPERATOR", "SUBJECT").possible).toBe(false);
-    expect(peutPointer("EXECUTING", "DELEGATE", "SUBJECT").possible).toBe(false);
+    // Then le porteur qui n'est pas de l'équipe pointe ce qui lui revient, et rien
+    // d'autre
+    expect(peutPointer("EXECUTING", "SUBJECT", PORTEUR_SEUL)).toEqual({ possible: true });
+    expect(peutPointer("EXECUTING", "OPERATOR", PORTEUR_SEUL).possible).toBe(false);
+    expect(peutPointer("EXECUTING", "DELEGATE", PORTEUR_SEUL).possible).toBe(false);
 
     // Then l'opérateur pointe les trois, la substitution étant ce qui évite qu'une
     // étape confiée à quelqu'un qui s'évapore mure le dossier
     for (const attendu of ["OPERATOR", "SUBJECT", "DELEGATE"] as const) {
-      expect(peutPointer("EXECUTING", attendu, "OPERATOR")).toEqual({ possible: true });
+      expect(peutPointer("EXECUTING", attendu, TIERS)).toEqual({ possible: true });
+
+      // Et le porteur qui est aussi de l'équipe les pointe tout autant, sur son propre
+      // dossier : la priorité du porteur lui retire la signature et non ses gestes. La
+      // lire comme un retrait de tout le laissait sans une seule case à cocher sur son
+      // propre départ, là où rien ne l'empêchait de confirmer ce dossier, de
+      // l'exécuter, de l'annuler ni de le clore.
+      expect(peutPointer("EXECUTING", attendu, PORTEUR_OPERATEUR)).toEqual({ possible: true });
     }
 
     // Then un inconnu ne pointe rien
-    expect(peutPointer("EXECUTING", "SUBJECT", null).possible).toBe(false);
+    expect(peutPointer("EXECUTING", "SUBJECT", INCONNU).possible).toBe(false);
 
     // Et l'état du plan se juge avant les rôles : sur un brouillon, le refus parle du
     // plan et non de la personne, sans quoi il désignerait le mauvais obstacle.
-    expect(peutPointer("DRAFT", "SUBJECT", "SUBJECT")).toEqual(planPointable("DRAFT"));
+    expect(peutPointer("DRAFT", "SUBJECT", PORTEUR_SEUL)).toEqual(planPointable("DRAFT"));
     expect(planPointable("EXECUTING")).toEqual({ possible: true });
+  });
+
+  it("rend au porteur opérateur les étapes de son propre dossier, sans lui rendre la signature", () => {
+    // Given le départ de l'unique mainteneur, dont toutes les étapes attendent un
+    // opérateur : c'est ce que ce dépôt produit aujourd'hui, la colonne valant
+    // `OPERATOR` par défaut et aucune origine n'en posant d'autre.
+
+    // When il pointe le geste d'opérateur que rien ne contrôle
+    // Then il le solde, et le blocage qui le refusait n'avait aucun contrôle à
+    // protéger : cette étape se croit sur parole par construction.
+    expect(pointage(PORTEUR, true, "OPERATOR", null)).toEqual({
+      permis: true,
+      validation: "NONE",
+    });
+    expect(estSoldee(suivie("SUCCEEDED", "NONE"))).toBe(true);
+
+    // When il pointe le geste d'opérateur qu'un opérateur contrôle
+    // Then il déclare et ne signe pas : l'étape attend, le plan reste en cours, et le
+    // dossier ne se clôt pas tant que personne d'autre n'a regardé.
+    const controlee = pointage(PORTEUR, true, "OPERATOR", "OPERATOR");
+    expect(controlee).toEqual({ permis: true, validation: "AWAITING" });
+    expect(estSoldee(suivie("SUCCEEDED", controlee.validation))).toBe(false);
+    expect(etatApresPointage([suivie("SUCCEEDED", controlee.validation)])).toBe("EXECUTING");
+    expect(peutClore("OFFBOARDING", "CONFIRMED", "EXECUTING", 1).possible).toBe(false);
+
+    // Then le second regard vient d'un autre nom, et le sien ne fait pas l'affaire
+    const enAttente = {
+      validationBy: "OPERATOR",
+      validation: "AWAITING",
+      declaredBy: PORTEUR,
+    } as const;
+    expect(
+      peutValider(enAttente, { username: PORTEUR, role: roleSurDossier(PORTEUR, DOSSIER, true) })
+        .possible,
+    ).toBe(false);
+    expect(peutValider(enAttente, { username: OPERATEUR, role: "OPERATOR" })).toEqual({
+      possible: true,
+    });
+
+    // Then rien de tout cela ne s'ouvre au porteur qui n'est pas de l'équipe : c'est
+    // l'appartenance qui ouvre le pointage, et non le fait de porter le dossier.
+    expect(pointage(PORTEUR, false, "OPERATOR", null).permis).toBe(false);
+    expect(pointage(PORTEUR, false, "OPERATOR", "OPERATOR").permis).toBe(false);
+    expect(pointage("inconnu.exemple", false, "OPERATOR", null).permis).toBe(false);
+  });
+
+  it("n'accepte pas d'elle-même la déclaration du porteur qui se trouve être opérateur", () => {
+    // Given l'étape que les modèles de plan produiront : le geste revient à la
+    // personne concernée, et un opérateur en répond.
+    expect(combinaisonValide("SUBJECT", "OPERATOR")).toBe(true);
+
+    // When le porteur, opérateur de surcroît, la déclare faite sur son propre dossier
+    const sienne = pointage(PORTEUR, true, "SUBJECT", "OPERATOR");
+
+    // Then elle attend, exactement comme celle d'un porteur ordinaire, et c'est le
+    // mur : le rôle du déclarant reste celui du porteur. Le lui faire rendre
+    // « OPERATOR » pour lui ouvrir le pointage le ferait passer pour un opérateur
+    // substitué à la personne concernée, `validationApresPointage` y lirait une
+    // substitution, et il signerait sa propre déclaration sur son propre départ.
+    expect(sienne).toEqual({ permis: true, validation: "AWAITING" });
+    expect(pointage(PORTEUR, false, "SUBJECT", "OPERATOR")).toEqual(sienne);
+    expect(estSoldee(suivie("SUCCEEDED", sienne.validation))).toBe(false);
+    expect(etatApresPointage([suivie("SUCCEEDED", sienne.validation)])).toBe("EXECUTING");
+
+    // Then il ne la signe pas davantage à la main : devant son propre dossier il est
+    // la personne concernée, et elle ne contrôle pas ce qu'on déclare sur elle.
+    expect(
+      peutValider(
+        { validationBy: "OPERATOR", validation: "AWAITING", declaredBy: PORTEUR },
+        { username: PORTEUR, role: roleSurDossier(PORTEUR, DOSSIER, true) },
+      ).possible,
+    ).toBe(false);
+
+    // Et la substitution reste ce qu'elle est pour l'opérateur qui ne porte pas le
+    // dossier : lui a bien vu la chose à la place de quelqu'un d'autre.
+    expect(pointage(OPERATEUR, true, "SUBJECT", "OPERATOR")).toEqual({
+      permis: true,
+      validation: "ACCEPTED",
+    });
+
+    // Et le contrôle confié à un délégué n'accepte personne d'emblée, faute que
+    // quiconque puisse être ce délégué aujourd'hui.
+    for (const qui of [PORTEUR, OPERATEUR]) {
+      expect(pointage(qui, true, "SUBJECT", "DELEGATE").validation).toBe("AWAITING");
+    }
   });
 
   it("garde en cours un plan dont tout est coché mais dont une étape attend", () => {
