@@ -10,8 +10,11 @@
 > Les dix décisions restées ouvertes après cette reprise, et l'addendum de périmètre qui les
 > accompagnait, ont été tranchées. Elles vivent désormais dans le corps du plan, chacune à l'endroit
 > où elle s'exécute, avec sa justification et ce qu'elle écarte. Ce document ne porte plus de section
-> de décisions ouvertes, et rien n'y attend d'arbitrage : ce qui y reste en suspens est nommé comme
-> tel, et appartient à un autre ticket.
+> de décisions ouvertes, et aucun de ses arbitrages n'attend d'être rendu : ce qui y reste en
+> suspens est nommé comme tel, et appartient à un autre ticket. Deux choses en dépendent encore
+> néanmoins, et ce ne sont pas des arbitrages de conception : les amendements proposés à
+> `docs/architecture.md` ne s'écrivent pas sans accord explicite, et l'observation nommée en D21
+> peut rouvrir le seul choix pris sous une condition non levée.
 
 ## Ce qui existe aujourd'hui
 
@@ -327,6 +330,14 @@ l'octroi est la seconde, et aucun index ne peut l'unifier sans interdire du mêm
 personne de porter le même canal sur deux dossiers. Le refus de pluralité de D14 bis y devient donc
 la seule garde, et il compte des personnes distinctes plutôt que des lignes.
 
+**Et cette garde lit avant d'écrire, donc deux octrois simultanés sur le même canal la passent tous
+les deux.** Aucune contrainte ne peut la doubler, pour la raison ci-dessus, et une transaction
+sérialisée pour un geste que deux opérateurs poseraient à la seconde près sur la même adresse coûte
+plus qu'elle ne protège. Le fait est écrit ici plutôt que découvert : la collision se manifeste au
+`signIn` suivant, où le refus de pluralité écarte les deux candidats, et la sortie est la révocation
+de l'un des deux droits. C'est bruyant et réparable, là où une adresse silencieusement partagée ne le
+serait pas.
+
 **D8. Le rôle se déduit, il ne se stocke pas.** Le titulaire du droit qui est aussi la personne du
 dossier est le porteur, `SUBJECT` au sens du lot 5 ; tout autre titulaire est `DELEGATE`. Stocker le
 rôle en plus de `AccessCase.personId` créerait deux vérités pour un même fait, et c'est la seconde
@@ -346,6 +357,14 @@ une échéance que rien ne serre. Le défaut est donc strictement inférieur au 
 vivent côte à côte dans `src/core/participation.ts`, exportées, pour que le formulaire qui
 préremplit, l'action qui refuse et le test qui les lit tiennent la même valeur. Une durée recopiée
 dans le formulaire est un plafond que le formulaire peut dépasser en silence.
+
+**Ce que l'action refuse se dit ici**, parce que c'est ce qui fonde le retrait de la contrainte en
+base plus bas : une durée qui n'est pas un entier strictement positif et au plus égal au plafond est
+refusée avant toute écriture, et le refus vit dans l'action et non dans le seul formulaire. Zéro et
+les valeurs négatives comptent : sans elles, un octroi poserait une échéance déjà passée ou égale à
+sa date de départ, c'est-à-dire exactement la ligne que la contrainte retirée aurait attrapée. Les
+quatre cas, zéro, négatif, valide et au-dessus du plafond, sont des scénarios de test et non des
+gardes supposées.
 
 Trente jours est l'horizon que l'outil appelle lui-même « proche » pour une fin de mission, si bien
 qu'un droit ne survit jamais à la fenêtre pendant laquelle l'outil qualifie le départ d'imminent.
@@ -1100,8 +1119,12 @@ en D14 bis de sa version naïve.
   refus de D14 bis, eux, sont un autre ensemble, qui porte sur une adresse et non sur un octroi. Le
   ré-octroi repose les cinq champs et efface les trois de révocation, en un `update` conditionné (voir
   « Modèle de données »). La révocation pose `revokedAt`, `revokedBy` et `revokedReason` par un
-  `updateMany` conditionné sur `revokedAt: null`, pour qu'une double soumission ne produise ni double
-  trace ni écrasement.
+  `updateMany` conditionné sur `revokedAt: null`, et lève quand il ne touche aucune ligne, sur
+  l'idiome de `validerEtape` (`src/app/dossiers/[id]/actions.ts:524-526`). Le perdant d'une double
+  soumission n'écrase donc rien. Il laisse en revanche une trace, et c'est voulu plutôt que subi : le
+  journal précède l'action, donc l'intention des deux appels y figure de toute façon, et c'est la
+  levée qui referme celle du perdant en échec. Ne tracer que le gagnant supposerait de savoir qui
+  gagne avant d'écrire, ce que l'ordre trace puis action interdit.
 - `src/app/dossiers/[id]/Participations.tsx` (nouveau) : la liste des droits en cours, avec pour
   chacun l'adresse à laquelle le lien partira, la date d'expiration et un bouton de révocation ; le
   formulaire d'octroi, motif, durée et canal ; l'avertissement de `canalMenace` ; et la marque
