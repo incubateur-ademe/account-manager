@@ -766,8 +766,13 @@ Un cas que ni #1 ni la première rédaction de ce plan ne voyaient : `@@unique([
 personId])` entre en collision dès que les deux fiches portent une participation sur le même dossier.
 Le dépôt connaît déjà ce motif et son traitement, `Finding.dedupKey` étant unique sur toute la table
 et `fermer-constats` réglant la collision par un abandon nommé
-(`src/core/fiche-manuelle.ts:299-303`). Même traitement ici : la participation de la source est
-abandonnée, nommée dans le journal, la plus récente gagne. Fondre les deux droits en un seul, en
+(`src/core/fiche-manuelle.ts:299-303`). Même traitement ici, à une précision près qui décide :
+**c'est la plus récente qui survit, et l'autre est abandonnée en étant nommée au journal**, quelle
+que soit la fiche dont elle vient. Dire « celle de la source est abandonnée » serait un raccourci
+faux dès que la fiche fabriquée porte le droit le plus récent, ce qui arrive précisément quand un
+opérateur vient de le poser avant de découvrir le doublon. À dates de dépôt égales, celle de la
+fiche cible l'emporte, parce qu'elle est celle qui survit à la fusion et que le départage doit être
+déterministe plutôt que juste. Les deux ordres se testent. Fondre les deux droits en un seul, en
 gardant la plus lointaine échéance et en concaténant les motifs, est écarté : ce serait fabriquer un
 octroi que personne n'a décidé, avec une échéance que personne n'a choisie.
 
@@ -992,13 +997,21 @@ Toute la décision vit dans un module sans Prisma, donc testable en gros scénar
   - `DUREE_DEFAUT_JOURS` et `DUREE_MAX_JOURS`, les deux constantes de D9 bis, exportées : le
     formulaire préremplit avec la première, l'action refuse au-delà de la seconde, et le test lit les
     deux ;
-  - `etapesVisiblesPour(role, etapes)`, la projection sur `expectedActor` (D11).
+  - `etapesVisiblesPour(role, etapes)`, la projection sur `expectedActor` (D11). Elle prend un rôle
+    et non un nom, **et ce n'est pas un oubli** : `expectedActor` est une énumération de rôles, pas
+    une désignation de personne, si bien qu'aucune étape ne dit « ce délégué-ci ». Deux délégués sur
+    un même dossier voient donc les mêmes étapes et peuvent les pointer l'un pour l'autre,
+    exactement comme deux opérateurs le font aujourd'hui, et c'est la substitution que le lot 5 a
+    voulue. Ce qui manquerait pour faire autrement n'est pas un argument de plus à cette fonction
+    mais une désignation nominative sur l'étape, que le modèle ne porte pas et que ce ticket
+    n'introduit pas. Le noter ici évite qu'on lise le droit par dossier et par personne comme s'il
+    filtrait aussi les étapes.
 - `src/core/policy.ts` : la liste des domaines de courrier qu'un départ coupe, déclarée dans
   `configSchema` (`:321`) avec un défaut raisonnable, comme `terminalPhases` (`:327-334`) dont la
   description dit déjà pourquoi ce genre de liste n'est pas du code (`:332`), « le vocabulaire de
   beta.gouv évolue, et décider qu'une phase est terminale est un choix métier ». Le commentaire du
   schéma le dit en tête (`:318-320`) : tout y a un défaut, une instance sans fichier de configuration
-  fonctionne quand même. Regénérer ensuite `config.schema.json` par `pnpm policy:schema`, et compléter
+  fonctionne quand même. Régénérer ensuite `config.schema.json` par `pnpm policy:schema`, et compléter
   `config.exemple.yaml`.
 - `src/core/fiche-manuelle.ts` : la fusion apprend à déplacer les participations (D22). Une douzième
   variante `{ type: "deplacer-participations"; ids }` dans `EtapeFusion` (`:217-228`), déclarée
