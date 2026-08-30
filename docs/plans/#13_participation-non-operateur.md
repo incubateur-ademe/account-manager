@@ -995,8 +995,14 @@ Toute la décision vit dans un module sans Prisma, donc testable en gros scénar
     adresse renseignée. La liste des domaines menacés est une déclaration de politique, pas une
     égalité de colonnes, et elle se passe en argument pour que le module reste pur ;
   - `DUREE_DEFAUT_JOURS` et `DUREE_MAX_JOURS`, les deux constantes de D9 bis, exportées : le
-    formulaire préremplit avec la première, l'action refuse au-delà de la seconde, et le test lit les
-    deux ;
+    formulaire préremplit avec la première, et le test lit les deux. L'action refuse **les deux
+    bornes**, pas seulement le plafond : une durée qui n'est pas un entier strictement positif et au
+    plus égal à `DUREE_MAX_JOURS` n'atteint jamais le calcul de l'échéance. Zéro et les valeurs
+    négatives comptent autant que le dépassement, `echeanceDOctroi` ajoutant les jours à l'instant
+    courant sans rien vérifier : elles poseraient une échéance déjà atteinte, qu'une requête forgée
+    suffirait à écrire et que la garde du droit vivant rejetterait ensuite, laissant un octroi
+    inutilisable en base. C'est la ligne même que la contrainte retirée aurait attrapée, et c'est
+    pourquoi son retrait ne se justifie que si cette garde-ci existe (D9 bis) ;
   - `etapesVisiblesPour(role, etapes)`, la projection sur `expectedActor` (D11). Elle prend un rôle
     et non un nom, **et ce n'est pas un oubli** : `expectedActor` est une énumération de rôles, pas
     une désignation de personne, si bien qu'aucune étape ne dit « ce délégué-ci ». Deux délégués sur
