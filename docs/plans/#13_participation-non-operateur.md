@@ -6,6 +6,15 @@
 > Reprise du 2026-08-30, sur le code de `985ee29`. Le plan initial avait été écrit avant le lot 5 :
 > `DepartureCase` est devenu `AccessCase`, `src/core/depart.ts` est devenu `src/core/dossier.ts`,
 > `/departs` est devenu `/dossiers`. Toutes les citations ont été recalculées dans les fichiers.
+>
+> Les dix décisions restées ouvertes après cette reprise, et l'addendum de périmètre qui les
+> accompagnait, ont été tranchées. Elles vivent désormais dans le corps du plan, chacune à l'endroit
+> où elle s'exécute, avec sa justification et ce qu'elle écarte. Ce document ne porte plus de section
+> de décisions ouvertes, et aucun de ses arbitrages n'attend d'être rendu : ce qui y reste en
+> suspens est nommé comme tel, et appartient à un autre ticket. Deux choses en dépendent encore
+> néanmoins, et ce ne sont pas des arbitrages de conception : les amendements proposés à
+> `docs/architecture.md` ne s'écrivent pas sans accord explicite, et l'observation nommée en D21
+> peut rouvrir le seul choix pris sous une condition non levée.
 
 ## Ce qui existe aujourd'hui
 
@@ -153,7 +162,7 @@ dans son historique.
   n'est pas opérateur voit un dossier et y pointe les étapes qui le nomment ». Voir D19.
 - Il n'existe **aucune** contrainte `CHECK` dans les 22 migrations du dépôt, et le lot 5 a écrit
   pourquoi (`prisma/migrations/20260827090000_acteur_attendu_et_validation/migration.sql:21-27`) : le
-  critère est « une course peut-elle produire une ligne invalide », et il distingue ces cas des
+  critère est qu'« aucune course ne peut en produire une invalide », et il distingue ces cas des
   « deux index uniques partiels de ce schema, ou l'invariant n'etait pas tenu par le code seul ».
 - Les tests ne touchent jamais la base : `vitest.config.ts` tourne en `environment: "node"`. En
   revanche **tout ce qui est testé n'est pas pur** : `src/app/dossiers/[id]/actions.test.ts` teste
@@ -187,6 +196,11 @@ compte trois valeurs (`prisma/schema.prisma:76-80`), et une personne déclarée 
 `LOCAL` tout en étant reconstruite chaque nuit depuis le YAML avec des adresses nulles. Deux portes
 de force inégale vers la même personne reviendrait à ne garder que la plus faible.
 
+**Une exception, et une seule, est nommée en D9 ter** : le canal qu'un opérateur déclare à l'octroi
+ouvre la voie par adresse quelle que soit la source de la fiche. Elle ne contredit pas le principe,
+elle en marque la limite : ce que D2 refuse est une porte que personne n'a décidé d'ouvrir, pas une
+porte nominative, journalisée et bornée par l'échéance d'un droit.
+
 **D3. Le formulaire de connexion reste à un seul champ.** L'arobase route vers la bonne voie, comme
 elle route déjà dans l'adaptateur du paquet et dans `candidateUsernames`
 (`src/core/identite.ts:17`). Demander à quelqu'un de choisir sa voie, c'est lui demander de savoir
@@ -218,6 +232,12 @@ Le message devient donc unique et neutre, saisie vide comprise : les branches `:
 `:53-54` disparaissent, le diagnostic part au `console.error` et au journal, que seuls les opérateurs
 lisent, et un opérateur qui se trompe d'identifiant perd son diagnostic à l'écran. Coût assumé.
 
+**L'unification est totale, et c'est ce qui la rend utile.** Ne neutraliser que la voie nouvelle
+aurait été moins coûteux et n'aurait rien fermé : l'oracle qui existe aujourd'hui ne porte pas sur cet
+outil, il porte sur l'annuaire beta.gouv entier, et il s'interroge sans être connecté. Protéger nos
+quelques fiches locales tout en continuant de répondre, à qui le demande, si telle personne figure
+dans l'annuaire, aurait été un garde-fou posé du mauvais côté de la porte.
+
 **Le message ne suffit pas à lui seul, et le canal le plus visible n'est pas le texte : c'est
 l'URL.** Aujourd'hui les deux branches n'atterrissent pas au même endroit. L'acceptation fait rendre
 à `sendToken` un `{ redirect: ".../verify-request?..." }` (`send-token.js:67-72`), donc `signIn` lève
@@ -232,8 +252,7 @@ que ce plan s'impose.
 branches sans jamais rediriger : l'écran de confirmation d'envoi devient un état du formulaire de
 `/login`, pas une page distincte. La destination demandée reste portée par le lien et non par la
 réponse au formulaire, `destination()` (`:29-31`) continuant d'alimenter `redirectTo`, qui ne joue
-qu'au retour du lien. Ce point vaut quelle que soit l'option retenue à la décision ouverte 1 : si
-seule la voie par adresse est unifiée, c'est sur elle que la destination doit cesser de trahir.
+qu'au retour du lien.
 
 Trois autres canaux disent encore la même chose. **Le temps** :
 l'acceptation seule fait `Promise.all([sendRequest, createToken])` (`send-token.js:66`), donc une
@@ -306,6 +325,19 @@ section Vérification le remonte avant d'écrire la migration, et il se corrige 
 locale étant éditable par construction. Si l'on voulait un jour l'unicité au-delà des fiches
 locales, il faudrait d'abord traiter la collision de collecte, pas seulement élargir l'index.
 
+**Et cet index ne couvre qu'une des deux sources d'adresse depuis D9 ter.** Le canal déclaré à
+l'octroi est la seconde, et aucun index ne peut l'unifier sans interdire du même coup à une même
+personne de porter le même canal sur deux dossiers. Le refus de pluralité de D14 bis y devient donc
+la seule garde, et il compte des personnes distinctes plutôt que des lignes.
+
+**Et cette garde lit avant d'écrire, donc deux octrois simultanés sur le même canal la passent tous
+les deux.** Aucune contrainte ne peut la doubler, pour la raison ci-dessus, et une transaction
+sérialisée pour un geste que deux opérateurs poseraient à la seconde près sur la même adresse coûte
+plus qu'elle ne protège. Le fait est écrit ici plutôt que découvert : la collision se manifeste au
+`signIn` suivant, où le refus de pluralité écarte les deux candidats, et la sortie est la révocation
+de l'un des deux droits. C'est bruyant et réparable, là où une adresse silencieusement partagée ne le
+serait pas.
+
 **D8. Le rôle se déduit, il ne se stocke pas.** Le titulaire du droit qui est aussi la personne du
 dossier est le porteur, `SUBJECT` au sens du lot 5 ; tout autre titulaire est `DELEGATE`. Stocker le
 rôle en plus de `AccessCase.personId` créerait deux vérités pour un même fait, et c'est la seconde
@@ -315,23 +347,101 @@ stocké (`docs/architecture.md` §4.1, `:509`).
 **D9. `expiresAt` et `reason` sont obligatoires, sur le modèle de `Derogation`.** Un droit sans
 échéance ne se retire jamais parce que personne ne se souvient qu'il existe, et un droit sans motif
 ne se relit pas. La révocation à la main reste possible à tout instant et prime sur l'échéance. Le
-plafond de durée reste à trancher (décision ouverte 7), et il ne protège que contre le dossier qui
-reste ouvert longtemps, ce qui arrive : un plan partiellement exécuté ne solde pas.
+plafond de durée est celui de D9 bis, et il ne protège que contre le dossier qui reste ouvert
+longtemps, ce qui arrive : un plan partiellement exécuté ne solde pas.
+
+**D9 bis. Deux constantes de durée, et elles ne disent pas la même chose : trente jours de plafond,
+quatorze par défaut.** Un plafond qui est aussi le défaut n'est pas un plafond, c'est une durée
+unique déguisée : le formulaire proposerait le maximum, personne ne le baisserait, et D9 aurait posé
+une échéance que rien ne serre. Le défaut est donc strictement inférieur au plafond, et les deux
+vivent côte à côte dans `src/core/participation.ts`, exportées, pour que le formulaire qui
+préremplit, l'action qui refuse et le test qui les lit tiennent la même valeur. Une durée recopiée
+dans le formulaire est un plafond que le formulaire peut dépasser en silence.
+
+**Ce que l'action refuse se dit ici**, parce que c'est ce qui fonde le retrait de la contrainte en
+base plus bas : une durée qui n'est pas un entier strictement positif et au plus égal au plafond est
+refusée avant toute écriture, et le refus vit dans l'action et non dans le seul formulaire. Zéro et
+les valeurs négatives comptent : sans elles, un octroi poserait une échéance déjà passée ou égale à
+sa date de départ, c'est-à-dire exactement la ligne que la contrainte retirée aurait attrapée. Les
+quatre cas, zéro, négatif, valide et au-dessus du plafond, sont des scénarios de test et non des
+gardes supposées.
+
+Trente jours est l'horizon que l'outil appelle lui-même « proche » pour une fin de mission, si bien
+qu'un droit ne survit jamais à la fenêtre pendant laquelle l'outil qualifie le départ d'imminent.
+**Sans lire `thresholds.soonDays` pour autant** (`src/core/policy.ts:351-360`) : coupler ferait qu'un
+réglage de politique déplacerait une règle d'autorisation, et c'est exactement la confusion que
+`docs/architecture.md:880-884` sépare. La coïncidence des deux nombres se dit dans le commentaire,
+elle ne se code pas.
+
+Les deux autres échelles du dépôt ont été écartées, chacune pour sa raison. Sept jours
+(`VALIDITE_JOURS`, `src/lib/dossier.ts:36`) est une péremption de constat, pas la bonne échelle, et
+imposerait un ré-octroi hebdomadaire, c'est-à-dire exactement le geste que D9 existe pour empêcher :
+mettre le maximum pour ne plus y penser. Cent quatre-vingts jours (`staleDays`,
+`src/core/policy.ts:361-370`) est un accès permanent, et contredit D15 mot pour mot.
+
+**D9 ter. L'octroi porte l'adresse à laquelle le lien partira. C'est un canal, pas un ancrage.** Le
+droit reste la ligne, ancré sur la `Person` (D7) ; l'adresse n'est que le moyen de prouver une
+identité, et elle se remplace sans toucher au droit. Sans ce champ, l'outil n'a aucun geste à offrir
+quand la boîte de quelqu'un meurt pendant son départ, c'est-à-dire au moment précis où le mécanisme
+sert le plus. Et pour une fiche collectée, il n'a aucune autre voie : `ficheEditable` rend
+`{ editable: false, raison: "COLLECTEE" }` dès que `source !== "LOCAL"`
+(`src/core/fiche-manuelle.ts:54-56`), `modifierFiche` refuse en conséquence
+(`src/app/personnes/[username]/edition.ts:96-98`), et la destination du lien espace-membre est décidée
+par l'amont seul (`ProviderConfig.js:24-28`). La dégradation assumée, où l'opérateur repointe à la
+main à la place de la personne, est écartée pour cette raison : elle laisse l'outil sans réponse dans
+le cas qui justifie le ticket.
+
+Trois conséquences, et aucune n'est facultative.
+
+D'abord, **le canal déclaré à l'octroi ouvre la voie par adresse quelle que soit la source de la
+fiche**, ce qui est une exception mesurée à D2. L'exclusivité des deux voies vaut pour l'adresse
+portée par la fiche, que personne n'a choisie pour ce dossier-là ; un canal tapé par un opérateur
+dans un formulaire d'octroi nominatif, journalisé, borné par l'échéance du droit et incapable de
+produire un opérateur (D14, verrou 3), n'est pas la porte faible que D2 refuse. La personne d'une
+fiche collectée garde sa porte forte par ailleurs, et les deux mènent à la même `Person` et aux mêmes
+droits.
+
+Ce que l'index de D7 bis cesse alors de couvrir, et qu'il faut dire : la résolution d'une adresse a
+désormais deux sources, la `communicationEmail` d'une fiche locale et le canal d'une participation
+vivante. Aucun index ne peut interdire à deux participations de deux personnes différentes de porter
+le même canal sans interdire du même coup à une même personne de le porter sur deux dossiers, qui est
+le cas normal d'un délégué. Le refus de pluralité de D14 bis devient donc la seule ligne de défense
+sur cette source-là ; il porte sur le nombre de **personnes** distinctes que l'adresse désigne, et
+c'est pour ça qu'il se teste en premier.
+
+Ensuite, **les quatre refus de D14 bis portent aussi sur ce canal**, à l'octroi et de nouveau au
+`signIn`. Un canal dont la partie locale correspond à un identifiant d'allowlist se refuse à la
+saisie, là où un opérateur peut encore corriger, et pas seulement à la connexion.
+
+Enfin, **l'octroi refuse une fiche dont le `username` figure dans `OPERATORS` ou dans
+`BREAK_GLASS_USERNAMES`**. Une participation n'ajoute rien à qui a déjà tout, `roleSurDossier` rendant
+`OPERATOR` avant `DELEGATE` (voir étape 3) : la refuser ne retire aucun geste à personne, et elle
+ferme la seule voie par laquelle ce champ pourrait servir à ouvrir une session assise sur la fiche
+d'un opérateur.
 
 **D10. Le droit meurt avec le dossier par déduction, pas par écriture.** Une participation sur un
 dossier qui n'est plus vivant n'ouvre rien, et la ligne reste en base comme trace. Écrire une
 révocation au moment de `cloreDossier` ajouterait une écriture qui peut échouer là où une lecture ne
 peut pas.
 
-**Quels états ouvrent, en revanche, reste à trancher : c'est la décision ouverte 6.** La
-recommandation y est de lire la règle par `dossierVivant` (`src/core/dossier.ts:448`) et jamais par
-un littéral, son commentaire `:434-438` disant pourquoi, « un dictionnaire exhaustif fait tomber le
-typecheck le jour où une valeur s'ajoute à l'énum, là où un tableau littéral aurait continué de
-mentir en silence », et les trois actions du dossier gardant déjà dessus (`actions.ts:148`, `:249`,
-`:448`). Écrire `état !== "DONE"` en serait le troisième exemplaire littéral et laisserait un droit
-vivant sur un dossier **annulé**, `CaseState` comptant cinq valeurs
-(`prisma/schema.prisma:399-405`). Le reste de D10 ne dépend pas de cet arbitrage : quelle que soit
-la règle retenue, elle se lit et ne s'écrit pas.
+**Quels états ouvrent : `dossierVivant` fait foi, et rien d'autre.** La règle se lit par
+`dossierVivant` (`src/core/dossier.ts:448`) et jamais par un littéral, son commentaire `:434-438`
+disant pourquoi, « un dictionnaire exhaustif fait tomber le typecheck le jour où une valeur s'ajoute
+à l'énum, là où un tableau littéral aurait continué de mentir en silence », et les trois actions du
+dossier gardant déjà dessus (`actions.ts:148`, `:249`, `:448`). La règle du plan initial, « un
+dossier dont l'état n'est pas `DONE` », est écartée pour deux raisons à la fois : elle en serait le
+troisième exemplaire littéral, et elle laisserait un droit vivant sur un dossier **annulé**,
+`CaseState` comptant cinq valeurs (`prisma/schema.prisma:399-405`).
+
+**L'octroi, lui, se refuse en plus sur `WATCH`, et cette règle-là mérite sa phrase.** `WATCH` est un
+départ soupçonné et pas décidé : y octroyer un droit revient à dire à quelqu'un « on soupçonne le
+départ de X » avant que quiconque l'ait tranché. C'est une divulgation, pas un accès. Les deux règles
+restent distinctes et ne se confondent pas : `dossierVivant` gouverne ce qui ouvre, le refus de
+`WATCH` gouverne ce qui s'écrit, et fondre le second dans le premier ferait un second dictionnaire
+d'états là où il n'en faut qu'un.
+
+Dans les deux cas, la règle se lit et ne s'écrit pas : rien ne pose de révocation au moment où le
+dossier change d'état.
 
 **D11. Ce qu'un participant voit découle de `expectedActor`, et de rien d'autre.** C'est la
 formulation même du ticket. Elle impose un prérequis dur pour l'étape 7 : tant qu'aucune origine ne
@@ -341,6 +451,88 @@ nature : c'est **le chantier des modèles de plan porteurs de contrôleur** qui 
 appelle à trancher en premier lieu et qui vit dans le même lot 6 que ce ticket. Vérification qui
 coûte une seconde avant d'y toucher : `SELECT DISTINCT "expectedActor" FROM "PlanStep";` ne doit
 rendre que `OPERATOR`.
+
+**D11 bis. `validerEtape` s'ouvre au délégué, et `validationApresPointage` cesse d'établir la
+substitution sur le rôle.** Les deux vont ensemble : ouvrir la première sans corriger la seconde
+ouvrirait un trou plutôt qu'une fonctionnalité.
+
+*Le formulaire.* `validerEtape` (`src/app/dossiers/[id]/actions.ts:405`) accepte un délégué. La
+répartition « un délégué contrôle le porteur » est prévue par le lot 5 et documentée
+(`src/core/dossier.ts:246-247`), et `peutValider` l'accepte déjà telle quelle : il ne refuse
+`DELEGATE` que face à `validationBy === "OPERATOR"` (`:315`). La laisser fermée reviendrait à faire
+poser par le chantier des modèles de plan des contrôleurs que rien n'atteint, donc à rendre inutile
+la moitié de ce qu'il va écrire.
+
+*Le pointage.* `validationApresPointage` (`:263-274`) établit aujourd'hui la substitution sur le seul
+rôle : `roleDuDeclarant === validationBy && roleDuDeclarant !== acteurAttendu` (`:271-273`). Deux
+faits distincts y sont testés d'un coup, et un seul des deux survit à l'arrivée de `DELEGATE`. Que le
+déclarant ne soit pas l'acteur attendu se lit encore par le rôle, `roleSurDossier` n'en rendant qu'un
+seul par personne. Mais que le déclarant **soit le contrôleur attendu** ne s'en déduit plus :
+`roleDuDeclarant === validationBy` dit « ce déclarant est un délégué », jamais « ce déclarant est le
+délégué que cette étape attend », et rien ne sait distinguer deux délégués l'un de l'autre. C'est mot
+pour mot ce que le commentaire de `combinaisonValide` dit déjà (`:222-227`), « `roleSurDossier` ne
+rend jamais `DELEGATE`, là où `OPERATOR` sort d'une liste nommée » ; ce ticket est celui qui lui
+retire sa prémisse.
+
+La règle devient donc nominative du côté du contrôleur, qui est celui qui casse : `ACCEPTED` demande
+que le déclarant soit **nommément établi comme le contrôleur attendu**, et qu'il ne soit pas l'acteur
+attendu. Seul `OPERATOR` satisfait aujourd'hui le premier terme, parce que la liste qui le nomme est
+celle de l'environnement et que `roleSurDossier` ne rend ce rôle qu'après l'avoir lue ; `DELEGATE` ne
+le satisfait jamais, faute d'une étape qui nomme son contrôleur. Un délégué qui pointe une étape
+attendue du porteur laisse donc l'étape en `AWAITING`, et c'est un autre délégué qui la signe par
+`validerEtape`, `peutValider` refusant le déclarant lui-même par son nom (`:327`). L'inverse, poser
+la comparaison sur le nom de l'acteur attendu, ne ferme rien : le déclarant y diffère du porteur dans
+les deux cas, celui du contrôleur délégué comme celui du contrôleur opérateur, et la règle rendrait
+`ACCEPTED` dans les deux.
+
+La fonction reçoit donc le déclarant par son nom autant que par son rôle, et le nom du porteur, seul
+nom qu'un rôle désigne aujourd'hui. Ce second nom est redondant tant que `roleSurDossier` rend
+`SUBJECT` au porteur avant tout le reste, et il s'écrit quand même, pour la raison du paragraphe
+suivant. Le coût se compte à trois endroits, pas à un : un site d'appel de production
+(`src/app/dossiers/[id]/actions.ts:329-333`), où le porteur est déjà relu (`:235`) ; les **huit
+appels existants** de `src/core/dossier.test.ts` (`:486`, `:504`, `:547`, `:561`, `:592`, `:806`,
+`:829`, `:830`), tous à trois arguments positionnels, tous à reprendre, les nouveaux paramètres ne
+pouvant pas être optionnels sans laisser par défaut la règle même que cette correction retire, là où
+le quatrième fait de `roleSurDossier` se range en option pour cette raison exacte (étape 3) ; et le
+scénario neuf du test 7.
+
+*Ce que cette correction achète, et ce qu'elle n'achète pas.* Elle ne referme pas un trou ouvert
+aujourd'hui, et le plan ne le prétend pas : un déclarant de rôle `DELEGATE` ne peut pointer qu'une
+étape que son propre rôle attend, `peutPointer` refusant tout le reste à qui n'est pas de l'équipe
+(`src/core/dossier.ts:172-177`), si bien que `roleDuDeclarant === acteurAttendu` et que
+l'auto-validation ne se déclenche pas. Ce qu'elle achète est l'indépendance : cette sûreté-là est le
+produit de deux autres règles, le refus de `peutPointer` et l'ordre porteur puis opérateur puis
+délégué de `roleSurDossier`, et rien n'avertira qui touchera à l'une des deux qu'il déplace aussi une
+règle de signature. Détecter une substitution par le rôle ne tient que tant qu'un rôle désigne une
+personne unique ou une liste nommée, et `DELEGATE` est le premier qui désignera plusieurs personnes
+que rien ne distingue à ce niveau. Sans cette correction, `docs/architecture.md:900-901`, « comparée
+sur le nom et non sur le rôle », devient faux le jour où un modèle pose un contrôleur délégué.
+
+*Ce que ce ticket n'élargit pas.* Le même raisonnement vaut pour `OPERATOR`, dont le rôle désigne lui
+aussi plusieurs personnes : un opérateur qui pointe en substitution obtient `ACCEPTED` signé de son
+propre nom, ce que `peutValider` lui refuserait par le formulaire (`:327`). Ce n'est pas un oubli,
+c'est un comportement voulu, documenté (`:253-256`) et testé, et l'aligner ferait attendre un second
+opérateur sur un outil qui en compte un. Le changer appartient à une issue séparée : voir « Ce qui
+reste à ouvrir ailleurs ».
+
+**D11 ter. Le participant a sa route, il n'a pas une version censurée de celle de l'opérateur.**
+`src/app/dossiers/[id]/page.tsx` fait 1123 lignes et livre du contexte d'équipe en une demi-douzaine
+d'endroits qui n'ont rien en commun : la note libre `etape.lastError`, écrite par un opérateur pour
+un opérateur (`:454-456`), `etape.declaredBy` (`:462`), `etape.validatedBy` et `etape.validationNote`
+(`:474-476`, `:480-482`), `runbook` et `deeplink` (`:415-421`), le pied de page `createdBy` et
+`confirmedBy` (`:1112-1114`), l'empreinte du plan (`:538`), la clé de profil (`:749-750`), le plafond
+de masse et les écarts de modèle (`:1007-1082`), et tout ce que la requête charge par étape
+(`:551-572`), `systemKey`, `capability`, `idempotencyKey`, `riskLevel`, `lastError` et
+`grantExpiresAt`.
+
+Un modèle de vue censuré sur cette route est écarté, et pas parce que la forme serait mauvaise :
+`docs/plans/#14_page-perso.md:155` l'écrit bien, « la censure est un calcul testé, pas une omission
+de `select` ». Elle coûte un audit permanent de 1123 lignes à chaque champ ajouté, et surtout elle
+rédacte par soustraction : elle laisse passer, par construction, tout ce qu'on ajoutera demain sans y
+penser. La route dédiée coûte un écran de plus et fait disparaître la classe entière de fuites d'un
+coup. Ce que les deux écrans partagent, la liste des étapes qui nomment le participant, se rend
+depuis un composant partagé ; le reste, l'en-tête, les gestes et le pied de page, ne se partage pas
+parce que ce n'est pas le même.
 
 **D12. `actionTracee` s'élargit, il ne se double pas.** Un second chemin d'écriture pour les
 non-opérateurs perdrait sa trace le jour où quelqu'un l'oublierait. Deux précisions que le plan
@@ -361,7 +553,7 @@ Ensuite, la valeur qui identifie le dossier est toujours dérivée de l'objet re
 formulaire. Le motif inverse existe déjà : `cloreDossier` lit son `dossierId` dans `formData`
 (`actions.ts:546`). Si `pointerEtape` faisait de même, un participant ayant un droit sur X pointerait
 une étape de Y en soumettant `dossierId = X`. Aujourd'hui `pointerEtape` dérive bien le dossier de
-l'étape relue (`:233`), et ce plan l'écrit noir sur blanc plutôt que de compter dessus.
+l'étape relue (`:233-235`), et ce plan l'écrit noir sur blanc plutôt que de compter dessus.
 
 **D13. La voie d'identification figure dans la charge utile de chaque écriture d'un non-opérateur.**
 `actorUsername` dit qui, `after.voie` dit comment son identité a été prouvée. Sans ça, une fiche
@@ -404,11 +596,13 @@ qui ne s'est jamais connecté n'est couvert par aucun des trois. Retirer l'un de
 les autres suffisent est un refus de revue.
 
 **D14 bis. La voie par adresse refuse quatre choses, et la première doit distinguer la ligne `User`
-qu'elle a elle-même créée.** Elle refuse toute adresse portée par plus d'une fiche, cas que l'index
-de D7 bis rend impossible en base mais que le code refuse quand même et teste en premier ; toute
-adresse déclarée sur une fiche que `ficheEditable` ne dit pas modifiable ; toute adresse dont la
-partie locale correspond à un identifiant d'allowlist ; et toute adresse portée par une ligne `User`
-**qui n'est pas celle de cette fiche**.
+qu'elle a elle-même créée.** Elle refuse toute adresse qui désigne plus d'une personne, cas que
+l'index de D7 bis rend impossible sur les fiches locales mais qu'il ne couvre pas sur les canaux
+d'octroi de D9 ter, si bien que ce refus n'est pas décoratif et se teste en premier ; toute adresse
+portée par une fiche que `ficheEditable` ne dit pas modifiable, **sauf** quand elle vient d'un canal
+d'octroi, qui est précisément là pour ce cas ; toute adresse dont la partie locale correspond à un
+identifiant d'allowlist ; et toute adresse portée par une ligne `User` **qui n'est pas celle de cette
+fiche**.
 
 Ce quatrième refus est le moins intuitif, et sa formulation naïve, « toute adresse portée par une
 ligne `User`, munie d'un `username` ou non », enferme dehors le participant lui-même dès sa
@@ -423,13 +617,21 @@ donc à `adresseRecevable`, qui refuserait la personne pour la ligne qu'elle vie
 naître.
 
 La règle est donc : `adapter.getUserByEmail` rend nul, **ou** rend une ligne dont l'email est
-exactement la `communicationEmail` de la fiche résolue et dont le `username` est nul. C'est
-suffisant, et pour une raison précise : toute ligne née de la voie espace-membre porte un `username`
-(`Adapter.js:14-24` le pose depuis l'API), donc une ligne sans `username` sur une adresse que l'index
-de D7 bis rend unique ne peut appartenir qu'au titulaire de cette fiche. Une variante plus lourde
-mais plus explicite existe, rattacher la ligne `User` à la `Person` dès sa création et faire porter
-le refus sur « une ligne dont le rattachement désigne une autre fiche » ; elle coûte une colonne et
-n'apporte rien tant que l'index tient.
+exactement l'adresse qui vient de résoudre ce candidat, la `communicationEmail` de la fiche **ou** le
+`channelEmail` d'une participation vivante de cette même fiche (D9 ter), et dont le `username` est
+nul. Les deux origines comptent, et l'oubli de la seconde retournerait le refus contre le parcours
+même que D9 ter existe pour servir : sur une fiche collectée, la `communicationEmail` est la boîte
+beta.gouv que la collecte réécrit sans condition (`src/lib/sync/perimetre.ts:113`), jamais le canal,
+et la ligne `User` que le premier lien fait naître porte le canal. Une règle indexée sur la seule
+fiche enfermerait donc dehors, dès sa deuxième demande de lien, la personne dont la boîte vient de
+mourir, c'est-à-dire exactement celle pour qui le champ a été créé. C'est suffisant, et pour une
+raison précise : toute ligne née de la voie espace-membre porte un `username`
+(`Adapter.js:14-24` le pose depuis l'API), donc une ligne sans `username` sur une adresse que le
+premier refus vient de déclarer sans ambiguïté de personne ne peut appartenir qu'au titulaire de
+cette fiche. L'ordre des refus est donc porteur et pas cosmétique : c'est le premier qui rend le
+quatrième sûr. Une variante plus lourde mais plus explicite existe, rattacher la ligne `User` à la
+`Person` dès sa création et faire porter le refus sur « une ligne dont le rattachement désigne une
+autre fiche » ; elle coûte une colonne et n'apporte rien tant que le premier refus tient.
 
 Ce que le refus continue de fermer, et qui est le vrai danger : une ligne `User` **munie** d'un
 `username` est celle d'un opérateur qui s'est déjà connecté, et l'adopter donnerait au participant
@@ -511,6 +713,69 @@ la délégation arrive, et elle se greffe là où le document l'avait prévu » 
 le seul filtre, via `systemesDuDepart` (`src/core/dossier.ts:567-574`). Ce ticket ne change ni la
 source des étapes ni leur calcul, seulement qui a le droit de les regarder et de les pointer.
 
+**D21. La bascule d'une fiche locale vers `BETA` se signale, et le canal se marque mort.** La
+collecte peut adopter une fiche fabriquée au milieu d'un dossier : `champsCollectes`
+(`src/lib/sync/perimetre.ts:103-134`) réécrit **sans condition** `primaryEmail` et
+`communicationEmail` (`:112-113`) et `source` (`:121`), et pose `usernameFabricated: false` (`:108`),
+par `prisma.person.update` (`:152`) ou `prisma.person.create` (`:159`). Une fiche `LOCAL` dont
+l'identifiant finit par correspondre à un membre de l'espace-membre passe donc `BETA` du jour au
+lendemain, ses adresses saisies sont écrasées, `ficheEditable` cesse de la dire modifiable, et le
+canal porté par la fiche n'ouvre plus au `signIn` suivant. Un lien déjà envoyé cesse de fonctionner
+au milieu d'un dossier, sans que personne n'ait rien fait.
+
+Le droit survit, son canal se marque mort, et le fait s'écrit. Deux gestes concrets : la collecte
+journalise la bascule quand la fiche porte au moins une participation vivante, par une ligne `SYSTEM`
+sur le modèle de celle qu'elle écrit déjà en fin de passage (`src/lib/sync/perimetre.ts:438-445`) ;
+et la liste des droits marque « canal mort » toute participation dont ni le canal d'octroi ni la
+fiche ne résolvent plus, avec les deux sorties qui la rattrapent, ré-octroyer en déclarant une
+adresse (D9 ter), ou dire à la personne d'entrer par son identifiant beta.gouv. D9 ter désamorce en
+grande partie le cas : une participation octroyée avec un canal explicite traverse la bascule
+intacte, la collecte n'écrivant que sur `Person`.
+
+**Ce choix s'écarte de ce que la reprise recommandait, et c'est délibéré.** La bascule automatique
+vers la voie espace-membre est séduisante, la fiche étant désormais un membre : même personne, même
+dossier, et la porte forte s'ouvre à la place de la faible. Mais elle repose sur une hypothèse jamais
+levée, celle que l'adresse résolue par le provider pour une fiche fraîchement adoptée est
+atteignable. Basculer sur une voie dont on n'a pas observé le comportement enfermerait quelqu'un
+dehors au milieu de son dossier, en silence, ce qui est le pire des trois échecs possibles. On prend
+donc l'option sûre sous les deux hypothèses : elle coûte un geste d'opérateur quand la bascule
+automatique aurait marché, et elle ne coûte rien quand elle n'aurait pas marché.
+
+**Ce qu'il faudrait observer pour rouvrir ce choix**, parce qu'un arbitrage pris faute d'observation
+doit dire laquelle le lèverait. Sur une fiche que la collecte vient d'adopter, quatre points, dans
+cet ordre : que `member.getByUsername(username)` réponde 200 ; que la fiche rendue soit active, sans
+quoi le wrapper refuse avant que notre `signIn` ne soit appelé (`Callbacks.js:17-18`) ; que le
+sélecteur `communication_email` désigne une adresse non nulle, sachant que toute valeur autre que
+`"primary"` retombe sur `secondary_email` sans repli (`ProviderConfig.js:27`) ; et qu'un courrier
+envoyé à cette adresse arrive réellement. Les quatre tenus, la bascule silencieuse devient sûre et le
+signalement peut redevenir informatif au lieu d'appeler un geste. Un seul manquant, l'option retenue
+ici reste la bonne.
+
+**D22. Le déplacement des participations est du travail de #13, pas du plan de fusion de #1.** #1 est
+livré et son mécanisme est en place : `EtapeFusion` est une union fermée de onze variantes
+(`src/core/fiche-manuelle.ts:217-228`), exécutée par un `switch` dans la transaction
+(`src/app/personnes/[username]/edition.ts:462`). Sans une douzième variante, `supprimer-fiche`
+(`:228`) laisse la cascade du schéma emporter les participations de la fiche source, sans une ligne
+d'erreur et sans une ligne au journal : le droit disparaît, la personne perd son accès au milieu d'un
+dossier, et rien ne dit pourquoi. Le commentaire de l'union l'annonce lui-même (`:208-216`),
+« supprimer la fiche source avant d'avoir tout déplacé fait agir les cascades du schéma à notre
+place ». Renvoyer ce travail au plan de #1 reviendrait à demander la retouche d'un ticket livré pour
+un objet qui n'existait pas quand il a été écrit.
+
+Un cas que ni #1 ni la première rédaction de ce plan ne voyaient : `@@unique([accessCaseId,
+personId])` entre en collision dès que les deux fiches portent une participation sur le même dossier.
+Le dépôt connaît déjà ce motif et son traitement, `Finding.dedupKey` étant unique sur toute la table
+et `fermer-constats` réglant la collision par un abandon nommé
+(`src/core/fiche-manuelle.ts:299-303`). Même traitement ici, à une précision près qui décide :
+**c'est la plus récente qui survit, et l'autre est abandonnée en étant nommée au journal**, quelle
+que soit la fiche dont elle vient. Dire « celle de la source est abandonnée » serait un raccourci
+faux dès que la fiche fabriquée porte le droit le plus récent, ce qui arrive précisément quand un
+opérateur vient de le poser avant de découvrir le doublon. À dates de dépôt égales, celle de la
+fiche cible l'emporte, parce qu'elle est celle qui survit à la fusion et que le départage doit être
+déterministe plutôt que juste. Les deux ordres se testent. Fondre les deux droits en un seul, en
+gardant la plus lointaine échéance et en concaténant les motifs, est écarté : ce serait fabriquer un
+octroi que personne n'a décidé, avec une échéance que personne n'a choisie.
+
 ## Modèle de données
 
 Une migration, additive, sans reprise de données : le modèle est nouveau et vide.
@@ -526,6 +791,12 @@ model CaseParticipation {
   /// plus pourquoi il a été posé ne se retire jamais.
   reason String
 
+  /// L'adresse à laquelle le lien de connexion partira, quand un opérateur en a
+  /// déclaré une ici. Nulle, le canal est celui de la fiche. C'est un moyen de
+  /// preuve borné par l'échéance du droit, jamais l'ancrage du droit : celui-ci
+  /// est personId, et lui seul.
+  channelEmail String?
+
   grantedBy String
   grantedAt DateTime @default(now())
   expiresAt DateTime
@@ -540,6 +811,7 @@ model CaseParticipation {
   @@unique([accessCaseId, personId])
   @@index([personId, revokedAt])
   @@index([expiresAt])
+  @@index([channelEmail])
 }
 ```
 
@@ -551,16 +823,23 @@ dossier n'est pas uniforme, `Plan.accessCase` étant en `SetNull` (`:497`). Pose
 symétrie produirait des droits orphelins pointant vers rien.
 
 Aucun enum de rôle : il se déduit de la comparaison entre `personId` et `accessCase.personId` (D8).
-Aucune colonne d'adresse : l'adresse se lit sur la fiche à l'affichage (D7), comme un libellé de
-constat se recalcule plutôt que de se figer (`docs/architecture.md` §3.3, `:374`).
+Une seule colonne d'adresse, et c'est le canal de D9 ter. L'adresse **affichée** continue, elle, de
+se lire sur la fiche, comme un libellé de constat se recalcule plutôt que de se figer
+(`docs/architecture.md` §3.3, `:374`) : les deux ne se confondent pas, `channelEmail` dit où l'outil
+enverra un lien, la fiche dit ce que l'amont sait de la personne, et c'est justement quand les deux
+divergent que le champ sert. Son index n'est pas décoratif : c'est par lui que la connexion résout
+une adresse, sur le chemin le plus chaud du ticket. Et ce n'est **pas** un index unique, pour la
+raison écrite en D9 ter, une même personne portant légitimement le même canal sur deux dossiers.
 
 **L'unicité sur le couple est voulue, et elle a une conséquence à traiter.** Ré-octroyer après
 révocation réécrit la même ligne. Mais `grantedAt @default(now())` date alors le **premier** octroi
 et non celui qui court, ce qui rend l'échéance illisible et l'audit trompeur. Le ré-octroi repose
-donc explicitement `grantedAt`, `grantedBy`, `reason` et `expiresAt`, et remet `revokedAt`,
-`revokedBy` et `revokedReason` à nul, en un seul `update` conditionné. L'historique des octrois vit
-dans le journal, qui est déjà la voie de reconstruction de tout ce qu'un opérateur attribue
-(`docs/architecture.md` §3.5, `:474-486`).
+donc explicitement les cinq champs de l'octroi, `grantedAt`, `grantedBy`, `reason`, `expiresAt` et
+`channelEmail`, et remet `revokedAt`, `revokedBy` et `revokedReason` à nul, en un seul `update`
+conditionné. `channelEmail` en fait partie sans exception : le laisser en place ferait survivre à un
+nouvel octroi une adresse choisie pour l'ancien, c'est-à-dire exactement la boîte qui vient de
+mourir. L'historique des octrois vit dans le journal, qui est déjà la voie de reconstruction de tout
+ce qu'un opérateur attribue (`docs/architecture.md` §3.5, `:474-486`).
 
 **Index unique partiel sur l'adresse d'identification**, à coller à la main dans le fichier généré
 après `prisma migrate dev --create-only` (D7 bis) :
@@ -594,12 +873,15 @@ proposition, la seule convention constatée dans le dépôt étant
 Il se documente dans `schema.prisma` sans y figurer, en commentaire au-dessus des deux colonnes
 d'adresse, sur le modèle exact de `AccessCase` (`prisma/schema.prisma:452-456`).
 
-**Pas de contrainte `CHECK` sur `expiresAt > grantedAt`**, sauf décision contraire (décision ouverte
-8). Le critère du lot 5 est écrit noir sur blanc
-(`prisma/migrations/20260827090000_acteur_attendu_et_validation/migration.sql:21-27`) : « une course
-peut-elle produire une ligne invalide ». Ici non, `expiresAt` se calcule depuis `grantedAt` et une
-constante de module. Le vrai défaut de datation est celui du ré-octroi ci-dessus, et une `CHECK` ne
-le verrait pas.
+**Pas de contrainte `CHECK` sur `expiresAt > grantedAt`.** Le critère du lot 5 est écrit noir sur
+blanc (`prisma/migrations/20260827090000_acteur_attendu_et_validation/migration.sql:21-27`) :
+« aucune course ne peut en produire une invalide », ce qui distingue ces cas des « deux index uniques
+partiels de ce schema, ou l'invariant n'etait pas tenu par le code seul ». Ici la course n'existe
+pas : `expiresAt` se calcule depuis `grantedAt` et les constantes de D9 bis, dans la même action,
+sans rien qui puisse s'intercaler. La garder aurait coûté une garde en base à documenter dans
+`schema.prisma` sous peine d'être invisible à qui le lit, pour un invariant que le code tient seul.
+Et elle ne verrait pas le vrai défaut de datation, le ré-octroi qui laisse `grantedAt` sur le premier
+octroi : c'est le paragraphe ci-dessus qui le traite, en reposant les cinq champs.
 
 Nom de migration proposé : `participation_a_un_dossier`, dans la lignée de
 `20260818161504_marche_a_suivre_figee`.
@@ -677,7 +959,10 @@ change de comportement, mais la base sait exprimer le droit.
   unique partiel.
 
 Vérification : insérer une ligne à la main, supprimer le dossier, constater que la ligne a disparu ;
-déclarer la même `communicationEmail` sur deux fiches et constater le refus de PostgreSQL.
+déclarer la même `communicationEmail` sur deux fiches et constater le refus de PostgreSQL ; et, à
+l'inverse, insérer deux participations de deux personnes différentes portant le même `channelEmail`
+et constater que la base **accepte**. Ce dernier point n'est pas un oubli qu'on relève, c'est la
+forme voulue : le refus vit dans le code et pas dans un index, pour la raison écrite en D9 ter.
 
 ### 3. Le cœur pur
 
@@ -689,18 +974,60 @@ Toute la décision vit dans un module sans Prisma, donc testable en gros scénar
   - `voieDeConnexion(saisie)`, qui rend la voie espace-membre pour un identifiant sans arobase, la
     voie par adresse pour une adresse bien formée, et rien pour une saisie vide, à deux arobases ou
     porteuse d'un guillemet, avant que `defaultNormalizer` ne lève (D3, D5) ;
-  - `adresseRecevable(fiches, ligneUser, allowlists, declaresLocaux)`, qui applique les quatre refus
-    de D14 bis. Les deux derniers paramètres ne sont pas décoratifs, et une signature plus courte ne
-    porterait que la moitié des refus. `fiches` est la liste rendue par la résolution de l'adresse,
-    zéro, une, ou plus d'une : le refus de pluralité est testé en premier, et un `fiche` au singulier
-    le rendrait inobservable. `declaresLocaux` est exigé par `ficheEditable`, dont la signature est
-    `ficheEditable(fiche, declaresLocaux)` (`src/core/fiche-manuelle.ts:50-53`) et dont la seconde
-    branche est précisément `declaresLocaux.includes(fiche.username)` (`:57`), celle que D2 invoque
-    nommément. La liste se lit chez l'appelant et se passe en argument, comme
-    `src/app/personnes/[username]/edition.ts:96` le fait déjà avec son helper `:71`, pour que le
-    module reste pur ;
-  - `canalMenace(fiche)`, l'avertissement de l'octroi, à reformuler selon la décision ouverte 5 ;
-  - `etapesVisiblesPour(role, etapes)`, la projection sur `expectedActor` (D11).
+  - `adresseRecevable(candidats, ligneUser, allowlists, declaresLocaux)`, qui applique les quatre
+    refus de D14 bis. Les deux derniers paramètres ne sont pas décoratifs, et une signature plus
+    courte ne porterait que la moitié des refus. `candidats` est ce que la résolution de l'adresse
+    rend, zéro, un, ou plus d'un : le refus de pluralité est testé en premier, et un `candidat` au
+    singulier le rendrait inobservable. Chaque candidat porte sa fiche **et l'origine du canal**, la
+    `communicationEmail` de la fiche ou le `channelEmail` d'une participation vivante (D9 ter) :
+    `ficheEditable` n'est exigé que sur la première origine, un canal déclaré à l'octroi valant pour
+    une fiche collectée. Et la pluralité se compte en **personnes** distinctes, deux participations
+    d'une même personne sur deux dossiers portant légitimement le même canal. `declaresLocaux` est
+    exigé par `ficheEditable`, dont la signature est `ficheEditable(fiche, declaresLocaux)`
+    (`src/core/fiche-manuelle.ts:50-53`) et dont la seconde branche est précisément
+    `declaresLocaux.includes(fiche.username)` (`:57`), celle que D2 invoque nommément. La liste se lit
+    chez l'appelant et se passe en argument, comme `src/app/personnes/[username]/edition.ts:96` le
+    fait déjà avec son helper `:71`, pour que le module reste pur ;
+  - `canalMenace(fiche, canal, domainesMenaces)`, l'avertissement de l'octroi. Il ne se calcule pas
+    par l'égalité `communicationEmail === primaryEmail` : cette heuristique est plus faible que le
+    plan initial ne le croyait, elle rate une secondaire qui est elle aussi une boîte que le départ
+    coupe, adresse ADEME comprise, et elle lève une fausse alerte sur une fiche qui n'a qu'une seule
+    adresse renseignée. La liste des domaines menacés est une déclaration de politique, pas une
+    égalité de colonnes, et elle se passe en argument pour que le module reste pur ;
+  - `DUREE_DEFAUT_JOURS` et `DUREE_MAX_JOURS`, les deux constantes de D9 bis, exportées : le
+    formulaire préremplit avec la première, et le test lit les deux. L'action refuse **les deux
+    bornes**, pas seulement le plafond : une durée qui n'est pas un entier strictement positif et au
+    plus égal à `DUREE_MAX_JOURS` n'atteint jamais le calcul de l'échéance. Zéro et les valeurs
+    négatives comptent autant que le dépassement, `echeanceDOctroi` ajoutant les jours à l'instant
+    courant sans rien vérifier : elles poseraient une échéance déjà atteinte, qu'une requête forgée
+    suffirait à écrire et que la garde du droit vivant rejetterait ensuite, laissant un octroi
+    inutilisable en base. C'est la ligne même que la contrainte retirée aurait attrapée, et c'est
+    pourquoi son retrait ne se justifie que si cette garde-ci existe (D9 bis) ;
+  - `etapesVisiblesPour(role, etapes)`, la projection sur `expectedActor` (D11). Elle prend un rôle
+    et non un nom, **et ce n'est pas un oubli** : `expectedActor` est une énumération de rôles, pas
+    une désignation de personne, si bien qu'aucune étape ne dit « ce délégué-ci ». Deux délégués sur
+    un même dossier voient donc les mêmes étapes et peuvent les pointer l'un pour l'autre,
+    exactement comme deux opérateurs le font aujourd'hui, et c'est la substitution que le lot 5 a
+    voulue. Ce qui manquerait pour faire autrement n'est pas un argument de plus à cette fonction
+    mais une désignation nominative sur l'étape, que le modèle ne porte pas et que ce ticket
+    n'introduit pas. Le noter ici évite qu'on lise le droit par dossier et par personne comme s'il
+    filtrait aussi les étapes.
+- `src/core/policy.ts` : la liste des domaines de courrier qu'un départ coupe, déclarée dans
+  `configSchema` (`:321`) avec un défaut raisonnable, comme `terminalPhases` (`:327-334`) dont la
+  description dit déjà pourquoi ce genre de liste n'est pas du code (`:332`), « le vocabulaire de
+  beta.gouv évolue, et décider qu'une phase est terminale est un choix métier ». Le commentaire du
+  schéma le dit en tête (`:318-320`) : tout y a un défaut, une instance sans fichier de configuration
+  fonctionne quand même. Régénérer ensuite `config.schema.json` par `pnpm policy:schema`, et compléter
+  `config.exemple.yaml`.
+- `src/core/fiche-manuelle.ts` : la fusion apprend à déplacer les participations (D22). Une douzième
+  variante `{ type: "deplacer-participations"; ids }` dans `EtapeFusion` (`:217-228`), déclarée
+  **avant** `supprimer-fiche` (`:228`) et surtout empilée avant lui dans `etapes`, ce qui est ce qui
+  décide vraiment : le commentaire `:208-216` fait de cet ordre sa raison d'être, « supprimer la
+  fiche source avant d'avoir tout déplacé fait agir les cascades du schéma à notre place » ; le champ
+  correspondant dans `PlanFusion` (`:236-267`), pour que l'inventaire annonce ce qu'il déplacera avant
+  de l'écrire ; et la collision d'unicité traitée dans `planifierFusion` (`:291`) sur le modèle de
+  `fermer-constats` (`:299-303`), la participation de la source abandonnée et nommée, la plus récente
+  conservée.
 - `src/core/dossier.ts` : `roleSurDossier` (`:197-206`) gagne un **quatrième fait**, la participation
   vivante sur ce dossier. Ce n'est pas un argument posé par le lot 5, contrairement à ce que le plan
   initial affirmait : il n'existe pas. Trois points à tenir. **L'ordre est porteur, puis opérateur,
@@ -712,7 +1039,10 @@ Toute la décision vit dans un module sans Prisma, donc testable en gros scénar
   **optionnel et en quatrième position** : les deux sites de
   production (`src/app/dossiers/[id]/page.tsx:642`, `src/app/dossiers/[id]/actions.ts:79`) et les
   huit appels de `src/core/dossier.test.ts` restent compilables sans retouche, là où un objet
-  d'options les casserait tous. Le commentaire `:193-195` est à réécrire : il dit aujourd'hui que
+  d'options les casserait tous. Compilables, ce qui n'est pas juste : `page.tsx:642` garde son `true`,
+  cette page restant opérateur seul (`:517`), mais `actions.ts:79` est l'intérieur de
+  `roleDeLOperateur`, que l'étape 7 doit reprendre pour de bon. L'option achète l'ordre de livraison,
+  elle ne dispense de rien. Le commentaire `:193-195` est à réécrire : il dit aujourd'hui que
   `DELEGATE` n'en sort jamais.
 
 Rien à faire sur `peutPointer` ni sur `Declarant` : depuis #67, `Declarant` porte le rôle et
@@ -727,8 +1057,10 @@ Dupliquer ce contrôle ailleurs donnerait deux règles à maintenir.
   `nodemailer` en entrée (`ProviderConfig.js:3-7`) et pose le sien en sortie (`:19`) : un
   `Nodemailer()` nu garde `"nodemailer"`, les deux coexistent. Le callback `signIn` distingue les
   deux cas : sur le provider espace-membre, il accepte un opérateur comme aujourd'hui, ou un membre
-  dont la fiche porte une participation vivante ; sur le provider par adresse, il résout l'adresse
-  vers une fiche par `adresseRecevable`, exige une participation vivante, et refuse sinon. **Le
+  dont la fiche porte une participation vivante ; sur le provider par adresse, il résout l'adresse par
+  `adresseRecevable`, en lui donnant les candidats des **deux** sources, la `communicationEmail` des
+  fiches locales et le `channelEmail` des participations vivantes (D9 ter), exige une participation
+  vivante, et refuse sinon. **Le
   contrôle s'exécute aux deux invocations de `signIn`, à l'envoi et au retour du lien** (D4). Le
   callback `jwt` ne consulte `resolveOperator` que si `account.provider` vaut
   `ESPACE_MEMBRE_PROVIDER_ID` (D14), et pose `token.participantId` et `token.voie` dans les deux cas
@@ -782,8 +1114,10 @@ en D14 bis de sa version naïve.
   l'utilisateur en `actorUsername` et sa voie dans `after` (D13), et l'ordre trace puis écriture est
   inchangé. Le type du paramètre d'`ecrire` passe de `Operateur` à `Utilisateur`, qui porte les mêmes
   champs plus les siens : tous les appels existants restent compilables sans retouche.
-- `src/app/journal/libelles.ts` : libellés de `participation.octroi` et `participation.revocation`
-  dans `LIBELLE_ACTION` (`:9`), et entrée `participation` dans `LIBELLE_CIBLE` (`:54`).
+- `src/app/journal/libelles.ts` : libellés de `participation.octroi`, `participation.revocation` et
+  `participation.canal-bascule` dans `LIBELLE_ACTION` (`:9`), et entrée `participation` dans
+  `LIBELLE_CIBLE` (`:54`). Le troisième est écrit par la collecte et non par un opérateur (D21) : il
+  se lit sur la même page que les deux autres, sinon la bascule reste invisible là où on la cherche.
 - `src/app/journal/criteres.ts` : élargir le filtre « personne » à `actorUsername` hors des sessions
   (`:141-145`), sans quoi ce qu'un participant fait lui-même n'apparaît pas dans son historique. Le
   changement de sens s'écrit dans le commentaire existant (`:134-139`) : le filtre répond désormais
@@ -793,62 +1127,125 @@ en D14 bis de sa version naïve.
 
 - `src/app/dossiers/[id]/participations.ts` (nouveau) : actions `octroyerParticipation` et
   `revoquerParticipation`, toutes deux par `actionTracee` en mode opérateur, garde en première ligne
-  comme l'étape 1 l'impose partout. L'octroi exige une personne cible, un motif et une durée,
-  plafonnée par une constante du module (décision ouverte 7). Les états qu'il accepte suivent la
-  décision ouverte 6, dont la recommandation est de refuser un dossier que `dossierVivant` ne dit pas
-  vivant et de refuser séparément l'état `WATCH` : un départ soupçonné mais pas décidé, y octroyer un
-  droit revient à dire à quelqu'un « on soupçonne le départ de X » avant que quiconque l'ait tranché,
-  ce qui est une divulgation et pas un accès. Le ré-octroi repose les
-  cinq champs et efface les trois de révocation, en un `update` conditionné (voir « Modèle de
-  données »). La révocation pose `revokedAt`, `revokedBy` et `revokedReason` par un `updateMany`
-  conditionné sur `revokedAt: null`, pour qu'une double soumission ne produise ni double trace ni
-  écrasement.
+  comme l'étape 1 l'impose partout. L'octroi exige une personne cible, un motif, une durée et,
+  facultativement, un canal. La durée est préremplie à `DUREE_DEFAUT_JOURS` et refusée au-delà de
+  `DUREE_MAX_JOURS` (D9 bis) : le refus vit dans l'action et pas seulement dans le formulaire, une
+  action serveur recevant ce qu'on lui envoie et non ce que l'écran proposait. Quatre refus de plus,
+  **cinq en tout** : un dossier que `dossierVivant` ne dit pas vivant, un dossier en `WATCH` (D10),
+  une fiche dont le `username` figure dans une allowlist, et un canal que les refus de D14 bis
+  écartent (D9 ter). Le compte se dit parce qu'il se vérifie, et parce que compter quatre laissait
+  chaque fois le même dehors, le dossier clos : c'est le seul des cinq que rien n'exerçait. Les quatre
+  refus de D14 bis, eux, sont un autre ensemble, qui porte sur une adresse et non sur un octroi. Le
+  ré-octroi repose les cinq champs et efface les trois de révocation, en un `update` conditionné (voir
+  « Modèle de données »). La révocation pose `revokedAt`, `revokedBy` et `revokedReason` par un
+  `updateMany` conditionné sur `revokedAt: null`, et lève quand il ne touche aucune ligne, sur
+  l'idiome de `validerEtape` (`src/app/dossiers/[id]/actions.ts:524-526`). Le perdant d'une double
+  soumission n'écrase donc rien. Il laisse en revanche une trace, et c'est voulu plutôt que subi : le
+  journal précède l'action, donc l'intention des deux appels y figure de toute façon, et c'est la
+  levée qui referme celle du perdant en échec. Ne tracer que le gagnant supposerait de savoir qui
+  gagne avant d'écrire, ce que l'ordre trace puis action interdit.
 - `src/app/dossiers/[id]/Participations.tsx` (nouveau) : la liste des droits en cours, avec pour
   chacun l'adresse à laquelle le lien partira, la date d'expiration et un bouton de révocation ; le
-  formulaire d'octroi ; et l'avertissement de `canalMenace`.
+  formulaire d'octroi, motif, durée et canal ; l'avertissement de `canalMenace` ; et la marque
+  « canal mort » sur un droit dont ni le canal d'octroi ni la fiche ne résolvent plus, avec ses deux
+  sorties (D21). Les deux origines d'adresse ne se rendent pas de la même façon, et c'est le risque
+  « L'adresse de la base n'est pas toujours celle du lien » qui l'impose : un canal déclaré à l'octroi
+  s'affiche comme certain, l'outil l'ayant lui-même écrit et le servant tel quel ; une adresse déduite
+  de la fiche reste une approximation et se lit comme telle, la base ne sachant pas toujours où le
+  lien partira, voir « Ce qui existe aujourd'hui ». Les présenter à l'identique effacerait à l'écran
+  la seule chose que le canal achète.
 - `src/app/dossiers/[id]/page.tsx` : rendre ce bloc pour un opérateur.
+- `src/app/personnes/[username]/edition.ts` : le bras `deplacer-participations` dans le `switch` de
+  la transaction de fusion (`:462`), sur le modèle exact de `deplacer-dossiers` (`:495-500`), un
+  `updateMany` qui repose `personId`, plus l'abandon nommé de la participation en collision (D22). Il
+  s'exécute avant `supprimer-fiche` (`:525-527`), qui est ce qui emporterait tout. Le cœur de la
+  décision est à l'étape 3 ; ici il n'y a que l'écriture.
+- `src/lib/sync/perimetre.ts` : la ligne de journal `SYSTEM` quand un passage fait basculer vers
+  `BETA` une fiche qui porte au moins une participation vivante (D21), sur le modèle de l'appel
+  existant en fin de passage (`:438-445`). Elle est en fire-and-forget avec capture d'erreur comme
+  tout le journal (`src/lib/audit.ts`) : une collecte ne rate pas un passage parce qu'un signalement
+  n'a pas pu s'écrire.
 
 Vérification : octroyer, constater la ligne et l'événement, révoquer, constater l'effet immédiat sur
-une session déjà ouverte dans un autre navigateur.
+une session déjà ouverte dans un autre navigateur. Puis les cinq refus, un par un, chacun depuis
+une requête forgée et pas seulement depuis le formulaire : une durée de soixante jours, un dossier
+`CANCELLED`, un dossier en `WATCH`, un octroi sur la fiche d'un opérateur, un canal dont la partie
+locale est un identifiant d'allowlist.
 
 ### 7. Ce que voit un participant
 
 **Prérequis dur : le chantier des modèles de plan porteurs de contrôleur** (D11). Sans lui, il n'y a
 rien à montrer.
 
-- La vue du participant, sous la forme que tranchera la décision ouverte 4. Dans les deux cas :
-  résoudre l'acteur, refuser par `notFound()` plutôt que par une redirection quand aucun droit vivant
-  ne couvre ce dossier, `force-dynamic`, et projeter les étapes par `etapesVisiblesPour`.
+- Une route dédiée au participant (D11 ter), et non un sous-ensemble calculé sur
+  `/dossiers/[id]`. Elle résout l'acteur, refuse par `notFound()` plutôt que par une redirection
+  quand aucun droit vivant ne couvre ce dossier, porte `force-dynamic`, et projette les étapes par
+  `etapesVisiblesPour`. Elle ne rend ni l'en-tête, ni les gestes, ni le pied de page de la page
+  opérateur : la seule chose partagée est le composant qui rend une étape nommant le participant, et
+  c'est ce composant qui se relit, pas 1123 lignes.
 - `src/app/dossiers/[id]/actions.ts` : `pointerEtape` accepte un participant. Il résout déjà
-  l'identité en première ligne (`:205`) et dérive déjà le dossier de l'étape relue (`:233`), donc le
+  l'identité en première ligne (`:205`) et dérive déjà le dossier de l'étape relue (`:233-235`), donc le
   travail est de remplacer le `operateur: true` en dur de `:268-271` par la valeur réelle et de
   passer l'`Utilisateur` résolu à `actionTracee` (`:338`). Aucun pré-contrôle à ajouter : `peutPointer`
   (`src/core/dossier.ts:172-177`) refuse déjà ce qui ne nomme pas le déclarant dès que `operateur`
   vaut faux.
-- **`ignoree` reste opérateur seul**, quel que soit le sort de #68. `POINTAGES` (`actions.ts:43-49`)
-  offre cinq verdicts, et `ignoree` produit `SKIPPED`, qui n'est pas dans `critereConstate`
-  (`:302-305`), donc `validation: "NONE"` (`:328-334`), donc l'étape se solde sans second regard.
-  Écarter une étape n'est pas déclarer un geste, c'est décider qu'un geste prévu n'aura pas lieu, et
-  ce ticket ne délègue pas cette décision. Le sort des quatre autres verdicts est la décision ouverte
-  9.
+- **`roleDeLOperateur` (`src/app/dossiers/[id]/actions.ts:75-80`) est le site qui décide vraiment, et
+  il ne se voit pas.** Il code `true` en dur en troisième argument de `roleSurDossier` (`:79`) et
+  retombe deux fois sur `OPERATOR`, quand le porteur est inconnu (`:76-78`) et quand le rôle est nul
+  (`:79`). Un délégué en ressortirait donc `OPERATOR` : `peutPointer` lui ouvrirait les étapes
+  attendues d'un opérateur et lui refuserait les siennes, et `validationApresPointage` y lirait une
+  substitution qui n'a pas eu lieu. Ces trois raccourcis n'étaient sûrs que tant que
+  `requireOperateur` murait l'action, et son commentaire `:67-74` le dit en toutes lettres, « ce cas
+  n'existe pas ici » ; ce ticket retire ce mur, donc le commentaire et le code tombent ensemble. Il
+  reçoit la qualité réelle d'opérateur et la participation vivante, et un rôle nul y redevient un
+  refus plutôt que le rôle le plus fort. Ses deux appelants, `pointerEtape` (`:262`) et `validerEtape`
+  (`:457`), en héritent sans autre retouche.
+- **Un participant pose les quatre verdicts sauf `ignoree`.** `POINTAGES` (`actions.ts:43-49`) en
+  offre cinq. `fait` et `echec` vont de soi ; `deja-absent` et `deja-present` affirment que quelqu'un
+  est passé avant, ils soldent l'étape et lui réclament la même valeur que `fait` (`:298-305`), et un
+  délégué qui constate un accès déjà retiré doit pouvoir le dire. L'alternative, `fait` et `echec`
+  seuls, est écartée pour cette raison exacte : elle laisse ce délégué sans verdict à poser, donc
+  devant le choix de mentir ou d'appeler. Ces quatre-là s'écrivent explicitement plutôt que de tomber
+  dans un défaut.
+- **`ignoree` reste opérateur seul**, quel que soit le sort de #68. `ignoree` produit `SKIPPED`, qui
+  n'est pas dans `critereConstate` (`:302-305`), donc `validation: "NONE"` (`:328-334`), donc l'étape
+  se solde sans second regard. Écarter une étape n'est pas déclarer un geste, c'est décider qu'un
+  geste prévu n'aura pas lieu, et ce ticket ne délègue pas cette décision.
+- **`validerEtape` s'ouvre au délégué** (D11 bis) : son `requireOperateur()`
+  (`src/app/dossiers/[id]/actions.ts:409`) devient la résolution de l'utilisateur, comme pour
+  `pointerEtape`, et `peutValider` fait le reste sans une ligne de plus, n'opposant `DELEGATE` qu'à
+  `validationBy === "OPERATOR"` (`src/core/dossier.ts:315`). Et `validationApresPointage` (`:263-274`)
+  cesse du même mouvement d'établir la substitution sur le rôle, avec son site d'appel de production
+  (`actions.ts:329-333`) et les huit appels de `src/core/dossier.test.ts`. L'une sans l'autre n'est
+  pas livrable : c'est le pointage qui porte le trou, pas le formulaire de validation. Ce changement
+  de cœur pur vit ici et non à l'étape 3, malgré sa nature : changer la signature sans changer le
+  site d'appel ne compile pas, et l'étape 3 se veut livrable seule.
 - `confirmerPlan`, `cloreDossier`, `annulerDossier`, `recalculerPlan` et `lancerExecution` restent
-  opérateur seul. `validerEtape` est la décision ouverte 2.
-- `src/app/moi/page.tsx` : la section des dossiers gagne le lien vers `/dossiers/[id]` pour un
-  participant.
+  opérateur seul.
+- **`combinaisonValide` n'est pas touché.** La répartition « un délégué contrôle un délégué » reste
+  refusée (`src/core/dossier.ts:236-248`), et son commentaire garde sa valeur d'annonce (`:222-227`),
+  « elle s'ouvrira le jour où un droit par objet existe ». Ce jour arrive, mais décider quelles étapes
+  de quel modèle portent quel contrôleur appartient au chantier des modèles de plan, pas à ce ticket
+  qui ne change que qui regarde et qui pointe (D20). Voir « Ce qui reste à ouvrir ailleurs ».
+- `src/app/moi/page.tsx` : la section des dossiers gagne le lien vers la route du participant, et
+  non vers `/dossiers/[id]`, qui le rejetterait (D11 ter).
 
 ### 8. Tests et documentation
 
-Les scénarios ci-dessous, puis `/sync-docs` : proposition de rédaction pour `docs/architecture.md`
-§6 (`:880-886` et `:910-916`, voir D19) et ajout de `CaseParticipation` à la liste du décidé
-(`:376-377`), soumises avant écriture et non appliquées sans accord explicite. `TODO.md` perd la
-ligne « liens publics pour l'onboarding et l'offboarding » (`:20`), que ce ticket remplace. La
-Definition of Done du ticket est amendée sur son dernier point (D19).
+Les scénarios ci-dessous, puis `/sync-docs`. Trois propositions de rédaction pour
+`docs/architecture.md`, soumises avant écriture et non appliquées sans accord explicite : §6
+(`:880-886` et `:910-916`, voir D19) ; `CaseParticipation` dans la liste du décidé (`:376-377`) ; et
+la nouvelle clé de politique, les domaines de courrier qu'un départ coupe, dans l'énumération de §3.1
+(`:253-268`), qui est exhaustive et deviendrait fausse sans elle. `TODO.md` perd la ligne « liens
+publics pour l'onboarding et l'offboarding » (`:20`), que ce ticket remplace. La Definition of Done du
+ticket est amendée sur son dernier point (D19).
 
 ## Tests
 
-Huit scénarios. Sept dans `src/core/participation.test.ts` et `src/core/dossier.test.ts` : tout ce
-qui décide y est pur, ce qui est le premier bénéfice de l'étape 3. Le huitième demande un harnais
-neuf, et il faut le dire plutôt que de compter sur celui qui existe.
+Neuf scénarios. Huit sont purs, répartis entre `src/core/participation.test.ts`,
+`src/core/dossier.test.ts` et `src/core/fiche-manuelle.test.ts` : tout ce qui décide vit dans un
+module sans Prisma, ce qui est le premier bénéfice de l'étape 3. Le test 8 est le seul à demander un
+harnais neuf, et il faut le dire plutôt que de compter sur celui qui existe.
 
 Un seul fichier de test d'action serveur existe dans tout le dépôt,
 `src/app/dossiers/[id]/actions.test.ts` ; les deux autres tests sous `src/app` ne testent pas
@@ -874,18 +1271,23 @@ base, révoquée et datée.
 droit sur le premier seulement. Then le titulaire n'a aucun rôle sur le second, ne peut y pointer
 aucune étape, et rien de la personne du second dossier n'entre dans ce qu'il voit. Then un droit dont
 `expiresAt` est passé se comporte exactement comme un droit révoqué, et un droit vivant sur un
-dossier vivant reste le seul cas qui ouvre. Le sort des états `CANCELLED` et `WATCH` suit la décision
-ouverte 6 : sous sa recommandation, un droit sur un dossier `CANCELLED` n'ouvre pas plus que sur un
-dossier `DONE`, et un octroi sur un dossier `WATCH` est refusé. Ce scénario est le test de cet
-arbitrage et sa formulation exacte suit l'option retenue.
+dossier vivant reste le seul cas qui ouvre. Then un droit sur un dossier `CANCELLED` n'ouvre pas plus
+que sur un dossier `DONE`, la lecture passant par `dossierVivant` et non par un littéral. Then
+l'octroi est refusé sur un dossier `WATCH` alors que la lecture, elle, n'exclut pas cet état : les
+deux règles de D10 ne disent pas la même chose et le test les sépare. Then la même lecture est
+reprise pour les cinq valeurs de `CaseState`, sans quoi la prochaine valeur ajoutée à l'énum passerait
+sans être décidée.
 
 **3. « Deux voies, et jamais le choix entre les deux ».** Given une fiche `BETA` avec sa
 `communicationEmail`, une fiche `LOCAL` modifiable avec une adresse déclarée, une fiche `LOCAL`
 déclarée dans `scope.local`, et une fiche `LOCAL` sans adresse. Then une saisie sans arobase route
 vers la voie espace-membre, une saisie avec arobase vers la voie par adresse, une saisie vide, à deux
-arobases ou porteuse d'un guillemet vers rien. Then seule la seconde fiche est recevable par la voie
-par adresse. Then une adresse ne produit jamais de candidat username, `candidateUsernames` les
-écartant toutes (`src/core/identite.ts:14-20`).
+arobases ou porteuse d'un guillemet vers rien. Then seule la seconde fiche est recevable par sa
+propre adresse. Then la fiche `BETA` le devient dès qu'une participation vivante déclare son adresse
+en canal, et par ce chemin seulement (D9 ter) ; la fiche déclarée dans `scope.local` ne le devient
+pas davantage par sa propre adresse. Then une adresse qui désigne deux personnes distinctes est
+refusée, quelle que soit la source dont chacune vient. Then une adresse ne produit jamais de candidat
+username, `candidateUsernames` les écartant toutes (`src/core/identite.ts:14-20`).
 
 **4. « Un identifiant fabriqué ne fait pas un opérateur ».** Given `operateur.exemple` dans
 `OPERATORS`. Then le renommage d'une fiche vers `operateur.exemple` est refusé, et sa création aussi
@@ -894,14 +1296,25 @@ par adresse. Then une adresse ne produit jamais de candidat username, `candidate
 refusée dès lors qu'une ligne `User` **munie d'un `username`** la porte. Then, et c'est la clause qui
 distingue la bonne formulation de la mauvaise, **la même adresse reste recevable à la connexion
 suivante**, quand la ligne `User` sans `username` que la voie a elle-même fait naître au premier lien
-existe déjà. Then seul un jeton issu du provider espace-membre peut porter un username d'opérateur.
+existe déjà. Then la même clause tient sur les deux origines d'adresse, et le cas du canal est celui
+qui la casse le plus vite : sur une fiche collectée, la ligne née du premier lien porte le
+`channelEmail` et non la `communicationEmail` de la fiche, si bien qu'une règle indexée sur la seule
+fiche refuserait dès la deuxième demande la personne que D9 ter existe pour servir. Then seul un
+jeton issu du provider espace-membre peut porter un username d'opérateur.
 
-**5. « La boîte qui meurt ne bloque pas le dossier ».** Given le porteur d'un dossier dont le lien
-part sur la boîte que le départ va couper. Then l'avertissement se lève à l'octroi. When la boîte est
-coupée et qu'il ne peut plus recevoir de lien, Then son étape reste pointable par un opérateur en
-substitution, ce qui la fait accepter d'emblée au sens de `validationApresPointage`
-(`src/core/dossier.ts:263-274`), le plan atteint `EXECUTED` et le dossier devient soldable. Le
-mécanisme dégrade vers l'état antérieur, il ne bloque jamais.
+**5. « La boîte qui meurt ne bloque pas le dossier, et l'octroi sait où écrire ».** Given le porteur
+d'un dossier dont le lien part sur la boîte que le départ va couper. Then l'avertissement se lève à
+l'octroi, sur les domaines déclarés par la politique et non sur une égalité entre deux colonnes de la
+fiche : une fiche qui ne porte qu'une seule adresse ne le lève pas, et une secondaire sur un domaine
+menacé le lève. When l'octroi déclare un canal, Then c'est lui qui sert, y compris pour une fiche
+collectée que l'outil ne peut pas modifier, et le ré-octroi le repose au lieu de conserver l'ancien.
+When la fiche locale bascule vers `BETA` sous une participation vivante, Then le droit survit, son
+canal d'octroi traverse intact, un canal qui venait de la fiche est marqué mort, et la bascule laisse
+une ligne au journal (D21). When la boîte est coupée et que la personne ne peut plus recevoir de lien
+du tout, Then son étape reste pointable par un opérateur en substitution, ce qui la fait accepter
+d'emblée au sens de `validationApresPointage` (`src/core/dossier.ts:263-274`), le plan atteint
+`EXECUTED` et le dossier devient soldable. Le mécanisme dégrade vers l'état antérieur, il ne bloque
+jamais.
 
 **6. « Chaque écriture d'un non-opérateur laisse sa trace avant d'écrire ».** Given un participant qui
 pointe une étape. Then l'événement porte son identifiant de fiche en acteur, la voie qui a prouvé son
@@ -911,13 +1324,23 @@ deux endroits. Then une écriture demandée sur un dossier X par quelqu'un qui n
 est refusée, y compris quand `dossierId` est fourni par le formulaire.
 
 **7. « Deux délégués sur un dossier, et aucun ne signe pour lui-même ».** Given une étape « la
-personne concernée agit, un délégué contrôle » et deux délégués distincts. Then le délégué A qui
-pointe en substitution n'obtient pas `ACCEPTED` de plein droit, `validationApresPointage` comparant
-aujourd'hui sur le **rôle** (`src/core/dossier.ts:271-273`) là où `peutValider` compare sur le nom
-(`:327`). Ce scénario dépend de la décision ouverte 3 : il est le test de sa correction, et sa
-formulation exacte suit l'option retenue. `combinaisonValide` a vu venir ce cas et l'a fermé par
-prudence (`:222-227`), « elle s'ouvrira le jour où un droit par objet existe » ; ce ticket est ce
-jour.
+personne concernée agit, un délégué contrôle », combinaison que `combinaisonValide` accepte
+(`src/core/dossier.ts:236-248`), et deux délégués distincts sur le dossier. Then ni l'un ni l'autre ne
+peut pointer cette étape : `peutPointer` refuse un `Declarant` `{ role: "DELEGATE", operateur: false }`
+devant un acteur attendu `SUBJECT` (`:172-177`). When un opérateur pointe en substitution, Then
+l'étape passe en `AWAITING` et non en `ACCEPTED`, le contrôleur attendu étant le délégué et non
+l'opérateur, et le délégué B la signe par `validerEtape` que `peutValider` lui ouvre désormais
+(`:315`), pendant que le délégué A se la voit refuser s'il en est le déclarant (`:327`).
+
+Then le cœur du scénario, et il s'écrit en appelant `validationApresPointage` directement, sur un cas
+que ses appelants interdisent par ailleurs : un déclarant de rôle `DELEGATE` sur une étape « la
+personne concernée agit, un délégué contrôle » rend `AWAITING`, parce que rien n'établit nommément ce
+délégué-là comme le contrôleur que l'étape attend. C'est le point du test : la fonction est vraie par
+elle-même et non par ce que `peutPointer` et l'ordre de `roleSurDossier` lui épargnent (D11 bis).
+Then la voie `OPERATOR` ne bouge pas d'un pouce, un opérateur qui pointe en substitution sur une
+étape « la personne concernée agit, un opérateur contrôle » obtenant `ACCEPTED` comme aujourd'hui,
+la liste qui le nomme suffisant à l'établir comme le contrôleur attendu. Then `combinaisonValide`
+refuse toujours « un délégué contrôle un délégué » (`:222-227`) : ce ticket ne l'ouvre pas.
 
 **8. « Sans session, aucune action ne parle ».** Given aucune session, un `@/lib/session` qui lève la
 redirection et un `@/lib/db` qui échoue sur tout accès. Then chacune des onze actions serveur de
@@ -925,166 +1348,15 @@ l'étape 1 redirige vers `/login` sans avoir touché le double de base, et sans 
 messages qui distinguaient un identifiant existant d'un identifiant inconnu, dont les quatre de
 `creerFichePourCompte`.
 
-## Décisions qui restent à trancher
-
-Dix questions, dans l'ordre où elles bloquent, plus un addendum de périmètre. Chacune porte ses
-options, ce qu'elles coûtent, et une recommandation. Les neuf premières et l'addendum sont les
-décisions restées ouvertes après arbitrage ; la dixième vient d'ailleurs, d'un point de calendrier
-soulevé en marge, et elle est signalée comme telle.
-
-Trois autres ont déjà été tranchées et sont écrites au présent dans le corps du plan : l'étape 7
-attend le chantier des modèles de plan (D11), la garde de session vit dans ce ticket en étape 1, et
-l'identification par adresse se fait sur `communicationEmail` seule avec un index unique partiel
-(D7 bis). **Aucune autre ne l'est.** En particulier, ce que D10 et l'étape 6 disent des états de
-dossier est la recommandation de la question 6 ci-dessous, pas un acquis.
-
-**1. Le message unique de `loginAction` : on unifie les trois branches existantes, ou seulement la
-voie nouvelle ?**
-A. Unification totale. Les branches `:39`, `:51` et `:53-54` disparaissent, un opérateur qui se
-trompe d'identifiant perd son diagnostic à l'écran, et l'oracle d'annuaire beta.gouv qui existe
-aujourd'hui se ferme.
-B. Message neutre sur la seule voie par adresse. L'oracle actuel survit, et il porte sur l'annuaire
-beta.gouv entier, pas seulement sur les fiches de cet outil.
-*Recommandation : A*, en assumant le coût dans D5, le diagnostic partant au `console.error` et au
-journal. Et avec la temporisation plancher, faute de quoi l'oracle survit au message par le canal du
-temps.
-
-**2. `validerEtape` s'ouvre-t-il au délégué ?**
-A. Oui. La répartition « un délégué contrôle le porteur », prévue par le lot 5 et documentée en
-`src/core/dossier.ts:246-247`, devient atteignable. `peutValider` l'accepte déjà, il ne refuse
-`DELEGATE` que face à `validationBy === "OPERATOR"` (`:315`).
-B. Non, opérateur seul. Cette répartition reste morte, et la moitié de ce que le chantier des modèles
-va poser ne sert à rien.
-*Recommandation : A*, mais uniquement couplée à la décision 3. Ouvrir sans corriger
-`validationApresPointage` donne le trou décrit ci-dessous.
-
-**3. `validationApresPointage` doit-il comparer les noms quand `validationBy` vaut `DELEGATE` ?**
-Aujourd'hui elle compare sur le rôle (`src/core/dossier.ts:271-273`). C'est sain tant que `SUBJECT`
-désigne une personne unique et que `OPERATOR` sort d'une liste nommée. `DELEGATE` sera le premier
-rôle qui désigne plusieurs personnes que rien ne distingue au niveau du rôle : sur une étape « la
-personne concernée agit, un délégué contrôle », le délégué A qui pointe en substitution obtient
-`ACCEPTED`, signé de son propre nom, ce que `peutValider` lui refuserait par le formulaire.
-A. Elle reçoit le username du déclarant et ne rend `ACCEPTED` que sur substitution nominative.
-Signature à trois arguments qui devient quatre, un site d'appel (`actions.ts:329-333`), un test.
-B. Elle ne rend jamais `ACCEPTED` quand `validationBy === "DELEGATE"`. Plus conservateur, mais un
-délégué qui contrôle le porteur ne peut jamais solder par substitution même quand c'est légitime.
-C. Rien. Un délégué signe sa propre déclaration.
-*Recommandation : A*, et c'est indépendant de la décision 2 : le trou passe par le pointage, pas par
-le formulaire de validation. Sans ça, `docs/architecture.md:900-901` (« comparée sur le nom et non
-sur le rôle ») devient faux le jour où un modèle pose un contrôleur délégué.
-
-**4. La page du participant : sous-ensemble calculé sur `/dossiers/[id]`, ou route dédiée ?**
-La page fait 1123 lignes et affiche des noms d'opérateur en six endroits, pas un : la note libre
-`etape.lastError` écrite par un opérateur pour un opérateur (`:454-456`), `etape.declaredBy`
-(`:462`), `etape.validatedBy` et `etape.validationNote` (`:474-476`, `:480-482`), `runbook` et
-`deeplink` (`:415-421`), le bloc technique `systemKey` / `capability` / `idempotencyKey` /
-`riskLevel` / `lastError` / `grantExpiresAt` (`:553-573`), et le pied de page `createdBy` /
-`confirmedBy` (`:1112-1114`). Plus `planDigest` (`:538`), la clé de profil (`:749-750`), le plafond de
-masse et les écarts de modèle (`:1007-1082`).
-A. Modèle de vue censuré sur la route existante, testé par sérialisation, sur le modèle du D5 de
-`docs/plans/#14_page-perso.md:155`, « la censure est un calcul testé, pas une omission de `select` ».
-Coût : un audit permanent de 1123 lignes à chaque ajout de champ, et rédacter par soustraction laisse
-passer tout ce qui sera ajouté demain.
-B. Route dédiée pour le participant. Coût : un écran de plus. Gain : la classe entière de fuites
-disparaît, et l'écran se relit en une minute.
-*Recommandation : B.* Le participant ne partage avec l'opérateur ni les gestes, ni l'en-tête, ni le
-pied de page, ni les six blocs. Ce qui reste commun, la liste des étapes qui le nomment, se rend
-depuis un composant partagé.
-
-**5. Le canal de destination : champ à l'octroi, ou dégradation assumée ?**
-Le ticket en fait un point d'attention dur. Un fait que le plan initial ne disait nulle part : **pour
-une fiche collectée, cet outil ne peut pas changer l'adresse de destination.** `ficheEditable` rend
-`{ editable: false, raison: "COLLECTEE" }` dès que `source !== "LOCAL"`
-(`src/core/fiche-manuelle.ts:54-56`), `modifierFiche` refuse en conséquence (`edition.ts:96-98`), et
-la destination est décidée par l'espace-membre seul (`ProviderConfig.js:24-28`). D7 interdit par
-ailleurs d'ancrer le droit sur une adresse.
-A. L'octroi porte, en plus du motif et de l'échéance, l'adresse à laquelle le lien partira, choisie
-parmi celles de la fiche ou saisie à cet endroit-là seulement. Le droit reste la ligne, l'adresse
-n'est que le moyen de preuve du canal, révocable sans toucher au droit.
-B. Dégradation assumée. L'opérateur repointe à la main, et la case du ticket n'est pas cochée.
-*Recommandation : A.* Sans ce champ, l'outil n'a aucun geste à offrir pour la personne dont la boîte
-meurt, c'est-à-dire quand le mécanisme sert le plus. Et dans les deux cas, `canalMenace` est à
-reformuler : l'égalité `communicationEmail === primaryEmail` est une heuristique plus faible que le
-plan ne le croyait, elle rate une secondaire qui est elle aussi une boîte que le départ coupe,
-adresse ADEME comprise. La liste des domaines menacés vient de la politique, pas d'une égalité de
-colonnes.
-
-**6. Quels états de dossier ouvrent une participation, et sur lesquels l'octroi se saisit-il ?**
-`CaseState` compte cinq valeurs (`prisma/schema.prisma:399-405`). La règle du plan initial, « un
-dossier dont l'état n'est pas `DONE` », laisse un droit vivant sur un dossier **annulé**.
-A. `dossierVivant` pour la lecture, et refus de l'octroi sur `WATCH`. `dossierVivant` existe déjà
-(`src/core/dossier.ts:448`, dictionnaire `:440-446`) et son commentaire `:434-438` dit pourquoi ne
-pas réécrire la règle : « un dictionnaire exhaustif fait tomber le typecheck le jour où une valeur
-s'ajoute à l'énum, là où un tableau littéral aurait continué de mentir en silence ». Les trois
-actions du dossier gardent déjà dessus (`actions.ts:148`, `:249`, `:448`).
-B. `état !== "DONE"` comme écrit à l'origine. Troisième exemplaire littéral de la règle, et un droit
-vivant sur un dossier annulé.
-*Recommandation : A.* Le refus sur `WATCH` mérite sa phrase : un départ soupçonné mais pas décidé, y
-octroyer un droit revient à dire à quelqu'un « on soupçonne le départ de X » avant que quiconque
-l'ait tranché. C'est une divulgation, pas un accès. D10, l'étape 6 et le test 2 sont écrits sous
-cette recommandation et se reformulent si elle tombe.
-
-**7. Le plafond de durée d'un droit.**
-`VALIDITE_JOURS = 7` (`src/lib/dossier.ts:36`, constante non exportée) est une péremption de constat,
-pas la bonne échelle. Les autres repères du dépôt : `graceDays` 7, `soonDays` 30, `staleDays` 180
-(`src/core/policy.ts:341-371`).
-A. 7 jours. Ré-octroi hebdomadaire, donc exactement le geste que D9 existe pour empêcher, mettre le
-maximum pour ne plus y penser.
-B. 30 jours de plafond, 14 par défaut, deux constantes distinctes. 30 est l'horizon que l'outil
-appelle lui-même « proche » pour une fin de mission, donc un droit ne survit jamais à la fenêtre
-pendant laquelle il qualifie le départ d'imminent. Sans **lire** `thresholds.soonDays` pour autant :
-coupler ferait qu'un réglage de politique déplacerait une règle d'autorisation, ce que
-`docs/architecture.md:880-884` interdit.
-C. 180 jours. Un accès permanent, qui contredit D15 mot pour mot.
-*Recommandation : B.* Un plafond qui est aussi le défaut n'est pas un plafond.
-
-**8. La contrainte `CHECK` sur `expiresAt > grantedAt`.**
-A. On la retire. Le critère du lot 5 est « une course peut-elle produire une ligne invalide », et ici
-non : `expiresAt` se calcule depuis `grantedAt` et une constante de module.
-B. On la garde, et il faut alors la documenter dans `schema.prisma` comme l'index partiel
-d'`AccessCase`, sans quoi la garde est invisible à qui lit le fichier.
-*Recommandation : A*, en la remplaçant par le vrai défaut de datation qu'une `CHECK` ne verrait pas,
-le ré-octroi qui laisse `grantedAt` sur le premier octroi. C'est ce que le modèle de données écrit
-déjà.
-
-**9. Quels pointages un participant peut-il poser ?**
-`fait`, `deja-absent`, `deja-present`, `ignoree`, `echec` (`actions.ts:43-49`). `ignoree` est déjà
-exclu (étape 7).
-A. Tous sauf `ignoree`. `deja-absent` et `deja-present` affirment que quelqu'un est passé avant, ils
-soldent et réclament la même valeur que `fait` (`:298-305`) : défendables pour un délégué.
-B. `fait` et `echec` seuls. Plus étroit, mais un délégué qui constate un accès déjà retiré n'a aucun
-verdict à poser et devra mentir ou appeler.
-*Recommandation : A*, à écrire explicitement plutôt qu'à laisser tomber dans un défaut.
-
-**10. Que fait la bascule d'une fiche locale vers `BETA` au milieu d'un dossier ?** *Celle-ci ne
-vient pas de la liste des décisions ouvertes mais d'un point de calendrier relevé en marge ; elle
-mérite sa place, et il faut savoir d'où elle sort.*
-`champsCollectes` (`src/lib/sync/perimetre.ts:103-134`) réécrit **sans condition** `source`,
-`primaryEmail` et `communicationEmail`, et pose `usernameFabricated: false` (`:108`). Ses deux sites
-d'écriture sont `prisma.person.update` (`:152`) et `prisma.person.create` (`:159`). Une fiche `LOCAL`
-dont l'identifiant finit par correspondre à un membre de l'espace-membre passe donc `BETA` du jour au
-lendemain, ses adresses saisies sont écrasées, et `adresseRecevable` la refuse au `signIn` suivant.
-Un lien déjà envoyé cesse de fonctionner au milieu d'un dossier, sans que personne n'ait rien fait.
-A. La bascule se signale : un constat, ou une ligne au journal, et la participation reste mais son
-canal est marqué mort.
-B. La participation survit et l'entrée bascule d'elle-même sur la voie espace-membre, la fiche étant
-désormais un membre.
-C. Rien, et le cas se découvre au premier lien mort.
-*Recommandation : B si l'adresse résolue par le provider est atteignable, A sinon.* Cette condition
-n'a pas été levée : ce que l'espace-membre rend pour une fiche fraîchement adoptée n'a pas été
-observé. Dans les trois cas, le fait doit figurer dans les risques, il n'y figurait pas.
-
-**Et une décision de périmètre à valider en même temps : la fusion de fiches.** #1 est livré,
-`EtapeFusion` est une union fermée de onze variantes (`src/core/fiche-manuelle.ts:217-228`), exécutée
-par un `switch` (`edition.ts:462`). #13 doit y ajouter `{ type: "deplacer-participations"; ids }`,
-son bras de `switch`, son champ dans `PlanFusion` (`:236-267`) et son inventaire dans
-`planifierFusion` (`:291`). Sinon `supprimer-fiche` cascade sur `Person` et emporte les droits en
-silence. Le plan initial disait « à écrire dans le plan de fusion de #1 » : c'est du travail de #13
-sur du code existant. Et un cas que ni #1 ni le plan ne voyaient : `@@unique([accessCaseId, personId])`
-collisionne si les deux fiches portent une participation sur le même dossier. Le motif existe déjà
-pour `Finding.dedupKey` (`src/core/fiche-manuelle.ts:299-303`), traité par `fermer-constats` : même
-traitement ici, la participation de la source est abandonnée, nommée dans le journal, la plus récente
-gagne.
+**9. « Fusionner deux fiches ne fait pas disparaître un droit ».** Given deux fiches, chacune portant
+une participation, et un dossier commun aux deux. Then `planifierFusion` annonce le déplacement dans
+son inventaire avant d'écrire quoi que ce soit, et empile `deplacer-participations` **avant**
+`supprimer-fiche` : l'ordre est l'objet du test, puisque c'est lui seul qui empêche la cascade
+d'agir à notre place. Then la participation de la source qui entre en collision avec celle de la
+cible sur `@@unique([accessCaseId, personId])` est abandonnée, nommée dans le plan comme
+`fermer-constats` nomme les siennes, et c'est la plus récente qui survit. Then une fiche source qui
+ne porte aucune participation ne produit aucune étape de déplacement, l'inventaire restant lisible
+(D22).
 
 ## Les trois correctifs ouverts qui touchent ce terrain
 
@@ -1102,14 +1374,39 @@ opérateur qui signe encore ses propres cases.
 pas.* Le trou est réel et documenté : `SKIPPED` n'est pas dans `critereConstate` (`actions.ts:302-305`),
 donc `validation: "NONE"` (`:328-334`), donc l'étape se solde sans second regard. Ce plan met ce
 verdict hors de portée d'un participant (étape 7), ce qui le neutralise de notre côté sans le
-corriger. Le corriger avant l'étape 7 reste préférable : si la décision ouverte 9 devait un jour
-s'élargir, la trappe s'ouvrirait au premier acteur qui n'est pas de l'équipe.
+corriger. Le corriger avant l'étape 7 reste préférable : le jour où quelqu'un jugera que `ignoree`
+manque au participant, la trappe s'ouvrirait au premier acteur qui n'est pas de l'équipe, et le
+refus de l'étape 7 est ce qui la tient fermée en attendant.
 
 **#65, « une seule fiche illisible cesse de geler indéfiniment les garde-fous du périmètre ».**
 *Indifférent au code de #13, mais il mérite une ligne dans les risques.* Le canal d'entrée de la voie
 espace-membre est entretenu par une collecte qui peut geler sur une seule fiche illisible : dans ce
 cas `Person.communicationEmail` peut se périmer en silence, et le lien partirait sur une adresse que
 l'amont a changée depuis. Ce n'est pas un blocage, c'est une ligne à écrire.
+
+## Ce qui reste à ouvrir ailleurs
+
+Deux choses que ce plan a rencontrées, qu'il a délibérément laissées en place, et qui méritent chacune
+son ticket plutôt qu'une ligne de plus ici. Les nommer est le prix à payer pour avoir le droit de ne
+pas les traiter.
+
+**La substitution par le rôle, pour `OPERATOR`.** D11 bis corrige `validationApresPointage` sur le
+seul cas `DELEGATE`. Le même raisonnement vaut pour `OPERATOR`, dont le rôle désigne lui aussi
+plusieurs personnes : un opérateur qui pointe en substitution obtient `ACCEPTED` signé de son propre
+nom, ce que `peutValider` lui refuserait par le formulaire (`src/core/dossier.ts:327`). #13 ne
+l'élargit pas, et pour une raison qui n'est pas la paresse : c'est un comportement voulu, documenté
+en toutes lettres (`:253-256`) et testé, et le changer ferait attendre un second opérateur sur un
+outil qui en compte un. La question qu'un ticket doit poser est donc celle-là, pas celle du code :
+sur quelles étapes veut-on qu'un opérateur seul ne suffise plus. Elle touche `docs/architecture.md`
+§6 et probablement la politique.
+
+**La répartition « un délégué contrôle un délégué ».** `combinaisonValide` la refuse
+(`src/core/dossier.ts:236-248`) et son commentaire annonce sa levée (`:222-227`), « elle s'ouvrira le
+jour où un droit par objet existe ». #13 crée ce droit sans ouvrir la répartition, parce que décider
+quelles étapes de quel modèle portent quel contrôleur appartient au chantier des modèles de plan
+(D11, prérequis dur) et pas à un ticket qui ne change que qui regarde et qui pointe (D20). L'ouvrir
+ne coûte qu'une ligne, comme le commentaire le dit lui-même ; c'est de savoir à quoi elle sert qu'il
+faut décider d'abord.
 
 ## Risques et pièges
 
@@ -1143,18 +1440,34 @@ Definition of Done, et elle se perd sans bruit.
 (`src/lib/sync/perimetre.ts:103-134`, sites d'écriture `:152-161`) réécrit sans condition `source`,
 `primaryEmail` et `communicationEmail`, et pose `usernameFabricated: false` (`:108`). Une fiche
 locale adoptée par l'espace-membre bascule `BETA`, ses adresses saisies sont écrasées, et une
-participation en cours perd son canal d'entrée sans qu'aucun geste humain n'ait eu lieu. Décision
-ouverte 10. Le même passage porte l'autre face du risque : c'est lui qui peut faire naître la
-collision d'adresses que l'index de D7 bis refuse, et geler la fiche en `PARTIAL`.
+participation dont le canal venait de la fiche perd son entrée sans qu'aucun geste humain n'ait eu
+lieu. D21 le signale et marque le canal, D9 ter le désamorce quand l'octroi porte son propre canal ;
+ce qui rouvre le risque est le jour où quelqu'un jugera le signalement bruyant et le retirera, la
+bascule redevenant alors silencieuse. Le même passage porte l'autre face du risque : c'est lui qui
+peut faire naître la collision d'adresses que l'index de D7 bis refuse, et geler la fiche en
+`PARTIAL`.
 
 **L'adresse de la base n'est pas toujours celle du lien.** Voir « Ce qui existe aujourd'hui » :
 tout affichage disant « le lien partira sur telle adresse » est une approximation, et doit se lire
 comme telle. Et la collecte qui l'entretient peut geler sur une seule fiche illisible (#65), donc
-`communicationEmail` peut se périmer en silence.
+`communicationEmail` peut se périmer en silence. Le canal de D9 ter est le seul cas où l'outil sait
+vraiment où le lien part, puisqu'il l'a lui-même écrit : c'est une raison de plus de le préférer à
+l'affichage déduit de la fiche, et une raison de ne pas présenter les deux de la même façon à
+l'écran.
+
+**Le canal d'octroi est une porte que l'amont ne connaît pas.** Une adresse tapée par un opérateur
+ouvre l'outil sur une boîte que ni l'espace-membre ni la collecte n'ont validée. Ce qui la borne :
+elle est nominative, journalisée, refusée sur les allowlists, incapable de produire un opérateur, et
+elle meurt avec le droit (D9 ter, D15). Ce qui la rouvrirait : un formulaire d'octroi qui accepterait
+un canal sans motif, une durée par défaut portée au plafond, ou un ré-octroi qui conserverait
+l'ancien canal. Les trois sont fermés par écrit ci-dessus, et c'est là qu'il faut regarder si le
+comportement change.
 
 **La fusion de fiches emporte les droits.** `CaseParticipation.personId` cascade sur `Person` :
 fusionner sans déplacer les participations les supprimerait avec la fiche source, sans erreur. C'est
-du travail de ce ticket, pas de #1, collision sur `@@unique([accessCaseId, personId])` comprise.
+du travail de ce ticket, pas de #1 (D22), collision sur `@@unique([accessCaseId, personId])`
+comprise. Ce qui le rouvre est une douzième variante ajoutée à `EtapeFusion` sans être empilée avant
+`supprimer-fiche` : le typecheck la réclame dans le `switch`, il ne dit rien de l'ordre.
 
 **Une fiche disparue ne retire pas le droit, et c'est voulu.** `Person.vanishedAt` se pose quand la
 personne quitte le référentiel amont, c'est-à-dire au moment précis où son dossier de départ est
@@ -1192,7 +1505,8 @@ lien mort, et le schéma le dit déjà en toutes lettres.
 
 **Le provider espace-membre dépend encore d'une route dépréciée** (`docs/architecture.md` §7,
 `:920`). La voie par adresse n'en dépend pas, ce qui est un gain de robustesse constaté, pas une
-raison de la préférer : elle n'est ouverte qu'aux fiches locales et le restera.
+raison de la préférer : elle ne s'ouvre que sur une fiche locale modifiable ou sur un canal qu'un
+opérateur a nommément déclaré à l'octroi (D9 ter), et elle ne s'élargira pas au-delà sans rouvrir D2.
 
 
 ## Vérification
@@ -1213,8 +1527,9 @@ clients. Au-delà :
   tant que ça ne rend que `OPERATOR` et `NULL`, le prérequis n'est pas levé.
 - Parcours complet voie espace-membre : ouvrir un dossier pour un membre non opérateur, lui octroyer
   un droit, se connecter avec son identifiant depuis un autre navigateur, constater qu'il n'atteint
-  ni `/`, ni `/personnes`, ni un autre dossier, qu'il voit ses seules étapes, et qu'il peut en
-  pointer une.
+  ni `/`, ni `/personnes`, ni un autre dossier, **ni `/dossiers/[id]` pour le sien** (D11 ter), qu'il
+  voit ses seules étapes sur sa propre route, et qu'il peut en pointer une puis, quand une étape le
+  nomme comme contrôleur, en valider une.
 - Parcours complet voie par adresse : créer une fiche locale depuis un compte isolé, lui déclarer une
   adresse de communication, lui octroyer un droit, recevoir le lien sur mailpit, entrer, pointer,
   sortir, **puis redemander un lien sur la même adresse et entrer une seconde fois**. Ce second
@@ -1226,11 +1541,34 @@ clients. Au-delà :
   refusés, sans déconnexion et sans attendre l'expiration du jeton.
 - Révocation entre l'envoi et le retour : demander un lien, révoquer le droit, suivre le lien. Il ne
   doit ouvrir aucune session (D4, seconde invocation).
-- Refus silencieux : une adresse inconnue, une adresse d'une fiche collectée, et l'identifiant d'un
-  membre sans droit produisent le même écran, **à la même URL** et dans un temps de réponse
-  comparable, et aucun courriel ne part. La barre d'adresse compte autant que le texte : tant que
-  l'acceptation part sur `/verify-request` et que le refus reste sur `/login`, le message unique ne
-  prouve rien. Vérifier l'absence d'envoi dans mailpit, pas seulement l'absence d'erreur.
+- Parcours du canal d'octroi : sur une **fiche collectée**, dont l'outil ne peut modifier aucune
+  adresse, octroyer un droit en déclarant un canal, recevoir le lien à cette adresse-là dans mailpit,
+  entrer et pointer. C'est le seul parcours qui démontre D9 ter, et c'est celui que le ticket décrit
+  quand il parle de la boîte qui meurt. Puis **redemander un lien sur ce même canal et entrer une
+  seconde fois** : ce second passage est le seul qui montre que le quatrième refus de D14 bis connaît
+  les deux origines d'adresse, la première connexion ayant fait naître une ligne `User` qui porte le
+  canal et non la `communicationEmail` de la fiche. Puis ré-octroyer avec un autre canal et constater
+  que le lien suivant part sur le nouveau, pas sur l'ancien.
+- Refus silencieux : une adresse inconnue, l'adresse d'une fiche collectée qu'aucun octroi n'a
+  déclarée comme canal, et l'identifiant d'un membre sans droit produisent le même écran, **à la même
+  URL** et dans un temps de réponse comparable, et aucun courriel ne part. La barre d'adresse compte
+  autant que le texte : tant que l'acceptation part sur `/verify-request` et que le refus reste sur
+  `/login`, le message unique ne prouve rien. Vérifier l'absence d'envoi dans mailpit, pas seulement
+  l'absence d'erreur.
+- Les cinq refus de l'octroi, chacun depuis une requête forgée et pas seulement depuis le
+  formulaire, puisque c'est l'action qui fait foi : durée au-delà de `DUREE_MAX_JOURS`, dossier
+  `CANCELLED` ou `DONE`, dossier en `WATCH`, fiche dont le `username` est dans une allowlist, canal
+  dont la partie locale est un identifiant d'allowlist. Le dossier clos est celui qu'on oublie, D10
+  en faisant une règle de lecture autant que d'écriture. Et le pendant positif : la durée proposée
+  par le formulaire vaut `DUREE_DEFAUT_JOURS` et non le plafond, sans quoi D9 bis n'a rien
+  produit.
+- Fusion de deux fiches portant chacune une participation, dont une sur un dossier commun : le plan
+  de fusion annonce le déplacement avant de l'exécuter, la participation en collision est nommée, et
+  `SELECT count(*) FROM "CaseParticipation" WHERE "personId" = '<source>';` rend zéro après coup sans
+  qu'aucun droit n'ait disparu du dossier.
+- Bascule d'une fiche locale vers `BETA` sous une participation vivante, en relançant `pnpm sync`
+  après avoir renseigné l'identifiant côté amont : la ligne de journal est écrite, la participation
+  est toujours là, et son canal est marqué mort à l'écran s'il venait de la fiche.
 - Sans session, **chaque fichier `"use server"` de `src/`** redirige sans avoir lu la base. La liste
   se refait par `grep -rln '"use server"' src/` plutôt que de se recopier d'ici, et les onze actions
   de l'étape 1 en sont le cœur. Le plus simple est de les appeler depuis un navigateur sans cookie et
