@@ -856,30 +856,64 @@ la main. Sans cette règle, le déclaré ment en quelques semaines. La collecte 
 filet : elle révèle les accès accordés hors de l'outil, ce qui permet de les
 régulariser au lieu de les découvrir au départ de la personne.
 
-Un profil est un ensemble d'accès associé à un rôle. L'onboarding applique un profil,
-l'offboarding le retire, ce qui rend les deux symétriques par construction. Un accès
-hors profil porte une justification et une échéance. Un accès élevé porte une échéance
-obligatoire et ne se reconduit jamais par prolongation de mission, sans quoi un rôle
-d'administration se renouvelle silencieusement.
+Un profil est un ensemble d'accès associé à un rôle. Il vit dans le fichier de
+politique et non en base, et le dossier fige la clé de celui qu'il applique : sans
+elle, un plan recalculé ne retrouverait aucune de ses étapes d'octroi et se déclarerait
+obsolète tout seul. Une clé retirée de la politique cesse donc de résoudre, et c'est
+voulu, le dossier disant ce qui a été choisi ce jour-là et non ce qui existe
+aujourd'hui.
+
+**L'arrivée et le départ ne sont pas symétriques, et ne peuvent pas l'être.** Une
+arrivée applique un profil, c'est-à-dire une déclaration. Un départ ne le retire pas :
+il révoque ce que la collecte a constaté sur la personne, compte par compte. Couper sur
+une déclaration supposerait que rien n'a bougé depuis, quand tout le reste de ce
+document part de l'inverse, et laisserait ouvert précisément ce qu'aucun profil n'avait
+prévu. La symétrie livrée est celle du dossier et du plan, un seul modèle et un sens,
+pas celle du profil.
+
+Un accès hors profil porte une justification et une échéance. Un accès élevé porte une
+échéance obligatoire et ne se reconduit jamais par prolongation de mission, sans quoi
+un rôle d'administration se renouvelle silencieusement.
 
 ### Qui agit, et comment on valide
 
-Seule l'équipe transverse agit. Il n'y a pas de délégation aux leads dans cette
-version : elle ajouterait un modèle d'autorisation et des demandes en attente pour un
-besoin qui n'est pas là.
+**Seuls agissent ceux que l'environnement autorise.** La liste qui les nomme vit hors
+du dépôt, avec la configuration de déploiement, voir §3.1. Ce n'est pas celle qui dit
+l'appartenance à l'incubateur, laquelle se déclare dans la politique et se calcule, voir
+§2.3 : rien n'oblige les deux à coïncider, et les confondre ferait lire une règle
+d'autorisation là où il n'y a qu'un rattachement. Il n'y a pas de délégation aux leads
+dans cette version : elle ajouterait un modèle d'autorisation et des demandes en attente
+pour un besoin qui n'est pas là.
 
-La validation se réduit donc à ce qui la justifie, regarder avant d'agir : le plan est
-calculé et figé avec son empreinte, l'opérateur le lit et confirme, l'empreinte est
-recalculée au démarrage de l'exécution et un écart repasse en confirmation, tout est
-journalisé nominativement.
+**Valider veut dire deux choses distinctes, à deux étages.** Sur le plan, c'est
+regarder avant d'agir : il est calculé et figé avec son empreinte, l'opérateur le lit
+et confirme, l'empreinte est recalculée au démarrage de l'exécution, et un écart
+repasse en confirmation. Sur l'étape, c'est le second regard : une étape peut nommer
+qui doit la faire et qui doit croire ce qui y est déclaré, et tant que ce regard n'a
+pas eu lieu, elle n'est pas soldée et le dossier ne se clôt pas. Les deux étages sont
+indépendants, le régime d'écriture du second est décrit en §3.4, et tout est
+journalisé nominativement aux deux.
 
-Pas d'approbateurs multiples, pas de fenêtre de rétractation, pas de quorum. Ces
-mécanismes protègent contre le fait qu'une personne décide seule pour une autre, ce
-qui n'arrive pas tant que la même équipe demande et exécute. Seul garde-fou conservé :
-le plafond de masse.
+**Le porteur passe avant l'opérateur devant son propre dossier.** Sans cette priorité,
+quelqu'un instruirait son propre départ et validerait ses propres cases. Elle lui
+retire la signature et non le pointage : un opérateur qui part coche ses étapes, celles
+qu'un contrôleur attend restent en attente, et c'est la règle qui interdit de valider
+sa propre déclaration, comparée sur le nom et non sur le rôle, qui l'empêche de les
+signer. La lui retirer au pointage aussi rendait son propre départ non enregistrable,
+sur un outil qui compte un mainteneur.
 
-Le jour où la délégation arrivera, elle se greffera ici sans toucher au reste : un
-plan créé par un lead naîtra en attente au lieu de naître confirmable.
+Pas d'approbateurs multiples, pas de fenêtre de rétractation, pas de quorum. Ce qui
+protège contre le fait qu'une personne décide seule pour une autre est le second
+regard, posé étape par étape là où il vaut la peine, plutôt qu'un rite appliqué à tout.
+Seul garde-fou de volume conservé : le plafond de masse.
+
+**La délégation, quand elle arrivera, ne se greffera pas où ce document l'avait
+prévu.** La prévision décrivait une délégation de l'initiative, un lead dont le plan
+naîtrait en attente au lieu de naître confirmable. Cette forme ne tient pas : un plan
+ne porte pas d'état propre, il se déduit de ses étapes. Et ce qui se prépare est autre
+chose, une délégation de l'exécution déclarative, où quelqu'un qui n'est pas opérateur
+voit un dossier et y pointe les étapes qui le nomment, sans en calculer ni en confirmer
+aucun. L'attente était bien le mécanisme, elle vit sur l'étape et non sur le plan.
 
 ---
 
@@ -944,6 +978,10 @@ paquet est donc à suivre, et à relever avant ce retrait.
 - Droits réels de l'incubateur sur son organisation Sentry, hébergée chez beta.gouv.
 - Ce que l'API de l'instance Vaultwarden expose réellement, avant de fixer son tier.
 - Frontière définitive avec `teams-auto` pour le volet Entra.
+- Le second regard n'est posé par aucune origine : ni les connecteurs, ni les profils,
+  ni les modèles de plan ne nomment de contrôleur, si bien qu'aucune étape n'en attend
+  un aujourd'hui. Tant que ça dure, la moitié « personne n'instruit son propre départ de
+  bout en bout » n'est tenue par aucune ligne de code écrite pour elle.
 - Rotation du triplet OVH avant toute mise en service d'un chemin d'écriture.
 - Porteur du jeton SCIM Notion : compte de service propriétaire de l'organisation, ou à
   défaut rotation avant toute mutation de rôle de son porteur.
