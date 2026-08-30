@@ -568,12 +568,14 @@ après `prisma migrate dev --create-only` (D7 bis) :
 ```sql
 -- Prisma ne sait pas exprimer un index partiel, d'ou l'ecriture a la main ; il n'y voit
 -- pas de derive et le laisse en place. La clause WHERE ne sert pas a autoriser plusieurs
--- lignes nulles, PostgreSQL les autorise deja sous un index unique ordinaire : elle sert
--- a ne pas indexer la tres grande majorite des fiches, qui n'ont pas d'adresse de
--- communication.
+-- lignes nulles, PostgreSQL les autorise deja sous un index unique ordinaire : elle
+-- borne l'unicite aux fiches que la voie par adresse ouvre reellement. L'etendre aux
+-- fiches collectees casserait la collecte de nuit le jour ou deux membres partagent une
+-- boite d'equipe, sans qu'aucune saisie soit en cause et sans que personne ne puisse
+-- corriger, ces fiches n'etant pas editables.
 CREATE UNIQUE INDEX "Person_communicationEmail_unique"
   ON "Person" ("communicationEmail")
-  WHERE "communicationEmail" IS NOT NULL;
+  WHERE "communicationEmail" IS NOT NULL AND "source" = 'LOCAL';
 ```
 
 **Ce que cette écriture à la main coûte, et pourquoi elle est quand même assumée.** À la différence
@@ -1201,7 +1203,8 @@ clients. Au-delà :
 - Après la migration, `pnpm db:generate` puis redémarrage de `pnpm dev`, sans exception : le
   typecheck passerait pendant que le runtime refuserait `participations`.
 - **Avant d'écrire la migration**, et pas après :
-  `SELECT "communicationEmail", count(*) FROM "Person" WHERE "communicationEmail" IS NOT NULL GROUP
+  `SELECT "communicationEmail", count(*) FROM "Person" WHERE "communicationEmail" IS NOT NULL AND
+  "source" = 'LOCAL' GROUP
   BY 1 HAVING count(*) > 1;` doit rendre zéro ligne. Sinon la migration échoue au déploiement, et
   c'est là que se décide lequel des deux gestes de sortie de D7 bis s'applique.
 - L'index unique partiel tient : déclarer la même `communicationEmail` sur deux fiches est refusé par
@@ -1238,8 +1241,10 @@ clients. Au-delà :
   (`src/lib/auth.ts:56-62`) et ne bénéficie donc d'aucun élargissement.
 - `SELECT count(*) FROM "CaseParticipation" p LEFT JOIN "AccessCase" c ON c.id = p."accessCaseId"
   WHERE c.id IS NULL;` rend zéro, avant comme après suppression d'un dossier.
-- `ACTIONS_ENABLED` reste à `false` pendant tout le parcours, et aucun appel sortant n'a lieu : ni
-  l'octroi, ni la connexion, ni le pointage n'invoquent de connecteur.
+- `ACTIONS_ENABLED` reste à `false` pendant tout le parcours : ni l'octroi, ni la connexion, ni le
+  pointage n'invoquent de connecteur. Le seul appel sortant du parcours est l'envoi SMTP du lien,
+  qui ne passe par aucun connecteur et n'est donc gouverné par aucun drapeau d'exécution. En
+  développement il aboutit dans Mailpit, et c'est ce qu'on vérifie.
 - Relecture de la Definition of Done du ticket point par point, en particulier « le contrôle est fait
   dans la page et l'action » : ouvrir `src/proxy.ts` et confirmer qu'il n'a pas bougé. Le dernier
   point est à amender avant d'être coché (D19).
