@@ -696,6 +696,15 @@ model PlanTemplateStep {
 
   riskLevel RiskLevel @default(LOW)
 
+  /// Qui doit faire ce geste dans les plans que ce modele alimente. Defaut a
+  /// OPERATOR : c'est ce que veulent dire les etapes deja ecrites.
+  expectedActor StepActor @default(OPERATOR)
+
+  /// Qui doit controler ce qui y sera declare, ou NULL quand la declaration se croit
+  /// sur parole. Les paires admises sont celles de combinaisonValide, et l'ecriture
+  /// du modele les refuse : aucune CHECK ne la double, voir PlanStep.validationBy.
+  validationBy StepActor?
+
   template PlanTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
