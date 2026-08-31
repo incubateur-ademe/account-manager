@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 process.env["DATABASE_URL"] ??= "postgresql://localhost:5432/inutilise";
 process.env["ESPACE_MEMBRE_API_KEY"] ??= "inutilisee";
@@ -70,6 +70,14 @@ vi.stubGlobal("fetch", (cible: unknown) => {
   throw new Error(`appel sortant interdit sans session : ${url}`);
 });
 
+// Un `fetch` piégé qui survivrait à ce fichier ferait échouer ailleurs des tests qui
+// n'ont rien demandé, et le diagnostic pointerait le mauvais fichier. L'isolation par
+// défaut de Vitest suffirait aujourd'hui, mais elle est un réglage et non une garantie
+// de ce fichier.
+afterAll(() => {
+  vi.unstubAllGlobals();
+});
+
 /**
  * Un module marqué `"use server"` en tête n'exporte que des actions serveur : les
  * énumérer donne le parc du jour, là où une liste écrite à la main se périme au
@@ -80,7 +88,12 @@ vi.stubGlobal("fetch", (cible: unknown) => {
  * personne ici. Les mises en page en sont absentes, aucune n'en déclarant, et la
  * racine ne s'importe pas hors du rendu de Next.
  */
-const MARQUEUR = /^"use server";$/m;
+// En tête de ligne, et les guillemets comme le point-virgule sont libres : Next accepte
+// les deux formes, et un module écrit autrement passerait sans être joué, ce que ce
+// balayage existe précisément pour empêcher. L'absence d'indentation est ce qui sépare
+// une directive de module d'une directive posée dans une fermeture, laquelle ne porte
+// aucun export et n'a donc rien à énumérer.
+const MARQUEUR = /^["']use server["'];?\s*$/m;
 const SOURCES = import.meta.glob("./**/*.{ts,tsx}", {
   query: "?raw",
   import: "default",
