@@ -26,6 +26,8 @@ export interface EtatLancement {
 let lancementEnCours = false;
 
 export async function lancerCollecte(): Promise<EtatLancement> {
+  await requireOperateur();
+
   const maintenant = new Date();
 
   if (lancementEnCours) {

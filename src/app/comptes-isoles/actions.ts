@@ -5,6 +5,7 @@ import { actionTracee } from "@/lib/actions";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { fetchMemberDetail } from "@/lib/espace-membre";
+import { requireOperateur } from "@/lib/session";
 
 /**
  * `confirmationRequise` porte le refus qui attend une confirmation, plutôt que de
@@ -32,6 +33,8 @@ export async function rattacherIdentite(
   _etat: EtatRattachement,
   formData: FormData,
 ): Promise<EtatRattachement> {
+  await requireOperateur();
+
   const id = String(formData.get("id") ?? "").trim();
   const cible = String(formData.get("cible") ?? "").trim();
 

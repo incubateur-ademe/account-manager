@@ -42,6 +42,8 @@ interface Props {
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  await requireOperateur();
+
   const { ghid } = await params;
   const startup = await prisma.startup.findUnique({ where: { ghid }, select: { name: true } });
 

@@ -4,6 +4,7 @@ import { normaliserIdentifiant } from "@/core/fiche-manuelle";
 import { actionTracee } from "@/lib/actions";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
+import { requireOperateur } from "@/lib/session";
 
 export type EtatCreation = { erreur: string } | null;
 
@@ -19,6 +20,8 @@ export async function creerFichePourCompte(
   _etat: EtatCreation,
   formData: FormData,
 ): Promise<EtatCreation> {
+  await requireOperateur();
+
   const id = String(formData.get("id") ?? "").trim();
   const nom = String(formData.get("nom") ?? "").trim();
 

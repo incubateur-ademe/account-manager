@@ -2,6 +2,7 @@
 
 import { actionTracee } from "@/lib/actions";
 import { prisma } from "@/lib/db";
+import { requireOperateur } from "@/lib/session";
 
 export type EtatRevue = { erreur: string } | null;
 
@@ -12,6 +13,8 @@ export type EtatRevue = { erreur: string } | null;
  * signaler.
  */
 export async function enregistrerRevue(_etat: EtatRevue, formData: FormData): Promise<EtatRevue> {
+  await requireOperateur();
+
   const key = String(formData.get("key") ?? "").trim();
 
   if (!key) {
