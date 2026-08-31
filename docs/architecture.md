@@ -440,7 +440,10 @@ départage, faute de quoi deux étapes de même rang changeraient d'ordre d'un a
 l'autre sous une liste numérotée.
 
 **L'empreinte ne porte que ce qui engage** : le système visé, la capacité, l'action, la
-clé d'idempotence et les paramètres. Ni les libellés, ni l'ordre. Elle répond à une
+clé d'idempotence, les paramètres, l'acteur attendu et le contrôleur. Ni les libellés, ni
+l'ordre. Les deux derniers y sont parce qu'une étape confiée à la personne concernée
+n'est pas la même étape que la même confiée à un opérateur, et qu'un second regard
+retiré change ce qu'on approuve. Elle répond à une
 seule question, celle de savoir si ce qu'on s'apprête à exécuter est encore ce qui a été
 approuvé, une collecte ayant pu passer entre les deux. Un plan cesse d'être valide de
 deux façons qu'il ne faut pas confondre : il **périme** par le temps, ce qui a été
