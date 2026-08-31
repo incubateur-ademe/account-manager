@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { Capability, PlannedStep, RiskLevel } from "@/core/connector";
+import type { Acteur } from "@/core/dossier";
 import type { EtapeEcartee, OrigineDEtapes, OrigineEtape } from "@/core/plan";
 import type { PlanKind, RiskLevel as RisqueDeclare, TemplateKind } from "@/generated/prisma/enums";
 
@@ -138,6 +139,15 @@ export interface EtapeDeModele {
   /** Ce qu'il faut constater pour cocher. Sans lui, « fait » ne veut rien dire. */
   critere: string;
   risque: RisqueDeclare;
+  /** Qui doit faire ce geste dans les plans que ce modèle alimente. */
+  acteur: Acteur;
+  /**
+   * Qui doit contrôler ce qui y sera déclaré, ou rien quand la déclaration se croit
+   * sur parole. Les paires admises sont celles de `combinaisonValide`, et l'écriture
+   * du modèle les refuse : une ligne fautive murerait l'ouverture de tout dossier que
+   * ce modèle touche, loin de l'écran qui l'a écrite.
+   */
+  controleur: Acteur | null;
   saisie: SaisieAttendue | null;
   /**
    * Vrai quand la valeur stockée en guise de saisie n'en est pas une. L'étape est
@@ -218,6 +228,11 @@ function etapePlanifiee(
       saisieObligatoire: etape.saisie?.obligatoire ?? null,
     },
     riskLevel: RISQUE[etape.risque],
+    // Hors de `params`, et c'est voulu : `empreinteDuPlan` lit ces deux valeurs à
+    // part, les y remettre les compterait deux fois et déplacerait l'empreinte de
+    // toute étape déjà figée.
+    expectedActor: etape.acteur,
+    ...(etape.controleur ? { validationBy: etape.controleur } : {}),
     expectedState: {},
     // Sans le propriétaire : deux startups qui déclarent le même geste ne le font
     // faire qu'une fois, et la seconde figure dans les écartées. Le suffixe qui rend

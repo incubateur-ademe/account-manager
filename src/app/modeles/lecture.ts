@@ -1,3 +1,4 @@
+import type { Acteur } from "@/core/dossier";
 import { CLE_INCUBATEUR, type SaisieAttendue, saisieAttendueSchema } from "@/core/modele-plan";
 import type { RiskLevel, TemplateKind } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/db";
@@ -23,6 +24,8 @@ export interface EtapeAffichee {
   marcheASuivre: string | null;
   lien: string | null;
   risque: RiskLevel;
+  acteur: Acteur;
+  controleur: Acteur | null;
   saisie: SaisieAttendue | null;
   /**
    * Vrai quand la valeur stockée n'est pas une saisie attendue. L'étape s'affiche
@@ -50,6 +53,8 @@ function etapeAffichee(etape: LigneDEtape & { id: string }): EtapeAffichee {
     marcheASuivre: etape.runbook,
     lien: etape.deeplink,
     risque: etape.riskLevel,
+    acteur: etape.expectedActor,
+    controleur: etape.validationBy,
     saisie: saisie?.success === true ? saisie.data : null,
     saisieIllisible: saisie !== null && !saisie.success,
   };

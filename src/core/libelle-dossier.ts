@@ -1,4 +1,4 @@
-import type { EtatDossier, SensDossier } from "@/core/dossier";
+import type { Acteur, EtatDossier, SensDossier } from "@/core/dossier";
 
 /**
  * Ce qu'un dossier dit de lui-même selon son sens.
@@ -130,4 +130,16 @@ export const LIBELLE_ETAT_DOSSIER: Record<EtatDossier, string> = {
   CONFIRMED: "confirmé",
   CANCELLED: "annulé",
   DONE: "clos",
+};
+
+/**
+ * Qui agit sur une étape, dit en français et au nominatif. Le vocabulaire vit ici et
+ * non dans l'écran des modèles : l'écriture d'un modèle refuse une répartition
+ * impossible par une phrase, et cette phrase se compose côté serveur là où l'écran qui
+ * offre les mêmes mots est un composant client.
+ */
+export const LIBELLE_ACTEUR: Record<Acteur, string> = {
+  OPERATOR: "un opérateur",
+  SUBJECT: "la personne concernée",
+  DELEGATE: "un délégué",
 };

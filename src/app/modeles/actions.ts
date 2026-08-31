@@ -1,5 +1,6 @@
 "use server";
 
+import type { Acteur } from "@/core/dossier";
 import { type SaisieAttendue, saisieAttendueSchema } from "@/core/modele-plan";
 import type { RiskLevel, TemplateKind } from "@/generated/prisma/enums";
 import {
@@ -54,6 +55,35 @@ function lireRisque(formData: FormData): RiskLevel {
   return valeur === "HIGH" || valeur === "MEDIUM" ? valeur : "LOW";
 }
 
+const ACTEURS: readonly Acteur[] = ["OPERATOR", "SUBJECT", "DELEGATE"];
+
+function estActeur(valeur: string): valeur is Acteur {
+  return (ACTEURS as readonly string[]).includes(valeur);
+}
+
+/**
+ * Les deux rôles d'une étape, et ils refusent une valeur inconnue au lieu de retomber
+ * sur un défaut comme `lireRisque`. Retomber en silence sur « aucun contrôleur »
+ * retirerait un contrôle qu'un opérateur croit avoir posé, ce qui est le sens
+ * dangereux ; retomber sur « à l'opérateur » relèverait de la même faute.
+ */
+function lireActeur(formData: FormData): Acteur | Refus {
+  const valeur = texte(formData, "acteur");
+  return estActeur(valeur)
+    ? valeur
+    : { erreur: "Acteur inconnu : dites qui doit faire cette étape." };
+}
+
+function lireControleur(formData: FormData): Acteur | null | Refus {
+  const valeur = texte(formData, "controleur");
+  if (!valeur) {
+    return null;
+  }
+  return estActeur(valeur)
+    ? valeur
+    : { erreur: "Contrôleur inconnu : dites qui doit relire cette étape, ou personne." };
+}
+
 /**
  * La saisie attendue, telle que le formulaire l'exprime : un libellé vide dit que
  * l'étape ne demande qu'une case cochée. Validée avant d'atteindre la colonne, sans
@@ -82,12 +112,24 @@ function lireEtape(formData: FormData): EtapeSaisie | Refus {
     return saisie;
   }
 
+  const acteur = lireActeur(formData);
+  if (typeof acteur !== "string") {
+    return acteur;
+  }
+
+  const controleur = lireControleur(formData);
+  if (controleur !== null && typeof controleur !== "string") {
+    return controleur;
+  }
+
   return {
     titre: texte(formData, "titre"),
     critere: texte(formData, "critere"),
     marcheASuivre: texte(formData, "marcheASuivre") || null,
     lien: texte(formData, "lien") || null,
     risque: lireRisque(formData),
+    acteur,
+    controleur,
     saisie,
   };
 }

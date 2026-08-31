@@ -334,6 +334,32 @@ export function peutValider(etape: EtapeAValider, valideur: Valideur): Verdict {
 }
 
 /**
+ * Ce qu'une déclaration ferme, sans regarder son contrôle.
+ *
+ * Dit une fois et par un dictionnaire exhaustif : la même liste répond à deux questions
+ * qui n'ont rien à voir, celle de l'état du plan et celle du second regard qu'un
+ * pointage réclame, et le jour où une valeur s'ajoute à l'énumération, le typecheck
+ * tombe ici plutôt que de la compter en silence pour non soldée aux deux endroits.
+ *
+ * « Déjà absent » et « déjà présent » ferment autant que « fait », c'est le cas nominal
+ * quand quelqu'un d'autre est passé avant. « Écartée » aussi, à la différence près
+ * qu'elle porte une raison. L'échec ne ferme rien : l'étape est de nouveau à faire.
+ */
+const SOLDE: Record<EtatEtape, boolean> = {
+  PENDING: false,
+  SKIPPED: true,
+  SUCCEEDED: true,
+  ALREADY_ABSENT: true,
+  ALREADY_PRESENT: true,
+  STALE: false,
+  FAILED: false,
+};
+
+export function etatQuiSolde(etat: EtatEtape): boolean {
+  return SOLDE[etat];
+}
+
+/**
  * Une étape qu'on ne reverra plus : elle a été traitée, ou écartée en connaissance de
  * cause, et rien n'attend plus sur ce qui en a été dit.
  *
@@ -345,22 +371,13 @@ export function estSoldee(etape: EtapeSuivie): boolean {
   if (etape.validation === "AWAITING" || etape.validation === "REFUSED") {
     return false;
   }
-  return (
-    etape.etat === "SUCCEEDED" ||
-    etape.etat === "ALREADY_ABSENT" ||
-    etape.etat === "ALREADY_PRESENT" ||
-    etape.etat === "SKIPPED"
-  );
+  return etatQuiSolde(etape.etat);
 }
 
 /**
  * Où en est un plan, déduit de ses étapes et jamais posé à la main : un plan dont
  * l'état ne se lit pas dans ses étapes finit par affirmer une chose que le détail
  * dément.
- *
- * « Déjà absent » et « déjà présent » valent réussite, c'est le cas nominal quand
- * quelqu'un d'autre est passé avant. « Ignorée » aussi, à la différence près qu'elle
- * porte une raison.
  */
 export function etatApresPointage(etapes: readonly EtapeSuivie[]): EtatPlan {
   if (etapes.length === 0) {

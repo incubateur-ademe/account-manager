@@ -8,7 +8,7 @@ import {
   modeleDuPlan,
 } from "@/core/modele-plan";
 import { startupsEffectives } from "@/core/rattachement-startup";
-import type { PlanKind, RiskLevel } from "@/generated/prisma/enums";
+import type { PlanKind, RiskLevel, StepActor } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/db";
 
 /**
@@ -26,6 +26,8 @@ export const SELECTION_ETAPE = {
   doneWhen: true,
   input: true,
   riskLevel: true,
+  expectedActor: true,
+  validationBy: true,
 } as const;
 
 export interface LigneDEtape {
@@ -37,6 +39,8 @@ export interface LigneDEtape {
   doneWhen: string;
   input: unknown;
   riskLevel: RiskLevel;
+  expectedActor: StepActor;
+  validationBy: StepActor | null;
 }
 
 interface LigneDeModele {
@@ -81,6 +85,8 @@ function modeleDeLaLigne(ligne: LigneDeModele): ModeleDePlan {
         lien: etape.deeplink,
         critere: etape.doneWhen,
         risque: etape.riskLevel,
+        acteur: etape.expectedActor,
+        controleur: etape.validationBy,
         ...saisieDeLEtape(etape),
       }),
     ),

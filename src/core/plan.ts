@@ -126,7 +126,19 @@ export interface EtapeAssemblee {
   ordre: number;
 }
 
-export type RaisonDEcart = "doublon" | "non-autorise" | "saisie-illisible";
+/**
+ * Pourquoi une étape proposée n'a pas été retenue.
+ *
+ * `doublon-sans-controle` est un doublon comme les autres, à ceci près que les deux
+ * exemplaires ne demandaient pas la même chose : celui qu'on garde se croit sur
+ * parole, celui qu'on écarte réclamait un second regard. Le dire à part est le seul
+ * moyen que la perte se voie, la règle du premier arrivé restant entière.
+ */
+export type RaisonDEcart =
+  | "doublon"
+  | "doublon-sans-controle"
+  | "non-autorise"
+  | "saisie-illisible";
 
 export interface EtapeEcartee {
   etape: PlannedStep;
@@ -171,6 +183,12 @@ function rangDeLOrigine(origine: OrigineEtape): [number, string] {
  * origines, parce que c'est la clé qui dit « ce geste-là, sur ce système-là, pour
  * cette personne-là ».
  *
+ * Deux exemplaires du même geste peuvent en revanche ne pas demander la même chose
+ * depuis qu'une étape sait nommer son contrôleur : celui qui gagne peut se croire sur
+ * parole là où le perdant réclamait un second regard, et sa répartition est la seule
+ * qui entre dans l'empreinte, donc dans ce qu'on approuve en confirmant. La règle du
+ * premier arrivé ne bouge pas, la raison de l'écart le dit.
+ *
  * Rien n'accède ici à la base ni à l'horloge : l'ordre d'un plan doit se rejouer à
  * l'identique, sans quoi son empreinte changerait d'un calcul à l'autre et un plan
  * confirmé se dirait obsolète tout seul.
@@ -184,15 +202,20 @@ export function assembler({ origines }: { origines: readonly OrigineDEtapes[] })
 
   const etapes: EtapeAssemblee[] = [];
   const ecartees: EtapeEcartee[] = [];
-  const vues = new Set<string>();
+  const vues = new Map<string, PlannedStep>();
 
   for (const { origine, etapes: proposees } of triees) {
     for (const etape of proposees) {
-      if (vues.has(etape.idempotencyKey)) {
-        ecartees.push({ etape, origine, raison: "doublon" });
+      const retenue = vues.get(etape.idempotencyKey);
+      if (retenue) {
+        ecartees.push({
+          etape,
+          origine,
+          raison: etape.validationBy && !retenue.validationBy ? "doublon-sans-controle" : "doublon",
+        });
         continue;
       }
-      vues.add(etape.idempotencyKey);
+      vues.set(etape.idempotencyKey, etape);
       etapes.push({ etape, origine, ordre: etapes.length });
     }
   }

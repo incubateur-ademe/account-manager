@@ -7,6 +7,7 @@ import {
   dossierVivant,
   ETATS_VIVANTS,
   etatDUnPlanRemplace,
+  etatQuiSolde,
   peutAnnuler,
   peutClore,
   peutConfirmer,
@@ -296,9 +297,9 @@ export async function pointerEtape(
   const saisie = origine.data?.saisie ?? null;
 
   // « Déjà présent » et « déjà absent » affirment que le geste a eu lieu, quelqu'un
-  // d'autre étant passé avant : ils soldent l'étape au même titre que « fait », donc
-  // ils lui réclament la même valeur. « Écartée » et « échec » n'affirment rien, et
-  // sont les seuls à s'en dispenser.
+  // d'autre étant passé avant : ils le déclarent au même titre que « fait », donc ils
+  // lui réclament la même valeur. « Écartée » et « échec » n'affirment rien, et sont
+  // les seuls à s'en dispenser.
   const critereConstate =
     nouvelEtat === "SUCCEEDED" ||
     nouvelEtat === "ALREADY_PRESENT" ||
@@ -317,15 +318,19 @@ export async function pointerEtape(
   // affichée sous un geste que personne n'a fait.
   const valeur = critereConstate && saisie && reponse ? reponse : null;
 
-  // Le contrôle ne commence qu'une fois le geste déclaré fait, et il est déjà fait
-  // quand celui qui déclare se substitue à l'acteur attendu tout en portant le rôle
-  // qui contrôle : le journal montre alors les deux gestes d'une seule main, ce qui
-  // est le cas nominal d'un outil à un seul mainteneur.
+  // Le second regard suit ce qui solde l'étape, et non ce qui affirme le geste : ce
+  // sont deux questions, et `critereConstate` ne répond qu'à la première. Il est déjà
+  // porté quand celui qui déclare se substitue à l'acteur attendu tout en tenant le
+  // rôle qui contrôle : le journal montre alors les deux gestes d'une seule main, ce
+  // qui est le cas nominal d'un outil à un seul mainteneur.
   //
-  // Écartée ou en échec, il n'y a rien à contrôler : une étape qui attendrait un
-  // second regard sur un geste que personne n'affirme avoir fait empêcherait la
-  // clôture du dossier au nom d'une preuve qui n'a pas d'objet.
-  const validation = critereConstate
+  // L'échec ne solde rien, le plan retombe en partiellement exécuté et l'étape reste à
+  // reprendre : y attendre un contrôle bloquerait le dossier au nom d'une preuve qui
+  // n'a pas d'objet. L'écart, lui, solde et ferme le dossier, et le second regard n'y
+  // porte pas sur un geste que personne n'affirme mais sur la décision de ne pas le
+  // faire, laquelle a bien un objet. Sans lui, une raison de trois caractères soldait
+  // une étape que le plan confiait au regard d'un autre.
+  const validation = etatQuiSolde(nouvelEtat)
     ? validationApresPointage(
         etape.expectedActor as Acteur,
         etape.validationBy as Acteur | null,

@@ -22,6 +22,8 @@ const declaree = (titre: string, over: Partial<EtapeDeModele> = {}): EtapeDeMode
   lien: null,
   critere: `${titre} : c'est fait.`,
   risque: "LOW",
+  acteur: "OPERATOR",
+  controleur: null,
   saisie: null,
   saisieIllisible: false,
   ...over,
@@ -99,14 +101,16 @@ describe("étapes issues des modèles déclarés", () => {
   });
 
   it("assemble les trois modèles d'une personne rattachée sans lui demander deux fois le même geste", () => {
-    // Given un incubateur qui demande de signer la charte, et trois startups dont deux
-    // redemandent de présenter l'équipe et une redemande la charte.
+    // Given un incubateur qui demande de signer la charte sans contrôle, et trois
+    // startups dont deux redemandent de présenter l'équipe à l'identique, et une
+    // redemande la charte en la confiant à la personne concernée sous le regard d'un
+    // opérateur.
     const equipe = declaree("Présenter l'équipe");
     const modeles = [
       modele("zeta", [equipe, declaree("Rendre le badge zeta")]),
       incubateur([charte], true),
       modele("alpha", [equipe]),
-      modele("beta", [declaree("Signer la charte")]),
+      modele("beta", [declaree("Signer la charte", { acteur: "SUBJECT", controleur: "OPERATOR" })]),
     ];
 
     // When on assemble
@@ -130,12 +134,35 @@ describe("étapes issues des modèles déclarés", () => {
     expect(plan.etapes[0]?.etape.template?.owner).toBe(CLE_INCUBATEUR);
 
     // Then les deux étapes écartées le sont tout haut, avec la startup qui les portait
-    // et la raison de leur écart.
+    // et la raison de leur écart, et les deux raisons ne sont pas la même : celle de
+    // zeta redemandait mot pour mot ce que l'exemplaire retenu demande, celle de beta
+    // réclamait un second regard que l'exemplaire retenu ne réclame pas. Confondre les
+    // deux ferait disparaître un contrôle sous la phrase « déjà demandée plus haut ».
     expect(
       plan.ecartees.map(({ origine, raison, etape }) => [origine, raison, etape.idempotencyKey]),
     ).toEqual([
-      ["modele:startup:beta", "doublon", "modele:signer-la-charte"],
+      ["modele:startup:beta", "doublon-sans-controle", "modele:signer-la-charte"],
       ["modele:startup:zeta", "doublon", "modele:presenter-l-equipe"],
+    ]);
+
+    // Then le contrôleur de l'exemplaire écarté n'engage rien : l'étape retenue est
+    // celle de l'incubateur, sans contrôle, et l'empreinte ne compte qu'elle. C'est
+    // précisément ce que la raison distincte donne à lire, faute de quoi la même
+    // empreinte se ferait approuver pour deux plans qui ne demandent pas la même chose.
+    expect(plan.etapes[0]?.etape.validationBy).toBeUndefined();
+    const sansControleChezBeta = assemblage(
+      [
+        modele("zeta", [equipe, declaree("Rendre le badge zeta")]),
+        incubateur([charte], true),
+        modele("alpha", [equipe]),
+        modele("beta", [declaree("Signer la charte")]),
+      ],
+      "OFFBOARDING",
+    );
+    expect(sansControleChezBeta.empreinte).toBe(plan.empreinte);
+    expect(sansControleChezBeta.ecartees.map(({ raison }) => raison)).toEqual([
+      "doublon",
+      "doublon",
     ]);
 
     // Then l'assemblage est stable : l'ordre dans lequel les modèles sont fournis n'a
@@ -292,6 +319,8 @@ describe("étapes issues des modèles déclarés", () => {
       ["le titre", { titre: "Rendre le badge d'accès" }],
       ["le critère", { critere: "Le badge est détruit." }],
       ["le risque", { risque: "HIGH" }],
+      ["l'acteur attendu", { acteur: "SUBJECT" }],
+      ["le contrôleur", { controleur: "OPERATOR" }],
       ["le libellé de la saisie", { saisie: { libelle: "Numéro gravé", obligatoire: false } }],
       [
         "la saisie devenue obligatoire",
@@ -313,6 +342,19 @@ describe("étapes issues des modèles déclarés", () => {
     // Then la position, elle, n'engage rien : elle range l'écran, pas le geste.
     const deplacee = assemblage([incubateur([{ ...initiale, position: 7 }])], "OFFBOARDING");
     expect(deplacee.empreinte).toBe(reference.empreinte);
+
+    // Then une étape qui ne répartit rien pèse exactement ce qu'elle pesait avant que
+    // la question se pose : émettre « à l'opérateur, sans contrôle » là où rien n'était
+    // émis est indiscernable de ne rien émettre, `empreinteDuPlan` lisant déjà ces deux
+    // valeurs à part avec ce défaut. C'est ce qui garantit qu'aucun brouillon en vol ne
+    // se découvre obsolète le jour où les modèles savent nommer un contrôleur.
+    const muettes = reference.etapes.map(({ etape }) => {
+      const sansRepartition = { ...etape };
+      delete sansRepartition.expectedActor;
+      delete sansRepartition.validationBy;
+      return sansRepartition;
+    });
+    expect(empreinteDuPlan(muettes)).toBe(reference.empreinte);
   });
 
   it("écarte une étape à la saisie illisible, sauf si l'autorisation l'avait déjà neutralisée", () => {

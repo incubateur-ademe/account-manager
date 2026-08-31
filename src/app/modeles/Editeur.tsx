@@ -10,6 +10,8 @@ import { Input } from "@codegouvfr/react-dsfr/Input";
 import { Select } from "@codegouvfr/react-dsfr/Select";
 import { useActionState, useCallback, useState } from "react";
 
+import { type Acteur, combinaisonValide } from "@/core/dossier";
+import { LIBELLE_ACTEUR } from "@/core/libelle-dossier";
 import type { RiskLevel, TemplateKind } from "@/generated/prisma/enums";
 import { useFermetureApresSucces } from "@/ui/modale";
 import { messageObligatoire } from "@/ui/validation";
@@ -29,6 +31,23 @@ const RISQUE: Record<RiskLevel, string> = {
   HIGH: "Élevé",
 };
 
+/**
+ * Les rôles offerts au choix, plus celui que l'étape porte déjà quand il n'en est pas.
+ *
+ * `DELEGATE` reste hors de la liste tant qu'aucun droit par objet n'existe :
+ * `roleSurDossier` ne le rend jamais, si bien qu'une étape qui l'attend attendrait
+ * quelqu'un que rien ne peut désigner. Une ligne qui le porte déjà le garde en
+ * revanche, comme elle garde une paire que le serveur refusera : un choix absent de la
+ * liste ferait afficher le premier venu et le réécrirait au premier enregistrement,
+ * sans que personne ne l'ait demandé.
+ */
+const OFFERTS: readonly Acteur[] = ["OPERATOR", "SUBJECT"];
+
+function choix(retenu: Acteur | null, admis: (candidat: Acteur) => boolean): readonly Acteur[] {
+  const liste = OFFERTS.filter(admis);
+  return retenu !== null && !liste.includes(retenu) ? [...liste, retenu] : liste;
+}
+
 function Erreur({ etat }: { etat: EtatModele | null }) {
   return etat?.erreur ? (
     <p className={fr.cx("fr-error-text", "fr-mt-1v")} role="alert">
@@ -44,6 +63,8 @@ interface Valeurs {
   marcheASuivre: string;
   lien: string;
   risque: RiskLevel;
+  acteur: Acteur;
+  controleur: Acteur | null;
   saisieLibelle: string;
   saisieObligatoire: boolean;
 }
@@ -55,6 +76,8 @@ function valeursDe(defaut?: EtapeAffichee): Valeurs {
     marcheASuivre: defaut?.marcheASuivre ?? "",
     lien: defaut?.lien ?? "",
     risque: defaut?.risque ?? "LOW",
+    acteur: defaut?.acteur ?? "OPERATOR",
+    controleur: defaut?.controleur ?? null,
     saisieLibelle: defaut?.saisie?.libelle ?? "",
     saisieObligatoire: defaut?.saisie?.obligatoire ?? true,
   };
@@ -157,6 +180,61 @@ function ChampsDeLEtape({
             {(["LOW", "MEDIUM", "HIGH"] as const).map((risque) => (
               <option key={risque} value={risque}>
                 {RISQUE[risque]}
+              </option>
+            ))}
+          </Select>
+        </div>
+      </div>
+
+      <div className={fr.cx("fr-grid-row", "fr-grid-row--gutters")}>
+        <div className={fr.cx("fr-col-12", "fr-col-md-6")}>
+          <Select
+            label="Qui fait cette étape"
+            hint="Quel que soit ce choix, le pointage reste ouvert à un opérateur en substitution : aucune étape ne devient impointable."
+            nativeSelectProps={{
+              name: "acteur",
+              value: valeurs.acteur,
+              onChange: (evenement) => {
+                const acteur = evenement.target.value as Acteur;
+                // Le contrôleur déjà choisi peut devenir impossible : le laisser ferait
+                // soumettre une paire que le serveur refuse, sur un formulaire contrôlé
+                // dont le refus est un chemin prévu.
+                changer({
+                  acteur,
+                  ...(combinaisonValide(acteur, valeurs.controleur) ? {} : { controleur: null }),
+                });
+              },
+            }}
+          >
+            {choix(valeurs.acteur, () => true).map((acteur) => (
+              <option key={acteur} value={acteur}>
+                {LIBELLE_ACTEUR[acteur]}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className={fr.cx("fr-col-12", "fr-col-md-6")}>
+          <Select
+            label="Qui contrôle ce qui y sera déclaré"
+            hint={
+              valeurs.controleur === valeurs.acteur
+                ? "Tant que ce regard n'a pas eu lieu, l'étape n'est pas soldée et le dossier ne se clôt pas. Acteur et contrôleur portant ici le même rôle, personne ne se substitue à personne : il faudra deux noms d'opérateurs pour solder cette étape, sur n'importe quel dossier."
+                : "Tant que ce regard n'a pas eu lieu, l'étape n'est pas soldée et le dossier ne se clôt pas."
+            }
+            nativeSelectProps={{
+              name: "controleur",
+              value: valeurs.controleur ?? "",
+              onChange: (evenement) => {
+                changer({ controleur: (evenement.target.value || null) as Acteur | null });
+              },
+            }}
+          >
+            <option value="">Personne : cette étape se croit sur parole</option>
+            {choix(valeurs.controleur, (candidat) =>
+              combinaisonValide(valeurs.acteur, candidat),
+            ).map((candidat) => (
+              <option key={candidat} value={candidat}>
+                {LIBELLE_ACTEUR[candidat]}
               </option>
             ))}
           </Select>
@@ -408,6 +486,16 @@ export function Editeur({
               {etape.saisie ? (
                 <Badge severity="info" small noIcon>
                   {etape.saisie.obligatoire ? "valeur exigée" : "valeur demandée"}
+                </Badge>
+              ) : null}{" "}
+              {etape.acteur === "OPERATOR" ? null : (
+                <Badge severity="info" small noIcon>
+                  à {LIBELLE_ACTEUR[etape.acteur]}
+                </Badge>
+              )}{" "}
+              {etape.controleur ? (
+                <Badge severity="new" small noIcon>
+                  relue par {LIBELLE_ACTEUR[etape.controleur]}
                 </Badge>
               ) : null}
               <p className={fr.cx("fr-text--sm", "fr-mb-1v", "fr-mt-1v")}>
