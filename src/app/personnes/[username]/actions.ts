@@ -11,6 +11,7 @@ import {
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { policy } from "@/lib/policy";
+import { requireOperateur } from "@/lib/session";
 
 export type EtatDetachement = { erreur: string } | null;
 
@@ -26,6 +27,8 @@ export async function detacherIdentite(
   _etat: EtatDetachement,
   formData: FormData,
 ): Promise<EtatDetachement> {
+  await requireOperateur();
+
   const id = String(formData.get("id") ?? "").trim();
 
   if (!id) {
@@ -128,6 +131,8 @@ export async function rattacherAStartup(
   _etat: EtatRattachementStartup,
   formData: FormData,
 ): Promise<EtatRattachementStartup> {
+  await requireOperateur();
+
   const username = String(formData.get("username") ?? "").trim();
   const ghid = String(formData.get("startup") ?? "").trim();
   const saisie = String(formData.get("jusquAu") ?? "").trim();
@@ -239,6 +244,8 @@ export async function retirerRattachement(
   _etat: EtatRattachementStartup,
   formData: FormData,
 ): Promise<EtatRattachementStartup> {
+  await requireOperateur();
+
   const id = String(formData.get("id") ?? "").trim();
 
   const rattachement = await prisma.startupAssignment.findUnique({
@@ -310,6 +317,8 @@ export async function forcerAppartenance(
   _etat: EtatAppartenance,
   formData: FormData,
 ): Promise<EtatAppartenance> {
+  await requireOperateur();
+
   const username = String(formData.get("username") ?? "").trim();
   const sens = String(formData.get("sens") ?? "");
   const raison = String(formData.get("raison") ?? "").trim();
@@ -380,6 +389,8 @@ export async function libererAppartenance(
   _etat: EtatAppartenance,
   formData: FormData,
 ): Promise<EtatAppartenance> {
+  await requireOperateur();
+
   const username = String(formData.get("username") ?? "").trim();
 
   const personne = await prisma.person.findUnique({

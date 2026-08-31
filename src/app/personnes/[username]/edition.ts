@@ -83,6 +83,8 @@ function declaresLocaux(): string[] {
  * repassant jamais sur une identité déjà attribuée.
  */
 export async function modifierFiche(_etat: EtatEdition, formData: FormData): Promise<EtatEdition> {
+  await requireOperateur();
+
   const username = String(formData.get("username") ?? "").trim();
 
   const personne = await prisma.person.findUnique({
@@ -288,10 +290,6 @@ export async function renommerFiche(
   _etat: EtatIdentifiant,
   formData: FormData,
 ): Promise<EtatIdentifiant> {
-  // Avant toute lecture, contrairement aux autres refus de ce fichier qui ne rendent
-  // qu'un message : l'aperçu de fusion sort de la base les comptes des deux fiches,
-  // fournisseur et handle compris. Le proxy constate un cookie, il ne valide ni la
-  // session ni l'allowlist, et c'est ici que ça se fait.
   await requireOperateur();
 
   const username = String(formData.get("username") ?? "").trim();

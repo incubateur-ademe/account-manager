@@ -15,6 +15,16 @@ export interface Operateur {
  * Toute page ou action qui lit ou modifie des accès doit donc appeler ceci : c'est
  * ici, et nulle part ailleurs, que la session est réellement vérifiée.
  *
+ * Une action serveur l'appelle en première ligne, avant sa première lecture, et ne
+ * s'en remet pas à `actionTracee` qui l'appelle aussi : les refus qu'une action rend
+ * avant d'écrire distinguent un identifiant connu d'un identifiant inconnu, si bien
+ * que les laisser répondre avant la garde donne une énumération du référentiel, sans
+ * écriture et donc sans la moindre trace.
+ *
+ * Le `generateMetadata` d'une page relève de la même règle et ne s'en remet pas au
+ * composant qui le suit : il s'exécute pour son compte, et un titre qui nomme une
+ * fiche a déjà dit qu'elle existait.
+ *
  * L'appartenance à l'allowlist est revérifiée à chaque passage, et non tenue pour
  * acquise depuis la connexion. La session est un jeton signé qui porte le username
  * pour des semaines : sans cette relecture, retirer quelqu'un d'`OPERATORS` ne lui

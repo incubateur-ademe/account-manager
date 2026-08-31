@@ -2,6 +2,7 @@
 
 import { actionTracee } from "@/lib/actions";
 import { prisma } from "@/lib/db";
+import { requireOperateur } from "@/lib/session";
 
 export type EtatCloture = { erreur: string } | null;
 
@@ -11,6 +12,8 @@ export type EtatCloture = { erreur: string } | null;
  * plus. La collecte ne rouvrira pas ce constat tant que la situation dure.
  */
 export async function cloreConstat(_etat: EtatCloture, formData: FormData): Promise<EtatCloture> {
+  await requireOperateur();
+
   const dedupKey = String(formData.get("dedupKey") ?? "").trim();
   const raison = String(formData.get("raison") ?? "").trim();
 
