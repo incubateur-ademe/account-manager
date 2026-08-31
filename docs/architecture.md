@@ -440,7 +440,10 @@ départage, faute de quoi deux étapes de même rang changeraient d'ordre d'un a
 l'autre sous une liste numérotée.
 
 **L'empreinte ne porte que ce qui engage** : le système visé, la capacité, l'action, la
-clé d'idempotence et les paramètres. Ni les libellés, ni l'ordre. Elle répond à une
+clé d'idempotence, les paramètres, l'acteur attendu et le contrôleur. Ni les libellés, ni
+l'ordre. Les deux derniers y sont parce qu'une étape confiée à la personne concernée
+n'est pas la même étape que la même confiée à un opérateur, et qu'un second regard
+retiré change ce qu'on approuve. Elle répond à une
 seule question, celle de savoir si ce qu'on s'apprête à exécuter est encore ce qui a été
 approuvé, une collecte ayant pu passer entre les deux. Un plan cesse d'être valide de
 deux façons qu'il ne faut pas confondre : il **périme** par le temps, ce qui a été
@@ -894,6 +897,20 @@ pas eu lieu, elle n'est pas soldée et le dossier ne se clôt pas. Les deux éta
 indépendants, le régime d'écriture du second est décrit en §3.4, et tout est
 journalisé nominativement aux deux.
 
+**Ce sont les modèles de plan qui nomment l'acteur et le contrôleur d'une étape**, et
+l'écran qui les édite le propose. C'est de la donnée, pas du code : une répartition se
+décide là où le geste se déclare, elle se fige dans l'étape au calcul du plan, et une
+répartition impossible se refuse dès l'écriture du modèle plutôt qu'au moment
+d'assembler, loin de l'écran qui l'a écrite. Les connecteurs peuvent en nommer un aussi,
+le contrat le prévoit, et aucun ne le fait. Une étape qui ne nomme personne se croit sur
+parole, ce qui est le cas de toutes celles qu'aucun modèle n'a réparties.
+
+Un geste que deux origines demandent n'est retenu qu'une fois, sur la règle du premier
+arrivé, et les deux exemplaires ne réclament plus forcément le même regard : celui qui
+gagne peut se croire sur parole là où le perdant voulait un contrôle, et c'est sa
+répartition seule qui entre dans l'empreinte. L'écart le dit à part, sans quoi la perte
+serait indiscernable d'un doublon ordinaire.
+
 **Le porteur passe avant l'opérateur devant son propre dossier.** Sans cette priorité,
 quelqu'un instruirait son propre départ et validerait ses propres cases. Elle lui
 retire la signature et non le pointage : un opérateur qui part coche ses étapes, celles
@@ -901,6 +918,15 @@ qu'un contrôleur attend restent en attente, et c'est la règle qui interdit de 
 sa propre déclaration, comparée sur le nom et non sur le rôle, qui l'empêche de les
 signer. La lui retirer au pointage aussi rendait son propre départ non enregistrable,
 sur un outil qui compte un mainteneur.
+
+**Et sur un outil qui n'en compte qu'un, une étape sous contrôle rend son propre départ
+inclôturable.** Il la pointe, elle attend, il ne peut pas la signer, donc le plan ne se
+solde pas et la clôture refuse. Ce n'est pas un défaut mais le sens même de la règle : la
+seule façon de la satisfaire est qu'un second nom existe. La sortie est un geste de
+déploiement et non un geste dans l'outil, et elle vaut d'être connue avant d'en avoir
+besoin : la liste de secours et celle des opérateurs se fondent en une seule au moment de
+décider qui agit, si bien qu'un nom ajouté à la première est un opérateur de plein droit
+devant un dossier et peut porter le second regard.
 
 Pas d'approbateurs multiples, pas de fenêtre de rétractation, pas de quorum. Ce qui
 protège contre le fait qu'une personne décide seule pour une autre est le second
@@ -978,10 +1004,11 @@ paquet est donc à suivre, et à relever avant ce retrait.
 - Droits réels de l'incubateur sur son organisation Sentry, hébergée chez beta.gouv.
 - Ce que l'API de l'instance Vaultwarden expose réellement, avant de fixer son tier.
 - Frontière définitive avec `teams-auto` pour le volet Entra.
-- Le second regard n'est posé par aucune origine : ni les connecteurs, ni les profils,
-  ni les modèles de plan ne nomment de contrôleur, si bien qu'aucune étape n'en attend
-  un aujourd'hui. Tant que ça dure, la moitié « personne n'instruit son propre départ de
-  bout en bout » n'est tenue par aucune ligne de code écrite pour elle.
+- Un modèle de plan sait nommer un contrôleur, aucun n'en nomme sur ce déploiement, et
+  ni les connecteurs ni les profils n'en posent. La moitié « personne n'instruit son
+  propre départ de bout en bout » est donc tenue par une donnée et non par du code : elle
+  devient vraie le jour où un opérateur pose ce contrôleur sur les étapes de départ qu'il
+  juge sensibles, et ce geste n'est pas une livraison.
 - Rotation du triplet OVH avant toute mise en service d'un chemin d'écriture.
 - Porteur du jeton SCIM Notion : compte de service propriétaire de l'organisation, ou à
   défaut rotation avant toute mutation de rôle de son porteur.

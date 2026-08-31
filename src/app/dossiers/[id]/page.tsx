@@ -108,6 +108,7 @@ const CONTROLEUR: Record<Acteur, string> = {
 
 const ECART: Record<RaisonDEcart, string> = {
   doublon: "déjà demandée plus haut",
+  "doublon-sans-controle": "déjà demandée plus haut, sans son second regard",
   "non-autorise": "non autorisée sur ce compte",
   "saisie-illisible": "saisie attendue illisible",
 };
@@ -303,6 +304,10 @@ function titreDuGroupe(proprietaire: string | null, nomsDeStartup: ReadonlyMap<s
  * « L'une d'elles » sous une seule étape restante se lit comme une faute, et c'est le
  * cas le plus fréquent en fin de dossier : quand l'attente est la totalité des
  * restantes, la phrase le dit plutôt que d'en désigner une partie.
+ *
+ * Muette sur ce qui a été déclaré, et il faut qu'elle le reste : elle compte des
+ * étapes qu'elle ne lit pas une par une, et une étape écartée attend ce même regard
+ * sans que personne ait déclaré le geste fait.
  */
 function attenteDeControle(enAttente: number, restantes: number): string {
   if (enAttente === 0) {
@@ -311,14 +316,11 @@ function attenteDeControle(enAttente: number, restantes: number): string {
 
   let sujet: string;
   if (enAttente === restantes) {
-    sujet =
-      enAttente === 1
-        ? "Elle a été déclarée faite et attend"
-        : "Toutes ont été déclarées faites et attendent";
+    sujet = enAttente === 1 ? "Elle attend" : "Toutes attendent";
   } else if (enAttente === 1) {
-    sujet = "L'une d'elles a été déclarée faite et attend";
+    sujet = "L'une d'elles attend";
   } else {
-    sujet = `${enAttente} d'entre elles ont été déclarées faites et attendent`;
+    sujet = `${enAttente} d'entre elles attendent`;
   }
 
   return ` ${sujet} un second regard : une déclaration que personne n'a contrôlée ne solde pas son étape.`;
@@ -398,11 +400,13 @@ function Etape({
         </>
       ) : null}
       {/* Un refus a renvoyé l'étape à faire : sans ce badge, elle se relit comme une
-          étape que personne n'a jamais pointée. */}
+          étape que personne n'a jamais pointée. « Déclaration » et non « preuve » :
+          le refus l'a remise à `PENDING`, si bien que plus rien ici ne dit si ce qui a
+          été refusé était un geste donné pour fait ou la raison de l'avoir écarté. */}
       {validation === "REFUSED" ? (
         <>
           <Badge severity="error" small noIcon>
-            preuve refusée
+            déclaration refusée
           </Badge>{" "}
         </>
       ) : null}
@@ -470,7 +474,7 @@ function Etape({
       ) : null}
       {validation === "REFUSED" ? (
         <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-          <strong>Preuve refusée</strong>
+          <strong>Déclaration refusée</strong>
           {etape.validatedBy ? ` par ${etape.validatedBy}` : ""}
           {etape.validatedAt ? ` le ${dateLocale.format(etape.validatedAt)}` : ""}
           {etape.validationNote ? ` : ${etape.validationNote}` : ""}. L'étape est de nouveau à
@@ -499,6 +503,7 @@ function Etape({
       {pointable && controle ? (
         <Validation
           etapeId={etape.id}
+          ecart={etape.state === "SKIPPED"}
           possible={controle.possible}
           raison={controle.possible ? null : controle.raison}
         />
@@ -630,8 +635,10 @@ export default async function DossierPage({
         }),
     ).length ?? 0;
   // Comptées à part parce qu'elles ne se lisent pas comme les autres restantes : rien
-  // n'y reste à faire, quelqu'un a déjà déclaré le geste, et c'est le contrôle qui
-  // manque. Sans ce décompte, l'écran dirait « à faire » d'une étape faite.
+  // n'y reste à faire, quelqu'un a déjà déclaré quelque chose, et c'est le contrôle
+  // qui manque. Sans ce décompte, l'écran dirait « à faire » d'une étape déclarée.
+  // Ce qui a été déclaré n'est pas lu ici : une étape écartée attend ce regard comme
+  // une étape donnée pour faite, et le décompte ne les distingue pas.
   const enAttenteDeControle =
     plan?.steps.filter((etape) => etape.validation === "AWAITING").length ?? 0;
 

@@ -60,6 +60,13 @@ interface EtapeDeModeleEnBase {
   doneWhen: string;
   input: unknown;
   riskLevel: string;
+  /**
+   * Les deux colonnes de la répartition, requises ici comme en base : facultatives,
+   * ce double cesserait de décrire une ligne réelle sans que rien ne le dise, et
+   * `etapePlanifiee` émettrait `undefined` là où Prisma rend toujours une valeur.
+   */
+  expectedActor: Acteur;
+  validationBy: Acteur | null;
 }
 
 interface ModeleEnBase {
@@ -799,6 +806,8 @@ function modele(
       doneWhen: "C'est constaté.",
       input: null,
       riskLevel: "LOW",
+      expectedActor: "OPERATOR",
+      validationBy: null,
       ...etape,
     })),
   });
@@ -1192,5 +1201,64 @@ describe("la répartition des rôles, au moment de figer les étapes", () => {
       expectedActor: "OPERATOR",
       validationBy: "OPERATOR",
     });
+  });
+
+  it("fait descendre la répartition d'une étape de modèle jusqu'à la colonne du plan", async () => {
+    // Given un départ que deux étapes de modèle et un connecteur alimentent : la
+    // première étape confie le geste à la personne concernée sous le regard d'un
+    // opérateur, la seconde ne répartit rien.
+    base.identites.push(identite({ provider: "notion", matchMethod: "DECLARED" }));
+    modele(CLE_INCUBATEUR, false, [
+      {
+        key: "signer-la-decharge",
+        title: "Signer la décharge",
+        expectedActor: "SUBJECT",
+        validationBy: "OPERATOR",
+      },
+      { key: "rendre-le-materiel", title: "Rendre le matériel" },
+    ]);
+
+    // When on calcule le plan
+    const calcule = await calculerPlan("OFFBOARDING", PERSONNE, USERNAME, MAINTENANT);
+    expect(calcule.etapes.map(({ etape }) => etape.label)).toEqual([
+      "Signer la décharge",
+      "Rendre le matériel",
+      `Retirer ${USERNAME} du workspace Notion`,
+    ]);
+
+    // Then la répartition voyage hors de `params` : elle entre dans l'empreinte par
+    // ses propres termes, et l'y remettre la compterait deux fois.
+    const declaree = calcule.etapes[0]?.etape;
+    expect(declaree?.expectedActor).toBe("SUBJECT");
+    expect(declaree?.validationBy).toBe("OPERATOR");
+    expect(declaree?.params).not.toHaveProperty("acteur");
+    expect(declaree?.params).not.toHaveProperty("controleur");
+
+    // When on fige le plan
+    const dossier = await ouvrirDossier(PERSONNE, "OFFBOARDING", null);
+    await enregistrerPlan(dossier.id, calcule, "operatrice.exemple", MAINTENANT);
+
+    // Then la colonne porte ce que le modèle nommait, et l'assemblage n'a touché ni à
+    // l'un ni à l'autre : c'est la chaîne entière, de la ligne éditée à l'écran
+    // jusqu'à la valeur que la garde du pointage relira.
+    const etapes = base.plans[0]?.steps ?? [];
+    expect(etapes.map((etape) => etape.expectedActor)).toEqual(["SUBJECT", "OPERATOR", undefined]);
+    expect(etapes.map((etape) => etape.validationBy)).toEqual(["OPERATOR", undefined, undefined]);
+
+    // Then une étape de modèle qui ne répartit rien écrit quand même son acteur, là où
+    // une étape de connecteur laisse la colonne à son défaut : le modèle répond
+    // toujours à la question, le connecteur ne se la pose pas.
+    expect(etapes[1]).toHaveProperty("expectedActor");
+    expect(etapes[2]).not.toHaveProperty("expectedActor");
+
+    // Then le contrôleur nommé déplace l'empreinte : qui doit relire fait partie de ce
+    // qu'un opérateur approuve en confirmant.
+    base.modeles.length = 0;
+    modele(CLE_INCUBATEUR, false, [
+      { key: "signer-la-decharge", title: "Signer la décharge", expectedActor: "SUBJECT" },
+      { key: "rendre-le-materiel", title: "Rendre le matériel" },
+    ]);
+    const sansControle = await calculerPlan("OFFBOARDING", PERSONNE, USERNAME, MAINTENANT);
+    expect(sansControle.empreinte).not.toBe(calcule.empreinte);
   });
 });

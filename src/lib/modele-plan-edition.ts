@@ -1,3 +1,5 @@
+import { type Acteur, combinaisonValide } from "@/core/dossier";
+import { LIBELLE_ACTEUR } from "@/core/libelle-dossier";
 import {
   CLE_INCUBATEUR,
   cleDEtape,
@@ -160,6 +162,8 @@ export interface EtapeSaisie {
   marcheASuivre: string | null;
   lien: string | null;
   risque: RiskLevel;
+  acteur: Acteur;
+  controleur: Acteur | null;
   saisie: SaisieAttendue | null;
 }
 
@@ -205,6 +209,16 @@ function valider(valeurs: EtapeSaisie, cleFigee: string | null): EtapeValidee | 
     );
   }
 
+  // La répartition des rôles se refuse ici comme le reste : `enregistrerPlan` lève sur
+  // une paire impossible, et une ligne fautive murerait l'ouverture de tout dossier que
+  // ce modèle touche, loin de l'écran qui l'a écrite. Un contrôleur nul est toujours
+  // valide, d'où le test qui le laisse passer avant d'interroger la paire.
+  if (valeurs.controleur !== null && !combinaisonValide(valeurs.acteur, valeurs.controleur)) {
+    return refus(
+      `Cette répartition n'existe pas : ce que fait ${LIBELLE_ACTEUR[valeurs.acteur]} ne peut pas être contrôlé par ${LIBELLE_ACTEUR[valeurs.controleur]}. La personne concernée ne contrôle jamais, et un délégué ne relit que la personne concernée.`,
+    );
+  }
+
   return {
     ...valeurs,
     titre,
@@ -227,6 +241,8 @@ function colonnesDeLEtape(etape: EtapeValidee) {
     runbook: etape.marcheASuivre,
     deeplink: etape.lien,
     riskLevel: etape.risque,
+    expectedActor: etape.acteur,
+    validationBy: etape.controleur,
     input: etape.saisie ?? Prisma.DbNull,
   };
 }
@@ -239,6 +255,8 @@ function traceDeLEtape(etape: EtapeValidee): Record<string, unknown> {
     marcheASuivre: etape.marcheASuivre,
     lien: etape.lien,
     risque: etape.risque,
+    acteur: etape.acteur,
+    controleur: etape.controleur,
     saisie: etape.saisie,
   };
 }
@@ -338,6 +356,8 @@ function avantDeLEtape(etape: LigneDEtape): Record<string, unknown> {
     marcheASuivre: etape.runbook,
     lien: etape.deeplink,
     risque: etape.riskLevel,
+    acteur: etape.expectedActor,
+    controleur: etape.validationBy,
     saisie: etape.input,
   };
 }

@@ -232,8 +232,28 @@ export function Pointage({
 }
 
 /**
- * Le second regard porté sur une déclaration : la preuve est faite, ou elle ne l'est
- * pas. Rien n'est exécuté ici non plus, pas davantage qu'au pointage.
+ * Ce sur quoi le second regard porte, car les deux déclarations qui l'appellent ne
+ * disent pas la même chose. Sous un geste donné pour fait, il dit si la preuve en est
+ * faite. Sous une étape écartée, aucun geste n'est affirmé et il n'y a donc pas de
+ * preuve à demander : ce qu'il juge est la raison de l'avoir écartée.
+ */
+const AVIS = {
+  geste: {
+    objet: "le formulaire au-dessus dit ce qui a été fait, celui-ci dit ce que cela vaut",
+    accepter: "La preuve est faite",
+    refuser: "La preuve n'est pas faite",
+  },
+  ecart: {
+    objet:
+      "le formulaire au-dessus dit pourquoi cette étape est écartée, celui-ci dit si cette raison tient",
+    accepter: "L'écart est justifié",
+    refuser: "L'écart n'est pas justifié",
+  },
+} as const;
+
+/**
+ * Le second regard porté sur une déclaration : elle tient, ou elle ne tient pas. Rien
+ * n'est exécuté ici non plus, pas davantage qu'au pointage.
  *
  * Le verdict de la garde vient du serveur et ne se rejoue pas ici : l'écran qui
  * connaissait la règle de son côté est exactement ce qui a muré un dossier ailleurs
@@ -243,10 +263,13 @@ export function Pointage({
  */
 export function Validation({
   etapeId,
+  ecart,
   possible,
   raison,
 }: {
   etapeId: string;
+  /** La déclaration soumise au regard est un écart, et non un geste donné pour fait. */
+  ecart: boolean;
   possible: boolean;
   raison: string | null;
 }) {
@@ -256,14 +279,14 @@ export function Validation({
   );
   const [choix, setChoix] = useState("accepter");
   const refus = choix === "refuser";
+  const mots = ecart ? AVIS.ecart : AVIS.geste;
 
   return (
     <form action={formAction} className={fr.cx("fr-mt-1w")}>
       <input type="hidden" name="etapeId" value={etapeId} />
 
       <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-        Votre avis sur cette déclaration : le formulaire au-dessus dit ce qui a été fait, celui-ci
-        dit ce que cela vaut.
+        Votre avis sur cette déclaration : {mots.objet}.
       </p>
 
       <div className={fr.cx("fr-grid-row", "fr-grid-row--gutters")}>
@@ -276,8 +299,8 @@ export function Validation({
             onChange={(evenement) => setChoix(evenement.target.value)}
             aria-label="Ce que vaut cette déclaration"
           >
-            <option value="accepter">La preuve est faite</option>
-            <option value="refuser">La preuve n'est pas faite</option>
+            <option value="accepter">{mots.accepter}</option>
+            <option value="refuser">{mots.refuser}</option>
           </select>
         </div>
 

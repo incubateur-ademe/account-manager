@@ -15,6 +15,7 @@ import {
   etatApresPointage,
   etatDeNaissance,
   etatDUnPlanRemplace,
+  etatQuiSolde,
   etatsAdmis,
   peutAnnuler,
   peutClore,
@@ -828,5 +829,25 @@ describe("acteur attendu et validation d'une étape", () => {
     // opérateur qui pointe à la place du porteur a vu la chose, et signe du même coup.
     expect(validationApresPointage("SUBJECT", "OPERATOR", "OPERATOR")).toBe("ACCEPTED");
     expect(validationApresPointage("DELEGATE", "OPERATOR", "OPERATOR")).toBe("ACCEPTED");
+
+    // Then rayer l'étape ne l'en sort pas : l'écart solde autant que « fait », donc il
+    // tombe sous le même regard. C'est le prix de cette répartition et il faut le dire
+    // là où elle se choisit : sur un déploiement à un seul nom d'opérateur, l'étape
+    // n'a plus aucune sortie dans l'outil, sur n'importe quel dossier et non seulement
+    // sur celui de son porteur. Un second nom, y compris par les comptes de secours,
+    // est ce qui la débloque.
+    expect(etatQuiSolde("SKIPPED")).toBe(true);
+    const rayee = suivie("SKIPPED", apresDeclaration);
+    expect(estSoldee(rayee)).toBe(false);
+    expect(etatApresPointage([rayee])).toBe("EXECUTING");
+    expect(peutClore("OFFBOARDING", "CONFIRMED", "EXECUTING", 1).possible).toBe(false);
+    expect(peutAnnuler("CONFIRMED", "EXECUTING").possible).toBe(false);
+    expect(peutRecalculer("EXECUTING", FRAIS).possible).toBe(false);
+
+    // Then l'échec n'est pas une sortie non plus : il ne solde rien, et le plan
+    // retombe seulement d'un état à l'autre.
+    expect(etatApresPointage([suivie("FAILED")])).toBe("PARTIALLY_EXECUTED");
+    expect(peutClore("OFFBOARDING", "CONFIRMED", "PARTIALLY_EXECUTED", 1).possible).toBe(false);
+    expect(peutAnnuler("CONFIRMED", "PARTIALLY_EXECUTED").possible).toBe(false);
   });
 });

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CLE_INCUBATEUR } from "@/core/modele-plan";
 import { Prisma } from "@/generated/prisma/client";
-import type { RiskLevel, TemplateKind } from "@/generated/prisma/enums";
+import type { RiskLevel, StepActor, TemplateKind } from "@/generated/prisma/enums";
 
 import { ajouterEtape, type EtapeSaisie, modifierEtape } from "./modele-plan-edition";
 
@@ -27,6 +27,8 @@ interface EtapeEnBase {
   doneWhen: string;
   input: unknown;
   riskLevel: RiskLevel;
+  expectedActor: StepActor;
+  validationBy: StepActor | null;
 }
 
 interface TraceEnBase {
@@ -175,6 +177,8 @@ const saisie = (titre: string, over: Partial<EtapeSaisie> = {}): EtapeSaisie => 
   marcheASuivre: null,
   lien: null,
   risque: "LOW",
+  acteur: "OPERATOR",
+  controleur: null,
   saisie: null,
   ...over,
 });
@@ -364,6 +368,80 @@ describe("l'édition d'une étape de modèle", () => {
       await modifierEtape(clore?.id ?? "", saisie("Clore les accès", { risque: "HIGH" })),
     ).toEqual({ ok: true });
     expect(clore?.riskLevel).toBe("HIGH");
+  });
+
+  it("refuse une répartition impossible avant toute écriture, et journalise le retrait d'un contrôleur", async () => {
+    // Given un modèle de départ que personne n'a encore ouvert
+    expect(base.modeles).toHaveLength(0);
+
+    // When un opérateur déclare une étape que la personne concernée ferait et
+    // contrôlerait
+    const impossible = await ajouterEtape(
+      CLE_INCUBATEUR,
+      "OFFBOARDING",
+      saisie("Restituer le badge", { acteur: "SUBJECT", controleur: "SUBJECT" }),
+    );
+
+    // Then le refus nomme les deux rôles et dit la règle : la répartition mourait
+    // jusqu'ici au calcul du plan, c'est-à-dire à l'ouverture d'un dossier, loin de
+    // l'écran qui l'avait écrite et sur un message que rien n'affiche.
+    expect(impossible.ok).toBe(false);
+    const phrase = impossible.ok === false ? impossible.erreur : "";
+    expect(phrase).toContain("la personne concernée");
+    expect(phrase).toContain("Cette répartition n'existe pas");
+
+    // Then rien n'a été écrit, pas même le modèle : le refus précède la création, donc
+    // une saisie fautive ne laisse derrière elle ni ligne ni modèle vide.
+    expect(base.etapes).toHaveLength(0);
+    expect(base.modeles).toHaveLength(0);
+    expect(base.journal).toHaveLength(0);
+
+    // When il la déclare sous le regard d'un opérateur
+    const posee = await ajouterEtape(
+      CLE_INCUBATEUR,
+      "OFFBOARDING",
+      saisie("Restituer le badge", { acteur: "SUBJECT", controleur: "OPERATOR" }),
+    );
+
+    // Then les deux colonnes portent ce qu'il a choisi, sans table de traduction
+    expect(posee).toEqual({ ok: true });
+    const badge = parCle("restituer-le-badge");
+    expect(badge?.expectedActor).toBe("SUBJECT");
+    expect(badge?.validationBy).toBe("OPERATOR");
+
+    // Then la trace de l'ajout dit qui a décidé que cette étape réclame un contrôleur :
+    // sans elle, la décision ne se relirait nulle part.
+    const ajout = base.journal.at(-1);
+    expect(ajout?.action).toBe("modele.etape.ajout");
+    expect(ajout?.after).toMatchObject({ acteur: "SUBJECT", controleur: "OPERATOR" });
+
+    // When il la réécrit sans contrôleur
+    const decontrolee = await modifierEtape(
+      badge?.id ?? "",
+      saisie("Restituer le badge", { acteur: "SUBJECT", controleur: null }),
+    );
+
+    // Then la colonne est vidée, et le journal porte les deux états : c'est le seul
+    // endroit où se relit qui a retiré le second regard, l'étape n'ayant pas
+    // d'historique propre.
+    expect(decontrolee).toEqual({ ok: true });
+    expect(badge?.validationBy).toBeNull();
+    const retrait = base.journal.at(-1);
+    expect(retrait?.action).toBe("modele.etape.modification");
+    expect(retrait?.before).toMatchObject({ acteur: "SUBJECT", controleur: "OPERATOR" });
+    expect(retrait?.after).toMatchObject({ acteur: "SUBJECT", controleur: null });
+
+    // When il tente de refermer le contrôle sur elle-même
+    const refermee = await modifierEtape(
+      badge?.id ?? "",
+      saisie("Restituer le badge", { acteur: "SUBJECT", controleur: "SUBJECT" }),
+    );
+
+    // Then la réécriture est refusée du même refus que l'ajout : ce que l'écriture
+    // interdit ne se rattrape pas en réécrivant une ligne déjà posée.
+    expect(refermee).toEqual(impossible);
+    expect(badge?.validationBy).toBeNull();
+    expect(base.journal.at(-1)).toBe(retrait);
   });
 
   it("rend le modèle gagnant quand deux opérateurs le créent en même temps", async () => {
