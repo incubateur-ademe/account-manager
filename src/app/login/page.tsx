@@ -17,8 +17,9 @@ export default async function LoginPage(props: {
         <div className={fr.cx("fr-col-12", "fr-col-md-6")}>
           <h1>Connexion</h1>
           <p>
-            Un lien de connexion vous est envoyé sur l'adresse déclarée dans votre fiche
-            espace-membre. L'accès est réservé à l'équipe transverse de l'incubateur.
+            Un lien de connexion vous est envoyé par courriel. Avec un identifiant beta.gouv, il
+            part sur l'adresse déclarée dans votre fiche espace-membre ; avec une adresse, il part
+            sur celle-ci, à condition qu'un dossier vous ait été ouvert.
           </p>
           <LoginForm suite={demandee} />
         </div>

@@ -48,7 +48,11 @@ interface EtapeEnBase {
 
 interface PlanEnBase {
   id: string;
-  accessCaseId: string;
+  /**
+   * Nul quand le dossier a disparu : `Plan.accessCase` est en `SetNull`, donc
+   * supprimer une fiche laisse des plans vivants que plus aucun dossier ne porte.
+   */
+  accessCaseId: string | null;
   kind: SensDossier;
   state: EtatPlan;
   planDigest: string;
@@ -62,6 +66,14 @@ interface DossierEnBase {
   personId: string;
   kind: SensDossier;
   state: EtatDossier;
+}
+
+/** Un droit de participer, tel que la garde le relit à chaque geste. */
+interface DroitEnBase {
+  accessCaseId: string;
+  personId: string;
+  expiresAt: Date;
+  revokedAt: Date | null;
 }
 
 /**
@@ -94,6 +106,14 @@ interface TraceEnBase {
 const base = vi.hoisted(() => ({
   /** Qui est devant l'écran. Mutable : le contrôle d'une déclaration demande un autre nom. */
   operateur: "operatrice.exemple",
+  /**
+   * Ce que la session dit d'elle, au-delà du nom. Mutable pour la même raison : un
+   * participant est une session comme une autre, à ceci près qu'elle ne porte aucune
+   * qualité d'opérateur et qu'elle désigne une fiche.
+   */
+  sessionOperateur: true,
+  sessionPersonId: null as string | null,
+  droits: [] as DroitEnBase[],
   identites: [] as IdentiteEnBase[],
   dossiers: [] as DossierEnBase[],
   plans: [] as PlanEnBase[],
@@ -120,9 +140,28 @@ vi.mock("@/connectors", () => ({ CONNECTEURS: base.connecteurs }));
 
 vi.mock("next/cache", () => ({ revalidatePath: () => undefined }));
 
-vi.mock("@/lib/session", () => ({
-  requireOperateur: () => Promise.resolve({ username: base.operateur, email: null, nom: null }),
-}));
+vi.mock("@/lib/session", () => {
+  const session = () =>
+    Promise.resolve({
+      username: base.operateur,
+      email: null,
+      nom: null,
+      personId: base.sessionPersonId,
+      voie: base.sessionOperateur ? "ESPACE_MEMBRE" : "ADRESSE",
+      operateur: base.sessionOperateur,
+    });
+
+  return {
+    requireUtilisateur: session,
+    // Elle redirige plutôt que de rendre une session sans qualité d'opérateur : une
+    // action réservée à l'équipe qu'un participant atteindrait doit casser ici, et
+    // non rendre un verdict que le test lirait comme une règle métier.
+    requireOperateur: () =>
+      base.sessionOperateur
+        ? session()
+        : Promise.reject(new Error("redirection vers /moi : session sans qualité d'opérateur")),
+  };
+});
 
 function dossierDuPlan(plan: PlanEnBase) {
   const dossier = base.dossiers.find((candidat) => candidat.id === plan.accessCaseId);
@@ -256,6 +295,31 @@ vi.mock("@/lib/db", () => ({
     },
     person: {
       findUnique: () => Promise.resolve({ startups: [], startupAssignments: [] }),
+    },
+    caseParticipation: {
+      findUnique: ({
+        where,
+      }: {
+        where: { accessCaseId_personId: { accessCaseId: string; personId: string } };
+      }) => {
+        const cle = where.accessCaseId_personId;
+        const droit = base.droits.find(
+          (candidat) =>
+            candidat.accessCaseId === cle.accessCaseId && candidat.personId === cle.personId,
+        );
+        const dossier =
+          droit && base.dossiers.find((candidat) => candidat.id === droit.accessCaseId);
+
+        return Promise.resolve(
+          droit && dossier
+            ? {
+                expiresAt: droit.expiresAt,
+                revokedAt: droit.revokedAt,
+                accessCase: { state: dossier.state },
+              }
+            : null,
+        );
+      },
     },
     accessCase: {
       findUnique: ({ where }: { where: { id: string } }) => {
@@ -455,6 +519,9 @@ async function dossierAvecPlan(sens: SensDossier): Promise<{
 
 beforeEach(() => {
   base.operateur = "operatrice.exemple";
+  base.sessionOperateur = true;
+  base.sessionPersonId = null;
+  base.droits.length = 0;
   base.identites.length = 0;
   base.dossiers.length = 0;
   base.plans.length = 0;
@@ -1745,5 +1812,600 @@ describe("une étape de modèle qui nomme son contrôleur, jusqu'au dossier", ()
     const close = await cloreDossier(null, formulaire({ dossierId: dossier.id }));
     expect(close.erreur).toBeUndefined();
     expect(dossier.state).toBe("DONE");
+  });
+});
+
+/**
+ * Ce qu'un droit par dossier ouvre, et surtout ce qu'il n'ouvre pas.
+ *
+ * Le point du scénario n'est pas qu'un délégué puisse pointer, c'est que le refus soit
+ * relu en base à chaque geste : une session reste valide des semaines, et un droit
+ * retiré doit mordre au geste suivant sans attendre son expiration.
+ */
+describe("un délégué entre, agit, et son droit s'éteint sous lui", () => {
+  const DELEGUE = "lead.exemple";
+  const FICHE_DU_DELEGUE = "personne-lead";
+
+  const dans = (jours: number) => new Date(Date.now() + jours * 24 * 60 * 60 * 1000);
+
+  /** Un modèle de départ dont une étape revient à un délégué, à côté d'une autre non. */
+  function modeleAvecDelegue(): void {
+    base.modeles.push({
+      ownerKey: "*incubateur",
+      kind: "OFFBOARDING",
+      startupsMayExtend: false,
+      steps: [
+        {
+          key: "recuperer-les-documents",
+          position: 0,
+          title: "Récupérer les documents partagés",
+          runbook: null,
+          deeplink: null,
+          doneWhen: "Les documents sont chez l'équipe.",
+          input: null,
+          riskLevel: "LOW",
+          expectedActor: "DELEGATE",
+          validationBy: "OPERATOR",
+        },
+        {
+          key: "prevenir-l-equipe",
+          position: 1,
+          title: "Prévenir l'équipe",
+          runbook: null,
+          deeplink: null,
+          doneWhen: "Le message est parti.",
+          input: null,
+          riskLevel: "LOW",
+          expectedActor: "OPERATOR",
+          validationBy: null,
+        },
+      ],
+    });
+  }
+
+  function sessionDuDelegue(): void {
+    base.operateur = DELEGUE;
+    base.sessionOperateur = false;
+    base.sessionPersonId = FICHE_DU_DELEGUE;
+  }
+
+  function sessionDeLEquipe(nom: string): void {
+    base.operateur = nom;
+    base.sessionOperateur = true;
+    base.sessionPersonId = null;
+  }
+
+  it("pointe ce qui le nomme, jamais l'écart, et perd tout à la révocation", async () => {
+    // Given un dossier de départ confirmé, dont une étape revient à un délégué
+    modeleAvecDelegue();
+    const { dossier, plan } = await dossierAvecPlan("OFFBOARDING");
+    await confirmerPlan(null, formulaire({ planId: plan.id }));
+
+    const documents = etapeEnBase(0);
+    const message = etapeEnBase(1);
+    expect(documents.expectedActor).toBe("DELEGATE");
+    expect(message.expectedActor).toBe("OPERATOR");
+
+    // Given un droit vivant accordé à lead.exemple sur ce dossier-là, et sa session
+    const droit: DroitEnBase = {
+      accessCaseId: dossier.id,
+      personId: FICHE_DU_DELEGUE,
+      expiresAt: dans(7),
+      revokedAt: null,
+    };
+    base.droits.push(droit);
+    sessionDuDelegue();
+    base.journal.length = 0;
+    base.gestes.length = 0;
+
+    // When il pointe l'étape qui le nomme
+    expect(
+      await pointerEtape(null, formulaire({ etapeId: documents.id, pointage: "fait" })),
+    ).toEqual({});
+
+    // Then elle est déclarée sous son nom, et elle attend le regard que le modèle a
+    // prévu : rien de ce qu'il est ne l'établit comme le contrôleur attendu.
+    expect(documents.state).toBe("SUCCEEDED");
+    expect(documents.declaredBy).toBe(DELEGUE);
+    expect(documents.validation).toBe("AWAITING");
+    expect(documents.validatedBy).toBeNull();
+
+    // Then la trace précède l'écriture, elle porte son identifiant de fiche en acteur,
+    // et elle dit par quelle porte son identité a été prouvée : c'est la seule chose
+    // qui sépare au journal un username beta.gouv d'un identifiant fabriqué ici.
+    expect(base.gestes[0]).toBe("journal:dossier.pointage:SUCCESS");
+    expect(base.journal[0]).toMatchObject({
+      actorUsername: DELEGUE,
+      action: "dossier.pointage",
+      result: "SUCCESS",
+    });
+    expect(base.journal[0]?.after).toMatchObject({ etat: "SUCCEEDED", voie: "ADRESSE" });
+
+    // Then l'étape que le modèle confie à l'équipe lui reste fermée, et rien n'a bougé
+    expect(
+      await pointerEtape(null, formulaire({ etapeId: message.id, pointage: "fait" })),
+    ).toMatchObject({ erreur: expect.stringContaining("ne vous revient pas") });
+    expect(message.state).toBe("PENDING");
+
+    // Then écarter une étape ne lui appartient pas : ce n'est pas déclarer un geste,
+    // c'est décider qu'un geste prévu n'aura pas lieu. L'écran ne le propose pas, et
+    // l'action le refuse aussi, parce que c'est elle qui fait foi.
+    expect(
+      await pointerEtape(
+        null,
+        formulaire({ etapeId: documents.id, pointage: "ignoree", note: "sans objet" }),
+      ),
+    ).toEqual({ erreur: "Écarter une étape appartient à l'équipe transverse." });
+    expect(documents.state).toBe("SUCCEEDED");
+
+    // Then le constat qu'un autre est passé avant lui reste offert : il déclare le
+    // geste au même titre que « c'est fait », et sans lui un délégué qui trouve l'accès
+    // déjà retiré n'aurait plus qu'à mentir ou à téléphoner.
+    expect(
+      await pointerEtape(null, formulaire({ etapeId: documents.id, pointage: "deja-absent" })),
+    ).toEqual({});
+    expect(documents.state).toBe("ALREADY_ABSENT");
+
+    // When son droit est révoqué alors que sa session est encore parfaitement valide
+    droit.revokedAt = new Date();
+    const traces = base.journal.length;
+
+    // Then le geste suivant est refusé, sans déconnexion, sans attendre l'expiration
+    // d'un jeton, et sans qu'une ligne de journal soit écrite : la garde tombe avant
+    // le passage tracé.
+    expect(
+      await pointerEtape(null, formulaire({ etapeId: documents.id, pointage: "fait" })),
+    ).toEqual({ erreur: "Ce dossier ne vous concerne pas." });
+    expect(base.journal).toHaveLength(traces);
+    expect(documents.state).toBe("ALREADY_ABSENT");
+
+    // Then une échéance passée se comporte exactement comme une révocation
+    droit.revokedAt = null;
+    droit.expiresAt = dans(-1);
+    expect(
+      await pointerEtape(null, formulaire({ etapeId: documents.id, pointage: "fait" })),
+    ).toEqual({ erreur: "Ce dossier ne vous concerne pas." });
+
+    // Then un dossier qui n'est plus ouvert ferme aussi, et il le dit de la même
+    // façon : son état meurt avec le droit qu'il portait, et ce que le dossier est
+    // devenu ne se dit plus à qui n'y a plus rien. L'équipe, elle, garde le refus qui
+    // nomme l'obstacle, son rôle n'étant jamais nul sur un dossier qui existe.
+    droit.expiresAt = dans(7);
+    for (const etat of ["DONE", "CANCELLED"] as const) {
+      dossier.state = etat;
+      expect(
+        await pointerEtape(null, formulaire({ etapeId: documents.id, pointage: "fait" })),
+      ).toEqual({ erreur: "Ce dossier ne vous concerne pas." });
+
+      base.operateur = "operatrice.exemple";
+      base.sessionOperateur = true;
+      base.sessionPersonId = null;
+      expect(
+        await pointerEtape(null, formulaire({ etapeId: documents.id, pointage: "fait" })),
+      ).toEqual({ erreur: "Ce dossier n'est plus ouvert." });
+      sessionDuDelegue();
+    }
+
+    // Then l'étape confiée au délégué reste pointable par un opérateur en substitution :
+    // aucun dossier ne se bloque parce que celui qui devait agir s'est évaporé.
+    dossier.state = "CANDIDATE";
+    base.operateur = "operatrice.exemple";
+    base.sessionOperateur = true;
+    base.sessionPersonId = null;
+    expect(
+      await pointerEtape(null, formulaire({ etapeId: documents.id, pointage: "fait" })),
+    ).toEqual({});
+    expect(documents.declaredBy).toBe("operatrice.exemple");
+  });
+
+  it("signe ce qu'une étape lui confie, et rien tant qu'aucun droit ne le nomme", async () => {
+    // Given un modèle qui confie une étape à la personne concernée sous le regard d'un
+    // délégué : la répartition que le lot 5 prévoyait sans que rien ne l'atteigne. La
+    // seconde étape n'est là que pour garder le plan ouvert : sans elle, la première
+    // signature le solderait et la suite du scénario buterait sur un plan clos.
+    base.modeles.push({
+      ownerKey: "*incubateur",
+      kind: "OFFBOARDING",
+      startupsMayExtend: false,
+      steps: [
+        {
+          key: "rendre-le-materiel",
+          position: 0,
+          title: "Rendre le matériel",
+          runbook: null,
+          deeplink: null,
+          doneWhen: "Le matériel est revenu.",
+          input: null,
+          riskLevel: "LOW",
+          expectedActor: "SUBJECT",
+          validationBy: "DELEGATE",
+        },
+        {
+          key: "prevenir-l-equipe",
+          position: 1,
+          title: "Prévenir l'équipe",
+          runbook: null,
+          deeplink: null,
+          doneWhen: "Le message est parti.",
+          input: null,
+          riskLevel: "LOW",
+          expectedActor: "OPERATOR",
+          validationBy: null,
+        },
+      ],
+    });
+    const { dossier, plan } = await dossierAvecPlan("OFFBOARDING");
+    await confirmerPlan(null, formulaire({ planId: plan.id }));
+    const materiel = etapeEnBase(0);
+
+    // When un opérateur pointe en substitution, la personne concernée n'ayant rien fait
+    await pointerEtape(null, formulaire({ etapeId: materiel.id, pointage: "fait" }));
+
+    // Then l'étape attend : le contrôleur que le modèle nomme est un délégué, et rien
+    // n'établit cet opérateur-là comme lui. Sans cette règle, il aurait signé d'emblée
+    // une déclaration que personne d'attendu n'a vue.
+    expect(materiel.validation).toBe("AWAITING");
+    expect(materiel.validatedBy).toBeNull();
+
+    // When quelqu'un sans droit sur ce dossier tente de la signer
+    sessionDuDelegue();
+    expect(
+      await validerEtape(null, formulaire({ etapeId: materiel.id, verdict: "accepter" })),
+    ).toEqual({ erreur: "Ce dossier ne vous concerne pas." });
+    expect(materiel.validation).toBe("AWAITING");
+
+    // When un droit vivant lui est accordé, et lui seul change
+    base.droits.push({
+      accessCaseId: dossier.id,
+      personId: FICHE_DU_DELEGUE,
+      expiresAt: dans(7),
+      revokedAt: null,
+    });
+
+    // Then contrôler cette étape ne la lui ouvre pas : sa route la lui montre pour
+    // qu'il la signe, et le geste reste celui de la personne concernée. C'est l'action
+    // qui fait foi, l'écran ne faisant que se taire là où elle refuse.
+    expect(
+      await pointerEtape(null, formulaire({ etapeId: materiel.id, pointage: "fait" })),
+    ).toEqual({ erreur: "Cette étape ne vous revient pas : elle attend quelqu'un d'autre." });
+    expect(materiel.declaredBy).toBe("operatrice.exemple");
+
+    base.journal.length = 0;
+    base.gestes.length = 0;
+
+    // Then il signe, et le second regard a bien eu lieu : la garde ne lui oppose que
+    // le contrôle attendu d'un opérateur, et elle refuse de toute façon le déclarant
+    // par son nom.
+    expect(
+      await validerEtape(
+        null,
+        formulaire({ etapeId: materiel.id, verdict: "accepter", note: "Le matériel est là." }),
+      ),
+    ).toEqual({});
+    expect(materiel.validation).toBe("ACCEPTED");
+    expect(materiel.validatedBy).toBe(DELEGUE);
+
+    // Then la trace précède l'écriture, elle porte son nom et sa voie d'identification
+    expect(base.gestes[0]).toBe("journal:dossier.validation:SUCCESS");
+    expect(base.journal[0]).toMatchObject({
+      actorUsername: DELEGUE,
+      action: "dossier.validation",
+      before: { declarePar: "operatrice.exemple" },
+    });
+    expect(base.journal[0]?.after).toMatchObject({ validation: "ACCEPTED", voie: "ADRESSE" });
+
+    // Given qu'un opérateur reprend cette étape en écart, avec sa raison : elle attend
+    // de nouveau le regard du délégué, et l'identifiant que sa route lui avait remis
+    // est toujours celui de son formulaire
+    sessionDeLEquipe("operatrice.exemple");
+    expect(
+      await pointerEtape(
+        null,
+        formulaire({
+          etapeId: materiel.id,
+          pointage: "ignoree",
+          note: "Le matériel a été racheté.",
+        }),
+      ),
+    ).toEqual({});
+    expect(materiel.state).toBe("SKIPPED");
+    expect(materiel.validation).toBe("AWAITING");
+
+    // Then il ne le signe pas, et c'est le serveur qui le tient : la raison de l'écart
+    // vit dans une note libre qu'aucun écran ne lui montre, et signer une décision dont
+    // on tait le motif serait signer à l'aveugle. Le refus est celui d'un contrôle qui
+    // ne lui revient pas, et il n'apprend rien de plus.
+    sessionDuDelegue();
+    expect(
+      await validerEtape(null, formulaire({ etapeId: materiel.id, verdict: "accepter" })),
+    ).toEqual({ erreur: "Cette étape attend le regard d'un opérateur." });
+    expect(materiel.validation).toBe("AWAITING");
+    expect(materiel.validatedBy).toBeNull();
+
+    // Then un opérateur, lui, continue de le signer : l'écran de l'équipe lui montre
+    // l'écart avec sa raison, et la règle ferme l'écart à qui ne peut pas le lire, pas
+    // à tout le monde
+    sessionDeLEquipe("autre.operatrice.exemple");
+    expect(
+      await validerEtape(null, formulaire({ etapeId: materiel.id, verdict: "accepter" })),
+    ).toEqual({});
+    expect(materiel.validation).toBe("ACCEPTED");
+    expect(materiel.validatedBy).toBe("autre.operatrice.exemple");
+  });
+
+  it("ne voit rien du dossier voisin, même en le nommant dans le formulaire", async () => {
+    // Given deux dossiers de départ, et un droit sur le premier seulement
+    modeleAvecDelegue();
+    const premier = await dossierAvecPlan("OFFBOARDING");
+    await confirmerPlan(null, formulaire({ planId: premier.plan.id }));
+    const sien = etapeEnBase(0);
+
+    const voisin = await dossierAvecPlan("OFFBOARDING");
+    await confirmerPlan(null, formulaire({ planId: voisin.plan.id }));
+    const etapeDuVoisin = base.etapes.find(
+      (etape) => etape.planId === voisin.plan.id && etape.expectedActor === "DELEGATE",
+    );
+    if (!etapeDuVoisin) {
+      throw new Error("le second dossier n'a aucune étape confiée à un délégué");
+    }
+
+    base.droits.push({
+      accessCaseId: premier.dossier.id,
+      personId: FICHE_DU_DELEGUE,
+      expiresAt: dans(7),
+      revokedAt: null,
+    });
+    sessionDuDelegue();
+    base.journal.length = 0;
+
+    // When il pointe l'étape du dossier voisin en déclarant celui sur lequel il a un
+    // droit, ce qui est exactement la requête forgée que ce refus existe pour arrêter
+    expect(
+      await pointerEtape(
+        null,
+        formulaire({
+          etapeId: etapeDuVoisin.id,
+          pointage: "fait",
+          dossierId: premier.dossier.id,
+        }),
+      ),
+    ).toEqual({ erreur: "Ce dossier ne vous concerne pas." });
+
+    // Then rien n'a bougé et rien n'est entré au journal : le dossier se dérive de
+    // l'étape relue en base, jamais du formulaire.
+    expect(etapeDuVoisin.state).toBe("PENDING");
+    expect(base.journal).toHaveLength(0);
+
+    // Then le sien, lui, s'ouvre normalement
+    expect(await pointerEtape(null, formulaire({ etapeId: sien.id, pointage: "fait" }))).toEqual(
+      {},
+    );
+    expect(sien.declaredBy).toBe(DELEGUE);
+
+    // Given un plan dont le dossier a disparu : `Plan.accessCase` est en `SetNull`,
+    // donc supprimer une fiche laisse des plans vivants que plus aucun dossier ne
+    // porte, et l'acteur attendu de leurs étapes est le défaut de la colonne.
+    base.plans.push({
+      id: "plan-orphelin",
+      accessCaseId: null,
+      kind: "OFFBOARDING",
+      state: "EXECUTING",
+      planDigest: "0".repeat(64),
+      confirmedDigest: "0".repeat(64),
+      confirmedBy: "operatrice.exemple",
+      expiresAt: dans(30),
+    });
+    const orpheline: EtapeEnBase = {
+      id: "etape-orpheline",
+      planId: "plan-orphelin",
+      systemKey: "atelier",
+      label: "Retirer l'accès de l'atelier",
+      ordre: 0,
+      state: "PENDING",
+      lastError: null,
+      template: null,
+      reponse: null,
+      attempts: 0,
+      expectedActor: "OPERATOR",
+      validationBy: null,
+      validation: "NONE",
+      declaredBy: null,
+      validatedBy: null,
+      validatedAt: null,
+      validationNote: null,
+    };
+    base.etapes.push(orpheline);
+
+    // When le délégué y pointe, aucun dossier n'étant là pour le situer
+    // Then il est refusé comme partout ailleurs : son droit porte sur un dossier, et
+    // ce plan n'en a plus. Sans ce refus il y prendrait le rôle de l'équipe, faute de
+    // porteur devant qui se situer, et sa déclaration s'écrirait sous son nom.
+    expect(
+      await pointerEtape(null, formulaire({ etapeId: orpheline.id, pointage: "fait" })),
+    ).toEqual({ erreur: "Ce dossier ne vous concerne pas." });
+    expect(orpheline.state).toBe("PENDING");
+    expect(orpheline.declaredBy).toBeNull();
+
+    // Then l'équipe transverse, elle, y passe : c'est le seul chemin par lequel un plan
+    // qu'aucun écran ne montre plus peut encore se solder.
+    base.operateur = "operatrice.exemple";
+    base.sessionOperateur = true;
+    base.sessionPersonId = null;
+    expect(
+      await pointerEtape(null, formulaire({ etapeId: orpheline.id, pointage: "fait" })),
+    ).toEqual({});
+    expect(orpheline.declaredBy).toBe("operatrice.exemple");
+  });
+});
+
+/**
+ * Le rôle se décide devant le dossier, et le porteur s'y reconnaît à sa fiche. Tant que
+ * `requireOperateur` murait ces actions, la branche était inatteignable ; ce lot y fait
+ * entrer des sessions qui ne sont pas celles de l'équipe, dont le jeton porte un nom
+ * figé à la connexion qu'un renommage déplace.
+ */
+describe("le porteur qui n'est pas de l'équipe, et son dossier qui ne tient qu'à son droit", () => {
+  const dans = (jours: number) => new Date(Date.now() + jours * 24 * 60 * 60 * 1000);
+
+  function sessionDuPorteur(): void {
+    base.operateur = USERNAME;
+    base.sessionOperateur = false;
+    base.sessionPersonId = PERSONNE;
+  }
+
+  function sessionDeLEquipe(): void {
+    base.operateur = "operatrice.exemple";
+    base.sessionOperateur = true;
+    base.sessionPersonId = null;
+  }
+
+  it("n'agit sur ses propres étapes que tant qu'un droit vivant l'y autorise", async () => {
+    // Given une arrivée confirmée dont un geste revient à la personne concernée et
+    // l'autre à l'équipe transverse
+    const { dossier } = await arriveeRepartie({ acteur: "SUBJECT" }, { acteur: "OPERATOR" });
+    const sienne = etapeEnBase(0);
+    const celleDeLEquipe = etapeEnBase(1);
+
+    // Given sa session à elle, qui porte son nom et sa fiche mais aucune qualité
+    // d'opératrice, et pas la moindre ligne de droit
+    sessionDuPorteur();
+    base.journal.length = 0;
+    base.gestes.length = 0;
+
+    // When elle pointe son étape sans droit
+    const sansDroit = await pointerEtape(
+      null,
+      formulaire({ etapeId: sienne.id, pointage: "fait" }),
+    );
+
+    // Then le nom ne suffit pas : porter le dossier qualifie un rôle, il ne l'ouvre
+    // pas. Rien n'est entré en base, rien n'est entré au journal.
+    expect(sansDroit).toEqual({ erreur: "Ce dossier ne vous concerne pas." });
+    expect(sienne.state).toBe("PENDING");
+    expect(sienne.declaredBy).toBeNull();
+    expect(base.journal).toHaveLength(0);
+
+    // Given un droit vivant sur ce dossier-là
+    const droit: DroitEnBase = {
+      accessCaseId: dossier.id,
+      personId: PERSONNE,
+      expiresAt: dans(7),
+      revokedAt: null,
+    };
+    base.droits.push(droit);
+
+    // When elle repointe la même étape
+    expect(await pointerEtape(null, formulaire({ etapeId: sienne.id, pointage: "fait" }))).toEqual(
+      {},
+    );
+
+    // Then elle est déclarée sous son nom, et la trace précède l'écriture en disant par
+    // quelle porte son identité a été prouvée
+    expect(sienne.state).toBe("SUCCEEDED");
+    expect(sienne.declaredBy).toBe(USERNAME);
+    expect(base.gestes[0]).toBe("journal:dossier.pointage:SUCCESS");
+    expect(base.journal[0]).toMatchObject({ actorUsername: USERNAME, result: "SUCCESS" });
+    expect(base.journal[0]?.after).toMatchObject({ etat: "SUCCEEDED", voie: "ADRESSE" });
+
+    // Then l'étape que le plan confie à l'équipe lui reste fermée, son droit ne la
+    // faisant pas entrer dans l'équipe
+    expect(
+      await pointerEtape(null, formulaire({ etapeId: celleDeLEquipe.id, pointage: "fait" })),
+    ).toMatchObject({ erreur: expect.stringContaining("ne vous revient pas") });
+    expect(celleDeLEquipe.state).toBe("PENDING");
+
+    // When son droit est révoqué, puis quand il périme, sa session restant valide dans
+    // les deux cas : le jeton dit qui elle est, il ne dit pas ce qu'elle peut
+    const traces = base.journal.length;
+    for (const mort of [
+      () => {
+        droit.revokedAt = new Date();
+      },
+      () => {
+        droit.revokedAt = null;
+        droit.expiresAt = dans(-1);
+      },
+    ]) {
+      mort();
+
+      // Then la même phrase, sur son étape comme sur un identifiant qui ne désigne
+      // rien : le refus ne distingue plus une étape connue d'une étape inconnue, sans
+      // quoi il resterait à son ancienne titulaire une sonde d'existence sur les
+      // identifiants qu'elle a légitimement appris pendant que son droit vivait.
+      expect(
+        await pointerEtape(null, formulaire({ etapeId: sienne.id, pointage: "fait" })),
+      ).toEqual({ erreur: "Ce dossier ne vous concerne pas." });
+      expect(
+        await pointerEtape(
+          null,
+          formulaire({ etapeId: "etape-qui-n-existe-pas", pointage: "fait" }),
+        ),
+      ).toEqual({ erreur: "Ce dossier ne vous concerne pas." });
+      expect(
+        await validerEtape(null, formulaire({ etapeId: sienne.id, verdict: "accepter" })),
+      ).toEqual({ erreur: "Ce dossier ne vous concerne pas." });
+
+      // Then aucune de ces reconnaissances n'a laissé de trace, la garde tombant avant
+      // le passage tracé
+      expect(base.journal).toHaveLength(traces);
+      expect(sienne.state).toBe("SUCCEEDED");
+    }
+
+    // Then un dossier qui se clôt ne dit pas non plus ce qu'il est devenu, et les deux
+    // actions le taisent de la même façon : sans ce cas, l'ordre des refus de
+    // `validerEtape` resterait libre de remonter l'état du dossier au-dessus du rôle, et
+    // le dossier de quelqu'un raconterait son sort à qui n'y a plus rien.
+    dossier.state = "DONE";
+    expect(
+      await validerEtape(null, formulaire({ etapeId: sienne.id, verdict: "accepter" })),
+    ).toEqual({ erreur: "Ce dossier ne vous concerne pas." });
+    expect(await pointerEtape(null, formulaire({ etapeId: sienne.id, pointage: "fait" }))).toEqual({
+      erreur: "Ce dossier ne vous concerne pas.",
+    });
+    expect(base.journal).toHaveLength(traces);
+
+    // Then l'équipe, elle, garde ses refus détaillés : son rôle n'est jamais nul sur un
+    // dossier qui existe, et c'est ce qui rend le refus unique supportable ailleurs.
+    sessionDeLEquipe();
+    expect(
+      await pointerEtape(null, formulaire({ etapeId: "etape-qui-n-existe-pas", pointage: "fait" })),
+    ).toEqual({ erreur: "Cette étape n'existe plus." });
+  });
+
+  it("reste le porteur quand sa fiche est renommée sous une session déjà ouverte", async () => {
+    // Given une arrivée confirmée dont un geste lui revient et un autre revient à un
+    // délégué, et son droit vivant sur ce dossier
+    const { dossier } = await arriveeRepartie({ acteur: "SUBJECT" }, { acteur: "DELEGATE" });
+    const sienne = etapeEnBase(0);
+    const celleDuDelegue = etapeEnBase(1);
+    base.droits.push({
+      accessCaseId: dossier.id,
+      personId: PERSONNE,
+      expiresAt: dans(7),
+      revokedAt: null,
+    });
+
+    // Given sa fiche renommée pendant que sa session est ouverte, seul renommage que ce
+    // dépôt autorise : son jeton porte l'identifiant d'avant, sa fiche celui d'après
+    sessionDuPorteur();
+    base.operateur = "camille.exempl";
+
+    // When il pointe l'étape que le plan lui confie
+    expect(await pointerEtape(null, formulaire({ etapeId: sienne.id, pointage: "fait" }))).toEqual(
+      {},
+    );
+
+    // Then il y est resté le porteur : c'est sa fiche qui l'y ancre, la même des deux
+    // côtés, là où son nom a cessé de correspondre. Le geste s'écrit sous le nom que
+    // porte son jeton, qui est le seul dont ce code dispose.
+    expect(sienne.state).toBe("SUCCEEDED");
+    expect(sienne.declaredBy).toBe("camille.exempl");
+
+    // Then l'étape du délégué lui reste fermée, et le refus le dit comme à quelqu'un du
+    // dossier : le renommage ne l'a pas fait glisser d'un rôle à l'autre
+    expect(
+      await pointerEtape(null, formulaire({ etapeId: celleDuDelegue.id, pointage: "fait" })),
+    ).toMatchObject({ erreur: expect.stringContaining("ne vous revient pas") });
+    expect(celleDuDelegue.state).toBe("PENDING");
   });
 });

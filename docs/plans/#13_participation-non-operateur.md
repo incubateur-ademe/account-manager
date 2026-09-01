@@ -546,8 +546,9 @@ soit, et `declaredBy` a besoin de son nom ». Quatre points d'accroche y sont ho
 (`:205`, `:262`, `:268-271`, `:369`), même structure dans `validerEtape` (`:409`, `:457`, `:465`) et
 dans `confirmerPlan` (`:127`). Une seconde résolution dans `actionTracee` serait une seconde lecture
 en base, donc un second endroit où le droit peut être lu autrement que par le premier. `ActionTracee<T>`
-accepte donc un `Utilisateur` déjà résolu, passé par l'appelant ; `exige` ne sert que pour les actions
-qui n'ont pas besoin du nom en amont.
+accepte donc un `Utilisateur` déjà résolu, passé par l'appelant, son absence valant l'opérateur
+courant ; `exige` n'est pas livré, faute d'appelant, toutes les actions ouvertes à un non-opérateur
+ayant besoin du nom en amont.
 
 Ensuite, la valeur qui identifie le dossier est toujours dérivée de l'objet relu en base, jamais du
 formulaire. Le motif inverse existe déjà : `cloreDossier` lit son `dossierId` dans `formData`
@@ -1108,11 +1109,10 @@ en D14 bis de sa version naïve.
 
 ### 5. Le passage tracé, élargi
 
-- `src/lib/actions.ts` : `ActionTracee<T>` accepte un `Utilisateur` déjà résolu et, pour les actions
-  qui n'ont pas besoin du nom en amont, un champ `exige?: "operateur" | { participationSur: string }`
-  dont le défaut `"operateur"` garde le comportement actuel (D12). La trace porte le `username` de
-  l'utilisateur en `actorUsername` et sa voie dans `after` (D13), et l'ordre trace puis écriture est
-  inchangé. Le type du paramètre d'`ecrire` passe de `Operateur` à `Utilisateur`, qui porte les mêmes
+- `src/lib/actions.ts` : `ActionTracee<T>` accepte un `Utilisateur` déjà résolu, son absence valant
+  l'opérateur courant, ce qui garde le comportement actuel. Le champ `exige` que D12 envisageait
+  n'est pas livré, faute d'appelant. La trace porte le `username` de l'utilisateur en
+  `actorUsername` et sa voie dans `after` (D13), et l'ordre trace puis écriture est inchangé. Le type du paramètre d'`ecrire` passe de `Operateur` à `Utilisateur`, qui porte les mêmes
   champs plus les siens : tous les appels existants restent compilables sans retouche.
 - `src/app/journal/libelles.ts` : libellés de `participation.octroi`, `participation.revocation` et
   `participation.canal-bascule` dans `LIBELLE_ACTION` (`:9`), et entrée `participation` dans

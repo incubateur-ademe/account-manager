@@ -72,9 +72,13 @@ vi.mock("@/lib/db", () => ({
       },
     },
     person: {
+      // Les droits viennent avec la ligne : la collecte les lit dans la requête qui
+      // ouvre `upsert` plutôt qu'après l'écriture, une lecture posée pour la seule
+      // décision de journaliser pouvant faire tomber tout le passage en `PARTIAL`.
+      // Aucun scénario d'échéance n'en pose, la liste est donc toujours vide ici.
       findUnique: ({ where }: { where: { username: string } }) => {
         const trouvee = base.fiches.find((fiche) => fiche.username === where.username);
-        return Promise.resolve(trouvee ? { ...trouvee } : null);
+        return Promise.resolve(trouvee ? { ...trouvee, participations: [] } : null);
       },
       // Prisma laisse intact un champ à `undefined` au lieu de l'écrire, et c'est
       // exactement la sémantique dont cette règle se sert. Un fac-similé qui recopierait

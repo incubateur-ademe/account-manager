@@ -25,6 +25,15 @@ startups:
     - transfere
     - alumni
 
+# Domaines des boites qu'un depart coupe. Ils servent a prevenir qu'un lien de
+# connexion partirait sur une adresse qui va cesser de repondre, au moment precis ou on
+# donne a quelqu'un le droit de participer a son propre depart. La liste est ici et non
+# dans le code : quel employeur fournit quelle boite est un fait de deploiement.
+mail:
+  domainsLostOnDeparture:
+    - beta.gouv.fr
+    - ademe.fr
+
 thresholds:
   # Jours de report apres une echeance avant de considerer qu'il y a quelque chose a
   # faire. Un renouvellement signe en retard est la regle plutot que l'exception, et

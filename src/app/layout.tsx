@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { operateurCourant } from "@/lib/session";
+import { utilisateurCourant } from "@/lib/session";
 import { Deconnexion } from "@/ui/Deconnexion";
 import { DsfrProvider, StartDsfrOnHydration } from "@/ui/dsfr/client";
 import { DsfrHead, getHtmlAttributes } from "@/ui/dsfr/server";
@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 const lang = "fr";
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const operateur = await operateurCourant();
+  const utilisateur = await utilisateurCourant();
 
   return (
     <html {...getHtmlAttributes({ lang })}>
@@ -23,8 +23,13 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       </head>
       <body>
         <DsfrProvider lang={lang}>
+          {/* Le bouton de déconnexion se rend pour toute session et non pour la seule
+            équipe transverse : un participant qui ne l'aurait pas n'aurait aucun moyen
+            de sortir. Le menu, lui, se réduit, onze liens qui rejettent tous étant une
+            fuite sur la forme de l'outil autant qu'une impasse. */}
           <Navigation
-            deconnexion={operateur ? <Deconnexion username={operateur.username} /> : undefined}
+            operateur={utilisateur?.operateur === true}
+            deconnexion={utilisateur ? <Deconnexion username={utilisateur.username} /> : undefined}
           />
           {/* Pas de frontière de suspension autour de la page. Elle a existé pour
             que le démarrage du DSFR parte après l'hydratation, mais elle empêchait

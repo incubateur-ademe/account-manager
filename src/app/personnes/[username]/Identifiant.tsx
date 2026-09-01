@@ -23,6 +23,11 @@ function Inventaire({ fusion }: { fusion: ApercuFusion }) {
     }`,
     `${fusion.constatsMigres} constat${fusion.constatsMigres > 1 ? "s" : ""} déplacé${fusion.constatsMigres > 1 ? "s" : ""}, dont ${fusion.clesReecrites} réattribué${fusion.clesReecrites > 1 ? "s" : ""} au nouvel identifiant et ${fusion.constatsFermes} fermé${fusion.constatsFermes > 1 ? "s" : ""} faute de place, leur clé étant déjà prise`,
     `${fusion.dossiers} dossier${fusion.dossiers > 1 ? "s" : ""} de départ`,
+    `${fusion.participations} droit${fusion.participations > 1 ? "s" : ""} de participer déplacé${fusion.participations > 1 ? "s" : ""}, révoqué${fusion.participations > 1 ? "s" : ""} compris${
+      fusion.participationsAbandonnees === 0
+        ? ""
+        : `, et ${fusion.participationsAbandonnees} abandonné${fusion.participationsAbandonnees > 1 ? "s" : ""} faute de place, les deux fiches en portant un sur le même dossier : c'est le plus récent qui survit`
+    }`,
     `${fusion.rattachements} rattachement${fusion.rattachements > 1 ? "s" : ""} manuel${fusion.rattachements > 1 ? "s" : ""} à une startup, dont ${fusion.rattachementsEnCours} en cours`,
     `${fusion.references} référence${fusion.references > 1 ? "s" : ""} déplacée${fusion.references > 1 ? "s" : ""}, ${fusion.referencesSupprimees} déjà portée${fusion.referencesSupprimees > 1 ? "s" : ""} par la fiche cible`,
   ];

@@ -22,6 +22,14 @@ const LIBELLE_ACTION: Record<string, string> = {
   "dossier.recalcul": "Recalcul d'un plan",
   "dossier.annulation": "Annulation d'un dossier d'accès",
   "dossier.validation": "Validation d'une étape",
+  "participation.octroi": "Octroi d'un droit de participation",
+  "participation.revocation": "Révocation d'un droit de participation",
+  "participation.abandon": "Droit de participation abandonné à une fusion de fiches",
+  // Écrite par la collecte et non par un opérateur : une fiche adoptée par
+  // l'espace-membre pendant un dossier fait mourir le canal d'entrée du droit
+  // qu'elle porte. Ce libellé la met sur la même page que l'octroi et la
+  // révocation, faute de quoi la bascule reste invisible là où on la cherche.
+  "participation.canal-bascule": "Bascule du canal d'un droit de participation",
   // Les six verbes que le dossier d'accès remplace. Le journal est en écriture seule
   // à rétention indéfinie : une ligne d'il y a six mois doit rester lisible telle
   // qu'elle a été écrite, et ces libellés ne s'effacent donc jamais.
@@ -61,6 +69,7 @@ const LIBELLE_CIBLE: Record<string, string> = {
   rattachement: "Rattachement à une startup",
   plan: "Plan",
   etape: "Étape",
+  participation: "Droit de participation",
   modele: "Modèle de plan",
 };
 

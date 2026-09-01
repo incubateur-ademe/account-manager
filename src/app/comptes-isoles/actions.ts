@@ -3,6 +3,7 @@
 import { emailDeContact, type MembreDetaille, rattachementDeclare } from "@/core/membre";
 import { actionTracee } from "@/lib/actions";
 import { audit } from "@/lib/audit";
+import { messageDeCollision } from "@/lib/collision";
 import { prisma } from "@/lib/db";
 import { fetchMemberDetail } from "@/lib/espace-membre";
 import { requireOperateur } from "@/lib/session";
@@ -122,86 +123,100 @@ export async function rattacherIdentite(
     };
   }
 
-  await actionTracee({
-    action: "identite.rattachement",
-    targetType: "identite",
-    targetId: `${identite.provider}:${identite.handle}`,
-    after: {
-      cible,
-      methode: "DECLARED",
-      ...(horsPerimetre ? { ficheCreee: "hors incubateur, depuis l'espace-membre" } : {}),
-    },
-    revalider: ["/comptes-isoles", "/personnes", "/constats", "/"],
-    ecrire: async (operateur) => {
-      let personId = personne?.id ?? null;
+  try {
+    await actionTracee({
+      action: "identite.rattachement",
+      targetType: "identite",
+      targetId: `${identite.provider}:${identite.handle}`,
+      after: {
+        cible,
+        methode: "DECLARED",
+        ...(horsPerimetre ? { ficheCreee: "hors incubateur, depuis l'espace-membre" } : {}),
+      },
+      revalider: ["/comptes-isoles", "/personnes", "/constats", "/"],
+      ecrire: async (operateur) => {
+        let personId = personne?.id ?? null;
 
-      if (horsPerimetre) {
-        const now = new Date();
-        const rattachement = rattachementDeclare(horsPerimetre);
-        const creee = await prisma.person.create({
+        if (horsPerimetre) {
+          const now = new Date();
+          const rattachement = rattachementDeclare(horsPerimetre);
+          const creee = await prisma.person.create({
+            data: {
+              // Le username beta reste le pivot : si cette personne rejoint un jour
+              // l'incubateur, la collecte la retrouvera et reprendra sa fiche en main.
+              username: horsPerimetre.username,
+              fullname: horsPerimetre.fullname ?? horsPerimetre.username,
+              betaUuid: horsPerimetre.uuid ?? null,
+              githubLogin: horsPerimetre.github ?? null,
+              primaryEmail: horsPerimetre.primary_email ?? null,
+              communicationEmail: emailDeContact(horsPerimetre),
+              missionEnd: toDate(rattachement.missionEnd),
+              attachment: "NONE",
+              source: "LOCAL",
+              startups: [],
+              firstSeenAt: now,
+              lastSeenAt: now,
+            },
+            select: { id: true },
+          });
+          personId = creee.id;
+        }
+
+        await prisma.externalIdentity.update({
+          where: { id: identite.id },
           data: {
-            // Le username beta reste le pivot : si cette personne rejoint un jour
-            // l'incubateur, la collecte la retrouvera et reprendra sa fiche en main.
-            username: horsPerimetre.username,
-            fullname: horsPerimetre.fullname ?? horsPerimetre.username,
-            betaUuid: horsPerimetre.uuid ?? null,
-            githubLogin: horsPerimetre.github ?? null,
-            primaryEmail: horsPerimetre.primary_email ?? null,
-            communicationEmail: emailDeContact(horsPerimetre),
-            missionEnd: toDate(rattachement.missionEnd),
-            attachment: "NONE",
-            source: "LOCAL",
-            startups: [],
-            firstSeenAt: now,
-            lastSeenAt: now,
+            personId,
+            serviceAccountId: personId ? null : (compte?.id ?? null),
+            matchMethod: "DECLARED",
           },
-          select: { id: true },
         });
-        personId = creee.id;
-      }
 
-      await prisma.externalIdentity.update({
-        where: { id: identite.id },
-        data: {
-          personId,
-          serviceAccountId: personId ? null : (compte?.id ?? null),
-          matchMethod: "DECLARED",
-        },
-      });
-
-      // Le constat disait que ce compte n'avait pas de détenteur connu ; il en a un
-      // désormais. Attendre la collecte suivante pour le refermer laisserait afficher
-      // un problème déjà résolu, et rien n'use plus vite une file que d'y retrouver
-      // ce qu'on vient de traiter.
-      const resolus = await prisma.finding.findMany({
-        where: { externalIdentityId: identite.id, kind: "UNREGISTERED", closedAt: null },
-        select: { id: true, dedupKey: true },
-      });
-
-      if (resolus.length === 0) {
-        return;
-      }
-
-      // Sans marque de clôture humaine : la situation a cessé, elle n'a pas été
-      // jugée. Si le rattachement était défait, le constat devrait revenir.
-      await prisma.finding.updateMany({
-        where: { id: { in: resolus.map((constat) => constat.id) } },
-        data: { closedAt: new Date(), closeReason: `rattaché à ${cible}` },
-      });
-
-      for (const constat of resolus) {
-        audit({
-          actorKind: "HUMAN",
-          actorUsername: operateur.username,
-          action: "finding.close",
-          targetType: "finding",
-          targetId: constat.dedupKey,
-          after: { raison: `rattaché à ${cible}` },
-          result: "SUCCESS",
+        // Le constat disait que ce compte n'avait pas de détenteur connu ; il en a un
+        // désormais. Attendre la collecte suivante pour le refermer laisserait afficher
+        // un problème déjà résolu, et rien n'use plus vite une file que d'y retrouver
+        // ce qu'on vient de traiter.
+        const resolus = await prisma.finding.findMany({
+          where: { externalIdentityId: identite.id, kind: "UNREGISTERED", closedAt: null },
+          select: { id: true, dedupKey: true },
         });
-      }
-    },
-  });
+
+        if (resolus.length === 0) {
+          return;
+        }
+
+        // Sans marque de clôture humaine : la situation a cessé, elle n'a pas été
+        // jugée. Si le rattachement était défait, le constat devrait revenir.
+        await prisma.finding.updateMany({
+          where: { id: { in: resolus.map((constat) => constat.id) } },
+          data: { closedAt: new Date(), closeReason: `rattaché à ${cible}` },
+        });
+
+        for (const constat of resolus) {
+          audit({
+            actorKind: "HUMAN",
+            actorUsername: operateur.username,
+            action: "finding.close",
+            targetType: "finding",
+            targetId: constat.dedupKey,
+            after: { raison: `rattaché à ${cible}`, voie: operateur.voie },
+            result: "SUCCESS",
+          });
+        }
+      },
+    });
+  } catch (error: unknown) {
+    // La seule écriture de ce geste qu'un index unique puisse refuser est la fiche
+    // créée pour quelqu'un que l'incubateur ne compte pas parmi les siens : son
+    // identifiant, son identifiant beta.gouv et son adresse de communication sont tous
+    // uniques, et la dernière l'est par un index que la migration pose à la main. Sans
+    // fiche à créer, une violation vient d'ailleurs et doit remonter telle quelle.
+    const message =
+      horsPerimetre === null ? null : messageDeCollision(error, "fiche", horsPerimetre.username);
+    if (message === null) {
+      throw error;
+    }
+    return { erreur: message };
+  }
 
   return null;
 }

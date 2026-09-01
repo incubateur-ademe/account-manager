@@ -475,8 +475,9 @@ function pointage(
   estOperateur: boolean,
   acteurAttendu: Acteur,
   validationBy: Acteur | null,
+  participe = false,
 ): { permis: boolean; validation: EtatValidation } {
-  const role = roleSurDossier(username, DOSSIER, estOperateur);
+  const role = roleSurDossier(username, DOSSIER, estOperateur, participe);
   const verdict = peutPointer("EXECUTING", acteurAttendu, { role, operateur: estOperateur });
 
   if (!verdict.possible || role === null) {
@@ -484,7 +485,7 @@ function pointage(
   }
   return {
     permis: true,
-    validation: validationApresPointage(acteurAttendu, validationBy, role),
+    validation: validationApresPointage(acteurAttendu, validationBy, { username, role }, PORTEUR),
   };
 }
 
@@ -502,7 +503,12 @@ describe("acteur attendu et validation d'une étape", () => {
     const autre = suivie("SUCCEEDED");
 
     // When elle la déclare faite
-    const apresDeclaration = validationApresPointage("SUBJECT", "OPERATOR", "SUBJECT");
+    const apresDeclaration = validationApresPointage(
+      "SUBJECT",
+      "OPERATOR",
+      { username: PORTEUR, role: "SUBJECT" },
+      PORTEUR,
+    );
     const declaree = suivie("SUCCEEDED", apresDeclaration);
 
     // Then la déclaration attend un regard, l'étape n'est pas soldée, le plan reste
@@ -545,7 +551,14 @@ describe("acteur attendu et validation d'une étape", () => {
     // When l'opérateur la pointe lui-même en substitution
     // Then elle est acceptée d'emblée : il a vu la chose, et exiger qu'un second
     // opérateur le confirme bloquerait un outil qui n'en a qu'un.
-    expect(validationApresPointage("SUBJECT", "OPERATOR", "OPERATOR")).toBe("ACCEPTED");
+    expect(
+      validationApresPointage(
+        "SUBJECT",
+        "OPERATOR",
+        { username: OPERATEUR, role: "OPERATOR" },
+        PORTEUR,
+      ),
+    ).toBe("ACCEPTED");
 
     // When le porteur déclare puis tente de valider lui-même
     const parLePorteur = peutValider(
@@ -559,7 +572,14 @@ describe("acteur attendu et validation d'une étape", () => {
 
     // Given une étape attendue du porteur mais confiée à un délégué pour contrôle,
     // qu'un opérateur pointe en substitution : personne d'attendu ne l'a vue.
-    expect(validationApresPointage("SUBJECT", "DELEGATE", "OPERATOR")).toBe("AWAITING");
+    expect(
+      validationApresPointage(
+        "SUBJECT",
+        "DELEGATE",
+        { username: OPERATEUR, role: "OPERATOR" },
+        PORTEUR,
+      ),
+    ).toBe("AWAITING");
 
     const enAttente = {
       validationBy: "DELEGATE",
@@ -590,7 +610,9 @@ describe("acteur attendu et validation d'une étape", () => {
         { username: OPERATEUR, role: "OPERATOR" },
       ).possible,
     ).toBe(false);
-    expect(validationApresPointage("SUBJECT", null, "SUBJECT")).toBe("NONE");
+    expect(
+      validationApresPointage("SUBJECT", null, { username: PORTEUR, role: "SUBJECT" }, PORTEUR),
+    ).toBe("NONE");
   });
 
   it("ne laisse chacun toucher que ce qui le regarde, le porteur passant avant l'opérateur", () => {
@@ -724,6 +746,52 @@ describe("acteur attendu et validation d'une étape", () => {
     }
   });
 
+  it("ouvre un quatrième rôle à qui détient un droit sur ce dossier, sans jamais le mettre devant l'opérateur", () => {
+    // Given un droit par objet, que rien ne savait lire jusqu'ici
+    const DELEGUE = "lead.exemple";
+
+    // Then qui n'est ni le porteur ni de l'équipe devient délégué, et lui seul
+    expect(roleSurDossier(DELEGUE, DOSSIER, false, true)).toBe("DELEGATE");
+    expect(roleSurDossier(DELEGUE, DOSSIER, false, false)).toBeNull();
+
+    // Then l'ordre est porteur, opérateur, délégué, et les deux premières marches
+    // comptent. Le porteur d'abord, sans quoi quelqu'un instruirait son propre départ.
+    // L'opérateur ensuite : une participation n'ajoute rien à qui a déjà tout, et le
+    // faire passer délégué lui retirerait une signature qu'il pouvait donner.
+    expect(roleSurDossier(PORTEUR, DOSSIER, false, true)).toBe("SUBJECT");
+    expect(roleSurDossier(OPERATEUR, DOSSIER, true, true)).toBe("OPERATOR");
+    expect(
+      peutValider(
+        { validationBy: "OPERATOR", validation: "AWAITING", declaredBy: PORTEUR },
+        { username: OPERATEUR, role: roleSurDossier(OPERATEUR, DOSSIER, true, true) },
+      ),
+    ).toEqual({ possible: true });
+
+    // Then le quatrième fait est optionnel et arrive en dernier : les appels qui
+    // ignorent le droit continuent de dire exactement ce qu'ils disaient.
+    expect(roleSurDossier(DELEGUE, DOSSIER, false)).toBeNull();
+    expect(roleSurDossier(OPERATEUR, DOSSIER, true)).toBe("OPERATOR");
+
+    // Then le délégué pointe l'étape qui le nomme et rien d'autre : il n'est pas de
+    // l'équipe, donc la substitution ne joue pas pour lui. Aucun contrôle nouveau à
+    // écrire, celui du pointage lit déjà le rôle et l'appartenance.
+    const declarant: Declarant = {
+      role: roleSurDossier(DELEGUE, DOSSIER, false, true),
+      operateur: false,
+    };
+    expect(peutPointer("EXECUTING", "DELEGATE", declarant)).toEqual({ possible: true });
+    expect(peutPointer("EXECUTING", "SUBJECT", declarant).possible).toBe(false);
+    expect(peutPointer("EXECUTING", "OPERATOR", declarant).possible).toBe(false);
+
+    // Et son droit éteint, la même lecture ne lui rend plus rien : le refus ne dépend
+    // d'aucune expiration de session, il se relit à chaque passage.
+    const sansDroit: Declarant = {
+      role: roleSurDossier(DELEGUE, DOSSIER, false, false),
+      operateur: false,
+    };
+    expect(peutPointer("EXECUTING", "DELEGATE", sansDroit).possible).toBe(false);
+  });
+
   it("garde en cours un plan dont tout est coché mais dont une étape attend", () => {
     // Given des étapes toutes déclarées, dont une qui attend un regard
     const enAttente = [suivie("SUCCEEDED"), suivie("SKIPPED"), suivie("SUCCEEDED", "AWAITING")];
@@ -787,8 +855,8 @@ describe("acteur attendu et validation d'une étape", () => {
     expect(combinaisonValide("OPERATOR", "DELEGATE")).toBe(false);
 
     // Then un délégué ne contrôle pas non plus un délégué : rien ne sait aujourd'hui
-    // les distinguer l'un de l'autre, `roleSurDossier` ne rendant jamais `DELEGATE`,
-    // là où `OPERATOR` sort d'une liste nommée.
+    // les distinguer l'un de l'autre, une étape nommant le rôle qu'elle attend, là où
+    // `OPERATOR` sort d'une liste nommée.
     expect(combinaisonValide("DELEGATE", "DELEGATE")).toBe(false);
 
     // Then une étape sans contrôle est valide quel que soit son acteur : c'est le cas
@@ -804,7 +872,12 @@ describe("acteur attendu et validation d'une étape", () => {
     expect(combinaisonValide("OPERATOR", "OPERATOR")).toBe(true);
 
     // When un opérateur la pointe : c'est son geste, pas une substitution
-    const apresDeclaration = validationApresPointage("OPERATOR", "OPERATOR", "OPERATOR");
+    const apresDeclaration = validationApresPointage(
+      "OPERATOR",
+      "OPERATOR",
+      { username: OPERATEUR, role: "OPERATOR" },
+      PORTEUR,
+    );
 
     // Then elle attend, et c'est tout l'objet de la répartition : sans cela, celui qui
     // agit se validerait du seul fait de porter le rôle qui contrôle, et l'étape se
@@ -827,8 +900,13 @@ describe("acteur attendu et validation d'une étape", () => {
 
     // Then la substitution reste ce qu'elle était sur les autres répartitions : un
     // opérateur qui pointe à la place du porteur a vu la chose, et signe du même coup.
-    expect(validationApresPointage("SUBJECT", "OPERATOR", "OPERATOR")).toBe("ACCEPTED");
-    expect(validationApresPointage("DELEGATE", "OPERATOR", "OPERATOR")).toBe("ACCEPTED");
+    const parUnOperateur = { username: OPERATEUR, role: "OPERATOR" } as const;
+    expect(validationApresPointage("SUBJECT", "OPERATOR", parUnOperateur, PORTEUR)).toBe(
+      "ACCEPTED",
+    );
+    expect(validationApresPointage("DELEGATE", "OPERATOR", parUnOperateur, PORTEUR)).toBe(
+      "ACCEPTED",
+    );
 
     // Then rayer l'étape ne l'en sort pas : l'écart solde autant que « fait », donc il
     // tombe sous le même regard. C'est le prix de cette répartition et il faut le dire
@@ -849,5 +927,141 @@ describe("acteur attendu et validation d'une étape", () => {
     expect(etatApresPointage([suivie("FAILED")])).toBe("PARTIALLY_EXECUTED");
     expect(peutClore("OFFBOARDING", "CONFIRMED", "PARTIALLY_EXECUTED", 1).possible).toBe(false);
     expect(peutAnnuler("CONFIRMED", "PARTIALLY_EXECUTED").possible).toBe(false);
+  });
+});
+
+describe("deux délégués sur un dossier, et aucun ne signe pour lui-même", () => {
+  const DELEGUE_A = "lead.exemple";
+  const DELEGUE_B = "autre.lead.exemple";
+  const EN_DELEGUE: Declarant = { role: "DELEGATE", operateur: false };
+
+  it("établit le contrôleur sur son nom, et laisse le porteur hors d'atteinte du rôle", () => {
+    // Given une étape « la personne concernée agit, un délégué contrôle », que la
+    // répartition accepte
+    expect(combinaisonValide("SUBJECT", "DELEGATE")).toBe(true);
+
+    // Then ni l'un ni l'autre délégué ne peut la pointer : elle attend quelqu'un
+    // d'autre, et rien de ce qu'ils sont ne les met à sa place
+    expect(peutPointer("EXECUTING", "SUBJECT", EN_DELEGUE).possible).toBe(false);
+    expect(peutPointer("EXECUTING", "OPERATOR", EN_DELEGUE).possible).toBe(false);
+    expect(peutPointer("EXECUTING", "DELEGATE", EN_DELEGUE)).toEqual({ possible: true });
+
+    // Given le cœur du scénario, sur un cas que les appelants interdisent par ailleurs :
+    // un délégué qui pointerait cette étape.
+    // Then elle reste à contrôler, parce que rien n'établit nommément ce délégué-là
+    // comme le contrôleur que l'étape attend : « ce déclarant est un délégué » ne dit
+    // jamais « ce déclarant est le délégué attendu », et deux délégués ne se
+    // distinguent l'un de l'autre à aucun niveau que la fonction puisse lire.
+    expect(
+      validationApresPointage(
+        "SUBJECT",
+        "DELEGATE",
+        { username: DELEGUE_A, role: "DELEGATE" },
+        PORTEUR,
+      ),
+    ).toBe("AWAITING");
+
+    // When un opérateur pointe en substitution, Then l'étape attend elle aussi : le
+    // contrôleur attendu est le délégué et non lui.
+    expect(
+      validationApresPointage(
+        "SUBJECT",
+        "DELEGATE",
+        { username: OPERATEUR, role: "OPERATOR" },
+        PORTEUR,
+      ),
+    ).toBe("AWAITING");
+
+    // Then le délégué B la signe, que la garde lui ouvre désormais, et le délégué A se
+    // la voit refuser dès qu'il en est le déclarant : la règle porte sur le nom.
+    const declareeParA = {
+      validationBy: "DELEGATE",
+      validation: "AWAITING",
+      declaredBy: DELEGUE_A,
+    } as const;
+    expect(peutValider(declareeParA, { username: DELEGUE_B, role: "DELEGATE" })).toEqual({
+      possible: true,
+    });
+    expect(peutValider(declareeParA, { username: DELEGUE_A, role: "DELEGATE" }).possible).toBe(
+      false,
+    );
+
+    // Then un opérateur signe ce qu'un délégué aurait dû signer, l'inverse restant
+    // faux : sans cela un dossier se coincerait dès que le délégué s'évapore.
+    expect(peutValider(declareeParA, { username: OPERATEUR, role: "OPERATOR" })).toEqual({
+      possible: true,
+    });
+    expect(
+      peutValider(
+        { validationBy: "OPERATOR", validation: "AWAITING", declaredBy: OPERATEUR },
+        { username: DELEGUE_A, role: "DELEGATE" },
+      ).possible,
+    ).toBe(false);
+
+    // Then la voie de l'opérateur ne bouge pas d'un pouce : la liste qui le nomme
+    // suffit à l'établir comme le contrôleur attendu, et sa substitution vaut toujours
+    // signature.
+    expect(
+      validationApresPointage(
+        "SUBJECT",
+        "OPERATOR",
+        { username: OPERATEUR, role: "OPERATOR" },
+        PORTEUR,
+      ),
+    ).toBe("ACCEPTED");
+
+    // Then et voici ce que la comparaison sur le nom achète, qu'une comparaison sur le
+    // seul rôle ne donnait pas : un opérateur qui est aussi le porteur reste l'acteur
+    // attendu de sa propre étape, quel que soit le rôle qu'on lui prête. Cette
+    // sûreté-là était jusqu'ici le produit de l'ordre de `roleSurDossier`, et rien
+    // n'avertissait qui le change qu'il déplace une règle de signature.
+    expect(
+      validationApresPointage(
+        "SUBJECT",
+        "OPERATOR",
+        { username: PORTEUR, role: "OPERATOR" },
+        PORTEUR,
+      ),
+    ).toBe("AWAITING");
+
+    // Then ce ticket n'ouvre pas la répartition « un délégué contrôle un délégué » :
+    // elle attend le jour où une étape désignera son délégué.
+    expect(combinaisonValide("DELEGATE", "DELEGATE")).toBe(false);
+    expect(combinaisonValide("OPERATOR", "DELEGATE")).toBe(false);
+    expect(combinaisonValide("SUBJECT", "SUBJECT")).toBe(false);
+  });
+
+  it("ne donne un rôle de délégué qu'à qui détient un droit, et le lui retire avec", () => {
+    // Given un dossier dont le porteur est alix.durand
+    // Then un tiers sans droit n'est rien devant lui, et ne pointe rien
+    expect(roleSurDossier(DELEGUE_A, DOSSIER, false)).toBeNull();
+    expect(pointage(DELEGUE_A, false, "DELEGATE", null).permis).toBe(false);
+
+    // When un droit vivant lui est accordé, Then il devient délégué et pointe ce que
+    // l'étape lui confie, sans rien pouvoir signer de sa propre déclaration
+    expect(roleSurDossier(DELEGUE_A, DOSSIER, false, true)).toBe("DELEGATE");
+    expect(pointage(DELEGUE_A, false, "DELEGATE", null, true)).toEqual({
+      permis: true,
+      validation: "NONE",
+    });
+    expect(pointage(DELEGUE_A, false, "DELEGATE", "OPERATOR", true)).toEqual({
+      permis: true,
+      validation: "AWAITING",
+    });
+
+    // Then une participation n'ajoute rien à qui a déjà tout : un opérateur qui en
+    // détiendrait une reste opérateur, faute de quoi la garde de validation lui
+    // opposerait ensuite un rôle de délégué pour lui refuser ce qu'il pouvait faire.
+    expect(roleSurDossier(OPERATEUR, DOSSIER, true, true)).toBe("OPERATOR");
+
+    // Then le porteur reste le porteur, droit ou pas : sans cette priorité, quelqu'un
+    // instruirait son propre départ et validerait ses propres cases.
+    expect(roleSurDossier(PORTEUR, DOSSIER, true, true)).toBe("SUBJECT");
+
+    // When le droit s'éteint, par révocation ou par échéance, Then la même lecture le
+    // rend sans rôle et l'action le refuse : le refus ne dépend d'aucune expiration de
+    // jeton.
+    expect(roleSurDossier(DELEGUE_A, DOSSIER, false, false)).toBeNull();
+    expect(pointage(DELEGUE_A, false, "DELEGATE", null, false).permis).toBe(false);
   });
 });
