@@ -336,14 +336,14 @@ describe("la garde de session tient la première ligne de chaque entrée serveur
     // When on joue chaque entrée serveur énumérée, avec des identifiants plausibles,
     const issues = new Map<string, Issue>();
     const lectures = new Map<string, readonly string[]>();
-    const gardes = new Map<string, number>();
+    const gardes = new Map<string, readonly string[]>();
 
     for (const jeu of jeux) {
       barriere.gardes.length = 0;
       barriere.acces.length = 0;
       issues.set(jeu.nom, await issueDe(jeu.jouer));
       lectures.set(jeu.nom, [...barriere.acces]);
-      gardes.set(jeu.nom, barriere.gardes.length);
+      gardes.set(jeu.nom, [...barriere.gardes]);
     }
 
     // Then le parc joué vient de l'énumération et non de `CHARGES`, dont chaque clé
@@ -356,8 +356,25 @@ describe("la garde de session tient la première ligne de chaque entrée serveur
     );
 
     // Then chacune est passée par la garde, plutôt que de s'en remettre à
-    // `actionTracee` qui l'appelle aussi, mais après avoir répondu,
-    expect(Object.fromEntries(gardes)).toEqual(Object.fromEntries(jeux.map((jeu) => [jeu.nom, 1])));
+    // `actionTracee` qui l'appelle aussi, mais après avoir répondu, et par LA garde
+    // attendue : les deux rejettent de la même façon, si bien que compter les passages
+    // laisserait une entrée réservée à l'équipe s'ouvrir à un participant sans que rien
+    // ne le dise. Les quatre entrées ouvertes aux non-opérateurs se déclarent ici, pour
+    // qu'une cinquième soit un ajout délibéré et non un oubli.
+    const OUVERTES = new Set([
+      "page /moi",
+      "page /moi/dossiers/[id]",
+      "pointerEtape",
+      "validerEtape",
+    ]);
+    expect(Object.fromEntries(gardes)).toEqual(
+      Object.fromEntries(
+        jeux.map((jeu) => [
+          jeu.nom,
+          [OUVERTES.has(jeu.nom) ? "requireUtilisateur" : "requireOperateur"],
+        ]),
+      ),
+    );
 
     // Then chacune redirige vers la connexion,
     const parIssue = [...issues].map(([nom, issue]) => [nom, issue.sort] as const);

@@ -65,7 +65,9 @@ export async function octroyerParticipation(
   const operateur = await requireOperateur();
 
   const dossierId = String(formData.get("dossierId") ?? "").trim();
-  const identifiant = String(formData.get("identifiant") ?? "").trim();
+  const identifiant = String(formData.get("identifiant") ?? "")
+    .trim()
+    .toLowerCase();
   const motif = String(formData.get("motif") ?? "").trim();
   const canalSaisi = String(formData.get("canal") ?? "")
     .trim()

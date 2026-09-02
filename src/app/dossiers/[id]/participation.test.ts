@@ -316,15 +316,22 @@ describe("octroyer puis retirer un droit de participer", () => {
     expect(
       await octroyerParticipation(
         null,
-        octroi({ motif: "reprise après correction", canal: " Lead@Perso.Example ", jours: "7" }),
+        octroi({
+          motif: "reprise après correction",
+          identifiant: " Lead.Exemple ",
+          canal: " Lead@Perso.Example ",
+          jours: "7",
+        }),
       ),
     ).toEqual({});
 
     // Then la même ligne est réécrite de fond en comble : les cinq champs de l'octroi
-    // sont reposés, les trois de la révocation effacés, et le canal est réduit à la
-    // forme sous laquelle la connexion le résoudra
+    // sont reposés, les trois de la révocation effacés, et l'identifiant comme le canal
+    // sont réduits à la forme sous laquelle la base les porte et la connexion les
+    // résoudra, sans quoi une saisie mal casée ne trouverait personne
     expect(base.droits).toHaveLength(1);
     expect(seul(base.droits, "droit")).toMatchObject({
+      personId: "personne-lead",
       reason: "reprise après correction",
       channelEmail: "lead@perso.example",
       grantedBy: "operatrice.exemple",

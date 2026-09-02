@@ -39,6 +39,9 @@ export function Navigation({
   // à inviter à cliquer sur des liens qui renvoient ici.
   const surConnexion = pathname === "/login";
   const menu = surConnexion ? [] : operateur ? LIENS_OPERATEUR : LIENS_PARTICIPANT;
+  // Le bloc-marque suit la même règle que le menu : le laisser sur la racine
+  // reproduirait une fois le rejet que la réduction du menu évite onze fois.
+  const accueil = operateur ? "/" : "/moi";
 
   return (
     <Header
@@ -49,7 +52,7 @@ export function Navigation({
           ADEME
         </>
       }
-      homeLinkProps={{ href: "/", title: "Accueil du gestionnaire de comptes" }}
+      homeLinkProps={{ href: accueil, title: "Accueil du gestionnaire de comptes" }}
       serviceTitle="Gestionnaire de comptes"
       serviceTagline="Donner et retirer des accès, avec une trace"
       quickAccessItems={
