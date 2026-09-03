@@ -23,5 +23,17 @@ allowBuilds:
 # le seul levier. Il devient inutile le jour ou ses dependances designent la 8 ou plus,
 # ce qui se lit dans le lock. Cette version laisse intact l'export `deepmerge`, seule
 # chose qu'il en tire pour fusionner la configuration.
+# `prisma` embarque les pilotes de toutes les bases qu'il sait servir et epingle celui de
+# MySQL en version exacte, laquelle porte une degradation d'authentification qui fuit des
+# identifiants en clair vers un serveur malveillant. Ce depot parle a PostgreSQL par
+# `@prisma/adapter-pg`, donc ce pilote n'est jamais charge et la faille n'est pas
+# atteignable ici : cet override tait une alerte, il ne repare pas un risque. Il devient
+# inutile le jour ou prisma releve sa propre broche, ce qui se lit dans le lock.
+#
+# Le plancher vise le second avis et pas le premier : deux failles distinctes ont ete
+# publiees sur ce paquet, corrigees en 3.22.0 puis en 3.23.1. Viser la plus ancienne
+# laisserait la resolution libre de choisir une 3.22.x encore faillible, et c'est le
+# hasard qui reglerait la surete.
 overrides:
   deepmerge-ts: ^8.0.0
+  mysql2: ^3.23.1
