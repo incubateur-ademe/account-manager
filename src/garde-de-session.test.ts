@@ -18,14 +18,17 @@ const barriere = vi.hoisted(() => ({
   acces: [] as string[],
 }));
 
+function refuser(garde: string): Promise<never> {
+  barriere.gardes.push(garde);
+  const erreur = new Error(barriere.REDIRECTION);
+  Object.assign(erreur, { digest: barriere.REDIRECTION });
+  return Promise.reject(erreur);
+}
+
 vi.mock("@/lib/session", () => ({
-  requireOperateur: () => {
-    barriere.gardes.push("requireOperateur");
-    const erreur = new Error(barriere.REDIRECTION);
-    Object.assign(erreur, { digest: barriere.REDIRECTION });
-    return Promise.reject(erreur);
-  },
-  operateurCourant: () => Promise.resolve(null),
+  requireOperateur: () => refuser("requireOperateur"),
+  requireUtilisateur: () => refuser("requireUtilisateur"),
+  utilisateurCourant: () => Promise.resolve(null),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -83,10 +86,10 @@ afterAll(() => {
  * énumérer donne le parc du jour, là où une liste écrite à la main se périme au
  * prochain ajout et laisse la nouvelle venue passer sans jamais être jouée.
  *
- * Les pages sont balayées à part, pour leur seul `generateMetadata` : il s'exécute
- * pour son compte et lit le référentiel, quand leur composant, lui, est joué par
- * personne ici. Les mises en page en sont absentes, aucune n'en déclarant, et la
- * racine ne s'importe pas hors du rendu de Next.
+ * Les pages sont balayées à part, et sur leurs deux entrées : le `generateMetadata`,
+ * qui s'exécute pour son compte avant le composant, et le composant lui-même. Les
+ * mises en page en sont absentes, aucune n'en déclarant, et la racine ne s'importe pas
+ * hors du rendu de Next.
  */
 // En tête de ligne, et les guillemets comme le point-virgule sont libres : Next accepte
 // les deux formes, et un module écrit autrement passerait sans être joué, ce que ce
@@ -110,6 +113,9 @@ const MODULES = import.meta.glob("./**/*.{ts,tsx}") as Readonly<
  * export ne la porte, et aucune énumération par les exports ne peut l'atteindre.
  */
 const EXEMPTES: ReadonlySet<string> = new Set(["loginAction"]);
+
+/** Et la page qui la porte, seule route de l'outil qui doive répondre sans session. */
+const PUBLIQUES: ReadonlySet<string> = new Set(["/login"]);
 
 const PERSONNE = "camille.exemple";
 const STARTUP = "vehicule-partage";
@@ -238,6 +244,13 @@ async function actionsServeur(): Promise<Jeu[]> {
   return jeux;
 }
 
+function accessoiresDePage(): unknown {
+  return {
+    params: Promise.resolve({ username: PERSONNE, ghid: STARTUP, id: DOSSIER }),
+    searchParams: Promise.resolve({}),
+  };
+}
+
 async function metadonneesDePage(): Promise<Jeu[]> {
   const pages = Object.keys(MODULES)
     .filter((chemin) => chemin.endsWith("/page.tsx"))
@@ -253,12 +266,35 @@ async function metadonneesDePage(): Promise<Jeu[]> {
     const route = chemin.replace(/^\.\/app/, "").replace(/\/page\.tsx$/, "");
     jeux.push({
       nom: `generateMetadata ${route}`,
-      jouer: () =>
-        metadonnee({
-          params: Promise.resolve({ username: PERSONNE, ghid: STARTUP, id: DOSSIER }),
-          searchParams: Promise.resolve({}),
-        }),
+      jouer: () => metadonnee(accessoiresDePage()),
     });
+  }
+  return jeux;
+}
+
+/**
+ * Et le composant lui-même, joué comme la fonction qu'il est.
+ *
+ * Un `generateMetadata` couvre sa page tant qu'elle en déclare un : celles qui posent
+ * un `metadata` statique n'étaient jouées par personne, et une garde retirée de l'une
+ * d'elles rendrait tout ce que sa requête ramène sans que rien ne le dise. Rien n'est
+ * rendu ici, le composant refusant avant sa première lecture.
+ */
+async function composantsDePage(): Promise<Jeu[]> {
+  const jeux: Jeu[] = [];
+  for (const chemin of Object.keys(MODULES)
+    .filter((chemin) => chemin.endsWith("/page.tsx"))
+    .sort()) {
+    const route = chemin.replace(/^\.\/app/, "").replace(/\/page\.tsx$/, "");
+    if (PUBLIQUES.has(route)) {
+      continue;
+    }
+    const exporte = (await charger(chemin))["default"];
+    if (typeof exporte !== "function") {
+      throw new Error(`la page ${route} n'exporte pas de composant par défaut`);
+    }
+    const page = exporte as (props: unknown) => Promise<unknown>;
+    jeux.push({ nom: `page ${route}`, jouer: () => page(accessoiresDePage()) });
   }
   return jeux;
 }
@@ -291,19 +327,23 @@ describe("la garde de session tient la première ligne de chaque entrée serveur
   it("sans session valide, rien ne lit le référentiel ni ne parle", async () => {
     // Given une garde qui refuse, et des doubles de la base et du réseau qui échouent
     // sur tout accès en le consignant,
-    const jeux = [...(await actionsServeur()), ...(await metadonneesDePage())];
+    const jeux = [
+      ...(await actionsServeur()),
+      ...(await metadonneesDePage()),
+      ...(await composantsDePage()),
+    ];
 
     // When on joue chaque entrée serveur énumérée, avec des identifiants plausibles,
     const issues = new Map<string, Issue>();
     const lectures = new Map<string, readonly string[]>();
-    const gardes = new Map<string, number>();
+    const gardes = new Map<string, readonly string[]>();
 
     for (const jeu of jeux) {
       barriere.gardes.length = 0;
       barriere.acces.length = 0;
       issues.set(jeu.nom, await issueDe(jeu.jouer));
       lectures.set(jeu.nom, [...barriere.acces]);
-      gardes.set(jeu.nom, barriere.gardes.length);
+      gardes.set(jeu.nom, [...barriere.gardes]);
     }
 
     // Then le parc joué vient de l'énumération et non de `CHARGES`, dont chaque clé
@@ -311,10 +351,30 @@ describe("la garde de session tient la première ligne de chaque entrée serveur
     // plus signale un balayage muet, lequel ferait tout passer en ne jouant rien,
     expect([...gardes.keys()]).toEqual(expect.arrayContaining(Object.keys(CHARGES)));
     expect(jeux.filter((jeu) => jeu.nom.startsWith("generateMetadata")).length).toBeGreaterThan(0);
+    expect(jeux.map((jeu) => jeu.nom)).toEqual(
+      expect.arrayContaining(["page /moi", "page /moi/dossiers/[id]"]),
+    );
 
     // Then chacune est passée par la garde, plutôt que de s'en remettre à
-    // `actionTracee` qui l'appelle aussi, mais après avoir répondu,
-    expect(Object.fromEntries(gardes)).toEqual(Object.fromEntries(jeux.map((jeu) => [jeu.nom, 1])));
+    // `actionTracee` qui l'appelle aussi, mais après avoir répondu, et par LA garde
+    // attendue : les deux rejettent de la même façon, si bien que compter les passages
+    // laisserait une entrée réservée à l'équipe s'ouvrir à un participant sans que rien
+    // ne le dise. Les quatre entrées ouvertes aux non-opérateurs se déclarent ici, pour
+    // qu'une cinquième soit un ajout délibéré et non un oubli.
+    const OUVERTES = new Set([
+      "page /moi",
+      "page /moi/dossiers/[id]",
+      "pointerEtape",
+      "validerEtape",
+    ]);
+    expect(Object.fromEntries(gardes)).toEqual(
+      Object.fromEntries(
+        jeux.map((jeu) => [
+          jeu.nom,
+          [OUVERTES.has(jeu.nom) ? "requireUtilisateur" : "requireOperateur"],
+        ]),
+      ),
+    );
 
     // Then chacune redirige vers la connexion,
     const parIssue = [...issues].map(([nom, issue]) => [nom, issue.sort] as const);

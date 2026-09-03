@@ -8,19 +8,19 @@ import { CONNECTEURS } from "@/connectors";
 import { type Capability, type ResolvedCapability, resolveCapability } from "@/core/connector";
 import {
   type Acteur,
+  type ActeurNomme,
   type Declarant,
+  dossierVivant,
   type EtatEtape,
   type EtatPlan,
   type EtatValidation,
   estSoldee,
   peutAnnuler,
   peutClore,
-  peutPointer,
   peutValider,
   planPointable,
   roleSurDossier,
   type SensDossier,
-  type Valideur,
 } from "@/core/dossier";
 import { peutExecuter } from "@/core/execution";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
@@ -31,6 +31,7 @@ import {
   origineFigeeSchema,
   type SaisieAttendue,
 } from "@/core/modele-plan";
+import { canalDuDroit, canalMenace, participationVivante } from "@/core/participation";
 import {
   masseDuPlan,
   type OrigineEtape,
@@ -45,13 +46,14 @@ import { env } from "@/lib/env";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
 import { dateFr } from "@/ui/dates";
+import { Etape } from "./Etape";
+import { type DroitAffiche, Participations } from "./Participations";
 import {
   BoutonAnnuler,
   BoutonClore,
   BoutonConfirmer,
   BoutonExecuter,
   BoutonRecalculer,
-  Pointage,
   Validation,
 } from "./Pointage";
 
@@ -76,34 +78,6 @@ const TIER: Record<
   // portant le runbook du contrat, parce qu'une ligne d'arrivée qui manque est le mode
   // de panne que ce produit existe pour éviter.
   none: { libelle: "sans voie", severite: "error" },
-};
-
-const ETAPE: Record<EtatEtape, { libelle: string; severite: "success" | "warning" | "error" }> = {
-  PENDING: { libelle: "à faire", severite: "warning" },
-  SUCCEEDED: { libelle: "fait", severite: "success" },
-  ALREADY_ABSENT: { libelle: "déjà absent", severite: "success" },
-  ALREADY_PRESENT: { libelle: "déjà présent", severite: "success" },
-  SKIPPED: { libelle: "écartée", severite: "warning" },
-  FAILED: { libelle: "échec", severite: "error" },
-  STALE: { libelle: "situation changée", severite: "warning" },
-};
-
-/**
- * À qui l'étape revient. Rien sous un opérateur : c'est le cas nominal de ce plan, et
- * décorer chaque ligne d'un badge que toutes portent n'apprend rien à personne, tout
- * en noyant les deux qui disent quelque chose.
- */
-const ACTEUR: Record<Acteur, { libelle: string; severite: "info" } | null> = {
-  OPERATOR: null,
-  SUBJECT: { libelle: "à la personne concernée", severite: "info" },
-  DELEGATE: { libelle: "à un délégué", severite: "info" },
-};
-
-/** Qui porte le second regard, dit dans une phrase. */
-const CONTROLEUR: Record<Acteur, string> = {
-  OPERATOR: "d'un opérateur",
-  SUBJECT: "de la personne concernée",
-  DELEGATE: "d'un délégué",
 };
 
 const ECART: Record<RaisonDEcart, string> = {
@@ -326,8 +300,15 @@ function attenteDeControle(enAttente: number, restantes: number): string {
   return ` ${sujet} un second regard : une déclaration que personne n'a contrôlée ne solde pas son étape.`;
 }
 
-/** Une étape figée, telle qu'elle se lit et telle qu'elle se pointe. */
-function Etape({
+/**
+ * Une étape figée telle qu'un opérateur la lit : le tronc commun, plus tout ce qui ne
+ * regarde que l'équipe transverse.
+ *
+ * Ce qui s'ajoute ici passe par les emplacements du composant partagé, jamais par un
+ * champ de plus sur lui : c'est ce qui garantit qu'aucun de ces ajouts n'atteindra la
+ * route d'un participant sans qu'on l'ait décidé.
+ */
+function EtapeOperateur({
   etape,
   saisie,
   voie,
@@ -348,19 +329,11 @@ function Etape({
   /** Celui qui lit, tel que la garde de pointage a besoin de le connaître. */
   declarant: Declarant;
   /** Le même, tel que la garde de validation a besoin de le connaître. */
-  valideur: Valideur;
+  valideur: ActeurNomme;
 }) {
   const aide = marche(etape.manual);
   const tier = TIER[etape.tier] ?? { libelle: etape.tier, severite: "info" as const };
-  const pointee = ETAPE[etape.state as EtatEtape];
   const validation = etape.validation as EtatValidation;
-  const soldee = estSoldee({ etat: etape.state as EtatEtape, validation });
-  const acteur = ACTEUR[etape.expectedActor as Acteur];
-  const controleur = etape.validationBy ? CONTROLEUR[etape.validationBy as Acteur] : null;
-
-  // Adossé à la garde comme la validation l'est déjà : offrir le pointage puis le
-  // refuser au clic est exactement ce que cet écran évite partout ailleurs.
-  const pointage = peutPointer(etatPlan, etape.expectedActor as Acteur, declarant);
 
   // Adossé à la garde plutôt que rejoué ici : l'écran qui connaît la règle de son côté
   // est ce qui a muré ce dossier le jour où une étape a échoué.
@@ -377,138 +350,99 @@ function Etape({
       : null;
 
   return (
-    <li className={fr.cx("fr-mb-4w")}>
-      <strong>{etape.label}</strong>{" "}
-      <Badge severity={pointee.severite} small noIcon>
-        {pointee.libelle}
-      </Badge>{" "}
-      <Badge severity={tier.severite} small noIcon>
-        {tier.libelle}
-      </Badge>{" "}
-      {acteur ? (
+    <Etape
+      etape={etape}
+      saisie={saisie}
+      pointable={pointable}
+      etatPlan={etatPlan}
+      sens={sens}
+      declarant={declarant}
+      badges={
         <>
-          <Badge severity={acteur.severite} small noIcon>
-            {acteur.libelle}
+          <Badge severity={tier.severite} small noIcon>
+            {tier.libelle}
           </Badge>{" "}
+          {etape.riskLevel === "HIGH" ? (
+            <Badge severity="error" small noIcon>
+              risque élevé
+            </Badge>
+          ) : null}
         </>
-      ) : null}
-      {validation === "AWAITING" ? (
+      }
+      details={
         <>
-          <Badge severity="warning" small noIcon>
-            en attente de validation
-          </Badge>{" "}
+          {voie ? <p className={fr.cx("fr-text--sm", "fr-mb-1v", "fr-mt-1v")}>{voie}</p> : null}
+          {aide.runbook ? (
+            <p className={fr.cx("fr-text--sm", "fr-mb-1v", "fr-mt-1v")}>{aide.runbook}</p>
+          ) : null}
+          {aide.deeplink ? (
+            <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
+              <a
+                href={aide.deeplink}
+                target="_blank"
+                rel="noreferrer"
+                title="Ouvrir la page concernée, nouvelle fenêtre"
+              >
+                Ouvrir la page concernée
+              </a>
+            </p>
+          ) : null}
+          {aide.doneWhen ? (
+            <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
+              <em>C'est fait quand : {aide.doneWhen}</em>
+            </p>
+          ) : null}
+          {etape.grantExpiresAt ? (
+            <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
+              <strong>Accès accordé jusqu'au {dateLocale.format(etape.grantExpiresAt)}.</strong> Le
+              terme est absolu et compté depuis le calcul de ce plan : une prolongation de mission
+              ne le repousse pas, et reconduire cet accès demandera un nouveau plan, donc une
+              nouvelle décision tracée.
+            </p>
+          ) : null}
         </>
-      ) : null}
-      {/* Un refus a renvoyé l'étape à faire : sans ce badge, elle se relit comme une
-          étape que personne n'a jamais pointée. « Déclaration » et non « preuve » :
-          le refus l'a remise à `PENDING`, si bien que plus rien ici ne dit si ce qui a
-          été refusé était un geste donné pour fait ou la raison de l'avoir écarté. */}
-      {validation === "REFUSED" ? (
+      }
+      journal={
         <>
-          <Badge severity="error" small noIcon>
-            déclaration refusée
-          </Badge>{" "}
+          {etape.lastError ? (
+            <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
+              <strong>Note :</strong> {etape.lastError}
+            </p>
+          ) : null}
+          {etape.executedAt ? (
+            <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
+              Pointée le {dateLocale.format(etape.executedAt)}
+              {etape.declaredBy ? ` par ${etape.declaredBy}` : ""}.
+            </p>
+          ) : null}
+          {validation === "REFUSED" ? (
+            <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
+              <strong>Déclaration refusée</strong>
+              {etape.validatedBy ? ` par ${etape.validatedBy}` : ""}
+              {etape.validatedAt ? ` le ${dateLocale.format(etape.validatedAt)}` : ""}
+              {etape.validationNote ? ` : ${etape.validationNote}` : ""}. L'étape est de nouveau à
+              faire.
+            </p>
+          ) : null}
+          {validation === "ACCEPTED" && etape.validatedBy ? (
+            <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
+              Validée par {etape.validatedBy}
+              {etape.validatedAt ? ` le ${dateLocale.format(etape.validatedAt)}` : ""}.
+            </p>
+          ) : null}
         </>
-      ) : null}
-      {etape.riskLevel === "HIGH" ? (
-        <Badge severity="error" small noIcon>
-          risque élevé
-        </Badge>
-      ) : null}
-      {voie ? <p className={fr.cx("fr-text--sm", "fr-mb-1v", "fr-mt-1v")}>{voie}</p> : null}
-      {aide.runbook ? (
-        <p className={fr.cx("fr-text--sm", "fr-mb-1v", "fr-mt-1v")}>{aide.runbook}</p>
-      ) : null}
-      {aide.deeplink ? (
-        <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-          <a
-            href={aide.deeplink}
-            target="_blank"
-            rel="noreferrer"
-            title="Ouvrir la page concernée, nouvelle fenêtre"
-          >
-            Ouvrir la page concernée
-          </a>
-        </p>
-      ) : null}
-      {aide.doneWhen ? (
-        <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-          <em>C'est fait quand : {aide.doneWhen}</em>
-        </p>
-      ) : null}
-      {etape.grantExpiresAt ? (
-        <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-          <strong>Accès accordé jusqu'au {dateLocale.format(etape.grantExpiresAt)}.</strong> Le
-          terme est absolu et compté depuis le calcul de ce plan : une prolongation de mission ne le
-          repousse pas, et reconduire cet accès demandera un nouveau plan, donc une nouvelle
-          décision tracée.
-        </p>
-      ) : null}
-      {saisie ? (
-        <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-          Valeur demandée : {saisie.libelle}
-          {saisie.obligatoire ? " (sans elle, l'étape ne peut pas être donnée pour faite)" : ""}.
-        </p>
-      ) : null}
-      {etape.reponse ? (
-        <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-          <strong>Valeur saisie :</strong> {etape.reponse}
-        </p>
-      ) : null}
-      {etape.lastError ? (
-        <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-          <strong>Note :</strong> {etape.lastError}
-        </p>
-      ) : null}
-      {etape.executedAt ? (
-        <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-          Pointée le {dateLocale.format(etape.executedAt)}
-          {etape.declaredBy ? ` par ${etape.declaredBy}` : ""}.
-        </p>
-      ) : null}
-      {validation === "AWAITING" ? (
-        <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-          Cette déclaration attend le regard {controleur ?? "de quelqu'un d'autre"}. Tant qu'il n'a
-          pas eu lieu, l'étape reste à solder et le dossier ne se clôt pas.
-        </p>
-      ) : null}
-      {validation === "REFUSED" ? (
-        <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-          <strong>Déclaration refusée</strong>
-          {etape.validatedBy ? ` par ${etape.validatedBy}` : ""}
-          {etape.validatedAt ? ` le ${dateLocale.format(etape.validatedAt)}` : ""}
-          {etape.validationNote ? ` : ${etape.validationNote}` : ""}. L'étape est de nouveau à
-          faire.
-        </p>
-      ) : null}
-      {validation === "ACCEPTED" && etape.validatedBy ? (
-        <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-          Validée par {etape.validatedBy}
-          {etape.validatedAt ? ` le ${dateLocale.format(etape.validatedAt)}` : ""}.
-        </p>
-      ) : null}
-      {pointable ? (
-        <Pointage
-          etapeId={etape.id}
-          // Une déclaration en attente de contrôle a bel et bien eu lieu : le bouton
-          // corrige ce qui a été dit, il n'enregistre pas une première parole.
-          faite={soldee || validation === "AWAITING"}
-          sens={sens}
-          saisie={saisie}
-          reponse={etape.reponse}
-          possible={pointage.possible}
-          raison={pointage.possible ? null : pointage.raison}
-        />
-      ) : null}
-      {pointable && controle ? (
-        <Validation
-          etapeId={etape.id}
-          ecart={etape.state === "SKIPPED"}
-          possible={controle.possible}
-          raison={controle.possible ? null : controle.raison}
-        />
-      ) : null}
-    </li>
+      }
+      controle={
+        pointable && controle ? (
+          <Validation
+            etapeId={etape.id}
+            ecart={etape.state === "SKIPPED"}
+            possible={controle.possible}
+            raison={controle.possible ? null : controle.raison}
+          />
+        ) : null
+      }
+    />
   );
 }
 
@@ -534,6 +468,29 @@ export default async function DossierPage({
       firstSignalAt: true,
       profileKey: true,
       person: { select: { id: true, username: true, fullname: true } },
+      // Les révoqués restent au journal et n'ont plus rien à dire ici : la liste
+      // montre ce qui ouvre, pas ce qui a ouvert.
+      participations: {
+        where: { revokedAt: null },
+        orderBy: { expiresAt: "asc" },
+        select: {
+          id: true,
+          reason: true,
+          channelEmail: true,
+          grantedBy: true,
+          expiresAt: true,
+          revokedAt: true,
+          person: {
+            select: {
+              username: true,
+              fullname: true,
+              source: true,
+              usernameFabricated: true,
+              communicationEmail: true,
+            },
+          },
+        },
+      },
       plans: {
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: 1,
@@ -644,7 +601,7 @@ export default async function DossierPage({
 
   // Le porteur passe avant l'opérateur : sans cette priorité, quelqu'un validerait ses
   // propres cases sur son propre dossier.
-  const valideur: Valideur = {
+  const valideur: ActeurNomme = {
     username: operateur.username,
     role: roleSurDossier(operateur.username, { porteur: dossier.person.username }, true),
   };
@@ -722,6 +679,30 @@ export default async function DossierPage({
           })
         ).map((startup) => [startup.ghid, startup.name] as const),
   );
+
+  const politique = policy();
+  const declaresLocaux = politique.scope.local.map((entree) => entree.username);
+  const droits: DroitAffiche[] = dossier.participations
+    // Un droit périmé n'ouvre plus rien : il reste en base comme trace, et la mort d'un
+    // droit se déduit plutôt qu'elle ne s'écrit.
+    .filter((droit) => participationVivante(droit, dossier.state, maintenant))
+    .map((droit) => {
+      const canal = canalDuDroit(droit.person, droit.channelEmail, declaresLocaux);
+      return {
+        id: droit.id,
+        username: droit.person.username,
+        nom: droit.person.fullname,
+        motif: droit.reason,
+        echeance: dateLocale.format(droit.expiresAt),
+        octroyePar: droit.grantedBy,
+        canal: canal.vivant
+          ? { adresse: canal.adresse, certain: canal.origine === "OCTROI" }
+          : null,
+        menace:
+          canal.vivant &&
+          canalMenace(droit.person, droit.channelEmail, politique.mail.domainsLostOnDeparture),
+      };
+    });
 
   // Comparé au calcul du jour, et seulement pour le dire : un plan figé ne se
   // rattrape pas tout seul, et un rattachement postérieur ne doit pas le changer.
@@ -958,7 +939,7 @@ export default async function DossierPage({
               ) : null}
               <ol className={fr.cx("fr-mt-2w")} start={groupe.premier + 1}>
                 {groupe.lignes.map(({ etape, origine }) => (
-                  <Etape
+                  <EtapeOperateur
                     key={etape.id}
                     etape={etape}
                     saisie={origine?.saisie ?? null}
@@ -1099,6 +1080,15 @@ export default async function DossierPage({
           </ul>
         </section>
       ) : null}
+
+      <Participations
+        dossierId={dossier.id}
+        droits={droits}
+        domainesMenaces={politique.mail.domainsLostOnDeparture.join(", ")}
+        // Le refus du dossier veillé est celui de l'action, redit ici : un départ
+        // soupçonné et pas décidé ne s'apprend à personne par un droit d'accès.
+        ouvert={dossierVivant(dossier.state) && dossier.state !== "WATCH"}
+      />
 
       {/* Hors du bloc des étapes, comme l'annulation : un plan qui n'en porte aucune
           est soldé par construction, et le bouton vivait dans une branche que ce

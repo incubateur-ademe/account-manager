@@ -87,19 +87,25 @@ describe("critères de consultation du journal", () => {
     expect(lienJournal(execution, { execution: "" })).toBe("/journal?acteur=%40systeme");
   });
 
-  it("rassemble l'histoire d'une personne, dont les constats qui la nomment en fin de clé", () => {
+  it("rassemble ce qui concerne une personne et ce qu'elle a fait elle-même", () => {
     // Les événements ne portent pas de champ « personne » : ils la nomment dans la
     // cible, après le type de constat. Un filtre sur l'égalité seule raterait donc
     // tout ce qui la concerne vraiment.
     const criteres = lireCriteres({ personne: "jean.dupont" });
 
+    // Le troisième terme ne dit plus « ses connexions » mais « ses gestes » : quelqu'un
+    // qui pointe une étape de son propre dossier n'apparaissait, sinon, dans aucune
+    // histoire, pas même la sienne.
     expect(versFiltre(criteres)).toEqual({
       OR: [
         { targetId: "jean.dupont" },
         { targetId: { endsWith: ":jean.dupont" } },
-        { actorUsername: "jean.dupont", targetType: "session" },
+        { actorUsername: "jean.dupont" },
       ],
     });
+    expect(versFiltre(criteres).OR).not.toContainEqual(
+      expect.objectContaining({ targetType: "session" }),
+    );
     expect(auMoinsUnFiltre(criteres)).toBe(true);
 
     const retour = lienJournal(criteres, { personne: "" });
@@ -141,7 +147,10 @@ describe("histoire d'une fiche à travers ses renommages et sa fusion", () => {
     expect(filtre.OR).toHaveLength(12);
     expect(filtre.OR).toContainEqual({ targetId: "camile.exempl" });
     expect(filtre.OR).toContainEqual({ targetId: { endsWith: ":camille.exempl" } });
-    expect(filtre.OR).toContainEqual({ actorUsername: "camille.roux", targetType: "session" });
+    expect(filtre.OR).toContainEqual({ actorUsername: "camille.roux" });
+    // Un geste posé sous un ancien identifiant se retrouve par le nouveau : c'est
+    // l'élargissement qui le rend visible, et la chaîne des renommages qui le relie.
+    expect(filtre.OR).toContainEqual({ actorUsername: "camile.exempl" });
 
     // Sans alias, le filtre reste exactement celui d'avant : la chaîne ne se paie
     // pas sur les écrans qui n'en ont pas besoin.

@@ -34,14 +34,14 @@ const RISQUE: Record<RiskLevel, string> = {
 /**
  * Les rôles offerts au choix, plus celui que l'étape porte déjà quand il n'en est pas.
  *
- * `DELEGATE` reste hors de la liste tant qu'aucun droit par objet n'existe :
- * `roleSurDossier` ne le rend jamais, si bien qu'une étape qui l'attend attendrait
- * quelqu'un que rien ne peut désigner. Une ligne qui le porte déjà le garde en
- * revanche, comme elle garde une paire que le serveur refusera : un choix absent de la
- * liste ferait afficher le premier venu et le réécrirait au premier enregistrement,
- * sans que personne ne l'ait demandé.
+ * `DELEGATE` y entre depuis qu'un droit par dossier existe : `roleSurDossier` le rend
+ * à qui en détient un, si bien qu'une étape qui l'attend nomme quelqu'un au lieu
+ * d'attendre une désignation impossible. Une ligne qui porte un rôle absent de cette
+ * liste le garde en revanche, comme elle garde une paire que le serveur refusera : un
+ * choix absent ferait afficher le premier venu et le réécrirait au premier
+ * enregistrement, sans que personne ne l'ait demandé.
  */
-const OFFERTS: readonly Acteur[] = ["OPERATOR", "SUBJECT"];
+const OFFERTS: readonly Acteur[] = ["OPERATOR", "SUBJECT", "DELEGATE"];
 
 function choix(retenu: Acteur | null, admis: (candidat: Acteur) => boolean): readonly Acteur[] {
   const liste = OFFERTS.filter(admis);

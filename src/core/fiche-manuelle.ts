@@ -1,5 +1,6 @@
 import type { PersonSource } from "@/generated/prisma/enums";
 
+import { estOperateur } from "./identite";
 import { normaliserLogin } from "./rapprochement";
 import { echeanceEffective } from "./rattachement-startup";
 
@@ -19,6 +20,30 @@ export function normaliserIdentifiant(nom: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ".")
     .replace(/^\.+|\.+$/g, "");
+}
+
+/**
+ * Le refus d'un identifiant que l'allowlist des opérateurs porte déjà, dit une fois
+ * pour les deux gestes qui en écrivent un.
+ *
+ * C'est le verrou qui ne double aucun des autres. Ceux qui protègent la session sont
+ * ancrés sur un état qui n'existe que pour des gens déjà connus, une ligne
+ * d'utilisateur née d'une connexion antérieure ou une fiche collectée : un accès de
+ * secours qui ne s'est jamais connecté n'est couvert par aucun. Celui-ci l'est, parce
+ * qu'il porte sur l'écriture de l'identifiant et non sur la lecture d'une session.
+ *
+ * `normaliserIdentifiant` produit exactement la forme d'un username beta.gouv, et
+ * personne ne vivrait comme un octroi de droits le fait de renommer une fiche du nom
+ * d'un collègue.
+ */
+export function identifiantReserve(
+  identifiant: string,
+  operateurs: readonly string[],
+  breakGlass: readonly string[],
+): string | null {
+  return estOperateur(identifiant, operateurs, breakGlass)
+    ? `« ${identifiant} » nomme un opérateur de l'outil : aucune fiche ne peut porter cet identifiant.`
+    : null;
 }
 
 export interface FicheManuelle {
@@ -169,6 +194,26 @@ export interface ReferenceDeFiche {
   resourceId: string;
 }
 
+/** Un droit de participer à un dossier, augmenté de quoi départager une collision. */
+export interface ParticipationDeFiche {
+  id: string;
+  accessCaseId: string;
+  grantedAt: Date;
+}
+
+/**
+ * Un droit que la collision fait disparaître, avec la fiche qui le portait.
+ *
+ * Le détenteur et le motif sont dits ici parce que l'appelant ne peut pas les
+ * redeviner : la collision emporte tantôt le droit de la source, tantôt celui de la
+ * cible, et le journal nomme le détenteur comme il le fait pour un octroi et pour une
+ * révocation.
+ */
+export interface ParticipationAbandonnee extends ParticipationDeFiche {
+  detenteur: string;
+  raison: string;
+}
+
 /** Un rattachement manuel, augmenté de son identifiant pour pouvoir être déplacé. */
 export interface RattachementDeFiche {
   id: string;
@@ -200,6 +245,7 @@ export interface FicheAFusionner {
   comptes: readonly CompteDeFiche[];
   constats: readonly ConstatDeFiche[];
   dossiers: readonly DossierDeFiche[];
+  participations: readonly ParticipationDeFiche[];
   references: readonly ReferenceDeFiche[];
   rattachements: readonly RattachementDeFiche[];
   surcharge: SurchargeDeFiche | null;
@@ -220,6 +266,13 @@ export type EtapeFusion =
   | { type: "reecrire-cles"; cles: readonly { id: string; dedupKey: string }[] }
   | { type: "fermer-constats"; ids: readonly string[]; raison: string }
   | { type: "deplacer-dossiers"; ids: readonly string[] }
+  /**
+   * Les droits qui suivent la personne, et ceux de la cible que le déplacement
+   * écrase. Les deux voyagent ensemble parce qu'un droit unique par couple dossier et
+   * personne rend le second obligatoire avant le premier : les séparer laisserait
+   * déplacer sans avoir fait la place.
+   */
+  | { type: "deplacer-participations"; ids: readonly string[]; remplacees: readonly string[] }
   | { type: "deplacer-rattachements"; ids: readonly string[] }
   | { type: "deplacer-surcharge"; id: string }
   | { type: "supprimer-surcharge"; id: string }
@@ -245,6 +298,14 @@ export interface PlanFusion {
   clesReecrites: readonly { id: string; avant: string; apres: string }[];
   constatsFermes: readonly ConstatDeFiche[];
   dossiers: readonly DossierDeFiche[];
+  /** Les droits de participer qui suivent la personne, révoqués compris : ils tracent. */
+  participations: readonly ParticipationDeFiche[];
+  /**
+   * Ceux que la collision sur le couple dossier et personne fait disparaître, de
+   * quelque fiche qu'ils viennent : le plus récent survit, l'autre est nommé ici parce
+   * que c'est un droit décidé par quelqu'un qui cesse d'exister.
+   */
+  participationsAbandonnees: readonly ParticipationAbandonnee[];
   /** Ouverts comme clos : un rattachement fermé explique un constat levé la veille. */
   rattachements: readonly RattachementDeFiche[];
   /** La surcharge de la source, quand la cible n'en porte pas et qu'elle peut suivre. */
@@ -328,6 +389,41 @@ export function planifierFusion(
     clesReecrites.push({ id: constat.id, avant: constat.dedupKey, apres });
   }
 
+  // Un seul droit par couple dossier et personne : deux fiches qui participent au même
+  // dossier se rencontrent ici. Le plus récent survit, quelle que soit la fiche dont il
+  // vient, et à dates égales celui de la cible l'emporte, parce qu'il est celui qui
+  // survivrait de toute façon et que le départage doit être déterministe plutôt que
+  // juste. Fondre les deux en un seul fabriquerait un octroi que personne n'a décidé.
+  const droitsDeLaCible = new Map(
+    cible.participations.map((participation) => [participation.accessCaseId, participation]),
+  );
+  const participations: ParticipationDeFiche[] = [];
+  const participationsAbandonnees: ParticipationAbandonnee[] = [];
+  const remplacees: ParticipationDeFiche[] = [];
+
+  for (const participation of source.participations) {
+    const enFace = droitsDeLaCible.get(participation.accessCaseId);
+    if (enFace === undefined) {
+      participations.push(participation);
+      continue;
+    }
+    if (participation.grantedAt.getTime() > enFace.grantedAt.getTime()) {
+      participations.push(participation);
+      remplacees.push(enFace);
+      participationsAbandonnees.push({
+        ...enFace,
+        detenteur: cible.username,
+        raison: `remplacée par le droit plus récent apporté par ${source.username}`,
+      });
+      continue;
+    }
+    participationsAbandonnees.push({
+      ...participation,
+      detenteur: source.username,
+      raison: `fusionnée dans ${cible.username}, qui porte un droit plus récent sur ce dossier`,
+    });
+  }
+
   const resourcesDeLaCible = new Set(cible.references.map((reference) => reference.resourceId));
   const references = source.references.filter(
     (reference) => !resourcesDeLaCible.has(reference.resourceId),
@@ -370,6 +466,8 @@ export function planifierFusion(
     clesReecrites,
     constatsFermes,
     dossiers: source.dossiers,
+    participations,
+    participationsAbandonnees,
     rattachements: source.rattachements,
     surcharge: surchargeSuit ? source.surcharge : null,
     surchargeAbandonnee: surchargeSuit ? null : source.surcharge,
@@ -411,6 +509,13 @@ export function planifierFusion(
   }
   if (source.dossiers.length > 0) {
     etapes.push({ type: "deplacer-dossiers", ids: source.dossiers.map((dossier) => dossier.id) });
+  }
+  if (participations.length > 0) {
+    etapes.push({
+      type: "deplacer-participations",
+      ids: participations.map((participation) => participation.id),
+      remplacees: remplacees.map((participation) => participation.id),
+    });
   }
   if (source.rattachements.length > 0) {
     etapes.push({

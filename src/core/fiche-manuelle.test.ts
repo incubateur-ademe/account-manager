@@ -29,6 +29,7 @@ const aFusionner = (over: Partial<FicheAFusionner> = {}): FicheAFusionner => ({
   comptes: [],
   constats: [],
   dossiers: [],
+  participations: [],
   references: [],
   rattachements: [],
   surcharge: null,
@@ -479,5 +480,126 @@ describe("la fusion annonce ce qu'elle repousse", () => {
         AUJOURDHUI,
       ).prolongation,
     ).toEqual({ avant: null, apres: le("2027-03-31") });
+  });
+});
+
+describe("la fusion ne fait pas disparaître un droit de participer", () => {
+  const droit = (id: string, accessCaseId: string, iso: string) => ({
+    id,
+    accessCaseId,
+    grantedAt: le(iso),
+  });
+
+  it("déplace les droits avant la suppression, et nomme celui que la collision emporte", () => {
+    // Given deux fiches de la même personne, chacune portant un droit sur un dossier
+    // qui n'est pas celui de l'autre
+    const plan = planifierFusion(
+      aFusionner({ participations: [droit("cp1", "dossier-un", "2026-08-20")] }),
+      aFusionner({
+        username: "camille.exemple",
+        participations: [droit("cp2", "dossier-deux", "2026-08-01")],
+      }),
+      AUJOURDHUI,
+    );
+
+    // Then l'inventaire annonce le déplacement avant que rien ne soit écrit, et
+    // l'étape est empilée avant la suppression : c'est ce seul ordre qui empêche la
+    // cascade du schéma de faire disparaître le droit sans un mot ni une erreur.
+    expect(plan.participations).toEqual([droit("cp1", "dossier-un", "2026-08-20")]);
+    expect(plan.participationsAbandonnees).toHaveLength(0);
+    expect(plan.etapes).toContainEqual({
+      type: "deplacer-participations",
+      ids: ["cp1"],
+      remplacees: [],
+    });
+
+    const types = plan.etapes.map((etape) => etape.type);
+    expect(types.indexOf("deplacer-participations")).toBeLessThan(types.indexOf("supprimer-fiche"));
+  });
+
+  it("garde le droit le plus récent quand les deux fiches en portent un sur le même dossier", () => {
+    // Given un dossier commun aux deux fiches, et un droit de chaque côté : le couple
+    // dossier et personne est unique, l'un des deux ne survivra pas.
+    const collision = (source: string, cible: string) =>
+      planifierFusion(
+        aFusionner({ participations: [droit("cp-source", "dossier-commun", source)] }),
+        aFusionner({
+          username: "camille.exemple",
+          participations: [droit("cp-cible", "dossier-commun", cible)],
+        }),
+        AUJOURDHUI,
+      );
+
+    // When c'est la fiche fabriquée qui porte le droit le plus récent, ce qui arrive
+    // précisément quand un opérateur vient de le poser avant de découvrir le doublon
+    const sourceGagne = collision("2026-08-20", "2026-08-01");
+
+    // Then c'est lui qui survit, et celui de la cible est nommé plutôt que perdu en
+    // silence : dire « celle de la source est abandonnée » aurait été faux ici.
+    expect(sourceGagne.participations.map((participation) => participation.id)).toEqual([
+      "cp-source",
+    ]);
+    expect(
+      sourceGagne.participationsAbandonnees.map(({ id, detenteur, raison }) => ({
+        id,
+        detenteur,
+        raison,
+      })),
+    ).toEqual([
+      {
+        id: "cp-cible",
+        detenteur: "camille.exemple",
+        raison: "remplacée par le droit plus récent apporté par camille.exempl",
+      },
+    ]);
+    expect(sourceGagne.etapes).toContainEqual({
+      type: "deplacer-participations",
+      ids: ["cp-source"],
+      remplacees: ["cp-cible"],
+    });
+
+    // When c'est la cible qui porte le plus récent, Then rien ne se déplace et c'est
+    // le droit de la source qui est nommé : l'étape n'a plus lieu d'être.
+    const cibleGagne = collision("2026-08-01", "2026-08-20");
+    expect(cibleGagne.participations).toHaveLength(0);
+    expect(
+      cibleGagne.participationsAbandonnees.map(({ id, detenteur, raison }) => ({
+        id,
+        detenteur,
+        raison,
+      })),
+    ).toEqual([
+      {
+        id: "cp-source",
+        detenteur: "camille.exempl",
+        raison: "fusionnée dans camille.exemple, qui porte un droit plus récent sur ce dossier",
+      },
+    ]);
+    expect(cibleGagne.etapes.map((etape) => etape.type)).not.toContain("deplacer-participations");
+
+    // Then à dates égales la cible l'emporte, parce qu'elle est la fiche qui survit et
+    // que le départage doit être déterministe plutôt que juste.
+    const exAequo = collision("2026-08-10", "2026-08-10");
+    expect(exAequo.participations).toHaveLength(0);
+    expect(exAequo.participationsAbandonnees.map((participation) => participation.id)).toEqual([
+      "cp-source",
+    ]);
+  });
+
+  it("n'annonce aucun déplacement quand la fiche source ne porte aucun droit", () => {
+    // Given une fiche source sans droit, et une cible qui en porte un : l'inventaire
+    // reste lisible, et rien ne se déplace vers là où c'est déjà.
+    const plan = planifierFusion(
+      aFusionner(),
+      aFusionner({
+        username: "camille.exemple",
+        participations: [droit("cp-cible", "dossier-commun", "2026-08-01")],
+      }),
+      AUJOURDHUI,
+    );
+
+    expect(plan.participations).toHaveLength(0);
+    expect(plan.participationsAbandonnees).toHaveLength(0);
+    expect(plan.etapes.map((etape) => etape.type)).not.toContain("deplacer-participations");
   });
 });
