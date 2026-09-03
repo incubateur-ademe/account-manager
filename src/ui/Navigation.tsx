@@ -39,9 +39,10 @@ export function Navigation({
   // à inviter à cliquer sur des liens qui renvoient ici.
   const surConnexion = pathname === "/login";
   const menu = surConnexion ? [] : operateur ? LIENS_OPERATEUR : LIENS_PARTICIPANT;
-  // Le bloc-marque suit la même règle que le menu : le laisser sur la racine
-  // reproduirait une fois le rejet que la réduction du menu évite onze fois.
-  const accueil = operateur ? "/" : "/moi";
+  // Le bloc-marque suit la même règle que le menu, `surConnexion` compris : le laisser
+  // sur la racine reproduirait une fois le rejet que la réduction du menu évite onze
+  // fois, et hors session `operateur` dit « inconnu » plutôt que « participant ».
+  const accueil = surConnexion ? "/login" : operateur ? "/" : "/moi";
 
   return (
     <Header
