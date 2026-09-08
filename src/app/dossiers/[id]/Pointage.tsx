@@ -118,6 +118,9 @@ export function BoutonConfirmer({ planId }: { planId: string }) {
  * nominal, et « écartée » doit porter sa raison, sans quoi l'étape devient un accès
  * oublié que plus rien ne rattrape.
  *
+ * Trois seulement pour qui n'est pas de l'équipe, et c'est `pointerEtape` qui dit
+ * pourquoi.
+ *
  * Ce constat se dit dans le sens du dossier, jamais dans les deux : proposer « déjà
  * absent » sous une étape d'octroi ferait signer l'inverse de ce qui a été fait.
  *
@@ -132,6 +135,7 @@ export function Pointage({
   sens,
   saisie,
   reponse,
+  ecartOffert,
   possible,
   raison,
 }: {
@@ -141,6 +145,8 @@ export function Pointage({
   /** Ce que l'étape déclarée réclame en plus d'une case cochée, ou rien. */
   saisie: SaisieAttendue | null;
   reponse: string | null;
+  /** L'écart n'est offert qu'à l'équipe transverse, et le serveur le refuse aux autres. */
+  ecartOffert: boolean;
   possible: boolean;
   raison: string | null;
 }) {
@@ -171,7 +177,7 @@ export function Pointage({
           >
             <option value="fait">C'est fait</option>
             <option value={constat.valeur}>{constat.libelle}</option>
-            <option value="ignoree">Écartée</option>
+            {ecartOffert ? <option value="ignoree">Écartée</option> : null}
             <option value="echec">Échec</option>
           </select>
         </div>
@@ -236,16 +242,21 @@ export function Pointage({
  * disent pas la même chose. Sous un geste donné pour fait, il dit si la preuve en est
  * faite. Sous une étape écartée, aucun geste n'est affirmé et il n'y a donc pas de
  * preuve à demander : ce qu'il juge est la raison de l'avoir écartée.
+ *
+ * Il désigne la déclaration et non le formulaire qui la porte : sur la route d'un
+ * participant, celui qui contrôle une étape n'a pas le droit de la pointer, et rien
+ * n'est affiché au-dessus de son avis.
  */
 const AVIS = {
   geste: {
-    objet: "le formulaire au-dessus dit ce qui a été fait, celui-ci dit ce que cela vaut",
+    objet:
+      "ce qui a été déclaré au-dessus dit que le geste a eu lieu, celui-ci dit ce que cela vaut",
     accepter: "La preuve est faite",
     refuser: "La preuve n'est pas faite",
   },
   ecart: {
     objet:
-      "le formulaire au-dessus dit pourquoi cette étape est écartée, celui-ci dit si cette raison tient",
+      "ce qui a été déclaré au-dessus dit pourquoi cette étape est écartée, celui-ci dit si cette raison tient",
     accepter: "L'écart est justifié",
     refuser: "L'écart n'est pas justifié",
   },

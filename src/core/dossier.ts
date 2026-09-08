@@ -32,9 +32,9 @@ export function sensOppose(sens: SensDossier): SensDossier {
 /**
  * Qui agit sur une étape, et qui contrôle ce qui y a été déclaré.
  *
- * `DELEGATE` existe sans qu'aucun chemin de code ne le produise : `roleSurDossier` ne
- * le rend jamais tant qu'un droit par objet n'existe pas. Une valeur inerte coûte
- * zéro, une valeur ajoutée après coup coûte un incident.
+ * `DELEGATE` désigne un rôle et jamais une personne : une étape dit qu'elle attend un
+ * délégué, aucune ne sait dire lequel. C'est ce qui sépare ce rôle des deux autres, où
+ * le porteur est un nom et l'opérateur une liste nommée.
  */
 export type Acteur = "OPERATOR" | "SUBJECT" | "DELEGATE";
 
@@ -147,6 +147,14 @@ export interface Declarant {
 }
 
 /**
+ * Ce qu'entend qui n'a rien à voir avec un dossier, et c'est une seule phrase parce
+ * que la moindre variante en ferait une sonde. Les gardes de ce module la rendent, et
+ * les actions la rendent aussi : celles-ci refusent avant d'avoir relu l'état du
+ * dossier, si bien que deux formulations divergeraient sans que rien ne le dise.
+ */
+export const REFUS_HORS_DOSSIER = "Ce dossier ne vous concerne pas.";
+
+/**
  * Pointer une étape est une déclaration humaine, pas une exécution : l'outil ne
  * touche à aucun système ici. On ne pointe donc que ce qui a été confirmé, sans quoi
  * on consignerait des gestes faits d'après un brouillon que personne n'a approuvé.
@@ -167,7 +175,7 @@ export function peutPointer(etat: EtatPlan, acteurAttendu: Acteur, declarant: De
     return plan;
   }
   if (declarant.role === null) {
-    return { possible: false, raison: "Ce dossier ne vous concerne pas." };
+    return { possible: false, raison: REFUS_HORS_DOSSIER };
   }
   if (declarant.role !== acteurAttendu && !declarant.operateur) {
     return {
@@ -190,19 +198,27 @@ export function peutPointer(etat: EtatPlan, acteurAttendu: Acteur, declarant: De
  * est dans l'équipe se lit à côté de ce qu'il est devant le dossier, et la garde du
  * pointage lit les deux, voir `Declarant`.
  *
- * `DELEGATE` n'en sort jamais : il n'existe aucun droit par objet à lire. Une étape
- * confiée à un délégué reste donc pointable par un opérateur en substitution, si bien
- * qu'aucun dossier ne se bloque en attendant ce droit.
+ * L'opérateur passe en revanche avant le délégué, et cette priorité-là n'est pas
+ * cosmétique : une participation n'ajoute rien à qui a déjà tout, et l'ordre inverse
+ * ferait rendre `DELEGATE` à un opérateur qui en détient une, ce que `peutValider` lui
+ * opposerait ensuite pour lui refuser une validation qu'il pouvait faire.
+ *
+ * Une étape confiée à un délégué reste pointable par un opérateur en substitution, si
+ * bien qu'aucun dossier ne se bloque quand personne ne détient ce droit.
  */
 export function roleSurDossier(
   username: string,
   dossier: DossierConcerne,
   estOperateur: boolean,
+  participe = false,
 ): Acteur | null {
   if (username === dossier.porteur) {
     return "SUBJECT";
   }
-  return estOperateur ? "OPERATOR" : null;
+  if (estOperateur) {
+    return "OPERATOR";
+  }
+  return participe ? "DELEGATE" : null;
 }
 
 /**
@@ -221,10 +237,10 @@ export function roleSurDossier(
  * ne contrôle jamais un opérateur : faire relire l'équipe transverse par quelqu'un
  * d'extérieur au dossier inverse la responsabilité. Un délégué ne contrôle pas non
  * plus un délégué, faute de quoi que ce soit qui sache aujourd'hui distinguer deux
- * délégués l'un de l'autre : `roleSurDossier` ne rend jamais `DELEGATE`, là où
- * `OPERATOR` sort d'une liste nommée. Elle s'ouvrira le jour où un droit par objet
- * existe, et l'ordre des choses est celui-là : ouvrir une répartition ne coûte rien,
- * en fermer une après coup demande de reprendre les lignes déjà écrites.
+ * délégués l'un de l'autre : une étape nomme le rôle qu'elle attend, là où `OPERATOR`
+ * sort d'une liste nommée. Elle s'ouvrira le jour où une étape désignera son délégué,
+ * et l'ordre des choses est celui-là : ouvrir une répartition ne coûte rien, en fermer
+ * une après coup demande de reprendre les lignes déjà écrites.
  *
  * Une étape sans contrôle est valide quel que soit son acteur, c'est le cas de tout ce
  * qui se croit sur parole.
@@ -248,6 +264,19 @@ export function combinaisonValide(acteurAttendu: Acteur, validationBy: Acteur | 
 }
 
 /**
+ * Celui qui parle, par son nom autant que par son rôle.
+ *
+ * Un seul type pour les deux gestes : le pointage et la validation ont besoin des deux
+ * mêmes faits, du même rôle devant le dossier et du même nom, et deux types alimentés
+ * par le même littéral finiraient par ne plus dire la même chose.
+ */
+export interface ActeurNomme {
+  username: string;
+  /** Nul pour qui n'a rien à voir avec ce dossier, ce que les deux gardes refusent. */
+  role: Acteur | null;
+}
+
+/**
  * Où en est le contrôle juste après qu'une déclaration a été faite.
  *
  * Le contrôleur attendu qui pointe à la place de quelqu'un d'autre vaut validation :
@@ -255,22 +284,34 @@ export function combinaisonValide(acteurAttendu: Acteur, validationBy: Acteur | 
  * un seul mainteneur, qui est le cas nominal ici. Le journal montre alors les deux
  * gestes d'une seule main.
  *
- * Encore faut-il qu'il y ait eu substitution, et c'est là que le rôle attendu compte :
- * sur une étape dont l'acteur et le contrôleur portent le même rôle, personne ne se
- * substitue à personne, et un opérateur qui pointe son propre geste n'a rien contrôlé
- * du tout. Le second regard reste à venir, et il viendra d'un autre nom.
+ * Deux faits distincts y sont établis, et un seul des deux se lit encore sur le rôle.
+ *
+ * Que le déclarant soit le contrôleur attendu ne s'en déduit plus : « ce déclarant est
+ * un délégué » ne dit jamais « ce déclarant est le délégué que cette étape attend », et
+ * rien ne sait distinguer deux délégués l'un de l'autre. Seul `OPERATOR` établit
+ * nommément son contrôleur, parce que la liste qui le nomme est celle de
+ * l'environnement et qu'un rôle ne se rend qu'après l'avoir lue.
+ *
+ * Qu'il ne soit pas l'acteur attendu se lit sur le nom là où un rôle en désigne un,
+ * c'est-à-dire sur le porteur, nul quand le dossier du plan a disparu. Ce nom est
+ * redondant tant que le porteur passe avant tout le reste, et il s'écrit quand même :
+ * cette sûreté-là serait sinon le produit de l'ordre dans lequel un rôle se calcule
+ * ailleurs, et rien n'avertirait qui le change qu'il déplace du même coup une règle de
+ * signature.
  */
 export function validationApresPointage(
   acteurAttendu: Acteur,
   validationBy: Acteur | null,
-  roleDuDeclarant: Acteur,
+  declarant: ActeurNomme,
+  porteur: string | null,
 ): "NONE" | "AWAITING" | "ACCEPTED" {
   if (validationBy === null) {
     return "NONE";
   }
-  return roleDuDeclarant === validationBy && roleDuDeclarant !== acteurAttendu
-    ? "ACCEPTED"
-    : "AWAITING";
+  const controleurEtabli = validationBy === "OPERATOR" && declarant.role === "OPERATOR";
+  const estLActeurAttendu =
+    acteurAttendu === "SUBJECT" ? declarant.username === porteur : declarant.role === acteurAttendu;
+  return controleurEtabli && !estLActeurAttendu ? "ACCEPTED" : "AWAITING";
 }
 
 /** Une étape telle que la garde de validation a besoin de la lire. */
@@ -281,11 +322,14 @@ export interface EtapeAValider {
   declaredBy: string | null;
 }
 
-/** Qui prétend contrôler, par son nom et par son rôle sur ce dossier. */
-export interface Valideur {
-  username: string;
-  role: Acteur | null;
-}
+/**
+ * Ce qu'entend un délégué devant une étape dont le contrôle ne lui revient pas, et
+ * c'est une seule phrase pour deux refus : celui d'une étape que le plan confie au
+ * regard d'un opérateur, et celui d'un écart, dont la raison vit dans une note libre
+ * qu'aucun écran ne lui montre. En écrire une seconde renseignerait sur ce qu'il n'a
+ * pas à lire.
+ */
+export const REGARD_D_UN_OPERATEUR = "Cette étape attend le regard d'un opérateur.";
 
 /**
  * Contrôler une déclaration, c'est porter un second regard sur elle. Il n'y a donc
@@ -295,16 +339,24 @@ export interface Valideur {
  * `declaredBy`, sans laquelle « personne ne valide sa propre déclaration » serait
  * déclarative et fausse, un opérateur pouvant pointer puis valider la même étape.
  *
+ * Comparer deux noms est aussi la limite exacte de ce qu'elle garantit. Un même humain
+ * peut en porter deux, son identifiant d'allowlist et celui d'une fiche fabriquée en
+ * doublon : opérateur, il pointe en substitution sous le premier ; entré par l'adresse
+ * de la seconde, il devient délégué et signe ce qu'il a lui-même déclaré, sans que rien
+ * ici ne puisse le voir. Le cas demande le doublon que la fusion des fiches existe pour
+ * réparer, et c'est là qu'il se répare : aucune comparaison de noms ne rapproche deux
+ * identifiants que rien ne relie.
+ *
  * Un opérateur valide ce qu'un délégué aurait dû valider, l'inverse n'étant pas vrai :
  * le contraire coincerait un dossier dès que le délégué s'évapore, au moment précis où
  * l'outil sert.
  */
-export function peutValider(etape: EtapeAValider, valideur: Valideur): Verdict {
+export function peutValider(etape: EtapeAValider, valideur: ActeurNomme): Verdict {
   if (etape.validation !== "AWAITING" || etape.validationBy === null) {
     return { possible: false, raison: "Cette étape n'attend aucune validation." };
   }
   if (valideur.role === null) {
-    return { possible: false, raison: "Ce dossier ne vous concerne pas." };
+    return { possible: false, raison: REFUS_HORS_DOSSIER };
   }
   if (valideur.role === "SUBJECT") {
     return {
@@ -313,7 +365,7 @@ export function peutValider(etape: EtapeAValider, valideur: Valideur): Verdict {
     };
   }
   if (valideur.role === "DELEGATE" && etape.validationBy === "OPERATOR") {
-    return { possible: false, raison: "Cette étape attend le regard d'un opérateur." };
+    return { possible: false, raison: REGARD_D_UN_OPERATEUR };
   }
   // Sans nom de déclarant, la règle qui interdit de valider sa propre déclaration n'a
   // rien à comparer : valider serait alors approuver une parole que personne ne porte.

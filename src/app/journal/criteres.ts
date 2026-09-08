@@ -17,7 +17,7 @@ export interface Criteres {
   resultat: Resultat | "";
   /** `correlationId` d'une exécution. */
   execution: string;
-  /** Username dont on veut l'histoire, quel que soit le type de cible. */
+  /** Username dont on veut l'histoire : ce qui le concerne et ce qu'il a fait. */
   personne: string;
   page: number;
 }
@@ -137,11 +137,18 @@ export function versFiltre(
     //
     // La recherche porte sur tous les identifiants que cette fiche a portés : une
     // fusion et un renommage n'ont pas à couper l'histoire d'un compte en deux.
+    //
+    // Le troisième terme ne se restreint plus aux sessions, et c'est un changement de
+    // définition : ce filtre répond désormais « ce qui la concerne ou ce qu'elle a
+    // fait », là où il ne rendait de ses propres gestes que ses connexions. Tant que
+    // seuls des opérateurs écrivaient, leurs gestes se lisaient sur les fiches qu'ils
+    // touchaient ; quelqu'un qui agit sur son propre dossier n'apparaîtrait, sans ce
+    // terme, dans aucune histoire, pas même la sienne.
     const identifiants = alias.includes(criteres.personne) ? alias : [criteres.personne, ...alias];
     filtre.OR = identifiants.flatMap((identifiant) => [
       { targetId: identifiant },
       { targetId: { endsWith: `:${identifiant}` } },
-      { actorUsername: identifiant, targetType: "session" },
+      { actorUsername: identifiant },
     ]);
   }
 

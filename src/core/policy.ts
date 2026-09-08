@@ -336,6 +336,20 @@ export const configSchema = z
       .prefault({})
       .meta({ description: "Ce que l'incubateur tient pour une startup finie." }),
 
+    mail: z
+      .strictObject({
+        domainsLostOnDeparture: z
+          .array(z.string().min(1))
+          .default(["beta.gouv.fr", "ademe.fr"])
+          .meta({
+            description:
+              "Domaines des boîtes qu'un départ coupe. Ils servent à prévenir qu'un lien de connexion partirait sur une adresse qui va cesser de répondre. Cette liste est de la configuration et non du code : quel employeur fournit quelle boîte est un fait de déploiement, et il change sans livraison.",
+            examples: [["beta.gouv.fr", "ademe.fr"]],
+          }),
+      })
+      .prefault({})
+      .meta({ description: "Ce qu'un départ retire du côté du courrier." }),
+
     thresholds: z
       .strictObject({
         graceDays: z

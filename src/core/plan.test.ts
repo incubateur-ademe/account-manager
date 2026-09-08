@@ -437,7 +437,7 @@ describe("répartition des rôles au moment de figer les étapes", () => {
     expect(() => exigerDesCombinaisonsValides(parLeSujet)).toThrow(/Signer la charte/);
 
     // Then un délégué ne contrôle pas un délégué : rien ne sait aujourd'hui les
-    // distinguer l'un de l'autre, `roleSurDossier` ne rendant jamais `DELEGATE`.
+    // distinguer l'un de l'autre, une étape nommant le rôle qu'elle attend.
     expect(() =>
       exigerDesCombinaisonsValides([
         etape({ expectedActor: "DELEGATE", validationBy: "DELEGATE" }),

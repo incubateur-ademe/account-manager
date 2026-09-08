@@ -92,7 +92,7 @@ export async function detacherIdentite(
           action: "finding.close",
           targetType: "finding",
           targetId: constat.dedupKey,
-          after: { raison: `rattachement à ${detenteur} défait` },
+          after: { raison: `rattachement à ${detenteur} défait`, voie: operateur.voie },
           result: "SUCCESS",
         });
       }

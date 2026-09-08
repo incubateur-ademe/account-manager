@@ -16,8 +16,6 @@ _document fourni pas l'utilisateur_
 ## Startup
 - Avoir une page startup pour lister les membres, les comptes
 
-## Onboarding et offboarding
-- liens publics pour l'onboarding et l'offboarding
 ## Chantiers repérés en séance (18 août 2026)
 
 _ajoutés par Claude, objectif seulement : ni l'un ni l'autre n'a de plan d'implémentation

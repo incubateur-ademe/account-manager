@@ -1,9 +1,10 @@
 "use server";
 
-import { normaliserIdentifiant } from "@/core/fiche-manuelle";
+import { identifiantReserve, normaliserIdentifiant } from "@/core/fiche-manuelle";
 import { actionTracee } from "@/lib/actions";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
+import { webEnv } from "@/lib/env";
 import { requireOperateur } from "@/lib/session";
 
 export type EtatCreation = { erreur: string } | null;
@@ -35,6 +36,11 @@ export async function creerFichePourCompte(
   const username = normaliserIdentifiant(nom);
   if (username.length < 3) {
     return { erreur: "Ce nom ne donne pas d'identifiant exploitable." };
+  }
+
+  const reserve = identifiantReserve(username, webEnv.OPERATORS, webEnv.BREAK_GLASS_USERNAMES);
+  if (reserve !== null) {
+    return { erreur: reserve };
   }
 
   const identite = await prisma.externalIdentity.findUnique({
@@ -119,7 +125,7 @@ export async function creerFichePourCompte(
           action: "finding.close",
           targetType: "finding",
           targetId: constat.dedupKey,
-          after: { raison: `fiche créée pour ${username}` },
+          after: { raison: `fiche créée pour ${username}`, voie: operateur.voie },
           result: "SUCCESS",
         });
       }

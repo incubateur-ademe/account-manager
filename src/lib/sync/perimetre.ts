@@ -13,6 +13,7 @@ import {
   rattachementDe,
   rattachementDeclare,
 } from "@/core/membre";
+import { canalDuDroit, participationVivante } from "@/core/participation";
 import { declaresManquants } from "@/core/perimetre";
 import { jourUTC } from "@/core/statut";
 import type { PersonSource } from "@/generated/prisma/enums";
@@ -133,6 +134,44 @@ export function champsCollectes(personne: PersonneResolue, now: Date, retour: bo
   };
 }
 
+/**
+ * Un droit que l'adoption de sa fiche vient de priver de son canal.
+ *
+ * La collecte réécrit les adresses d'une fiche fabriquée et cesse de la dire
+ * modifiable : un droit dont le canal venait de la fiche perd son entrée au milieu
+ * d'un dossier, sans qu'aucun geste humain n'ait eu lieu et sans que personne ne le
+ * sache. La ligne le dit, et la liste des droits marque le même canal mort ; les deux
+ * sorties sont de ré-octroyer en déclarant une adresse, ou d'entrer par l'identifiant
+ * beta.gouv. Un droit octroyé avec un canal explicite traverse la bascule intact et
+ * n'appelle donc aucun geste : le signal se lève par droit et non par fiche, sur le
+ * verdict de `canalDuDroit`, celui-là même que l'écran affiche.
+ *
+ * Le sujet est le droit et se nomme comme chez ses voisins, dossier et détenteur :
+ * l'octroi, la révocation et l'abandon désignent tous le couple, et une seconde forme
+ * sous le même `targetType` ferait deux vocabulaires dans un même registre.
+ *
+ * Écrite après l'écriture et non avant, contrairement à ce que fait toute action d'un
+ * humain : elle ne consigne aucune intention, elle constate un fait dont la bascule est
+ * la cause. L'annoncer avant la ferait affirmer sur un passage qui échouerait ensuite.
+ *
+ * Elle ne lit rien, et c'est son appelant qui juge du droit, sur ce que la requête
+ * ouvrant `upsert` a relevé avec la ligne. Une lecture posée ici pour elle seule
+ * pourrait échouer après un `update` réussi, pousser la personne dans les erreurs de la
+ * boucle et faire tomber tout le passage en `PARTIAL`, lequel interdit alors de dater
+ * la moindre disparition : une décision de journalisation retirerait ainsi à la
+ * collecte sa capacité à constater un départ.
+ */
+function signalerBascule(dossierId: string, username: string, now: Date): void {
+  audit({
+    actorKind: "SYSTEM",
+    action: "participation.canal-bascule",
+    targetType: "participation",
+    targetId: `${dossierId}:${username}`,
+    after: { fiche: username, adopteeLe: now },
+    result: "SUCCESS",
+  });
+}
+
 async function upsert(
   personne: PersonneResolue,
   now: Date,
@@ -140,7 +179,20 @@ async function upsert(
 ): Promise<{ issue: "created" | "updated"; retourNonDate: Date | null }> {
   const existing = await prisma.person.findUnique({
     where: { username: personne.username },
-    select: { id: true, vanishedAt: true },
+    select: {
+      id: true,
+      vanishedAt: true,
+      source: true,
+      participations: {
+        select: {
+          accessCaseId: true,
+          channelEmail: true,
+          expiresAt: true,
+          revokedAt: true,
+          accessCase: { select: { state: true } },
+        },
+      },
+    },
   });
 
   if (existing) {
@@ -149,10 +201,23 @@ async function upsert(
     // pourra dire qu'elle a existé.
     const disparueLe = existing.vanishedAt;
     const retour = autrePassageCompletDepuis(disparueLe, dernierPassageComplet);
-    await prisma.person.update({
-      where: { id: existing.id },
-      data: champsCollectes(personne, now, retour),
-    });
+    const champs = champsCollectes(personne, now, retour);
+    const bascule = existing.source === "LOCAL" && personne.source !== "LOCAL";
+    // Jugés sur la fiche telle que l'écriture qui suit va la laisser, et par le verdict
+    // de l'écran : ce qui se signale est un canal qui meurt, pas une fiche qui bascule.
+    const ficheAdoptee = { ...champs, username: personne.username };
+    const declaresLocaux = policy().scope.local.map((entree) => entree.username);
+    const orphelins = bascule
+      ? existing.participations.filter(
+          (droit) =>
+            participationVivante(droit, droit.accessCase.state, now) &&
+            !canalDuDroit(ficheAdoptee, droit.channelEmail, declaresLocaux).vivant,
+        )
+      : [];
+    await prisma.person.update({ where: { id: existing.id }, data: champs });
+    for (const droit of orphelins) {
+      signalerBascule(droit.accessCaseId, personne.username, now);
+    }
     return { issue: "updated", retourNonDate: retour ? null : disparueLe };
   }
 

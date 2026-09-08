@@ -16,7 +16,8 @@ import {
   peutValider,
   planAAnnuler,
   planPointable,
-  roleSurDossier,
+  REFUS_HORS_DOSSIER,
+  REGARD_D_UN_OPERATEUR,
   validationApresPointage,
 } from "@/core/dossier";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
@@ -27,7 +28,8 @@ import { profilDeLaPolitique } from "@/lib/arrivee";
 import { prisma } from "@/lib/db";
 import { calculerPlan, enregistrerPlan, messageDeRefus, reposerLEtatDuPlan } from "@/lib/dossier";
 import { executerPlan, type ResultatDExecution } from "@/lib/execution";
-import { requireOperateur } from "@/lib/session";
+import { droitDeParticiper } from "@/lib/participation";
+import { requireOperateur, requireUtilisateur, type Utilisateur } from "@/lib/session";
 
 export interface EtatAction {
   erreur?: string;
@@ -65,19 +67,76 @@ const VERDICTS: Record<string, "ACCEPTED" | "REFUSED"> = {
   refuser: "REFUSED",
 };
 
+interface PorteurDuDossier {
+  id: string;
+  username: string;
+}
+
 /**
- * Ce que l'opérateur courant est devant ce dossier.
+ * Le porteur se reconnaît à sa fiche, et à son nom seulement quand la session n'en
+ * désigne aucune.
  *
- * `roleSurDossier` rend `null` pour qui n'est ni le porteur ni un opérateur, et ce cas
- * n'existe pas ici : `requireOperateur` a muré l'écran avant. Un plan dont le dossier
- * a disparu n'a plus de porteur devant qui se situer, et il ne reste alors que
- * l'opérateur.
+ * Le jeton fige le nom à la connexion là où la fiche s'y relit à chaque geste :
+ * renommer une fiche fabriquée pendant qu'une session de son titulaire est ouverte,
+ * seul renommage que ce dépôt autorise, ferait de lui un délégué sur son propre
+ * dossier. Une session sans fiche est celle d'un opérateur, dont l'allowlist interdit
+ * qu'un renommage prenne le nom : le sien départage donc sans danger.
  */
-function roleDeLOperateur(username: string, porteur: string | null): Acteur {
-  if (porteur === null) {
-    return "OPERATOR";
+function estLePorteur(utilisateur: Utilisateur, porteur: PorteurDuDossier): boolean {
+  return utilisateur.personId === null
+    ? utilisateur.username === porteur.username
+    : utilisateur.personId === porteur.id;
+}
+
+/**
+ * Ce que celui qui agit est devant ce dossier.
+ *
+ * Rien n'y est présumé : la qualité d'opérateur vient de la session, le droit par
+ * dossier de la base, et les deux se relisent à chaque geste. Un rôle nul reste nul,
+ * et c'est un refus que les deux gardes opposent ; le promouvoir en `OPERATOR` par
+ * défaut, comme le faisait le mur de `requireOperateur` qui n'est plus là, ouvrirait à
+ * un délégué les étapes de l'équipe transverse tout en lui fermant les siennes, et
+ * ferait lire une substitution là où il n'y en a pas.
+ *
+ * Qui n'est pas de l'équipe n'a de rôle que par son droit, et ce refus-là se pose
+ * avant tout le reste plutôt que de se déduire de l'égalité des identités : le porteur
+ * de son propre dossier, à qui ce ticket ouvre précisément le pointage, garderait
+ * sinon ses étapes après la révocation de son droit comme après son échéance, sa
+ * session survivant à l'une comme à l'autre.
+ *
+ * Un plan dont le dossier a disparu n'a plus de porteur devant qui se situer : il ne
+ * reste alors que l'appartenance à l'équipe, que le refus précédent a déjà exigée
+ * puisqu'un dossier absent est aussi un dossier sur lequel aucun droit ne porte.
+ */
+function roleDuDeclarant(
+  utilisateur: Utilisateur,
+  porteur: PorteurDuDossier | null,
+  participe: boolean,
+): Acteur | null {
+  if (!utilisateur.operateur && !participe) {
+    return null;
   }
-  return roleSurDossier(username, { porteur }, true) ?? "OPERATOR";
+  if (porteur === null) {
+    return utilisateur.operateur ? "OPERATOR" : null;
+  }
+  if (estLePorteur(utilisateur, porteur)) {
+    return "SUBJECT";
+  }
+  // Le même ordre que `roleSurDossier`, et pour la même raison : une participation
+  // n'ajoute rien à qui a déjà tout, et rendre `DELEGATE` à un opérateur qui en détient
+  // une lui ferait refuser une validation qu'il pouvait faire.
+  return utilisateur.operateur ? "OPERATOR" : "DELEGATE";
+}
+
+/**
+ * Ce qu'une action rend quand l'identifiant reçu ne mène à rien.
+ *
+ * Deux phrases pour l'équipe, une seule pour les autres : « cette étape n'existe
+ * plus » et « ce dossier ne vous concerne pas » distinguées feraient de l'identifiant
+ * une sonde d'existence pour qui n'a rien à faire là.
+ */
+function refusDEtape(utilisateur: Utilisateur): string {
+  return utilisateur.operateur ? "Cette étape n'existe plus." : REFUS_HORS_DOSSIER;
 }
 
 async function planDuDossier(planId: string) {
@@ -203,7 +262,7 @@ export async function pointerEtape(
 ): Promise<EtatAction> {
   // La garde précède la trace : `peutPointer` a besoin de savoir qui pointe avant
   // qu'on écrive quoi que ce soit, et `declaredBy` a besoin de son nom.
-  const operateur = await requireOperateur();
+  const utilisateur = await requireUtilisateur();
 
   const etapeId = String(formData.get("etapeId") ?? "").trim();
   const choix = String(formData.get("pointage") ?? "").trim();
@@ -213,6 +272,13 @@ export async function pointerEtape(
   const nouvelEtat = POINTAGES[choix];
   if (!nouvelEtat) {
     return { erreur: "Pointage inconnu." };
+  }
+
+  // Écarter une étape n'est pas déclarer un geste, c'est décider qu'un geste prévu
+  // n'aura pas lieu, et cette décision-là ne se délègue pas. Les trois autres verdicts
+  // affirment un fait constaté, y compris ceux qui disent qu'un autre est passé avant.
+  if (nouvelEtat === "SKIPPED" && !utilisateur.operateur) {
+    return { erreur: "Écarter une étape appartient à l'équipe transverse." };
   }
 
   const etape = await prisma.planStep.findUnique({
@@ -233,7 +299,11 @@ export async function pointerEtape(
           state: true,
           accessCaseId: true,
           accessCase: {
-            select: { kind: true, state: true, person: { select: { username: true } } },
+            select: {
+              kind: true,
+              state: true,
+              person: { select: { id: true, username: true } },
+            },
           },
         },
       },
@@ -241,7 +311,21 @@ export async function pointerEtape(
   });
 
   if (!etape) {
-    return { erreur: "Cette étape n'existe plus." };
+    return { erreur: refusDEtape(utilisateur) };
+  }
+
+  const porteur = etape.plan.accessCase?.person ?? null;
+  // Relu ici et non porté par la session : un droit que le jeton porterait serait un
+  // droit que la révocation ne saurait plus retirer avant son expiration. Le dossier
+  // vient de l'étape relue et jamais du formulaire, sans quoi détenir un droit sur l'un
+  // suffirait à écrire sur l'autre.
+  const participe =
+    etape.plan.accessCaseId !== null &&
+    (await droitDeParticiper(utilisateur.personId, etape.plan.accessCaseId));
+  const role = roleDuDeclarant(utilisateur, porteur, participe);
+
+  if (role === null) {
+    return { erreur: REFUS_HORS_DOSSIER };
   }
 
   // L'état du dossier avant celui du plan, comme la confirmation et le recalcul le
@@ -260,15 +344,12 @@ export async function pointerEtape(
     return { erreur: "Ce constat ne vaut pas dans le sens de ce dossier." };
   }
 
-  const role = roleDeLOperateur(operateur.username, etape.plan.accessCase?.person.username ?? null);
-
-  // Opérateur sans condition : `requireOperateur` a muré l'action avant, si bien que
-  // qui arrive ici est de l'équipe transverse, y compris quand le dossier ouvert est le
-  // sien. C'est ce que le rôle tait quand il vaut `SUBJECT`, et ce qui rend le pointage
-  // de son propre dossier possible sans lui en rendre la signature.
+  // L'appartenance à l'équipe se dit à côté du rôle, qui la tait quand il vaut
+  // `SUBJECT` : c'est elle qui rend le pointage de son propre dossier possible à un
+  // opérateur sans lui en rendre la signature.
   const verdict = peutPointer(etape.plan.state, etape.expectedActor as Acteur, {
     role,
-    operateur: true,
+    operateur: utilisateur.operateur,
   });
   if (!verdict.possible) {
     return { erreur: verdict.raison };
@@ -334,7 +415,8 @@ export async function pointerEtape(
     ? validationApresPointage(
         etape.expectedActor as Acteur,
         etape.validationBy as Acteur | null,
-        role,
+        { username: utilisateur.username, role },
+        porteur?.username ?? null,
       )
     : "NONE";
 
@@ -352,7 +434,11 @@ export async function pointerEtape(
       ...(note ? { note } : {}),
       ...(valeur ? { reponse: valeur } : {}),
     },
-    revalider: [`/dossiers/${etape.plan.accessCaseId}`],
+    // La route du participant autant que celle de l'opérateur : elle est celle
+    // depuis laquelle il vient de pointer, et sans elle son écran garderait
+    // l'affichage d'avant son propre geste.
+    revalider: [`/dossiers/${etape.plan.accessCaseId}`, `/moi/dossiers/${etape.plan.accessCaseId}`],
+    utilisateur,
     ecrire: async () => {
       // Conditionnée sur la déclaration lue, comme celle du verdict : entre la lecture
       // et l'écriture, un contrôleur a pu trancher, et écrire par le seul identifiant
@@ -371,13 +457,13 @@ export async function pointerEtape(
           attempts: { increment: 1 },
           ...(note ? { lastError: note } : {}),
           reponse: valeur,
-          declaredBy: operateur.username,
+          declaredBy: utilisateur.username,
           validation,
           // L'avis du contrôleur porte sur une déclaration précise : le laisser en
           // place sous un geste repointé l'afficherait comme s'il jugeait celui-ci.
           // Le validateur attendu qui pointe lui-même signe du même coup, et c'est
           // le seul cas où sa signature s'écrit ici.
-          validatedBy: validation === "ACCEPTED" ? operateur.username : null,
+          validatedBy: validation === "ACCEPTED" ? utilisateur.username : null,
           validatedAt: validation === "ACCEPTED" ? maintenant : null,
           validationNote: null,
         },
@@ -411,7 +497,7 @@ export async function validerEtape(
   _etat: EtatAction | null,
   formData: FormData,
 ): Promise<EtatAction> {
-  const operateur = await requireOperateur();
+  const utilisateur = await requireUtilisateur();
 
   const etapeId = String(formData.get("etapeId") ?? "").trim();
   const choix = String(formData.get("verdict") ?? "").trim();
@@ -439,7 +525,11 @@ export async function validerEtape(
           state: true,
           accessCaseId: true,
           accessCase: {
-            select: { kind: true, state: true, person: { select: { username: true } } },
+            select: {
+              kind: true,
+              state: true,
+              person: { select: { id: true, username: true } },
+            },
           },
         },
       },
@@ -447,7 +537,16 @@ export async function validerEtape(
   });
 
   if (!etape) {
-    return { erreur: "Cette étape n'existe plus." };
+    return { erreur: refusDEtape(utilisateur) };
+  }
+
+  const participe =
+    etape.plan.accessCaseId !== null &&
+    (await droitDeParticiper(utilisateur.personId, etape.plan.accessCaseId));
+  const role = roleDuDeclarant(utilisateur, etape.plan.accessCase?.person ?? null, participe);
+
+  if (role === null) {
+    return { erreur: REFUS_HORS_DOSSIER };
   }
 
   if (etape.plan.accessCase && !dossierVivant(etape.plan.accessCase.state)) {
@@ -459,19 +558,32 @@ export async function validerEtape(
     return { erreur: pointable.raison };
   }
 
-  const role = roleDeLOperateur(operateur.username, etape.plan.accessCase?.person.username ?? null);
-
+  // Un délégué contrôle ce qu'une étape lui confie, et `peutValider` s'en charge seul :
+  // il ne lui oppose que le contrôle attendu d'un opérateur, et il refuse de toute
+  // façon celui qui a déclaré, par son nom.
   const verdict = peutValider(
     {
       validation: etape.validation as EtatValidation,
       validationBy: etape.validationBy as Acteur | null,
       declaredBy: etape.declaredBy,
     },
-    { username: operateur.username, role },
+    { username: utilisateur.username, role },
   );
 
   if (!verdict.possible) {
     return { erreur: verdict.raison };
+  }
+
+  // Un écart ne se signe pas par qui ne peut pas en lire la raison : elle vit dans une
+  // note libre qu'aucun écran de non-opérateur ne montre, et signer une décision dont
+  // on tait le motif serait signer à l'aveugle. La projection du participant l'écarte
+  // déjà de sa liste, mais l'identifiant qu'elle lui a remis survit à un repointage en
+  // écart, et une règle que seul un écran tient n'en est pas une.
+  //
+  // Après la garde et non avant : l'écart qui n'attend aucun regard s'entend le dire,
+  // plutôt que d'apprendre qu'il en attend un.
+  if (role !== "OPERATOR" && etape.state === "SKIPPED") {
+    return { erreur: REGARD_D_UN_OPERATEUR };
   }
 
   // Même exigence que le refus de note d'un pointage, et pour la même raison : un
@@ -497,7 +609,8 @@ export async function validerEtape(
       validation: avis,
       ...(note ? { note } : {}),
     },
-    revalider: [`/dossiers/${etape.plan.accessCaseId}`],
+    revalider: [`/dossiers/${etape.plan.accessCaseId}`, `/moi/dossiers/${etape.plan.accessCaseId}`],
+    utilisateur,
     ecrire: async () => {
       // Conditionnée sur la déclaration lue, et pas seulement sur l'identifiant :
       // entre la lecture et l'écriture, un second contrôleur a pu trancher, ou le
@@ -520,7 +633,7 @@ export async function validerEtape(
         data: {
           validation: avis,
           state: etatApres,
-          validatedBy: operateur.username,
+          validatedBy: utilisateur.username,
           validatedAt: maintenant,
           validationNote: note.length > 0 ? note : null,
         },

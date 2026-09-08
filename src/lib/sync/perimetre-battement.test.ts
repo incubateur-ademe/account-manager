@@ -26,9 +26,21 @@ interface FicheEnBase {
   missionEnd: Date | null;
 }
 
+interface DroitEnBase {
+  accessCaseId: string;
+  personId: string;
+  /** L'adresse déclarée à l'octroi, que la bascule de la fiche ne touche pas. */
+  channelEmail: string | null;
+  expiresAt: Date;
+  revokedAt: Date | null;
+  etat: string;
+}
+
 const base = vi.hoisted(() => ({
   runs: [] as RunEnBase[],
   fiches: [] as FicheEnBase[],
+  droits: [] as DroitEnBase[],
+  journal: [] as { action: string; targetId: string | null }[],
   membres: [] as unknown[],
   erreursDeLecture: [] as string[],
   details: new Map<string, unknown>(),
@@ -77,7 +89,24 @@ vi.mock("@/lib/db", () => ({
       // l'état d'avant après avoir écrit passerait pour correct.
       findUnique: ({ where }: { where: { username: string } }) => {
         const trouvee = base.fiches.find((fiche) => fiche.username === where.username);
-        return Promise.resolve(trouvee ? { ...trouvee } : null);
+        if (!trouvee) {
+          return Promise.resolve(null);
+        }
+        // Les droits viennent avec la ligne, comme la jointure du `select` les sert :
+        // un double qui les servirait par une seconde requête laisserait passer le
+        // défaut que cette lecture groupée existe pour fermer.
+        return Promise.resolve({
+          ...trouvee,
+          participations: base.droits
+            .filter((droit) => droit.personId === trouvee.id)
+            .map((droit) => ({
+              accessCaseId: droit.accessCaseId,
+              channelEmail: droit.channelEmail,
+              expiresAt: droit.expiresAt,
+              revokedAt: droit.revokedAt,
+              accessCase: { state: droit.etat },
+            })),
+        });
       },
       // Prisma laisse intact un champ à `undefined` au lieu de l'écrire, et c'est
       // exactement la sémantique dont `champsCollectes` se sert pour ne pas toucher au
@@ -181,7 +210,13 @@ vi.mock("@/lib/policy", () => ({
   }),
 }));
 
-vi.mock("@/lib/audit", () => ({ audit: () => undefined }));
+// Un enregistreur et non un puits : ce que ce passage signale d'une fiche adoptée est
+// un fait de production, et il n'a aucune autre sortie que le journal.
+vi.mock("@/lib/audit", () => ({
+  audit: (input: { action: string; targetId?: string | null }) => {
+    base.journal.push({ action: input.action, targetId: input.targetId ?? null });
+  },
+}));
 
 const RATTACHES = [
   "blandine",
@@ -564,5 +599,110 @@ describe("ce qu'un passage finit par conclure d'une fiche qu'il n'a jamais su li
     expect(fiche(TRANSVERSE).vanishedAt).toBeNull();
     expect(fiche(TRANSVERSE).returnedAt).toBeNull();
     expect(fiche(TRANSVERSE).firstSeenAt).toEqual(NUITS[0]);
+  });
+});
+
+/**
+ * L'adoption d'une fiche fabriquée est le seul événement de ce module qu'aucun humain
+ * ne déclenche et qui retire pourtant un accès : la collecte réécrit les adresses d'une
+ * fiche locale devenue membre et cesse de la dire modifiable, si bien qu'un lien de
+ * connexion cesse de fonctionner au milieu d'un dossier.
+ */
+describe("ce qu'un passage signale quand il adopte une fiche fabriquée", () => {
+  const APRES = new Date(Date.UTC(2026, 9, 1));
+
+  function ficheLocale(username: string, id: string): FicheEnBase {
+    return {
+      id,
+      username,
+      source: "LOCAL",
+      firstSeenAt: NUITS[0] ?? new Date(),
+      lastSeenAt: NUITS[0] ?? new Date(),
+      vanishedAt: null,
+      returnedAt: null,
+      missionEnd: null,
+    };
+  }
+
+  const basculesSignalees = () =>
+    base.journal.filter((trace) => trace.action === "participation.canal-bascule");
+
+  beforeEach(() => {
+    base.runs.length = 0;
+    base.fiches.length = 0;
+    base.droits.length = 0;
+    base.journal.length = 0;
+  });
+
+  it("le dit du droit que l'adoption prive de son canal, et se tait le reste du temps", async () => {
+    // Given quatre fiches fabriquées ici dont l'amont connaît désormais l'identifiant :
+    // la première porte un droit vivant sans canal déclaré, la deuxième un droit vivant
+    // octroyé avec son adresse, la troisième un droit révoqué, la quatrième rien
+    base.fiches.push(
+      ficheLocale("zoe.exemple", "fiche-avec-droit"),
+      ficheLocale("ines.exemple", "fiche-canal-declare"),
+      ficheLocale("yanis.exemple", "fiche-droit-mort"),
+      ficheLocale("sacha.exemple", "fiche-sans-droit"),
+    );
+    base.droits.push(
+      {
+        accessCaseId: "dossier-de-zoe",
+        personId: "fiche-avec-droit",
+        channelEmail: null,
+        expiresAt: APRES,
+        revokedAt: null,
+        etat: "CONFIRMED",
+      },
+      {
+        accessCaseId: "dossier-d-ines",
+        personId: "fiche-canal-declare",
+        channelEmail: "ines@perso.example",
+        expiresAt: APRES,
+        revokedAt: null,
+        etat: "CONFIRMED",
+      },
+      {
+        accessCaseId: "dossier-de-yanis",
+        personId: "fiche-droit-mort",
+        channelEmail: null,
+        expiresAt: APRES,
+        revokedAt: NUITS[0] ?? null,
+        etat: "CONFIRMED",
+      },
+    );
+
+    // When la collecte passe
+    await nuit(0);
+
+    // Then les quatre sont adoptées : leur source bascule, leurs adresses saisies sont
+    // écrasées, et une adresse portée par une fiche cesse d'ouvrir quoi que ce soit
+    expect(fiche("zoe.exemple").source).toBe("BETA");
+    expect(fiche("ines.exemple").source).toBe("BETA");
+    expect(fiche("yanis.exemple").source).toBe("BETA");
+    expect(fiche("sacha.exemple").source).toBe("BETA");
+
+    // Then une seule ligne est écrite, et c'est celle qui appelle un geste : le
+    // signalement dit qu'un accès vient de se fermer sans que personne l'ait décidé,
+    // il ne décrit pas la collecte. Un droit octroyé avec son adresse traverse la
+    // bascule intact, un droit mort et une fiche sans droit n'appellent rien, et les
+    // signaler tous noierait celui qui compte.
+    //
+    // Then le sujet est le droit et se nomme comme chez ses trois voisins du même
+    // registre, dossier puis détenteur : la seule fiche ne dirait pas lequel rouvrir.
+    expect(basculesSignalees()).toEqual([
+      { action: "participation.canal-bascule", targetId: "dossier-de-zoe:zoe.exemple" },
+    ]);
+
+    // Then le passage lui-même a bien eu lieu, et sa ligne de fin est là comme
+    // toujours : le signalement s'ajoute au journal, il ne le remplace pas
+    expect(base.journal.some((trace) => trace.action === "sync.perimetre")).toBe(true);
+
+    // When un second passage repasse sur les mêmes fiches, désormais collectées
+    base.journal.length = 0;
+    await nuit(1);
+
+    // Then plus rien n'est signalé : la bascule est un franchissement et non un état,
+    // et le redire chaque nuit ferait de ce signal un bruit qu'on cesse de lire
+    expect(basculesSignalees()).toEqual([]);
   });
 });

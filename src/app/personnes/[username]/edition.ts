@@ -6,6 +6,7 @@ import {
   type ChampsFiche,
   type FicheAFusionner,
   ficheEditable,
+  identifiantReserve,
   normaliserIdentifiant,
   type PlanFusion,
   planifierFusion,
@@ -13,12 +14,13 @@ import {
   validerChamps,
 } from "@/core/fiche-manuelle";
 import { enCours } from "@/core/rattachement-startup";
-import { Prisma } from "@/generated/prisma/client";
 import { actionTracee } from "@/lib/actions";
 import { audit } from "@/lib/audit";
+import { messageDeCollision } from "@/lib/collision";
 import { prisma } from "@/lib/db";
+import { webEnv } from "@/lib/env";
 import { policy } from "@/lib/policy";
-import { requireOperateur } from "@/lib/session";
+import { requireOperateur, type Utilisateur } from "@/lib/session";
 import { dateFr } from "@/ui/dates";
 
 export type EtatEdition = { erreur: string } | { modifie: true } | null;
@@ -38,6 +40,9 @@ export interface ApercuFusion {
   clesReecrites: number;
   constatsFermes: number;
   dossiers: number;
+  /** Les droits de participer qui suivent, et ceux que la collision fait disparaître. */
+  participations: number;
+  participationsAbandonnees: number;
   rattachements: number;
   rattachementsEnCours: number;
   surchargeSuit: boolean;
@@ -128,17 +133,33 @@ export async function modifierFiche(_etat: EtatEdition, formData: FormData): Pro
     return { modifie: true };
   }
 
-  await actionTracee({
-    action: "personne.edition",
-    targetType: "personne",
-    targetId: personne.username,
-    before: avant,
-    after: apres,
-    revalider: [`/personnes/${personne.username}`, "/personnes"],
-    ecrire: async () => {
-      await prisma.person.update({ where: { id: personne.id }, data: validation.champs });
-    },
-  });
+  try {
+    await actionTracee({
+      action: "personne.edition",
+      targetType: "personne",
+      targetId: personne.username,
+      before: avant,
+      after: apres,
+      revalider: [`/personnes/${personne.username}`, "/personnes"],
+      ecrire: async () => {
+        await prisma.person.update({ where: { id: personne.id }, data: validation.champs });
+      },
+    });
+  } catch (error: unknown) {
+    // Des quatre colonnes que cette saisie repose, l'adresse de communication est la
+    // seule que le schéma tienne pour unique, et son index ne borne l'unicité qu'aux
+    // fiches locales, c'est-à-dire aux seules que cette action modifie : ici, une
+    // violation d'unicité ne peut désigner qu'elle.
+    const message = messageDeCollision(
+      error,
+      "adresse",
+      validation.champs.communicationEmail ?? "",
+    );
+    if (message === null) {
+      throw error;
+    }
+    return { erreur: message };
+  }
 
   return { modifie: true };
 }
@@ -148,29 +169,36 @@ async function inventaireDe(
   username: string,
   missionEnd: Date | null,
 ): Promise<FicheAFusionner> {
-  const [comptes, constats, dossiers, references, rattachements, surcharge] = await Promise.all([
-    prisma.externalIdentity.findMany({
-      where: { personId },
-      select: { id: true, provider: true, handle: true, externalId: true, matchMethod: true },
-      orderBy: [{ provider: "asc" }, { handle: "asc" }],
-    }),
-    prisma.finding.findMany({
-      where: { personId },
-      select: { id: true, kind: true, dedupKey: true },
-    }),
-    prisma.accessCase.findMany({ where: { personId }, select: { id: true, state: true } }),
-    prisma.reference.findMany({ where: { personId }, select: { id: true, resourceId: true } }),
-    // Ouverts comme clos : un rattachement fermé explique un constat levé la veille,
-    // et le schéma pose qu'un retrait ferme au lieu de supprimer.
-    prisma.startupAssignment.findMany({
-      where: { personId },
-      select: { id: true, startupGhid: true, until: true, endedAt: true },
-    }),
-    prisma.scopeOverride.findUnique({
-      where: { personId },
-      select: { id: true, decision: true, createdBy: true, reason: true },
-    }),
-  ]);
+  const [comptes, constats, dossiers, participations, references, rattachements, surcharge] =
+    await Promise.all([
+      prisma.externalIdentity.findMany({
+        where: { personId },
+        select: { id: true, provider: true, handle: true, externalId: true, matchMethod: true },
+        orderBy: [{ provider: "asc" }, { handle: "asc" }],
+      }),
+      prisma.finding.findMany({
+        where: { personId },
+        select: { id: true, kind: true, dedupKey: true },
+      }),
+      prisma.accessCase.findMany({ where: { personId }, select: { id: true, state: true } }),
+      // Révoquées comprises : une participation morte trace ce que quelqu'un a décidé,
+      // et la cascade de la suppression finale ne fait pas ce tri.
+      prisma.caseParticipation.findMany({
+        where: { personId },
+        select: { id: true, accessCaseId: true, grantedAt: true },
+      }),
+      prisma.reference.findMany({ where: { personId }, select: { id: true, resourceId: true } }),
+      // Ouverts comme clos : un rattachement fermé explique un constat levé la veille,
+      // et le schéma pose qu'un retrait ferme au lieu de supprimer.
+      prisma.startupAssignment.findMany({
+        where: { personId },
+        select: { id: true, startupGhid: true, until: true, endedAt: true },
+      }),
+      prisma.scopeOverride.findUnique({
+        where: { personId },
+        select: { id: true, decision: true, createdBy: true, reason: true },
+      }),
+    ]);
 
   return {
     username,
@@ -181,6 +209,7 @@ async function inventaireDe(
       id: dossier.id,
       vivant: dossierVivant(dossier.state),
     })),
+    participations,
     references,
     rattachements,
     surcharge:
@@ -210,6 +239,8 @@ function apercuDe(plan: PlanFusion, aujourdHui: Date): ApercuFusion {
     clesReecrites: plan.clesReecrites.length,
     constatsFermes: plan.constatsFermes.length,
     dossiers: plan.dossiers.length,
+    participations: plan.participations.length,
+    participationsAbandonnees: plan.participationsAbandonnees.length,
     rattachements: plan.rattachements.length,
     rattachementsEnCours: plan.rattachements.filter((rattachement) =>
       enCours(rattachement, aujourdHui),
@@ -242,7 +273,7 @@ function apercuDe(plan: PlanFusion, aujourdHui: Date): ApercuFusion {
  * durablement qu'un compte a changé de fiche alors que rien n'a bougé.
  */
 function tracerComptesDeplaces(
-  operateur: string,
+  operateur: Utilisateur,
   comptes: readonly {
     provider: string;
     handle: string;
@@ -256,28 +287,15 @@ function tracerComptesDeplaces(
   for (const compte of comptes) {
     audit({
       actorKind: "HUMAN",
-      actorUsername: operateur,
+      actorUsername: operateur.username,
       action: "identite.reattribution",
       targetType: "identite",
       targetId: `${compte.provider}:${compte.handle}`,
       before: { personne: de, ...(compte.matchMethod ? { methode: compte.matchMethod } : {}) },
-      after: { personne: vers, externalId: compte.externalId },
+      after: { personne: vers, externalId: compte.externalId, voie: operateur.voie },
       result,
     });
   }
-}
-
-/**
- * Traduit une violation d'unicité en phrase. Deux clés uniques peuvent sauter ici :
- * `Person.username` sur un renommage concurrent, et `Finding.dedupKey` sur une clé
- * de constat prise entre l'aperçu et la confirmation. Sans traduction, l'écran
- * afficherait une erreur technique là où la bonne réponse tient en une phrase.
- */
-function messageDeCollision(error: unknown, identifiant: string): string | null {
-  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") {
-    return null;
-  }
-  return `« ${identifiant} » vient d'être pris, ou l'un de ses constats l'a été. Rien n'a été écrit : refaites la demande pour repartir de l'état courant.`;
 }
 
 /**
@@ -319,6 +337,14 @@ export async function renommerFiche(
     return { erreur: "C'est déjà son identifiant." };
   }
 
+  // Avant la recherche de la cible, donc avant qu'une fusion ne soit même envisagée :
+  // un identifiant réservé n'est pas plus recevable comme destination d'une fusion que
+  // comme nouveau nom.
+  const reserve = identifiantReserve(nouveau, webEnv.OPERATORS, webEnv.BREAK_GLASS_USERNAMES);
+  if (reserve !== null) {
+    return { erreur: reserve };
+  }
+
   const cible = await prisma.person.findUnique({
     where: { username: nouveau },
     select: { id: true, username: true, missionEnd: true },
@@ -339,7 +365,7 @@ export async function renommerFiche(
     try {
       await fusionner(personne.id, cible.id, plan);
     } catch (error: unknown) {
-      const message = messageDeCollision(error, nouveau);
+      const message = messageDeCollision(error, "identifiant", nouveau);
       if (message === null) {
         throw error;
       }
@@ -378,7 +404,7 @@ export async function renommerFiche(
         ...CHEMINS_LISTES,
       ],
       ecrire: async (operateur) => {
-        tracerComptesDeplaces(operateur.username, comptes, personne.username, nouveau, "SUCCESS");
+        tracerComptesDeplaces(operateur, comptes, personne.username, nouveau, "SUCCESS");
 
         try {
           await prisma.person.update({
@@ -386,13 +412,13 @@ export async function renommerFiche(
             data: { username: nouveau },
           });
         } catch (error: unknown) {
-          tracerComptesDeplaces(operateur.username, comptes, personne.username, nouveau, "FAILURE");
+          tracerComptesDeplaces(operateur, comptes, personne.username, nouveau, "FAILURE");
           throw error;
         }
       },
     });
   } catch (error: unknown) {
-    const message = messageDeCollision(error, nouveau);
+    const message = messageDeCollision(error, "identifiant", nouveau);
     if (message !== null) {
       return { erreur: message };
     }
@@ -426,6 +452,7 @@ async function fusionner(sourceId: string, cibleId: string, plan: PlanFusion): P
       clesReecrites: plan.clesReecrites,
       constatsFermes: plan.constatsFermes.map((constat) => constat.dedupKey),
       dossiers: plan.dossiers.length,
+      participations: plan.participations.length,
       rattachements: plan.rattachements.map((rattachement) => rattachement.startupGhid),
       surcharge: plan.surcharge === null ? null : plan.surcharge.sens,
       // Nommée et non comptée : c'est une décision nominative qui disparaît, le
@@ -450,7 +477,7 @@ async function fusionner(sourceId: string, cibleId: string, plan: PlanFusion): P
       ...CHEMINS_LISTES,
     ],
     ecrire: async (operateur) => {
-      tracerComptesDeplaces(operateur.username, plan.comptes, plan.source, plan.cible, "SUCCESS");
+      tracerComptesDeplaces(operateur, plan.comptes, plan.source, plan.cible, "SUCCESS");
 
       const maintenant = new Date();
 
@@ -496,6 +523,18 @@ async function fusionner(sourceId: string, cibleId: string, plan: PlanFusion): P
                   data: { personId: cibleId },
                 });
                 break;
+              case "deplacer-participations":
+                // Les remplacées d'abord, et l'ordre décide : un seul droit par couple
+                // dossier et personne, si bien que déplacer sans avoir fait la place
+                // lèverait au milieu de la transaction et annulerait toute la fusion.
+                await tx.caseParticipation.deleteMany({
+                  where: { id: { in: [...etape.remplacees] } },
+                });
+                await tx.caseParticipation.updateMany({
+                  where: { id: { in: [...etape.ids] } },
+                  data: { personId: cibleId },
+                });
+                break;
               case "deplacer-rattachements":
                 await tx.startupAssignment.updateMany({
                   where: { id: { in: [...etape.ids] } },
@@ -523,12 +562,39 @@ async function fusionner(sourceId: string, cibleId: string, plan: PlanFusion): P
               case "supprimer-fiche":
                 await tx.person.delete({ where: { id: sourceId } });
                 break;
+              default: {
+                // Le typecheck ne réclame rien d'une union dont un bras manque : sans
+                // cette garde, une variante ajoutée sans le sien laisserait la
+                // suppression finale faire agir les cascades du schéma à sa place,
+                // sans erreur, sans ligne d'aperçu et sans trace au journal.
+                const jamais: never = etape;
+                throw new Error(`étape de fusion non traitée : ${JSON.stringify(jamais)}`);
+              }
             }
           }
         });
       } catch (error: unknown) {
-        tracerComptesDeplaces(operateur.username, plan.comptes, plan.source, plan.cible, "FAILURE");
+        tracerComptesDeplaces(operateur, plan.comptes, plan.source, plan.cible, "FAILURE");
         throw error;
+      }
+
+      // Nommés et non comptés, comme la surcharge abandonnée : un droit décidé par
+      // quelqu'un cesse d'exister sans avoir été révoqué, et le journal est le seul
+      // endroit où cette décision survit.
+      for (const droit of plan.participationsAbandonnees) {
+        audit({
+          actorKind: "HUMAN",
+          actorUsername: operateur.username,
+          action: "participation.abandon",
+          targetType: "participation",
+          targetId: `${droit.accessCaseId}:${droit.detenteur}`,
+          after: {
+            raison: droit.raison,
+            octroyeLe: droit.grantedAt,
+            voie: operateur.voie,
+          },
+          result: "SUCCESS",
+        });
       }
 
       // Après coup, comme le fait le détachement : ces constats n'ont pas été jugés,
@@ -541,7 +607,7 @@ async function fusionner(sourceId: string, cibleId: string, plan: PlanFusion): P
           action: "finding.close",
           targetType: "finding",
           targetId: constat.dedupKey,
-          after: { raison: `fusionnée dans ${plan.cible}` },
+          after: { raison: `fusionnée dans ${plan.cible}`, voie: operateur.voie },
           result: "SUCCESS",
         });
       }

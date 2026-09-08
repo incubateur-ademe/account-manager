@@ -260,6 +260,8 @@ saisie localement.
 - `startups.terminalPhases[]` : phases dans lesquelles une startup ne justifie plus
   d'accès
 - `systems[]` : le catalogue, voir section 5
+- `mail.domainsLostOnDeparture[]` : domaines des boîtes qu'un départ coupe, qui servent à
+  prévenir qu'un lien de connexion partirait sur une adresse près de cesser de répondre
 - `thresholds` : `graceDays`, `soonDays`, `staleDays`, `maxScopeDrop`,
   `collectStaleHours`
 - `serviceAccounts[]` : allowlist des comptes non humains
@@ -373,8 +375,8 @@ promu qu'à la fin : un processus tué laisse une trace d'échec, pas un run ver
 
 ### 3.3 Décidé (PostgreSQL, immuable)
 
-**`AccessCase`**, **`Plan`**, **`PlanStep`**, **`Finding`**, **`Derogation`**,
-**`StartupAssignment`**, **`ScopeOverride`**, **`AuditEvent`**.
+**`AccessCase`**, **`Plan`**, **`PlanStep`**, **`CaseParticipation`**, **`Finding`**,
+**`Derogation`**, **`StartupAssignment`**, **`ScopeOverride`**, **`AuditEvent`**.
 
 Un rattachement manuel à une startup ne vit pas dans `Person.startups`, que la collecte
 réécrit sans condition à chaque passage : c'est un objet daté, avec son auteur, et il se
@@ -880,13 +882,14 @@ un rôle d'administration se renouvelle silencieusement.
 
 ### Qui agit, et comment on valide
 
-**Seuls agissent ceux que l'environnement autorise.** La liste qui les nomme vit hors
-du dépôt, avec la configuration de déploiement, voir §3.1. Ce n'est pas celle qui dit
-l'appartenance à l'incubateur, laquelle se déclare dans la politique et se calcule, voir
-§2.3 : rien n'oblige les deux à coïncider, et les confondre ferait lire une règle
-d'autorisation là où il n'y a qu'un rattachement. Il n'y a pas de délégation aux leads
-dans cette version : elle ajouterait un modèle d'autorisation et des demandes en attente
-pour un besoin qui n'est pas là.
+**Agir se décide à deux niveaux.** La liste qui nomme les opérateurs vit hors du dépôt,
+avec la configuration de déploiement, voir §3.1 : elle ouvre l'outil entier. Ce n'est pas
+celle qui dit l'appartenance à l'incubateur, laquelle se déclare dans la politique et se
+calcule, voir §2.3 : rien n'oblige les deux à coïncider, et les confondre ferait lire une
+règle d'autorisation là où il n'y a qu'un rattachement. Le second niveau est un droit par
+objet : une participation ouvre **un** dossier et rien d'autre, elle est datée, motivée,
+nominative et bornée dans le temps, et elle ne confère jamais la qualité d'opérateur. Un
+droit ne s'additionne pas en un rôle : qui en détient dix a dix dossiers, pas un pouvoir.
 
 **Valider veut dire deux choses distinctes, à deux étages.** Sur le plan, c'est
 regarder avant d'agir : il est calculé et figé avec son empreinte, l'opérateur le lit
@@ -933,13 +936,21 @@ protège contre le fait qu'une personne décide seule pour une autre est le seco
 regard, posé étape par étape là où il vaut la peine, plutôt qu'un rite appliqué à tout.
 Seul garde-fou de volume conservé : le plafond de masse.
 
-**La délégation, quand elle arrivera, ne se greffera pas où ce document l'avait
-prévu.** La prévision décrivait une délégation de l'initiative, un lead dont le plan
-naîtrait en attente au lieu de naître confirmable. Cette forme ne tient pas : un plan
-ne porte pas d'état propre, il se déduit de ses étapes. Et ce qui se prépare est autre
-chose, une délégation de l'exécution déclarative, où quelqu'un qui n'est pas opérateur
-voit un dossier et y pointe les étapes qui le nomment, sans en calculer ni en confirmer
-aucun. L'attente était bien le mécanisme, elle vit sur l'étape et non sur le plan.
+**La délégation est là, et elle ne s'est pas greffée où ce document l'avait prévu.** La
+prévision décrivait une délégation de l'initiative, un lead dont le plan naîtrait en
+attente au lieu de naître confirmable. Cette forme ne tient pas : un plan ne porte pas
+d'état propre, il se déduit de ses étapes. Ce qui a été livré est autre chose, une
+délégation de l'exécution déclarative : quelqu'un qui n'est pas opérateur voit un dossier
+et y pointe les étapes qui le nomment, sans en calculer ni en confirmer aucun. L'attente
+était bien le mécanisme, elle vit sur l'étape et non sur le plan.
+
+Le droit vit dans `CaseParticipation` : un couple dossier et personne, avec son motif, son
+auteur, sa date et son échéance, révocable et jamais reconduit tacitement. Il se relit à
+chaque geste plutôt que de se figer dans la session, si bien qu'une révocation vaut
+immédiatement. Il ouvre deux portes d'entrée, l'espace-membre pour qui en est, une adresse
+de courriel pour qui n'en est pas, et la qualité d'opérateur ne se calcule que sur la
+première : un identifiant de fiche se renomme, et rien ne le compare à la liste en le
+renommant.
 
 ---
 

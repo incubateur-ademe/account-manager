@@ -8,17 +8,19 @@ import { useActionState } from "react";
 import { loginAction } from "./actions";
 
 export function LoginForm({ suite }: { suite?: string }) {
-  const [error, formAction, pending] = useActionState(loginAction, null);
+  const [message, formAction, pending] = useActionState(loginAction, null);
 
   return (
     <form action={formAction}>
       {suite ? <input type="hidden" name="suite" value={suite} /> : null}
       <Input
-        label="Nom d'utilisateur beta.gouv"
-        hintText="Par exemple prenom.nom, sans l'adresse électronique complète."
+        label="Identifiant beta.gouv ou adresse électronique"
+        hintText="prenom.nom pour un compte beta.gouv, ou l'adresse à laquelle vous attendez le lien."
         nativeInputProps={{ name: "username", autoComplete: "username", required: true }}
-        state={error ? "error" : "default"}
-        stateRelatedMessage={error ?? undefined}
+        // Le même état visuel que le même texte : distinguer l'envoi du refus par la
+        // couleur du bandeau rendrait au regard l'oracle que la phrase unique ferme.
+        state={message ? "info" : "default"}
+        stateRelatedMessage={message ?? undefined}
       />
       <Button type="submit" disabled={pending} className={fr.cx("fr-mt-2w")}>
         {pending ? "Envoi en cours…" : "Recevoir un lien de connexion"}
