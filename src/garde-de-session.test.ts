@@ -359,10 +359,11 @@ describe("la garde de session tient la première ligne de chaque entrée serveur
     // `actionTracee` qui l'appelle aussi, mais après avoir répondu, et par LA garde
     // attendue : les deux rejettent de la même façon, si bien que compter les passages
     // laisserait une entrée réservée à l'équipe s'ouvrir à un participant sans que rien
-    // ne le dise. Les quatre entrées ouvertes aux non-opérateurs se déclarent ici, pour
-    // qu'une cinquième soit un ajout délibéré et non un oubli.
+    // ne le dise. Les cinq entrées ouvertes aux non-opérateurs se déclarent ici, pour
+    // qu'une sixième soit un ajout délibéré et non un oubli.
     const OUVERTES = new Set([
       "page /moi",
+      "page /moi/[...reste]",
       "page /moi/dossiers/[id]",
       "pointerEtape",
       "validerEtape",

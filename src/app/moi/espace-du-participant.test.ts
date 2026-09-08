@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import ResteDeLEspacePage from "@/app/moi/[...reste]/page";
 import DossierDuParticipantPage, { EtapeDuParticipant } from "@/app/moi/dossiers/[id]/page";
+import PageNonTrouveeDuParticipant from "@/app/moi/not-found";
 import type { Acteur, Verdict } from "@/core/dossier";
 import { dossiersOuvertsPour } from "@/lib/participation";
 
@@ -227,6 +229,21 @@ function textesRendus(noeud: unknown): string[] {
 /** Le même texte, lu comme un écran le rend : les blancs du JSX ne disent rien. */
 const texteRendu = (noeud: unknown): string =>
   textesRendus(noeud).join(" ").replace(/\s+/gu, " ").trim();
+
+/** Où la page propose d'aller, boutons compris : une destination vit sous `linkProps`. */
+function liensRendus(noeud: unknown): string[] {
+  if (Array.isArray(noeud)) {
+    return noeud.flatMap(liensRendus);
+  }
+  if (noeud === null || typeof noeud !== "object") {
+    return [];
+  }
+  const objet = noeud as { props?: Record<string, unknown>; href?: unknown };
+  return [
+    ...(typeof objet.href === "string" ? [objet.href] : []),
+    ...Object.values(objet.props ?? objet).flatMap(liensRendus),
+  ];
+}
 
 function etape(champs: Partial<EtapeEnBase> & { id: string; expectedActor: Acteur }): EtapeEnBase {
   return {
@@ -626,5 +643,44 @@ describe("ce qu'un droit vivant ouvre, et ce qu'il n'ouvre plus", () => {
     expect(idsRendus(await rendre("dossier-1"))).toEqual(["charte"]);
     expect(texteDUneSeuleListe).toContain("Aucune étape de ce dossier ne vous revient.");
     expect(texteDUneSeuleListe).not.toContain("ne vous est pas montré");
+  });
+
+  it("refuse sans jamais dire si le dossier existe, et ne renvoie que là où le lecteur peut aller", async () => {
+    // Given un lecteur sans droit sur ce dossier, et le même lecteur ayant recopié un
+    // identifiant qui ne désigne rien
+    // When il demande l'un puis l'autre
+    // Then les deux refus sont le même, à la lettre : rien ne dit lequel des deux
+    // dossiers existe
+    await expect(rendre("dossier-1")).rejects.toThrow(REFUS_404);
+    await expect(rendre("dossier-inexistant")).rejects.toThrow(REFUS_404);
+
+    // Given l'adresse tronquée de quelqu'un qui laisse tomber l'identifiant, ou qui
+    // écrit « dossier » au singulier : elle ne rencontre aucune route
+    // Then elle refuse par la même porte que les deux autres, et c'est tout l'objet de
+    // cette route-là : sans elle, aucune frontière n'est franchie sous `/moi`, et Next
+    // rend le 404 de la racine, celui qui n'offre que l'accueil et les personnes suivies
+    await expect(ResteDeLEspacePage()).rejects.toThrow(REFUS_404);
+
+    // Then la page sur laquelle ce refus atterrit ne nomme aucun dossier, n'en suppose
+    // aucun, et ne laisse pas entendre qu'un accès lui manquerait
+    const page = texteRendu(PageNonTrouveeDuParticipant());
+    expect(page).toContain("Page non trouvée");
+    expect(page).toContain("Cette page n'existe pas.");
+    expect(page).toContain(
+      "Si vous avez saisi l'adresse à la main, vérifiez-la. Votre espace liste les dossiers qui vous sont ouverts, avec la date à laquelle chaque accès s'arrête.",
+    );
+    for (const aveu of [
+      "ce dossier",
+      "n'existe plus",
+      "vous n'avez pas",
+      "ne vous est pas",
+      "réservé",
+    ]) {
+      expect(page.toLowerCase()).not.toContain(aveu);
+    }
+
+    // Then elle ne lui propose que son espace : le 404 général offre l'accueil et les
+    // personnes suivies, deux écrans qui le ramèneraient ici
+    expect(liensRendus(PageNonTrouveeDuParticipant())).toEqual(["/moi"]);
   });
 });

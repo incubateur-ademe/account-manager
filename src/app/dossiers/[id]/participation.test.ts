@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DUREE_DEFAUT_JOURS, DUREE_MAX_JOURS } from "@/core/participation";
 
 import { octroyerParticipation, revoquerParticipation } from "./participation";
+import { LIBELLE_OCTROI } from "./redaction-participation";
 
 interface FicheEnBase {
   id: string;
@@ -409,8 +410,7 @@ describe("octroyer puis retirer un droit de participer", () => {
     // Given un droit sans motif est un droit que personne ne saura retirer, faute de
     // savoir pourquoi il a été posé : c'est la seule raison d'être de la colonne, et
     // une requête forgée sans le champ n'y échappe pas plus qu'un formulaire vide
-    const SANS_MOTIF =
-      "Dites pourquoi ce droit est accordé : sans motif, personne ne saura le retirer.";
+    const SANS_MOTIF = LIBELLE_OCTROI.motif.manquant;
     expect(await octroyerParticipation(null, octroi({ motif: "" }))).toEqual({
       erreur: SANS_MOTIF,
     });
@@ -514,9 +514,10 @@ describe("octroyer puis retirer un droit de participer", () => {
     expect(base.droits).toHaveLength(1);
   });
 
-  it("dit au moment du geste que le lien partira sur une boîte que ce départ coupe", async () => {
+  it("dit au moment du geste ce que devient le lien, et se tait quand il n'y a rien à dire", async () => {
     // Given une politique qui déclare les domaines qu'un départ coupe
     base.domainesMenaces.push("beta.gouv.fr", "ademe.fr");
+    const fiche = seul(base.fiches, "fiche");
 
     // When l'octroi déclare un canal sur l'un d'eux
     const menace = await octroyerParticipation(null, octroi({ canal: "lead@beta.gouv.fr" }));
@@ -524,7 +525,7 @@ describe("octroyer puis retirer un droit de participer", () => {
     // Then l'avertissement se lève à l'octroi, là où l'opérateur peut encore choisir
     // une autre adresse, et le droit est bel et bien posé
     expect(menace.erreur).toBeUndefined();
-    expect(menace.avertissement).toEqual(expect.stringContaining("que ce départ va couper"));
+    expect(menace.avertissement).toBe(LIBELLE_OCTROI.canalMenace);
     expect(base.droits).toHaveLength(1);
 
     // When le canal est ailleurs, ou qu'il n'y en a pas et que la fiche porte une
@@ -541,11 +542,47 @@ describe("octroyer puis retirer un droit de participer", () => {
     // When la fiche elle-même ne porte qu'une adresse, et qu'elle est sur un domaine
     // menacé
     base.droits.length = 0;
-    seul(base.fiches, "fiche").communicationEmail = "lead@ademe.fr";
+    fiche.communicationEmail = "lead@ademe.fr";
 
     // Then l'avertissement se lève quand même, l'outil sachant où le lien partirait
-    expect((await octroyerParticipation(null, octroi())).avertissement).toEqual(
-      expect.stringContaining("que ce départ va couper"),
+    expect((await octroyerParticipation(null, octroi())).avertissement).toBe(
+      LIBELLE_OCTROI.canalMenace,
     );
+
+    // Given cette même adresse menacée sur une fiche que la collecte entretient, c'est-à-dire
+    // le cas ordinaire d'un membre de l'incubateur : l'outil ne peut servir aucune de ses
+    // adresses, et son identifiant beta.gouv est sa porte
+    base.droits.length = 0;
+    fiche.source = "BETA";
+    fiche.usernameFabricated = false;
+
+    // Then le geste se tait, et c'est le fond de l'affaire : jugée sans le canal, la
+    // menace annonçait que le lien partait sur une boîte condamnée pendant que la liste,
+    // une ligne plus bas, disait qu'aucune adresse ne le servait. Les deux phrases se
+    // contredisaient, et c'était celle du geste qui était fausse.
+    expect(await octroyerParticipation(null, octroi())).toEqual({});
+
+    // Then une fiche collectée sans aucune adresse se tait pareillement : personne n'a
+    // besoin d'un lien pour entrer avec un identifiant beta.gouv réel
+    base.droits.length = 0;
+    fiche.communicationEmail = null;
+    expect(await octroyerParticipation(null, octroi())).toEqual({});
+
+    // Given la seule personne que rien n'atteint : un identifiant fabriqué ici, qu'aucun
+    // espace-membre ne connaît, et pas une adresse à servir
+    base.droits.length = 0;
+    fiche.source = "LOCAL";
+    fiche.usernameFabricated = true;
+
+    // Then le geste le dit, et le droit est posé quand même : c'était jusqu'ici un
+    // succès muet, sur lequel la modale se fermait
+    const rien = await octroyerParticipation(null, octroi());
+    expect(rien.erreur).toBeUndefined();
+    expect(rien.avertissement).toBe(LIBELLE_OCTROI.sansCanal);
+    expect(base.droits).toHaveLength(1);
+
+    // Then un canal déclaré le sauve, et lui seul
+    base.droits.length = 0;
+    expect(await octroyerParticipation(null, octroi({ canal: "lead@perso.example" }))).toEqual({});
   });
 });

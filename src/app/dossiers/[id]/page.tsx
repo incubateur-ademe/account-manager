@@ -31,7 +31,7 @@ import {
   origineFigeeSchema,
   type SaisieAttendue,
 } from "@/core/modele-plan";
-import { canalDuDroit, canalMenace, participationVivante } from "@/core/participation";
+import { etatDuCanal, participationVivante } from "@/core/participation";
 import {
   masseDuPlan,
   type OrigineEtape,
@@ -687,7 +687,12 @@ export default async function DossierPage({
     // droit se déduit plutôt qu'elle ne s'écrit.
     .filter((droit) => participationVivante(droit, dossier.state, maintenant))
     .map((droit) => {
-      const canal = canalDuDroit(droit.person, droit.channelEmail, declaresLocaux);
+      const canal = etatDuCanal(
+        droit.person,
+        droit.channelEmail,
+        declaresLocaux,
+        politique.mail.domainsLostOnDeparture,
+      );
       return {
         id: droit.id,
         username: droit.person.username,
@@ -698,9 +703,8 @@ export default async function DossierPage({
         canal: canal.vivant
           ? { adresse: canal.adresse, certain: canal.origine === "OCTROI" }
           : null,
-        menace:
-          canal.vivant &&
-          canalMenace(droit.person, droit.channelEmail, politique.mail.domainsLostOnDeparture),
+        menace: canal.vivant && canal.menace,
+        identifiantFabrique: droit.person.usernameFabricated,
       };
     });
 
@@ -1084,7 +1088,8 @@ export default async function DossierPage({
       <Participations
         dossierId={dossier.id}
         droits={droits}
-        domainesMenaces={politique.mail.domainsLostOnDeparture.join(", ")}
+        domainesMenaces={politique.mail.domainsLostOnDeparture}
+        sens={dossier.kind}
         // Le refus du dossier veillé est celui de l'action, redit ici : un départ
         // soupçonné et pas décidé ne s'apprend à personne par un droit d'accès.
         ouvert={dossierVivant(dossier.state) && dossier.state !== "WATCH"}

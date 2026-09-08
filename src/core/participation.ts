@@ -228,6 +228,11 @@ export type CanalDuDroit =
   | { vivant: true; adresse: string; origine: OrigineCanal }
   | { vivant: false };
 
+/** Le même verdict, augmenté de ce qui va couper l'adresse qu'il retient. */
+export type EtatCanal =
+  | { vivant: true; adresse: string; origine: OrigineCanal; menace: boolean }
+  | { vivant: false };
+
 /**
  * Où le lien de connexion de ce droit partirait aujourd'hui, ou nulle part.
  *
@@ -240,7 +245,8 @@ export type CanalDuDroit =
  * le « canal mort », et il arrive sans qu'aucun geste humain n'ait eu lieu, la collecte
  * pouvant faire basculer une fiche fabriquée au milieu d'un dossier. Il se dit plutôt
  * que de se découvrir au lien qui ne marche pas, et il a deux sorties : ré-octroyer en
- * déclarant une adresse, ou entrer par l'identifiant beta.gouv.
+ * déclarant une adresse, ou entrer par l'identifiant beta.gouv, que l'adoption vient
+ * précisément de rendre réel.
  *
  * Elle dit où le lien partirait, jamais si l'adresse serait reçue : ce jugement-là
  * demande la base et vit dans `adresseRecevable`.
@@ -260,7 +266,7 @@ export function canalDuDroit(
 }
 
 /**
- * Le lien de connexion partira-t-il sur une boîte que ce départ va couper ?
+ * Une adresse est-elle sur une boîte que le départ de son titulaire va couper ?
  *
  * La question se juge sur le domaine, et non sur l'égalité des deux adresses de la
  * fiche : cette égalité rate une adresse secondaire qui est elle aussi une boîte
@@ -268,20 +274,32 @@ export function canalDuDroit(
  * domaines un départ coupe est une déclaration de politique et pas une propriété du
  * code, d'où la liste en argument.
  */
-export function canalMenace(
-  fiche: CanalDeFiche,
-  canal: string | null,
-  domainesMenaces: readonly string[],
-): boolean {
-  const adresse = canal ?? fiche.communicationEmail;
-  if (adresse === null) {
-    return false;
-  }
+function domaineMenace(adresse: string, domainesMenaces: readonly string[]): boolean {
   const domaine = adresse.trim().toLowerCase().split("@")[1];
   if (domaine === undefined) {
     return false;
   }
   return domainesMenaces.some((menace) => menace.trim().toLowerCase() === domaine);
+}
+
+/**
+ * Où le lien de connexion de ce droit part, et ce qui va le couper. Un seul verdict,
+ * parce que deux se composaient mal.
+ *
+ * La menace se jugeait à part, sur une adresse de fiche que `canalDuDroit` avait déjà
+ * écartée : l'octroi annonçait donc que le lien partait sur une boîte condamnée pour un
+ * droit dont la liste, une ligne plus bas, disait qu'aucune adresse ne le servait. Une
+ * adresse dont rien ne part n'est menacée par rien, et la seule façon que les deux
+ * écrans ne se contredisent plus est qu'ils n'aient plus qu'une réponse à lire.
+ */
+export function etatDuCanal(
+  fiche: FicheManuelle & CanalDeFiche,
+  canal: string | null,
+  declaresLocaux: readonly string[],
+  domainesMenaces: readonly string[],
+): EtatCanal {
+  const vif = canalDuDroit(fiche, canal, declaresLocaux);
+  return vif.vivant ? { ...vif, menace: domaineMenace(vif.adresse, domainesMenaces) } : vif;
 }
 
 /** Une étape lue par ce qu'elle attend de qui. */

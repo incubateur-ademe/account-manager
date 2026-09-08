@@ -1,11 +1,13 @@
 "use server";
 
 import { dossierVivant } from "@/core/dossier";
+import type { FicheManuelle } from "@/core/fiche-manuelle";
 import { estOperateur } from "@/core/identite";
 import {
-  canalMenace,
+  type CanalDeFiche,
   DUREE_MAX_JOURS,
   echeanceDOctroi,
+  etatDuCanal,
   type RefusAdresse,
   voieDeConnexion,
 } from "@/core/participation";
@@ -15,6 +17,8 @@ import { prisma } from "@/lib/db";
 import { webEnv } from "@/lib/env";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
+
+import { LIBELLE_OCTROI } from "./redaction-participation";
 
 export interface EtatParticipation {
   erreur?: string;
@@ -76,7 +80,7 @@ export async function octroyerParticipation(
 
   if (motif.length < 3) {
     return {
-      erreur: "Dites pourquoi ce droit est accordé : sans motif, personne ne saura le retirer.",
+      erreur: LIBELLE_OCTROI.motif.manquant,
     };
   }
 
@@ -125,7 +129,7 @@ export async function octroyerParticipation(
   }
   if (estOperateur(personne.username, webEnv.OPERATORS, webEnv.BREAK_GLASS_USERNAMES)) {
     return {
-      erreur: `« ${personne.username} » est un opérateur de l'outil : ce dossier lui est déjà ouvert, et un droit par objet n'ajouterait rien.`,
+      erreur: `« ${personne.username} » est un opérateur de l'outil : ce dossier lui est déjà ouvert.`,
     };
   }
 
@@ -180,12 +184,38 @@ export async function octroyerParticipation(
     },
   });
 
-  return canalMenace(personne, canal, policy().mail.domainsLostOnDeparture)
-    ? {
-        avertissement:
-          "Le lien de connexion partira sur une boîte que ce départ va couper : elle cessera de répondre, et le droit deviendra inutilisable avant son terme. Ré-octroyez en déclarant une autre adresse dès qu'elle est connue.",
-      }
-    : {};
+  return avertissementDuCanal(personne, canal);
+}
+
+/**
+ * Ce que le geste a encore à dire une fois le droit posé, ou rien.
+ *
+ * Le verdict est celui que la liste affiche, et non plus une menace jugée à part : sur
+ * une fiche que la collecte entretient, cette menace-là criait que le lien partait sur
+ * une boîte condamnée pendant que la liste, une ligne plus bas, disait qu'aucune adresse
+ * ne le servait.
+ *
+ * Un canal éteint n'est pas une anomalie en soi : le titulaire d'un identifiant
+ * beta.gouv réel entre par sa propre porte, sans qu'aucun lien n'ait à partir. Il ne le
+ * devient que pour un identifiant fabriqué ici, qu'aucun espace-membre ne connaît, et
+ * ce cas-là était jusqu'ici un succès muet.
+ */
+function avertissementDuCanal(
+  personne: FicheManuelle & CanalDeFiche,
+  canal: string | null,
+): EtatParticipation {
+  const politique = policy();
+  const etat = etatDuCanal(
+    personne,
+    canal,
+    politique.scope.local.map((entree) => entree.username),
+    politique.mail.domainsLostOnDeparture,
+  );
+
+  if (!etat.vivant) {
+    return personne.usernameFabricated ? { avertissement: LIBELLE_OCTROI.sansCanal } : {};
+  }
+  return etat.menace ? { avertissement: LIBELLE_OCTROI.canalMenace } : {};
 }
 
 /**

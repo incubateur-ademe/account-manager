@@ -20,6 +20,11 @@ export interface LibelleDossier {
   dejaOuvert: string;
   /** L'encart qui rappelle qu'un pointage ne déclenche rien. */
   cocher: string;
+  /**
+   * Ce sur quoi un droit de participer peut se poser, dans la phrase qui le refuse.
+   * Décliné parce que le genre du mot emporte l'accord de toute la clause.
+   */
+  droitPossibleSur: string;
   /** Titre de la liste des étapes, selon ce que le plan est devenu. */
   aFaire: string;
   restant: string;
@@ -61,6 +66,7 @@ export const LIBELLE_DOSSIER: Record<SensDossier, LibelleDossier> = {
       "Ce dossier était déjà ouvert : vous êtes revenu dessus, aucun second dossier n'a été créé. Une arrivée ne s'ouvre qu'une fois par personne tant qu'elle n'est pas close.",
     cocher:
       "Cocher une étape n'exécute rien : l'outil consigne ce que vous déclarez avoir fait, il n'ouvre aucun accès lui-même. La collecte suivante dira si le compte est réellement apparu.",
+    droitPossibleSur: "une arrivée décidée et pas encore soldée",
     aFaire: "Ce qu'il faudra donner",
     restant: "Ce qu'il reste à donner",
     propose: "Ce que ce plan proposait de donner",
@@ -95,6 +101,7 @@ export const LIBELLE_DOSSIER: Record<SensDossier, LibelleDossier> = {
       "Ce dossier était déjà ouvert : vous êtes revenu dessus, aucun second dossier n'a été créé. Un départ ne s'ouvre qu'une fois par personne tant qu'il n'est pas clos.",
     cocher:
       "Cocher une étape n'exécute rien : l'outil consigne ce que vous déclarez avoir fait, il ne coupe aucun accès lui-même. La collecte suivante dira si le compte a réellement disparu.",
+    droitPossibleSur: "un départ décidé et pas encore soldé",
     aFaire: "Ce qu'il faudra retirer",
     restant: "Ce qu'il reste à retirer",
     propose: "Ce que ce plan proposait de retirer",
