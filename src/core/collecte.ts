@@ -1,5 +1,5 @@
 import type { ObservedDetail, ObservedIdentity } from "@/core/connector";
-import type { IdKind, PersonSource } from "@/generated/prisma/enums";
+import type { IdKind, PersonSource, SyncStatus } from "@/generated/prisma/enums";
 
 /**
  * Une collecte qui rapporte beaucoup moins que la précédente n'est pas distinguable
@@ -244,17 +244,33 @@ export function systemesMuets(
  * Ce qu'un garde-fou de chute a refusé de dater, dit assez précisément pour qu'un
  * passage suivant reconnaisse le même refus.
  *
- * Deux familles, deux verrous distincts. Une chute des identités interdit de conclure
+ * Trois familles, trois verrous distincts. Une chute des identités interdit de conclure
  * sur qui a disparu, et donc aussi sur les accès qui en dépendent. Une chute des
  * ressources n'interdit que les accès : qu'un connecteur cesse d'émettre une famille
- * de ressources ne dit rien de la personne dont la fiche vient de s'éteindre.
+ * de ressources ne dit rien de la personne dont la fiche vient de s'éteindre. Une chute
+ * du périmètre interdit les deux à la fois, et elle se distingue des autres par sa
+ * référence : un décompte de lignes vivantes en base se corrige de lui-même dès qu'une
+ * datation passe, alors que l'effectif du dernier passage complet ne bouge que si un
+ * passage se dit complet, ce que le refus lui-même empêche.
  */
-export type FamilleDeChute = "identites" | "ressources";
+export type FamilleDeChute = "identites" | "ressources" | "perimetre";
 
 export interface RefusDeDatation {
   famille: FamilleDeChute;
   observe: number;
   reference: number;
+}
+
+const FAMILLES: readonly FamilleDeChute[] = ["identites", "ressources", "perimetre"];
+
+/**
+ * L'écran poste la famille d'un garde-fou dans un formulaire, donc en chaîne libre.
+ * La reconnaître ici plutôt que chez l'action qui la reçoit est ce qui empêche une
+ * famille de plus d'être annoncée par un écran et refusée par le seul chemin qui
+ * permette d'en sortir.
+ */
+export function estFamilleDeChute(valeur: string): valeur is FamilleDeChute {
+  return (FAMILLES as readonly string[]).includes(valeur);
 }
 
 /**
@@ -299,6 +315,74 @@ export const REPETITIONS_AVANT_BLOCAGE = 3;
 
 export function chuteInstallee(repetitions: number): boolean {
   return repetitions >= REPETITIONS_AVANT_BLOCAGE;
+}
+
+/**
+ * Depuis combien de passages le relevé complet du périmètre n'a pas été renouvelé,
+ * celui qui s'achève compris.
+ *
+ * Ce qui se compte ici est un effet et non une cause, et c'est tout l'objet de cette
+ * fonction. Un passage cesse d'être complet pour cinq raisons qui n'ont rien à voir
+ * entre elles : un élément de liste illisible, une écriture qui lève, une lecture des
+ * listes qui n'aboutit pas, le plancher de chute qui refuse, et le plancher qui refuse
+ * à nouveau parce que son propre refus a figé sa référence. Compter les répétitions
+ * d'un refus nommé, comme on le fait sur les systèmes cibles, n'en verrait qu'une.
+ * L'effet, lui, est le même pour les cinq : les règles adossées au dernier passage
+ * complet continuent de décider contre un relevé qui n'est plus celui du jour, et
+ * aucune ne peut le dire, chacune se taisant précisément parce que le relevé est vieux.
+ *
+ * En passages et jamais en heures, pour la raison qui vaut déjà plus haut : la période
+ * du traitement vit dans l'orchestrateur, aucun code d'ici ne la lit, et deux relances
+ * à la main placent deux passages à quelques minutes l'un de l'autre. La fraîcheur
+ * d'une collecte se mesure en heures parce qu'elle parle du silence ; l'âge d'un relevé
+ * se mesure en passages parce qu'il parle de ce qu'on s'est refusé à conclure.
+ *
+ * Les statuts arrivent du plus récent au plus ancien, et tout ce qui n'est pas `OK`
+ * compte pour un passage de plus : c'est le statut qui borne la référence, pas la
+ * gravité, et un `FAILED` ne la renouvelle pas mieux qu'un `PARTIAL`. La liste doit
+ * porter le passage complet qui sert de référence, sans quoi le compte rendu est celui
+ * de la fenêtre relue et non celui du relevé.
+ */
+export function ageDuReleve(statuts: readonly SyncStatus[]): number {
+  const complet = statuts.indexOf("OK");
+  return complet === -1 ? statuts.length : complet;
+}
+
+/**
+ * Un relevé qu'assez de passages n'ont pas renouvelé pour qu'on cesse d'y voir un
+ * incident. Le seuil est celui de la chute installée, et pour la même raison : en deçà
+ * on ne sait pas encore, une nuit se rate pour un motif qui passera ; au-delà le doute
+ * n'est plus raisonnable, et c'est à l'écran de le dire.
+ */
+export function releveFige(passages: number): boolean {
+  return passages >= REPETITIONS_AVANT_BLOCAGE;
+}
+
+/**
+ * Ce par quoi commence la phrase qu'un passage laisse quand il n'a pas renouvelé le
+ * relevé contre lequel tout se décide.
+ *
+ * Elle ne dit pas un refus mais un état, et c'est pourquoi elle n'a pas la forme des
+ * autres : les refus nomment quelqu'un, celle-ci ne nomme personne parce qu'un relevé
+ * qui n'avance plus vaut pour tout le monde à la fois.
+ */
+export const RELEVE_NON_RENOUVELE = "relevé non renouvelé";
+
+/**
+ * L'âge du relevé tel qu'un passage l'a porté dans sa trace, quand il l'a porté.
+ *
+ * Le compte est relu et non recalculé par l'écran : le passage seul connaît son propre
+ * statut au moment où il conclut, alors qu'un écran qui compterait les runs devrait
+ * deviner celui du passage en cours. Nul quand la trace ne le porte pas, ce qui couvre
+ * les passages complets, les traces d'avant ce mécanisme et un run encore ouvert.
+ */
+export function ageDuReleveDeLaTrace(error: unknown): number | null {
+  if (!error || typeof error !== "object" || !("ageDuReleve" in error)) {
+    return null;
+  }
+
+  const brut = (error as { ageDuReleve: unknown }).ageDuReleve;
+  return typeof brut === "number" ? brut : null;
 }
 
 /**
@@ -381,6 +465,46 @@ export const REFUS_DE_RETOUR = "retours non datés";
 export const REFUS_D_ECHEANCE = "échéances non écrites";
 
 /**
+ * Ce par quoi commence la phrase qu'un passage laisse quand il retient une fiche dont
+ * la lecture n'a pas répondu.
+ *
+ * Le pendant du refus de disparition, sur l'autre façon de ne pas lire une fiche, et
+ * il n'a pas la même borne. Un 404 est une information : la source nomme la fiche
+ * qu'elle ne connaît pas, et c'est ce qui permet au sursis de durer un passage sans
+ * devenir une exemption, une fiche réellement supprimée en amont recevant son départ
+ * avec un passage de retard. Une lecture qui jette n'informe de rien : elle ne dit pas
+ * que la personne est absente, elle dit que la question n'a pas eu de réponse, et un
+ * silence qui dure ne se mue donc pas en départ. La retenue court tant que la lecture
+ * échoue, et elle n'exempte personne parce qu'une suppression en amont ne passe pas
+ * par ce chemin : elle répond 404, elle nomme la fiche qu'elle a supprimée.
+ */
+export const REFUS_DE_LECTURE = "fiches sans réponse";
+
+/**
+ * Les fiches qu'un passage a retenues faute de réponse, telles que sa trace les porte.
+ *
+ * Cette retenue est la seule qui ne laisse rien de distinctif en base : une fiche
+ * retenue sur un 404 et une fiche retenue faute de réponse ont toutes deux une
+ * dernière vue restée derrière le dernier passage complet, et l'écran qui les
+ * confondrait promettrait à la seconde une sortie qu'aucun passage suivant ne
+ * constatera. La liste est donc écrite en clair dans la trace, à côté des phrases qui
+ * la disent, et se relit ici plutôt que chez chaque appelant, comme les refus de
+ * datation : une phrase dont les noms sont joints par des virgules ne se relit pas
+ * sans prendre le morceau d'un identifiant pour un autre.
+ */
+export function fichesSansReponse(error: unknown): readonly string[] {
+  if (!error || typeof error !== "object" || !("sansReponse" in error)) {
+    return [];
+  }
+
+  const brut = (error as { sansReponse: unknown }).sansReponse;
+  if (!Array.isArray(brut)) {
+    return [];
+  }
+  return brut.filter((nom): nom is string => typeof nom === "string");
+}
+
+/**
  * Le refus d'arrivées qu'une trace de run porte, s'il y en a un.
  *
  * Ce refus ne bascule pas le statut du run, contrairement à celui des disparitions :
@@ -409,18 +533,74 @@ export interface TraceDeRun {
 
 export interface BlocageInstalle extends RefusDeDatation {
   provider: string;
-  repetitions: number;
+  /**
+   * Depuis combien de passages ce blocage tient, compté comme sa famille le compte :
+   * les refus identiques pour un système cible, l'âge du relevé pour le plancher du
+   * périmètre. Le nombre ne se lit donc que dans la phrase de sa famille, seule à dire
+   * lequel des deux comptes il est.
+   */
+  passages: number;
 }
 
-const FAMILLES: readonly FamilleDeChute[] = ["identites", "ressources"];
+/** Ce qu'un passage a laissé d'une famille de chute, tel que l'écran le relit. */
+interface EtatDuBlocage {
+  /** Le refus du dernier passage, c'est-à-dire celui que l'écran montre. */
+  refus: RefusDeDatation;
+  /** Ce que les passages d'avant ont refusé, du plus récent au plus ancien. */
+  precedents: readonly (RefusDeDatation | null)[];
+  /** La trace de ce dernier passage, où il porte l'âge du relevé s'il en a un. */
+  trace: unknown;
+}
+
+function parRefusIdentiques({ refus, precedents }: EtatDuBlocage): number | null {
+  const repetitions = refusRepete(refus, precedents);
+  return chuteInstallee(repetitions) ? repetitions : null;
+}
 
 /**
- * Les garde-fous qui refusent la même chose depuis assez de passages pour qu'on cesse
- * de parler d'incident.
+ * Depuis combien de passages le blocage d'une famille tient, ou rien s'il ne tient pas
+ * depuis assez de passages pour qu'on cesse d'y voir un incident.
+ *
+ * Une table plutôt qu'une condition, pour la raison qui vaut déjà chez la phrase des
+ * chutes : une famille de plus qui ne dirait pas comment son blocage s'installe ne
+ * compilerait pas, là où une condition l'enverrait sans bruit chez celle d'à côté.
+ *
+ * Les deux mesures ne comptent pas la même chose et ne s'échangent pas, parce que les
+ * deux références ne se figent pas de la même façon. Un système cible compare ce qu'une
+ * lecture vient de rendre à un décompte de lignes tenues pour vivantes en base : ce
+ * décompte se corrige dès qu'une datation passe, si bien qu'un refus qui retombe avec
+ * les mêmes nombres est exactement ce qui dit que rien n'avance, et que des nombres qui
+ * bougent disent qu'il se passe encore quelque chose. Le plancher du périmètre, lui,
+ * compare à l'effectif du dernier passage complet, que son propre refus empêche
+ * d'avancer : ce qui dit que rien n'avance est l'âge de ce relevé, et rien d'autre.
+ * Compter ses refus identiques ne verrait qu'une des cinq portes par lesquelles un
+ * passage cesse d'être complet, si bien qu'une nuit dégradée pour un autre motif
+ * casserait la série et refermerait la sortie précisément là où le gel dure le plus.
+ *
+ * L'âge ne suffit pourtant pas à lui seul, et le refus du soir reste exigé par la boucle
+ * qui appelle ceci : c'est lui, et lui seul, qui dit que le plancher est bien l'obstacle.
+ */
+const INSTALLATION: Record<FamilleDeChute, (etat: EtatDuBlocage) => number | null> = {
+  identites: parRefusIdentiques,
+  ressources: parRefusIdentiques,
+  perimetre: ({ trace }) => {
+    const passages = ageDuReleveDeLaTrace(trace);
+    return passages !== null && releveFige(passages) ? passages : null;
+  },
+};
+
+/**
+ * Les garde-fous dont le blocage tient depuis assez de passages pour qu'on cesse de
+ * parler d'incident.
  *
  * L'écran en a besoin parce que le journal seul ne suffit pas : la ligne qui annonce
  * un blocage définitif ressemble mot pour mot à celle qui annonce un incident
  * passager, et c'est ainsi qu'un opérateur finit par ne plus la lire.
+ *
+ * Rien n'est annoncé d'une famille dont la trace du dernier passage ne porte aucun
+ * refus, et ce n'est pas une économie de lecture : une sortie offerte la nuit où ce
+ * garde-fou n'est pas l'obstacle ferait cliquer un opérateur pour rien, sa décision
+ * attendant ensuite un refus que le passage suivant ne prononcera peut-être jamais.
  *
  * Les runs arrivent du plus récent au plus ancien, toutes capacités de lecture
  * confondues par fournisseur.
@@ -437,15 +617,26 @@ export function blocagesInstalles(runs: readonly TraceDeRun[]): BlocageInstalle[
 
   for (const [provider, liste] of parProvider) {
     for (const famille of FAMILLES) {
-      const refus = liste.map((run) => refusDeLaTrace(run.error, famille));
-      const dernier = refus[0];
-      if (!dernier) {
+      // Le refus et l'âge se relisent dans la même trace, et c'est ce que ce couple
+      // tient : un âge pris ailleurs annoncerait un gel dont le refus montré à côté
+      // ne répondrait pas.
+      const lectures = liste.map((run) => ({
+        refus: refusDeLaTrace(run.error, famille),
+        trace: run.error,
+      }));
+      const dernier = lectures[0];
+      if (!dernier?.refus) {
         continue;
       }
 
-      const repetitions = refusRepete(dernier, refus.slice(1));
-      if (chuteInstallee(repetitions)) {
-        blocages.push({ ...dernier, provider, repetitions });
+      const passages = INSTALLATION[famille]({
+        refus: dernier.refus,
+        precedents: lectures.slice(1).map((lecture) => lecture.refus),
+        trace: dernier.trace,
+      });
+
+      if (passages !== null) {
+        blocages.push({ ...dernier.refus, provider, passages });
       }
     }
   }

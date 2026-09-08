@@ -1,18 +1,23 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ageDuReleve,
+  ageDuReleveDeLaTrace,
   arriveeMassive,
   autrePassageCompletDepuis,
   blocagesInstalles,
   champsConstates,
   chuteExcessive,
   chuteInstallee,
+  estFamilleDeChute,
+  fichesSansReponse,
   fraicheurDe,
   nonRendueAuDernierPassage,
   PLANCHER_ARRIVEES,
   type RefusDeDatation,
   type ReleveSysteme,
   refusRepete,
+  releveFige,
   systemesMuets,
 } from "./collecte";
 
@@ -129,6 +134,37 @@ describe("ce qu'un autre passage complet vient confirmer", () => {
     // disparue relève du constat de sortie, qui dit la même chose en disant quoi faire.
     expect(nonRendueAuDernierPassage({ ...retenue, source: "LOCAL" }, NOCTURNE)).toBe(false);
     expect(nonRendueAuDernierPassage({ ...retenue, vanishedAt: VEILLE }, NOCTURNE)).toBe(false);
+  });
+
+  it("sépare l'angle mort dont une sortie viendra de celui dont elle ne viendra pas", () => {
+    // Le prédicat du dessus ne distingue pas les deux façons de ne pas lire une fiche,
+    // et rien en base ne les distingue non plus : une dernière vue restée en arrière
+    // vaut pour les deux. Or la suite n'est pas la même, un aveu d'ignorance finissant
+    // par valoir départ quand une lecture qui échoue n'y mène jamais. Le passage écrit
+    // donc les secondes en clair dans sa trace, et c'est ce que l'écran d'une personne
+    // relit avant de lui promettre quoi que ce soit.
+    const trace = {
+      messages: ["fiches sans réponse : dominique.exemple ; aucune disparition datée"],
+      sansReponse: ["dominique.exemple"],
+    };
+
+    expect(fichesSansReponse(trace)).toEqual(["dominique.exemple"]);
+    expect(fichesSansReponse(trace).includes("camille.exemple")).toBe(false);
+
+    // Une trace sans la clé est le cas de tous les passages ordinaires, et celui de
+    // tous ceux d'avant cette règle : elle ne retient personne, elle ne se relit pas
+    // comme un doute. Les formes que la colonne Json peut prendre sans que rien ne
+    // l'ait promis sont traitées pareil, jusqu'au nom qui n'est pas une chaîne : la
+    // lire ici plutôt que chez l'appelant est ce qui garantit qu'aucun écran ne
+    // trébuche sur une trace écrite par une version antérieure.
+    expect(fichesSansReponse({ messages: ["retours non datés : elias.exemple"] })).toEqual([]);
+    expect(fichesSansReponse(null)).toEqual([]);
+    expect(fichesSansReponse(undefined)).toEqual([]);
+    expect(fichesSansReponse("fiches sans réponse : dominique.exemple")).toEqual([]);
+    expect(fichesSansReponse({ sansReponse: "dominique.exemple" })).toEqual([]);
+    expect(fichesSansReponse({ sansReponse: ["dominique.exemple", 42, null] })).toEqual([
+      "dominique.exemple",
+    ]);
   });
 });
 
@@ -370,7 +406,7 @@ describe("les blocages que l'écran doit annoncer plutôt que de les laisser au 
       famille: "ressources",
       observe: 33,
       reference: 65,
-      repetitions: 4,
+      passages: 4,
     });
 
     // Un système peut être bloqué sur les deux familles à la fois, et l'écran doit
@@ -400,11 +436,185 @@ describe("les blocages que l'écran doit annoncer plutôt que de les laisser au 
 
     expect(deuxVerrous.map((blocage) => blocage.famille)).toEqual(["identites", "ressources"]);
 
+    // Le plancher du périmètre est examiné comme les deux autres, mais son installation
+    // ne se compte pas comme la leur : elle se lit sur l'âge du relevé, que le passage
+    // porte dans la même trace que son refus. Le cas est repris en propre juste après.
+    expect(
+      blocagesInstalles(
+        Array.from({ length: 3 }, (_, rang) => ({
+          provider: "espace-membre",
+          error: {
+            messages: [],
+            ageDuReleve: 3 - rang,
+            refus: [{ famille: "perimetre", observe: 9, reference: 13 }],
+          },
+        })),
+      ),
+    ).toEqual([
+      {
+        provider: "espace-membre",
+        famille: "perimetre",
+        observe: 9,
+        reference: 13,
+        passages: 3,
+      },
+    ]);
+
+    // Et le seul chemin par lequel on en sorte reconnaît les mêmes familles que
+    // l'écran qui les annonce : une famille annoncée en tête d'écran et refusée par
+    // l'action qui la reçoit laisserait un bouton qui rend une erreur.
+    expect(["identites", "ressources", "perimetre"].every(estFamilleDeChute)).toBe(true);
+    expect(estFamilleDeChute("startups")).toBe(false);
+    expect(estFamilleDeChute("")).toBe(false);
+
     // Et une trace sans refus structuré, comme celles d'avant ce mécanisme, ne fait
     // rien croire : elle se lit comme une absence de blocage, pas comme un blocage.
     expect(
       blocagesInstalles([{ provider: "github", error: { messages: ["ancienne forme"] } }]),
     ).toEqual([]);
     expect(blocagesInstalles([])).toEqual([]);
+  });
+
+  it("lit l'installation du plancher du périmètre sur l'âge du relevé, jamais sur ses refus identiques", () => {
+    const CHUTE = { famille: "perimetre", observe: 9, reference: 13 } as const;
+    /** Une nuit où le plancher a refusé : elle porte son refus et l'âge du relevé. */
+    const refuse = (age: number) => ({ messages: [], ageDuReleve: age, refus: [CHUTE] });
+    /** Une nuit dégradée par une autre porte : le plancher n'y a pas eu son tour. */
+    const autrePorte = (age: number) => ({
+      messages: ["membres de l'incubateur : élément 4 illisible (username requis)"],
+      ageDuReleve: age,
+    });
+
+    // Given une chute réelle tenue toutes les nuits, et une nuit dégradée par une autre
+    // porte au milieu de la série. Cette nuit-là n'écrit aucun refus : le compte des
+    // refus identiques repart de zéro et n'atteindra jamais le seuil tant que le motif
+    // dure, alors que rien de ce qui s'adosse au relevé n'a repris la main entre-temps.
+    const casse = [
+      { provider: "espace-membre", error: refuse(4) },
+      { provider: "espace-membre", error: autrePorte(3) },
+      { provider: "espace-membre", error: refuse(2) },
+      { provider: "espace-membre", error: refuse(1) },
+    ];
+    expect(refusRepete(CHUTE, [null, CHUTE, CHUTE])).toBe(1);
+
+    // Then la sortie s'offre quand même, et le nombre annoncé est celui du relevé : ce
+    // qu'un opérateur doit trancher est que ce relevé-là ne reviendra pas seul, et non
+    // qu'un refus s'est répété.
+    expect(blocagesInstalles(casse)).toEqual([
+      { provider: "espace-membre", famille: "perimetre", observe: 9, reference: 13, passages: 4 },
+    ]);
+
+    // Then un refus qui vient de retomber pour la première fois sur un relevé déjà vieux
+    // est installé, parce que c'est le relevé qui l'est.
+    expect(
+      blocagesInstalles([
+        { provider: "espace-membre", error: refuse(9) },
+        { provider: "espace-membre", error: autrePorte(8) },
+      ]),
+    ).toMatchObject([{ passages: 9 }]);
+
+    // Then en deçà du seuil, rien : le relevé d'hier n'est pas un gel, et un bandeau
+    // posé au premier incident d'une nuit cesse d'être lu.
+    expect(blocagesInstalles([{ provider: "espace-membre", error: refuse(2) }])).toEqual([]);
+
+    // Then sans refus du soir, rien non plus, quel que soit l'âge : le plancher n'est
+    // pas l'obstacle de cette nuit-là, lever le plancher ne renouvellerait pas le
+    // relevé, et la décision attendrait un refus que personne n'a prononcé.
+    expect(
+      blocagesInstalles([
+        { provider: "espace-membre", error: autrePorte(12) },
+        { provider: "espace-membre", error: refuse(11) },
+      ]),
+    ).toEqual([]);
+
+    // Then les systèmes cibles gardent la leur, et l'âge du relevé ne les regarde pas :
+    // ce qu'ils comparent est un décompte de lignes vivantes en base, qui se corrige de
+    // lui-même dès qu'une datation passe, et leur trace ne porte d'ailleurs aucun âge.
+    expect(
+      blocagesInstalles([
+        {
+          provider: "github",
+          error: {
+            messages: [],
+            ageDuReleve: 12,
+            refus: [{ famille: "ressources", observe: 33, reference: 65 }],
+          },
+        },
+      ]),
+    ).toEqual([]);
+
+    // Then et une trace qui porterait un refus du périmètre sans âge ne se lit pas comme
+    // un gel. Aucun passage n'en écrit : celui qui refuse porte les deux dans la même
+    // trace, et les traces d'avant ce mécanisme ne portaient pas de refus du périmètre
+    // du tout. C'est la règle de lecture qui se grave ici, pas un scénario.
+    expect(
+      blocagesInstalles(
+        Array.from({ length: 4 }, () => ({
+          provider: "espace-membre",
+          error: { messages: [], refus: [CHUTE] },
+        })),
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("l'âge du relevé contre lequel le périmètre décide", () => {
+  it("compte les passages qui ne l'ont pas renouvelé, sans regarder pourquoi", () => {
+    // Given une nuit ratée sur un enregistrement illisible, puis une nuit ratée par le
+    // plancher de chute, puis une panne qui porte le passage en échec. Trois causes qui
+    // n'ont rien à voir, un seul effet : le dernier passage complet n'avance plus.
+    // Compter les répétitions d'un refus nommé serait reparti de zéro à chaque
+    // changement de cause, alors que rien de ce qui s'adosse au relevé n'a reprivilégié
+    // l'état du jour entre-temps.
+    expect(ageDuReleve(["FAILED", "PARTIAL", "PARTIAL", "OK", "PARTIAL", "OK"])).toBe(3);
+
+    // Then un passage complet n'a pas d'âge à annoncer : il est le relevé.
+    expect(ageDuReleve(["OK", "PARTIAL", "PARTIAL", "OK"])).toBe(0);
+
+    // Then une seule nuit se compte comme une seule nuit, et c'est la distinction que
+    // tout ce mécanisme existe pour rendre lisible.
+    expect(ageDuReleve(["PARTIAL", "OK"])).toBe(1);
+
+    // Then un système annoncé comme non lu ne renouvelle pas le relevé mieux qu'un
+    // échec : c'est le statut qui borne la référence, pas la gravité.
+    expect(ageDuReleve(["PARTIAL", "SKIPPED", "OK"])).toBe(2);
+
+    // Then sans aucun passage complet dans ce qu'on a lu, le compte est celui de ce
+    // qu'on a lu. L'appelant borne sa lecture par le relevé lui-même pour que ce cas
+    // ne se produise pas, et il n'y a rien à annoncer avant le premier relevé.
+    expect(ageDuReleve(["PARTIAL", "PARTIAL"])).toBe(2);
+    expect(ageDuReleve([])).toBe(0);
+  });
+
+  it("ne parle d'un gel qu'au seuil où la chute cesse d'être un incident", () => {
+    // Deux passages ne suffisent pas : une nuit se rate pour une raison qui passera, et
+    // un avertissement posé sur toutes les fiches à chaque incident cesse d'être lu.
+    expect(releveFige(1)).toBe(false);
+    expect(releveFige(2)).toBe(false);
+
+    // Le seuil est celui du noyau, le même que la chute installée, jamais recopié chez
+    // un appelant : l'écran d'une personne et la trace d'un passage ne peuvent pas
+    // cesser de s'accorder sur le moment où ce n'est plus un incident.
+    expect(releveFige(3)).toBe(true);
+    expect(chuteInstallee(3)).toBe(true);
+    expect(releveFige(40)).toBe(true);
+    expect(releveFige(0)).toBe(false);
+  });
+
+  it("relit dans la trace le compte que le passage y a porté, et rien d'autre", () => {
+    // Le passage seul connaît son statut au moment où il conclut : l'écran relit son
+    // compte plutôt que de le recalculer, faute de quoi il devrait deviner le sort du
+    // passage en cours.
+    expect(ageDuReleveDeLaTrace({ messages: ["peu importe"], ageDuReleve: 4 })).toBe(4);
+
+    // Une trace d'avant ce mécanisme, une trace d'un passage complet, un run encore
+    // ouvert et une forme inattendue se lisent tous comme une absence de compte, jamais
+    // comme un gel : c'est l'écran d'une personne qui les relit, et il y annonce que
+    // plus rien n'est constaté.
+    expect(ageDuReleveDeLaTrace({ messages: ["ancienne forme"] })).toBeNull();
+    expect(ageDuReleveDeLaTrace(null)).toBeNull();
+    expect(ageDuReleveDeLaTrace(undefined)).toBeNull();
+    expect(ageDuReleveDeLaTrace({ ageDuReleve: "4" })).toBeNull();
+    expect(ageDuReleveDeLaTrace("relevé non renouvelé")).toBeNull();
   });
 });

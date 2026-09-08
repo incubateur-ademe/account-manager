@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import { after } from "next/server";
 
+import { estFamilleDeChute } from "@/core/collecte";
 import { actionTracee } from "@/lib/actions";
 import { deconnecter, prisma } from "@/lib/db";
 import { requireOperateur } from "@/lib/session";
@@ -89,6 +90,13 @@ export type EtatAutorisation = { erreur: string } | null;
  * que ce refus empêche justement de nettoyer, il se maintient lui-même et plus aucune
  * disparition n'est jamais datée pour ce système.
  *
+ * Sur le périmètre, il se maintient par un autre chemin et sans même que des données
+ * soient en cause : la référence est l'effectif du dernier passage complet, le refus
+ * dégrade le passage qui le prononce, donc un passage dégradé ne devient jamais ce
+ * relevé, donc la chute se rejoue contre l'effectif d'avant. Une chute réelle qui dure
+ * n'y a aucune autre issue que celle-ci, et elle gèle du même coup tout ce qui
+ * s'adosse au relevé.
+ *
  * L'autorisation ne vaut que pour un passage, et elle est nominative : c'est une
  * décision, pas un réglage. Rien n'est écrit ici sur les accès eux-mêmes, c'est la
  * prochaine collecte qui conclura, avec ce que ses propres yeux auront vu.
@@ -103,7 +111,7 @@ export async function autoriserDatation(
   const famille = String(formData.get("famille") ?? "").trim();
   const raison = String(formData.get("raison") ?? "").trim();
 
-  if (famille !== "identites" && famille !== "ressources") {
+  if (!estFamilleDeChute(famille)) {
     return { erreur: "Famille de garde-fou non reconnue." };
   }
   if (!provider) {

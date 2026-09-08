@@ -1,13 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  champsConstates,
-  chuteExcessive,
-  chuteInstallee,
-  type RefusDeDatation,
-  refusDeLaTrace,
-  refusRepete,
-} from "@/core/collecte";
+import { champsConstates, chuteExcessive, type RefusDeDatation } from "@/core/collecte";
 import type {
   CollectError,
   CollectResult,
@@ -24,6 +17,7 @@ import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { policy } from "@/lib/policy";
+import { messageDeChute, plancherLeve } from "@/lib/sync/gardefou";
 
 export interface ResultatCollecte {
   provider: string;
@@ -392,9 +386,11 @@ export async function executerCollecte(
     // des ressources n'interdit que les accès : qu'un connecteur cesse d'émettre une
     // famille de ressources ne dit rien de la personne dont la fiche vient de
     // s'éteindre, et les coupler laissait la seconde geler la première.
-    const leveIdentites = chuteIdentites
-      ? await consommerAutorisation(provider, chuteIdentites, run)
-      : false;
+    // Une décision posée lève ici quelle que soit l'ampleur de la chute du soir : rien
+    // ne périme celle qu'un passage écarterait, elle resterait en attente, l'écran
+    // refuserait d'en poser une seconde, et une chute qui se creuse chaque nuit
+    // enfermerait celle qui décide au lieu de la faire décider.
+    const leveIdentites = await plancherLeve(provider, chuteIdentites, run, "aucune");
     const daterIdentites = chuteIdentites === null || leveIdentites;
 
     // Le sort des identités d'abord, et seulement ensuite celui des ressources : une
@@ -402,10 +398,9 @@ export async function executerCollecte(
     // sans rien dater, ferait écrire au journal qu'on a autorisé ce qui n'a pas eu
     // lieu, et retirerait ce refus de la trace du run, si bien que le passage suivant
     // repartirait de zéro et cesserait d'annoncer un blocage qui dure.
-    const leveRessources =
-      daterIdentites && chuteRessources
-        ? await consommerAutorisation(provider, chuteRessources, run)
-        : false;
+    const leveRessources = daterIdentites
+      ? await plancherLeve(provider, chuteRessources, run, "aucune")
+      : false;
     const daterAcces = daterIdentites && (chuteRessources === null || leveRessources);
 
     for (const [chute, leve] of [
@@ -461,115 +456,6 @@ export async function executerCollecte(
   await cloreRun(run.id, now, resultat);
   tracer(provider, correlationId, resultat);
   return resultat;
-}
-
-/** Combien de passages en arrière on regarde pour dire qu'un refus s'est installé. */
-const PASSAGES_RELUS = 8;
-
-/**
- * Le message dit ce qui a été refusé, et depuis combien de passages il l'est à
- * l'identique. La différence n'est pas cosmétique : un avertissement qui retombe
- * chaque nuit avec les mêmes nombres cesse d'être lu, alors qu'il annonce que plus
- * aucune disparition ne sera jamais datée pour ce système.
- */
-async function messageDeChute(
-  provider: string,
-  runCourant: string,
-  chute: RefusDeDatation,
-  leve: boolean,
-): Promise<string> {
-  const quoi =
-    chute.famille === "identites"
-      ? `chute de la collecte : ${chute.observe} éléments contre ${chute.reference} tenus pour vivants`
-      : `chute des ressources : ${chute.observe} contre ${chute.reference} connues`;
-
-  if (leve) {
-    return `${quoi}, datation autorisée à la main pour ce passage`;
-  }
-
-  const precedents = await prisma.syncRun.findMany({
-    where: { provider, capability: "list", id: { not: runCourant } },
-    orderBy: { startedAt: "desc" },
-    take: PASSAGES_RELUS,
-    select: { error: true },
-  });
-
-  const repetitions = refusRepete(
-    chute,
-    precedents.map((run) => refusDeLaTrace(run.error, chute.famille)),
-  );
-
-  if (!chuteInstallee(repetitions)) {
-    return `${quoi}, aucune disparition datée`;
-  }
-
-  return `${quoi}, aucune disparition datée : ce refus retombe à l'identique depuis ${repetitions} passages, il ne se dénouera pas seul`;
-}
-
-/**
- * Cherche une autorisation posée à la main pour ce fournisseur et cette famille, et la
- * consomme.
- *
- * Consommée, donc valable une fois : une autorisation qui durerait éteindrait le
- * garde-fou au lieu de le lever pour un passage. La trace suit l'écriture plutôt que
- * de la précéder, comme le reste de la collecte : la décision, elle, a déjà été
- * journalisée nominativement au moment où un opérateur l'a posée.
- */
-async function consommerAutorisation(
-  provider: string,
-  chute: RefusDeDatation,
-  run: { id: string; startedAt: Date },
-): Promise<boolean> {
-  // Posée avant que ce passage ne commence, sinon elle vaut pour le suivant : l'écran
-  // promet d'autoriser la prochaine collecte, et un opérateur qui clique pendant qu'une
-  // collecte tourne décide sur un état que cette collecte a déjà cessé de lire.
-  const attendues = {
-    provider,
-    famille: chute.famille,
-    consumedAt: null,
-    createdAt: { lt: run.startedAt },
-  };
-
-  const autorisation = await prisma.scopeDropOverride.findFirst({
-    where: attendues,
-    orderBy: { createdAt: "asc" },
-    select: { reason: true, createdBy: true },
-  });
-
-  if (!autorisation) {
-    return false;
-  }
-
-  // Toutes celles qui attendent, et pas seulement la première : rien en base n'empêche
-  // deux créations concurrentes pour le même couple, et en laisser une derrière
-  // lèverait le garde-fou une seconde fois au passage d'après. Conditionné sur
-  // `consumedAt` encore nul pour que deux collectes concurrentes ne se les partagent
-  // pas.
-  const pris = await prisma.scopeDropOverride.updateMany({
-    where: attendues,
-    data: { consumedAt: new Date(), consumedRunId: run.id },
-  });
-
-  if (pris.count === 0) {
-    return false;
-  }
-
-  audit({
-    actorKind: "SYSTEM",
-    action: "sync.gardefou.leve",
-    targetType: "system",
-    targetId: provider,
-    after: {
-      famille: chute.famille,
-      observe: chute.observe,
-      reference: chute.reference,
-      raison: autorisation.reason,
-      autorisePar: autorisation.createdBy,
-    },
-    result: "SUCCESS",
-  });
-
-  return true;
 }
 
 function tracer(provider: string, correlationId: string, resultat: ResultatCollecte): void {

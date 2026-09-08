@@ -1,6 +1,6 @@
 import type { Appartenance } from "@/core/appartenance";
 import { surchargeSuperflue } from "@/core/appartenance";
-import type { Fraicheur } from "@/core/collecte";
+import { type Fraicheur, releveFige } from "@/core/collecte";
 import type { ConstatKind } from "@/core/constat";
 import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
 import { LIBELLE_STATUT, type Statut } from "@/core/statut";
@@ -114,8 +114,22 @@ export interface EtatDeLaFiche {
   /** Ce qui a déjà été traité, et qui ne doit pas revenir sous un autre nom. */
   fermes: readonly ConstatFerme[];
   fraicheur: Fraicheur;
+  /**
+   * Depuis combien de passages le relevé complet du périmètre n'a pas été renouvelé,
+   * nul quand le dernier passage l'a renouvelé ou n'a rien dit là-dessus. Le nombre et
+   * non le verdict : c'est ici que se décide à partir de quand ce n'est plus un
+   * incident, l'écran d'une personne n'ayant pas à répéter chaque nuit ce que la trace
+   * du passage dit déjà chaque nuit.
+   */
+  ageDuReleve: number | null;
   /** Le dernier passage complet ne l'a pas rendue, et n'en a rien conclu. */
   nonRendue: boolean;
+  /**
+   * Il ne l'a pas rendue parce que sa fiche n'a pas répondu, et non parce que la source
+   * l'a dite inconnue. La distinction change ce qui va suivre, donc ce qu'on a le droit
+   * d'annoncer, d'où deux motifs et non un seul : `nonRendue` est vraie avec elle.
+   */
+  sansReponse: boolean;
   toutesStartupsTerminees: boolean;
   /** Rattachée par une équipe : un titre qui ne passe par aucune startup. */
   parEquipe: boolean;
@@ -199,11 +213,40 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
     });
   }
 
+  // Le voisin de la fraîcheur, et son contraire exact : celle du dessus dit que la
+  // collecte n'a pas tourné, celui-ci dit qu'elle tourne et qu'elle ne conclut rien.
+  // C'est le second cas qui est traître, l'écran restant au vert de bout en bout, et
+  // il ne s'annonce qu'une fois installé : le dire dès la première nuit le mettrait sur
+  // les quatre-vingt-quinze fiches à chaque incident d'une nuit, et un avertissement
+  // qu'on lit tous les matins cesse d'être lu.
+  if (etat.ageDuReleve !== null && releveFige(etat.ageDuReleve)) {
+    motifs.push({
+      cle: "releve-fige",
+      severite: "warning",
+      titre: "Aucune sortie du référentiel n'est constatée en ce moment",
+      description: `Les passages de collecte tournent, et ce qu'affiche cette fiche vient bien du dernier, mais aucun ne s'est dit complet depuis ${etat.ageDuReleve} passages. Tant que c'est le cas, l'outil ne date aucune disparition et n'annonce aucune fiche non rendue, pour personne : que rien ici ne signale un départ ne dit donc rien du sien. Ce qui bloque est nommé dans la trace du dernier passage, sur l'écran des collectes.`,
+    });
+  }
+
   // Le seul endroit où le refus de conclure se lit au nom d'une personne. La collecte
   // ne le dit qu'une fois, dans la trace du passage, sur un écran qui parle de
   // passages : ici, il se lit sur la fiche même dont les dates viennent de cesser
   // d'avancer, et où se décide une coupure.
-  if (etat.nonRendue) {
+  //
+  // Deux motifs pour un même état en base, parce qu'ils n'annoncent pas la même suite.
+  // Une fiche que la source dit ne pas connaître recevra sa sortie au prochain passage
+  // complet ; une fiche dont la lecture échoue ne la recevra pas, tant qu'elle échoue.
+  // Promettre la première conclusion sur le second cas ferait attendre une sortie qui
+  // ne viendra jamais, sur l'écran où l'on décide de couper des accès.
+  if (etat.sansReponse) {
+    motifs.push({
+      cle: "sans-reponse",
+      severite: "warning",
+      titre: "Le dernier passage complet n'a pas obtenu sa fiche",
+      description:
+        "La source ne l'a ni rendue ni dite inconnue : la lecture de sa fiche a échoué, et une lecture qui n'aboutit pas ne dit rien de sa présence. L'outil n'en conclut donc rien et ne datera aucune sortie du référentiel tant qu'elle échouera. Ce qu'affiche cette fiche date de sa dernière observation, et ce qui débloquera la situation est en amont, dans l'espace-membre.",
+    });
+  } else if (etat.nonRendue) {
     motifs.push({
       cle: "non-rendue",
       severite: "warning",

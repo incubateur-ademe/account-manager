@@ -40,9 +40,20 @@ interface RunEnBase {
   error: unknown;
 }
 
+interface AutorisationEnBase {
+  provider: string;
+  famille: string;
+  reason: string;
+  createdBy: string;
+  createdAt: Date;
+  consumedAt: Date | null;
+  consumedRunId: string | null;
+}
+
 const base = vi.hoisted(() => ({
   identites: [] as IdentiteEnBase[],
   runs: [] as RunEnBase[],
+  autorisations: [] as AutorisationEnBase[],
   /** Toute écriture qui date une disparition, pour dire si elle a eu lieu. */
   datations: [] as { cible: string; count: number }[],
   journal: [] as { action: string; result: string }[],
@@ -70,9 +81,32 @@ vi.mock("@/lib/db", () => ({
         }
         return Promise.resolve(run);
       },
-      findMany: ({ where }: { where: { provider: string; id: { not: string } } }) =>
+      // Le sens et la profondeur de la fenêtre sont demandés par la requête, et un
+      // double qui les rejouerait à sa façon ferait lire au code un autre passage que
+      // celui qu'il a demandé : le dernier refus enregistré deviendrait le plus ancien.
+      findMany: ({
+        where,
+        orderBy,
+        take,
+      }: {
+        where: { provider: string; capability: string; id: { not: string } };
+        orderBy: { startedAt: "asc" | "desc" };
+        take: number;
+      }) =>
         Promise.resolve(
-          base.runs.filter((run) => run.provider === where.provider && run.id !== where.id.not),
+          base.runs
+            .filter(
+              (run) =>
+                run.provider === where.provider &&
+                run.capability === where.capability &&
+                run.id !== where.id.not,
+            )
+            .sort((a, b) =>
+              orderBy.startedAt === "asc"
+                ? a.startedAt.getTime() - b.startedAt.getTime()
+                : b.startedAt.getTime() - a.startedAt.getTime(),
+            )
+            .slice(0, take),
         ),
     },
     externalIdentity: {
@@ -147,9 +181,27 @@ vi.mock("@/lib/db", () => ({
         Promise.resolve({ id: `ressource-${where.provider_externalId.externalId}` }),
       count: () => Promise.resolve(0),
     },
+    // Une autorisation n'est éligible que si elle attend encore et si elle a été posée
+    // avant que ce passage ne commence : la seconde condition est ce qui empêche un
+    // clic pendant une collecte d'autoriser celle qui tourne déjà, et un double qui
+    // l'oublierait rendrait le test vert sur une garantie que le code ne donne pas.
     scopeDropOverride: {
-      findFirst: () => Promise.resolve(null),
-      updateMany: () => Promise.resolve({ count: 0 }),
+      findFirst: ({ where }: { where: AttenteDAutorisation }) =>
+        Promise.resolve(base.autorisations.filter((posee) => attendue(posee, where))[0] ?? null),
+      updateMany: ({
+        where,
+        data,
+      }: {
+        where: AttenteDAutorisation;
+        data: { consumedAt: Date; consumedRunId: string };
+      }) => {
+        const prises = base.autorisations.filter((posee) => attendue(posee, where));
+        for (const autorisation of prises) {
+          autorisation.consumedAt = data.consumedAt;
+          autorisation.consumedRunId = data.consumedRunId;
+        }
+        return Promise.resolve({ count: prises.length });
+      },
     },
     auditEvent: {
       create: ({ data }: { data: { action: string; result: string } }) => {
@@ -159,6 +211,22 @@ vi.mock("@/lib/db", () => ({
     },
   },
 }));
+
+interface AttenteDAutorisation {
+  provider: string;
+  famille: string;
+  consumedAt?: null;
+  createdAt?: { lt: Date };
+}
+
+function attendue(posee: AutorisationEnBase, where: AttenteDAutorisation): boolean {
+  return (
+    posee.provider === where.provider &&
+    posee.famille === where.famille &&
+    (where.consumedAt === undefined || posee.consumedAt === where.consumedAt) &&
+    (where.createdAt === undefined || posee.createdAt.getTime() < where.createdAt.lt.getTime())
+  );
+}
 
 const MAINTENANT = new Date("2026-08-24T02:00:00Z");
 const PROVIDER = "atelier";
@@ -212,6 +280,7 @@ const vivantes = () =>
 beforeEach(() => {
   base.identites.length = 0;
   base.runs.length = 0;
+  base.autorisations.length = 0;
   base.datations.length = 0;
   base.journal.length = 0;
   contextes.length = 0;
@@ -332,5 +401,104 @@ describe("ce qu'une collecte a le droit de faire disparaître", () => {
     expect(base.runs[0]?.error).toMatchObject({
       refus: [{ famille: "identites", observe: 5, reference: 10 }],
     });
+  });
+});
+
+/**
+ * Le plancher de chute s'entretient lui-même : son refus dégrade le passage, le
+ * passage dégradé ne nettoie rien, et la même chute retombe. Une décision d'opérateur
+ * est la seule issue, et elle n'en est une que si le passage suivant l'honore.
+ *
+ * Ici, rien ne périme une décision qu'un passage n'aurait pas levée : elle resterait
+ * en attente, et l'écran refuse d'en poser une seconde tant que la première attend.
+ * Une décision qui ne lèverait pas ne serait donc pas remise à demain, elle
+ * enfermerait l'opératrice pour toutes les nuits qui suivent.
+ */
+describe("la sortie nominative d'un plancher de chute", () => {
+  const NUITS = [
+    new Date("2026-08-24T02:00:00Z"),
+    new Date("2026-08-25T02:00:00Z"),
+    new Date("2026-08-26T02:00:00Z"),
+  ] as const;
+
+  /** L'heure à laquelle on clique, c'est-à-dire avant que la nuit ne commence. */
+  function autoriser(nuit: number, raison: string): void {
+    base.autorisations.push({
+      provider: PROVIDER,
+      famille: "identites",
+      reason: raison,
+      createdBy: "capucine.exemple",
+      createdAt: new Date((NUITS[nuit] ?? MAINTENANT).getTime() - 3_600_000),
+      consumedAt: null,
+      consumedRunId: null,
+    });
+  }
+
+  const lecture = (comptes: number) => () =>
+    ({
+      status: "ok",
+      itemsSeen: comptes,
+      identities: membres(comptes),
+      resources: [],
+      grants: [],
+    }) as const;
+
+  const levees = () => base.journal.filter((trace) => trace.action === "sync.gardefou.leve");
+
+  it("lève quelle que soit l'ampleur de la chute du soir, puis se referme derrière elle", async () => {
+    // Given dix comptes connus, et une nuit où la lecture n'en rend plus que cinq sans
+    // se plaindre de rien : le plancher refuse, et c'est ce refus que l'écran montre.
+    peupler(10);
+    const refus = await executerCollecte(
+      connecteurQuiLit(lecture(5)),
+      NUITS[0],
+      "execution-plancher-1",
+    );
+    expect(refus.status).toBe("PARTIAL");
+    expect(refus.refus).toEqual([{ famille: "identites", observe: 5, reference: 10 }]);
+    expect(vivantes()).toHaveLength(10);
+
+    // Given une opératrice qui tranche sur ces nombres-là, sous son nom.
+    autoriser(1, "cinq comptes fermés par l'atelier, vérifiés un par un");
+
+    // When la nuit suivante creuse encore : la lecture ne rend plus que quatre comptes,
+    // c'est-à-dire une chute plus profonde que celle qu'on lui avait montrée.
+    const leve = await executerCollecte(
+      connecteurQuiLit(lecture(4)),
+      NUITS[1],
+      "execution-plancher-2",
+    );
+
+    // Then sa décision lève quand même, et le passage date. C'est la seule issue de ce
+    // garde-fou : rien ici ne périme une décision qu'un passage aurait écartée, elle
+    // resterait en attente et interdirait d'en poser une autre, si bien qu'une chute
+    // qui se creuse chaque nuit enfermerait l'opératrice au lieu de la faire décider.
+    expect(leve.status).toBe("OK");
+    expect(leve.identites.disparues).toBe(6);
+    expect(vivantes()).toEqual(["compte-1", "compte-2", "compte-3", "compte-4"]);
+    expect(leve.erreurs[0]).toContain("datation autorisée à la main pour ce passage");
+
+    // Then le journal nomme qui a décidé et sur quoi, et la décision est dépensée.
+    expect(levees()).toHaveLength(1);
+    expect(base.autorisations[0]).toMatchObject({
+      consumedRunId: base.runs[1]?.id,
+      createdBy: "capucine.exemple",
+    });
+    expect(base.autorisations[0]?.consumedAt).not.toBeNull();
+
+    // When une troisième nuit creuse à son tour, sans que personne n'ait rien décidé.
+    const apres = await executerCollecte(
+      connecteurQuiLit(lecture(2)),
+      NUITS[2],
+      "execution-plancher-3",
+    );
+
+    // Then le garde-fou est de retour : une autorisation vaut un passage, celui qui
+    // l'a prise, et rien après lui.
+    expect(apres.status).toBe("PARTIAL");
+    expect(apres.identites.disparues).toBe(0);
+    expect(apres.refus).toEqual([{ famille: "identites", observe: 2, reference: 4 }]);
+    expect(vivantes()).toHaveLength(4);
+    expect(levees()).toHaveLength(1);
   });
 });

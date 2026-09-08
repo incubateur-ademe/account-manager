@@ -1,7 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { REFUS_D_ECHEANCE, REFUS_DE_DISPARITION, REFUS_DE_RETOUR } from "@/core/collecte";
+import {
+  ageDuReleveDeLaTrace,
+  type BlocageInstalle,
+  blocagesInstalles,
+  fichesSansReponse,
+  REFUS_D_ECHEANCE,
+  REFUS_DE_DISPARITION,
+  REFUS_DE_LECTURE,
+  REFUS_DE_RETOUR,
+  RELEVE_NON_RENOUVELE,
+  refusDeLaTrace,
+  refusRepete,
+  releveFige,
+} from "@/core/collecte";
 import type { MembreDetaille, MembreIncubateur } from "@/core/membre";
+
+import { PASSAGES_RELUS } from "@/lib/sync/gardefou";
 
 import { syncPerimetre } from "./perimetre";
 
@@ -36,14 +51,29 @@ interface DroitEnBase {
   etat: string;
 }
 
+/** Une autorisation posée à la main, telle que l'écran des collectes l'écrit. */
+interface AutorisationEnBase {
+  provider: string;
+  famille: string;
+  reason: string;
+  createdBy: string;
+  createdAt: Date;
+  consumedAt: Date | null;
+  consumedRunId: string | null;
+}
+
 const base = vi.hoisted(() => ({
   runs: [] as RunEnBase[],
   fiches: [] as FicheEnBase[],
   droits: [] as DroitEnBase[],
+  autorisations: [] as AutorisationEnBase[],
   journal: [] as { action: string; targetId: string | null }[],
   membres: [] as unknown[],
   erreursDeLecture: [] as string[],
   details: new Map<string, unknown>(),
+  pannes: new Set<string>(),
+  /** La base qui tombe au moment précis où le passage écrit ses disparitions. */
+  panneDeDatation: false,
   sequence: 0,
 }));
 
@@ -58,8 +88,10 @@ vi.mock("@/lib/db", () => ({
       },
       findFirst: ({
         where,
+        orderBy,
       }: {
         where: { provider: string; capability: string; status: string };
+        orderBy: OrdreDesPassages;
       }) => {
         const candidats = base.runs
           .filter(
@@ -68,8 +100,42 @@ vi.mock("@/lib/db", () => ({
               run.capability === where.capability &&
               run.status === where.status,
           )
-          .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
+          .sort(parDate(orderBy));
         return Promise.resolve(candidats[0] ?? null);
+      },
+      // Deux relectures des passages, le courant excepté, et deux formes de `where`
+      // qu'il ne faut pas confondre. L'âge du relevé borne par le relevé lui-même et ne
+      // lit que le statut : sa borne n'est jamais une fenêtre de passages, un `take` y
+      // plafonnerait le compte sans que rien ne le dise. Le refus répété relit une
+      // fenêtre fixe et n'en lit que la trace : ignorer son `take` ferait passer pour
+      // installé un refus qui ne l'est pas. Rendre à l'une ce que l'autre demande
+      // laisserait chacune des deux vraie pour la mauvaise raison.
+      findMany: ({
+        where,
+        orderBy,
+        take,
+      }: {
+        where: {
+          provider: string;
+          capability: string;
+          id: { not: string };
+          startedAt?: { gte: Date };
+        };
+        orderBy: OrdreDesPassages;
+        take?: number;
+      }) => {
+        const borne = where.startedAt;
+        const passages = base.runs
+          .filter(
+            (run) =>
+              run.provider === where.provider &&
+              run.capability === where.capability &&
+              run.id !== where.id.not &&
+              (borne === undefined || run.startedAt.getTime() >= borne.gte.getTime()),
+          )
+          .sort(parDate(orderBy))
+          .map((run) => (borne === undefined ? { error: run.error } : { status: run.status }));
+        return Promise.resolve(take === undefined ? passages : passages.slice(0, take));
       },
       update: ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
         const run = base.runs.find((candidat) => candidat.id === where.id);
@@ -135,44 +201,114 @@ vi.mock("@/lib/db", () => ({
         return Promise.resolve(fiche);
       },
       // Deux appelants, deux formes de `where` : la requête des fiches locales adossées
-      // à un compte porte `source`, celle des dernières vues porte une liste de noms.
-      // Les confondre pour rendre toujours une liste vide ne retiendrait jamais
-      // personne, et les tests du sursis passeraient pour la mauvaise raison.
-      findMany: ({ where }: { where: Record<string, unknown> }) => {
-        const parNom = where["username"] as { in: string[] } | undefined;
-        if (!parNom) {
+      // à un compte porte `source` et un `OR` sur des relations que ce magasin ne
+      // porte pas, celle des dernières vues porte une liste de noms. Les confondre pour
+      // rendre toujours une liste vide ne retiendrait jamais personne, et les tests du
+      // sursis passeraient pour la mauvaise raison.
+      findMany: ({ where }: { where: FiltreDeFiches }) => {
+        if (where.OR) {
           return Promise.resolve([]);
         }
-        return Promise.resolve(
-          base.fiches.filter(
-            (fiche) =>
-              parNom.in.includes(fiche.username) &&
-              fiche.vanishedAt === null &&
-              fiche.source !== "SERVICE",
-          ),
-        );
+        return Promise.resolve(base.fiches.filter((fiche) => retenuePar(fiche, where)));
       },
-      updateMany: ({
-        where,
-        data,
-      }: {
-        where: { username: { notIn: string[] } };
-        data: { vanishedAt: Date };
-      }) => {
-        const touchees = base.fiches.filter(
-          (fiche) =>
-            !where.username.notIn.includes(fiche.username) &&
-            fiche.vanishedAt === null &&
-            fiche.source !== "SERVICE",
-        );
+      updateMany: ({ where, data }: { where: FiltreDeFiches; data: { vanishedAt: Date } }) => {
+        if (base.panneDeDatation) {
+          return Promise.reject(new Error("base indisponible"));
+        }
+        const touchees = base.fiches.filter((fiche) => retenuePar(fiche, where));
         for (const fiche of touchees) {
           fiche.vanishedAt = data.vanishedAt;
         }
         return Promise.resolve({ count: touchees.length });
       },
     },
+    // Une autorisation n'est éligible que si elle attend encore et si elle a été posée
+    // avant que ce passage ne commence : la seconde condition est ce qui empêche un
+    // clic pendant une collecte d'autoriser celle qui tourne déjà, et un double qui
+    // l'oublierait rendrait le test vert sur une garantie que le code ne donne pas.
+    scopeDropOverride: {
+      findFirst: ({ where }: { where: AttenteDAutorisation }) =>
+        Promise.resolve(base.autorisations.filter((posee) => attendue(posee, where))[0] ?? null),
+      updateMany: ({
+        where,
+        data,
+      }: {
+        where: AttenteDAutorisation;
+        data: { consumedAt: Date; consumedRunId: string };
+      }) => {
+        const prises = base.autorisations.filter((posee) => attendue(posee, where));
+        for (const autorisation of prises) {
+          autorisation.consumedAt = data.consumedAt;
+          autorisation.consumedRunId = data.consumedRunId;
+        }
+        return Promise.resolve({ count: prises.length });
+      },
+    },
   },
 }));
+
+interface AttenteDAutorisation {
+  provider: string;
+  famille: string;
+  consumedAt?: null;
+  createdAt?: { lt: Date };
+}
+
+function attendue(posee: AutorisationEnBase, where: AttenteDAutorisation): boolean {
+  return (
+    posee.provider === where.provider &&
+    posee.famille === where.famille &&
+    (where.consumedAt === undefined || posee.consumedAt === where.consumedAt) &&
+    (where.createdAt === undefined || posee.createdAt.getTime() < where.createdAt.lt.getTime())
+  );
+}
+
+/** Le sens que la requête demande, et non celui qu'on suppose qu'elle demande. */
+interface OrdreDesPassages {
+  startedAt: "asc" | "desc";
+}
+
+function parDate(
+  ordre: OrdreDesPassages,
+): (a: { startedAt: Date }, b: { startedAt: Date }) => number {
+  return (a, b) =>
+    ordre.startedAt === "asc"
+      ? a.startedAt.getTime() - b.startedAt.getTime()
+      : b.startedAt.getTime() - a.startedAt.getTime();
+}
+
+/**
+ * Ce qu'une requête sur les fiches énonce, et rien de plus.
+ *
+ * Les clés sont facultatives parce que c'est exactement ce qui se prouve ici : un
+ * double qui rejouerait de son côté la condition qu'il reçoit rendrait sa disparition
+ * du code de production invisible, et la garde qu'il sert cesserait d'être gardée.
+ */
+interface FiltreDeFiches {
+  username?: { in?: string[]; notIn?: string[] };
+  vanishedAt?: null;
+  source?: string | { not: string };
+  OR?: unknown[];
+}
+
+function retenuePar(fiche: FicheEnBase, where: FiltreDeFiches): boolean {
+  if (where.username?.in && !where.username.in.includes(fiche.username)) {
+    return false;
+  }
+  if (where.username?.notIn?.includes(fiche.username)) {
+    return false;
+  }
+  if (where.vanishedAt === null && fiche.vanishedAt !== null) {
+    return false;
+  }
+  if (typeof where.source === "string" && fiche.source !== where.source) {
+    return false;
+  }
+  if (typeof where.source === "object" && fiche.source === where.source.not) {
+    return false;
+  }
+  return true;
+}
 
 vi.mock("@/lib/espace-membre", () => ({
   fetchIncubatorStartups: () =>
@@ -189,7 +325,15 @@ vi.mock("@/lib/espace-membre", () => ({
     }),
   fetchIncubatorMembers: () =>
     Promise.resolve({ items: base.membres, erreurs: base.erreursDeLecture }),
-  fetchMemberDetail: (username: string) => Promise.resolve(base.details.get(username) ?? null),
+  // Deux façons de ne pas rendre une fiche, et elles ne mènent pas au même endroit : un
+  // 404 rend `null` et nomme celle que la source ne connaît pas, une panne jette et ne
+  // dit rien de la personne.
+  fetchMemberDetail: (username: string) => {
+    if (base.pannes.has(username)) {
+      return Promise.reject(new Error("500 Internal Server Error"));
+    }
+    return Promise.resolve(base.details.get(username) ?? null);
+  },
   mapLimit: async <T, R>(
     valeurs: readonly T[],
     _limite: number,
@@ -276,26 +420,58 @@ const FICHE_PAR_EQUIPE: MembreDetaille = {
   missions: [{ end: "2027-12-31" }],
 };
 
-/** Dix nuits consécutives du traitement quotidien, à son heure de cron. */
+/**
+ * Des nuits consécutives du traitement quotidien, à son heure de cron. Il en faut plus
+ * que la fenêtre des refus répétés : l'âge d'un relevé se borne par le relevé et non
+ * par un nombre de passages, et une histoire qui s'arrêterait avant ce plafond-là
+ * laisserait passer celui qu'on a justement refusé de poser.
+ */
 const NUITS = Array.from(
-  { length: 10 },
+  { length: 16 },
   (_, index) => new Date(Date.UTC(2026, 8, 1 + index, 4, 30, 0)),
 );
 
+function quand(index: number): Date {
+  const passage = NUITS[index];
+  if (!passage) {
+    throw new Error("nuit inconnue");
+  }
+  return passage;
+}
+
+/** Un compte de service : nommé en base, réclamé par aucune source, hors périmètre. */
+const SERVICE = "sauvegardes.ovh";
+
+function poserCompteDeService(): void {
+  base.sequence += 1;
+  base.fiches.push({
+    id: `fiche-${base.sequence}`,
+    username: SERVICE,
+    source: "SERVICE",
+    firstSeenAt: quand(0),
+    lastSeenAt: quand(0),
+    vanishedAt: null,
+    returnedAt: null,
+    missionEnd: null,
+  });
+}
+
 /**
- * Un passage de collecte, et les trois façons d'y perdre quelqu'un.
+ * Un passage de collecte, et les quatre façons d'y perdre quelqu'un.
  *
- * `fiche` et `parEquipe` disent si la source répond encore sur une fiche complète : un
- * 404 nomme celle qui manque, c'est le chemin de l'aveu d'ignorance. `omis` fait
- * manquer une personne à une réponse par ailleurs valide, sans 404, sans erreur et
- * sans trace : c'est le chemin silencieux, et c'est celui qui concerne l'incubateur
- * entier. `lecture` dégrade le passage sans rien lui faire perdre.
+ * `fiche` et `parEquipe` disent ce que la source répond sur une fiche complète : un 404
+ * nomme celle qui manque, c'est le chemin de l'aveu d'ignorance ; une fiche muette
+ * jette, et ne dit rien du tout, ce qui n'est pas la même information et n'appelle pas
+ * la même conclusion. `omis` fait manquer une personne à une réponse par ailleurs
+ * valide, sans 404, sans erreur et sans trace : c'est le chemin silencieux, et c'est
+ * celui qui concerne l'incubateur entier. `lecture` dégrade le passage, et c'est le
+ * seul de ces chemins qui le dégrade.
  */
 async function nuit(
   index: number,
   options: {
-    fiche?: "présente" | "absente";
-    parEquipe?: "présente" | "absente";
+    fiche?: "présente" | "absente" | "muette";
+    parEquipe?: "présente" | "absente" | "muette";
     omis?: readonly string[];
     lecture?: "intacte" | "amputée";
   } = {},
@@ -305,8 +481,14 @@ async function nuit(
   if (options.parEquipe) {
     base.membres.push(MEMBRE_PAR_EQUIPE);
   }
+  base.pannes = new Set(
+    [
+      options.fiche === "muette" ? TRANSVERSE : null,
+      options.parEquipe === "muette" ? PAR_EQUIPE : null,
+    ].filter((nom): nom is string => nom !== null),
+  );
   base.details = new Map<string, unknown>();
-  if (options.fiche !== "absente") {
+  if (options.fiche === undefined || options.fiche === "présente") {
     base.details.set(TRANSVERSE, FICHE_TRANSVERSE);
   }
   if (options.parEquipe === "présente") {
@@ -317,11 +499,7 @@ async function nuit(
       ? ["membres de l'incubateur : élément 4 illisible (username requis)"]
       : [];
 
-  const passage = NUITS[index];
-  if (!passage) {
-    throw new Error("nuit inconnue");
-  }
-  return syncPerimetre(passage, `correlation-${index}`);
+  return syncPerimetre(quand(index), `correlation-${index}`);
 }
 
 function fiche(username: string): FicheEnBase {
@@ -330,6 +508,85 @@ function fiche(username: string): FicheEnBase {
     throw new Error(`la fiche de ${username} devrait exister`);
   }
   return trouvee;
+}
+
+/**
+ * Ce que la fiche d'une personne relit de la trace pour parler d'elle nommément, par la
+ * fonction même que l'écran appelle : le passage qui écrit et l'écran qui relit sont
+ * ainsi tenus de s'accorder ici, et non chacun de son côté.
+ */
+function nommeesSansReponse(runId: string): readonly string[] {
+  return fichesSansReponse(base.runs.find((run) => run.id === runId)?.error);
+}
+
+/** Le relevé contre lequel la nuit suivante décidera, et dont le gel gèle tout. */
+function releveDeReference(): { itemsSeen: number; startedAt: Date } | null {
+  const complets = base.runs
+    .filter((run) => run.status === "OK")
+    .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
+  return complets[0] ?? null;
+}
+
+/**
+ * Depuis combien de passages ce run dit que le relevé n'a pas été renouvelé, relu par
+ * la fonction même que la fiche d'une personne appelle : la trace n'a pas deux
+ * lecteurs qui s'accordent chacun de son côté.
+ */
+function ageDuReleveDit(runId: string): number | null {
+  return ageDuReleveDeLaTrace(base.runs.find((run) => run.id === runId)?.error);
+}
+
+/**
+ * Ce que l'ancienne mesure de l'installation aurait compté : les refus du plancher
+ * retombés à l'identique d'affilée, le plus récent en tête. Relu ici pour que les
+ * scénarios puissent montrer les deux comptes côte à côte, là où ils divergent.
+ */
+function refusIdentiques(runIds: readonly string[]): number {
+  const lus = runIds.map((id) =>
+    refusDeLaTrace(base.runs.find((run) => run.id === id)?.error, "perimetre"),
+  );
+  const dernier = lus[0];
+  return dernier ? refusRepete(dernier, lus.slice(1)) : 0;
+}
+
+/**
+ * Ce qu'une opératrice pose depuis l'écran des collectes, avant la nuit qu'elle
+ * autorise : posée pendant la collecte, elle vaudrait pour la suivante, l'écran
+ * promettant d'autoriser la prochaine et non celle qui tourne.
+ */
+function autoriser(index: number, raison: string): void {
+  poser(new Date(quand(index).getTime() - 3_600_000), raison);
+}
+
+/** La même décision, cliquée alors que la collecte de cette nuit-là tourne déjà. */
+function autoriserPendant(index: number, raison: string): void {
+  poser(new Date(quand(index).getTime() + 3_600_000), raison);
+}
+
+function poser(createdAt: Date, raison: string): void {
+  base.autorisations.push({
+    provider: "espace-membre",
+    famille: "perimetre",
+    reason: raison,
+    createdBy: "capucine.exemple",
+    createdAt,
+    consumedAt: null,
+    consumedRunId: null,
+  });
+}
+
+/**
+ * Ce que l'écran des collectes annonce en tête, par la fonction même qu'il appelle et
+ * sur les runs dans l'ordre où il les lui donne. Un blocage installé qui ne se dit que
+ * dans une ligne de journal parmi soixante cesse d'être lu, et c'est la moitié du
+ * problème que la sortie nominative résout.
+ */
+function blocagesAnnonces(): BlocageInstalle[] {
+  return blocagesInstalles(
+    [...base.runs]
+      .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
+      .map((run) => ({ provider: run.provider, error: run.error })),
+  );
 }
 
 /** Ce que la colonne « Ce qui a été dit » de l'écran des collectes affiche du run. */
@@ -578,6 +835,100 @@ describe("ce qu'un passage finit par conclure d'une fiche qu'il n'a jamais su li
     expect(fiche(TRANSVERSE).firstSeenAt).toEqual(NUITS[0]);
   });
 
+  it("ne laisse pas une nuit sans réponse consommer le sursis d'un aveu, ni dater un compte de service", async () => {
+    // Given un premier passage complet, et un compte de service que rien du périmètre
+    // ne réclame : aucune liste ne le rend, aucune fiche complète ne le nomme, et il
+    // n'a jamais à recevoir de disparition.
+    poserCompteDeService();
+    const premier = await nuit(0);
+    expect(premier.seen).toBe(13);
+    expect(fiche(TRANSVERSE).lastSeenAt).toEqual(NUITS[0]);
+
+    // When la nuit suivante n'obtient aucune réponse sur la fiche du transverse. Le
+    // passage se dit complet, c'est le chemin que ce lot vient d'ouvrir, et il retient
+    // la fiche sans borne parce qu'il n'a rien appris d'elle.
+    const muette = await nuit(1, { fiche: "muette" });
+    expect(muette.status).toBe("OK");
+    expect(muette.retenuesSansReponse).toEqual([TRANSVERSE]);
+    expect(nommeesSansReponse(muette.runId)).toEqual([TRANSVERSE]);
+
+    // Then le relevé qu'elle laisse compte treize et non douze : la retenue dit qu'on
+    // ne conclut rien de cette fiche, pas qu'elle est absente, et un relevé qui la
+    // retrancherait abaisserait le plancher de toutes les nuits de la panne.
+    expect(releveDeReference()).toMatchObject({ itemsSeen: 13, startedAt: NUITS[1] });
+
+    // When la source répond enfin, et répond qu'elle ne connaît pas la fiche.
+    const aveu = await nuit(2, { fiche: "absente" });
+
+    // Then la fiche est retenue, et c'est là que les deux retenues se composent : la
+    // nuit muette a beau avoir été complète, elle n'a pas lu cette fiche, donc elle
+    // n'a pas fait courir l'horloge de son sursis. Sans cela un seul aveu suffirait à
+    // dater, là où la règle en demande deux, et la sortie de périmètre qui suit coupe
+    // des accès.
+    expect(aveu.status).toBe("OK");
+    expect(aveu.retenues).toEqual([TRANSVERSE]);
+    expect(aveu.vanished).toBe(0);
+    expect(fiche(TRANSVERSE).vanishedAt).toBeNull();
+    expect(ceQuiAEteDit(aveu.runId)).toEqual([
+      `${REFUS_DE_DISPARITION} : ${TRANSVERSE} ; aucune disparition datée`,
+    ]);
+
+    // When un second passage complet la nomme absente à son tour.
+    const conclu = await nuit(3, { fiche: "absente" });
+
+    // Then la disparition se date : la grâce ne se représente pas, le passage
+    // précédent ayant nommé la fiche dans ses introuvables et non dans ses
+    // sans-réponse. Deux aveux, pas un de plus, pas un de moins.
+    expect(conclu.vanished).toBe(1);
+    expect(fiche(TRANSVERSE).vanishedAt).toEqual(NUITS[3]);
+
+    // When la source recommence à jeter sur une fiche désormais datée disparue.
+    const apres = await nuit(4, { fiche: "muette" });
+
+    // Then rien n'est retenu en son nom et la trace ne la nomme pas : elle est passée
+    // sous l'autorité du constat de sortie, et l'annoncer retenue promettrait une
+    // suite que plus aucun passage ne lui donnera.
+    expect(apres.retenuesSansReponse).toEqual([]);
+    expect(nommeesSansReponse(apres.runId)).toEqual([]);
+
+    // Then le compte de service n'a été daté par aucun de ces cinq passages, alors
+    // qu'aucun ne l'a jamais rendu : il n'est du périmètre d'aucune source, et la
+    // seule chose qui l'en protège est le filtre de la requête qui date.
+    expect(fiche(SERVICE).vanishedAt).toBeNull();
+  });
+
+  it("rend son sursis entier à la fiche qui sort d'une série sans réponse", async () => {
+    // Given une fiche vue par un premier passage complet.
+    await nuit(0);
+
+    // When trois passages complets d'affilée n'obtiennent aucune réponse sur elle. Le
+    // relevé avance à chaque fois, sa dernière vue reste à la première nuit, et la
+    // trace la nomme chaque fois.
+    for (const index of [1, 2, 3]) {
+      const passage = await nuit(index, { fiche: "muette" });
+      expect(passage.status).toBe("OK");
+      expect(passage.retenuesSansReponse).toEqual([TRANSVERSE]);
+    }
+    expect(fiche(TRANSVERSE).lastSeenAt).toEqual(NUITS[0]);
+    expect(releveDeReference()).toMatchObject({ itemsSeen: 13, startedAt: NUITS[3] });
+
+    // When la source répond enfin, et répond 404.
+    const aveu = await nuit(4, { fiche: "absente" });
+
+    // Then elle est retenue, et non datée le soir même : trois passages complets se
+    // sont écoulés sans rien dire d'elle, et leur laisser consommer le sursis ferait
+    // dater un départ sur un unique aveu, en silence, au sortir d'une panne.
+    expect(aveu.retenues).toEqual([TRANSVERSE]);
+    expect(aveu.vanished).toBe(0);
+    expect(fiche(TRANSVERSE).vanishedAt).toBeNull();
+
+    // Then le second aveu conclut, comme sur une fiche qui n'aurait jamais connu la
+    // panne : le sursis a été rendu entier, il n'a pas été rouvert.
+    const conclu = await nuit(5, { fiche: "absente" });
+    expect(conclu.vanished).toBe(1);
+    expect(fiche(TRANSVERSE).vanishedAt).toEqual(NUITS[5]);
+  });
+
   it("recule d'un passage le seuil du retour sur ce chemin, et c'est le prix", async () => {
     // Given une fiche retenue puis datée disparue par le passage complet suivant : sa
     // disparition porte le troisième passage, et non le deuxième, où elle a commencé.
@@ -599,6 +950,189 @@ describe("ce qu'un passage finit par conclure d'une fiche qu'il n'a jamais su li
     expect(fiche(TRANSVERSE).vanishedAt).toBeNull();
     expect(fiche(TRANSVERSE).returnedAt).toBeNull();
     expect(fiche(TRANSVERSE).firstSeenAt).toEqual(NUITS[0]);
+  });
+});
+
+/**
+ * Une lecture de fiche qui n'aboutit pas est le seul chemin de ce module où la
+ * prudence changeait de camp. Elle dégradait le passage, donc le relevé cessait
+ * d'avancer, donc les garde-fous qui s'y adossent se taisaient tous à la fois, et un
+ * seul enregistrement amont durablement mal formé y suffisait, indéfiniment. Pire, sur
+ * un déclaré transverse, la dégradation était en même temps le seul filet : le passage
+ * ne le résolvait pas, ne l'avouait pas non plus, et un passage laissé complet l'aurait
+ * daté disparu sur une panne d'une nuit, puis mené vers une coupure d'accès.
+ *
+ * La règle qui sort de là vaut dans les deux sens, et ces trois scénarios la gravent :
+ * ce qui dégrade un passage est ce qu'il ne peut pas nommer.
+ */
+describe("ce qu'un passage conclut d'une fiche qui ne lui a pas répondu", () => {
+  beforeEach(() => {
+    base.runs.length = 0;
+    base.fiches.length = 0;
+    base.sequence = 0;
+  });
+
+  it("ne date jamais le départ d'un déclaré transverse muet, et date les vrais départs de la nuit", async () => {
+    // Given un périmètre entier, vu et daté par un premier passage complet, dont un
+    // déclaré transverse qui n'entre au périmètre que par sa fiche complète.
+    const premier = await nuit(0, { parEquipe: "présente" });
+    expect(premier.status).toBe("OK");
+    expect(releveDeReference()?.itemsSeen).toBe(14);
+
+    // When la lecture de sa fiche cesse de répondre, et la même nuit une personne s'en
+    // va vraiment, par le chemin silencieux qui concerne l'incubateur entier.
+    const muette = await nuit(1, { fiche: "muette", parEquipe: "présente", omis: [OMISE] });
+
+    // Then le passage reste complet. C'est l'inverse d'avant, et c'est ce qui compte :
+    // une lecture qui jette portait le passage en `PARTIAL`, le relevé cessait
+    // d'avancer, et le plancher de chute, la règle du retour, le sursis, la datation
+    // des sorties de startups, le verdict des arrivées et le bandeau d'une fiche non
+    // rendue se taisaient tous ensemble, pour tout le monde, jusqu'à ce que l'amont
+    // guérisse.
+    expect(muette.status).toBe("OK");
+    expect(muette.errors).toEqual([]);
+    expect(releveDeReference()?.startedAt).toEqual(NUITS[1]);
+
+    // Then il n'est pas daté disparu pour autant, et c'est l'autre moitié de la règle :
+    // le passage ne l'a pas résolu, la source ne l'a pas dit inconnu, et rien ne
+    // permet de conclure. Le laisser tomber dans l'`updateMany` aurait levé la sortie
+    // du référentiel, en gravité haute, sur une panne d'une nuit.
+    expect(muette.retenuesSansReponse).toEqual([TRANSVERSE]);
+    expect(fiche(TRANSVERSE).vanishedAt).toBeNull();
+
+    // Then le vrai départ de la nuit est daté, lui, et c'est le prix que le gel faisait
+    // payer aux quatre-vingt-quinze autres pour épargner celui-là.
+    expect(muette.vanished).toBe(1);
+    expect(fiche(OMISE).vanishedAt).toEqual(NUITS[1]);
+
+    // Then la retenue se dit trois fois, chacune pour un lecteur différent : la phrase
+    // du refus dans la colonne que l'écran des collectes lit, ce que la source a
+    // répondu en échouant, qui est la seule chose qui distingue la panne d'une nuit de
+    // l'enregistrement mal formé, et la liste en clair que la fiche d'une personne
+    // relit pour parler d'elle nommément.
+    expect(ceQuiAEteDit(muette.runId)).toEqual([
+      `${TRANSVERSE} : 500 Internal Server Error`,
+      `${REFUS_DE_LECTURE} : ${TRANSVERSE} ; aucune disparition datée tant que la lecture échoue`,
+    ]);
+    expect(muette.lecturesManquees).toEqual([
+      { username: TRANSVERSE, message: "500 Internal Server Error" },
+    ]);
+    expect(nommeesSansReponse(muette.runId)).toEqual([TRANSVERSE]);
+
+    // When la panne s'installe : quatre nuits de plus, à l'identique.
+    for (const index of [2, 3, 4, 5]) {
+      const encore = await nuit(index, {
+        fiche: "muette",
+        parEquipe: "présente",
+        omis: [OMISE],
+      });
+
+      // Then le relevé avance à chaque passage, et la retenue se redit à chaque
+      // passage. Elle n'a pas de borne, et ce n'est pas l'exemption que le sursis du
+      // 404 s'interdit : une suppression en amont répond 404, elle nomme la fiche
+      // qu'elle a supprimée, donc aucun départ réel n'emprunte ce chemin-ci.
+      expect(encore.status).toBe("OK");
+      expect(releveDeReference()?.startedAt).toEqual(NUITS[index]);
+      expect(encore.retenuesSansReponse).toEqual([TRANSVERSE]);
+      expect(nommeesSansReponse(encore.runId)).toEqual([TRANSVERSE]);
+      expect(fiche(TRANSVERSE).vanishedAt).toBeNull();
+    }
+
+    // When la source répond de nouveau.
+    const guerie = await nuit(6, { parEquipe: "présente", omis: [OMISE] });
+
+    // Then rien n'a été perdu et rien n'a été inventé : sa dernière vue reprend, son
+    // séjour n'a jamais été interrompu, donc aucun retour n'est à dater, et le passage
+    // cesse de dire ce qu'il refusait.
+    expect(guerie.retenuesSansReponse).toEqual([]);
+    expect(fiche(TRANSVERSE).lastSeenAt).toEqual(NUITS[6]);
+    expect(fiche(TRANSVERSE).vanishedAt).toBeNull();
+    expect(fiche(TRANSVERSE).returnedAt).toBeNull();
+    expect(fiche(TRANSVERSE).firstSeenAt).toEqual(NUITS[0]);
+    expect(ceQuiAEteDit(guerie.runId)).toEqual([]);
+    expect(nommeesSansReponse(guerie.runId)).toEqual([]);
+  });
+
+  it("ne retient rien et ne dégrade rien pour une rattachée que la liste scopée rend encore", async () => {
+    // Given le même périmètre complet, avec une personne rattachée par une équipe : la
+    // liste scopée la rend, mais elle ne porte aucune de ses missions, si bien que sa
+    // fiche complète est la seule chose à dater sa fin.
+    await nuit(0, { parEquipe: "présente" });
+    expect(fiche(PAR_EQUIPE).missionEnd).toEqual(new Date("2027-12-31T00:00:00Z"));
+
+    // When c'est sa fiche à elle qui ne répond plus, la même nuit qu'un vrai départ.
+    const muette = await nuit(1, { parEquipe: "muette", omis: [OMISE] });
+
+    // Then le passage reste complet, et sur ce chemin la dégradation était une perte
+    // pure : la liste scopée la rend encore, elle reste du périmètre, sa dernière vue
+    // avance, et rien de ce que le passage ignore d'elle ne concerne son existence.
+    expect(muette.status).toBe("OK");
+    expect(muette.errors).toEqual([]);
+    expect(fiche(PAR_EQUIPE).lastSeenAt).toEqual(NUITS[1]);
+    expect(fiche(PAR_EQUIPE).vanishedAt).toBeNull();
+
+    // Then elle n'est retenue par aucun des deux sursis, et l'annoncer ferait mentir la
+    // trace : on ne retient que ce qu'on allait faire disparaître. C'est le même filtre
+    // qui sépare les deux populations qu'une fiche complète concerne, et il n'y en a
+    // pas d'autre.
+    expect(muette.retenues).toEqual([]);
+    expect(muette.retenuesSansReponse).toEqual([]);
+    expect(nommeesSansReponse(muette.runId)).toEqual([]);
+
+    // Then son échéance est conservée telle que le dernier passage l'a lue, par la
+    // règle qui protège cette colonne et qui, elle, n'a jamais eu besoin de dégrader
+    // quoi que ce soit pour le faire.
+    expect(fiche(PAR_EQUIPE).missionEnd).toEqual(new Date("2027-12-31T00:00:00Z"));
+    expect(muette.echeancesNonEcrites).toEqual([PAR_EQUIPE]);
+
+    // Then le vrai départ de la nuit est daté, et le relevé avance : voilà ce que la
+    // dégradation coûtait ici, et ce qu'elle ne protégeait pas.
+    expect(muette.vanished).toBe(1);
+    expect(fiche(OMISE).vanishedAt).toEqual(NUITS[1]);
+    expect(releveDeReference()?.startedAt).toEqual(NUITS[1]);
+
+    // Then la trace porte les deux natures de fait sans que l'une chasse l'autre : ce
+    // que la source a répondu en échouant, et le refus d'écriture qu'il a entraîné. Pas
+    // de refus de disparition, il n'y en avait aucune à refuser.
+    expect(ceQuiAEteDit(muette.runId)).toEqual([
+      `${PAR_EQUIPE} : 500 Internal Server Error`,
+      `${REFUS_D_ECHEANCE} : ${PAR_EQUIPE} ; fiche complète non lue`,
+    ]);
+  });
+
+  it("dégrade encore quand la réponse perd quelqu'un sans pouvoir le nommer", async () => {
+    // Given un périmètre entier, vu et daté par un premier passage complet.
+    await nuit(0);
+
+    // When la réponse de la liste perd une personne de la seule façon qui ne la nomme
+    // pas : son enregistrement est illisible, la lecture l'écarte de la réponse et ne
+    // garde de lui qu'un rang dans un message. C'est le cas couplé, celui que le
+    // harnais découple partout ailleurs, et il n'était couvert par aucun test.
+    const amputee = await nuit(1, { omis: [OMISE], lecture: "amputée" });
+
+    // Then le passage se dégrade, et il le doit : rien ne distingue cet élément écarté
+    // d'un départ, aucun identifiant ne le désigne, et il n'y a donc personne à
+    // retenir. Le refus de conclure est ici le seul filet qui existe, et le retirer
+    // daterait un départ sur un défaut de sérialisation amont. C'est voulu, et c'est
+    // gravé ici pour que personne ne le prenne pour un oubli de symétrie.
+    expect(amputee.status).toBe("PARTIAL");
+    expect(amputee.errors).toHaveLength(1);
+    expect(amputee.vanished).toBe(0);
+    expect(fiche(OMISE).vanishedAt).toBeNull();
+    expect(releveDeReference()?.startedAt).toEqual(NUITS[0]);
+
+    // When la nuit suivante perd exactement la même personne de la même façon
+    // silencieuse, mais ne perd de fiche complète que celle qu'elle peut nommer.
+    const nommee = await nuit(2, { fiche: "muette", omis: [OMISE] });
+
+    // Then le verdict s'inverse, et c'est toute la règle : la même perte, le même
+    // nombre de personnes en moins, et deux conclusions opposées, parce que l'une est
+    // nommable et l'autre non. Le déclaré transverse est retenu, l'omise est datée.
+    expect(nommee.status).toBe("OK");
+    expect(nommee.retenuesSansReponse).toEqual([TRANSVERSE]);
+    expect(fiche(TRANSVERSE).vanishedAt).toBeNull();
+    expect(nommee.vanished).toBe(1);
+    expect(fiche(OMISE).vanishedAt).toEqual(NUITS[2]);
   });
 });
 
@@ -704,5 +1238,795 @@ describe("ce qu'un passage signale quand il adopte une fiche fabriquée", () => 
     // Then plus rien n'est signalé : la bascule est un franchissement et non un état,
     // et le redire chaque nuit ferait de ce signal un bruit qu'on cesse de lire
     expect(basculesSignalees()).toEqual([]);
+  });
+});
+
+/**
+ * Le gel du relevé a cinq causes et une seule signature. Un élément de liste
+ * illisible, une écriture qui lève, une lecture de liste qui n'aboutit pas, le
+ * plancher de chute qui refuse, et le plancher qui refuse encore parce que son propre
+ * refus a figé sa référence : cinq portes, et derrière chacune le même effet, un
+ * dernier passage complet qui cesse d'avancer et toutes les règles qui s'y adossent
+ * qui se taisent ensemble, pour tout le monde. Aucune ne peut le signaler elle-même,
+ * chacune se taisant précisément parce que le relevé est vieux.
+ *
+ * Ce qui se compte ici est donc l'effet et non la cause, et c'est ce qui sépare une
+ * nuit ratée, qui arrive, d'une série qui n'en est plus une.
+ */
+describe("ce qu'un passage dit du relevé qu'il n'a pas renouvelé", () => {
+  beforeEach(() => {
+    base.runs.length = 0;
+    base.fiches.length = 0;
+    base.sequence = 0;
+  });
+
+  it("compte l'âge du relevé en passages quelle qu'en soit la cause, et ne l'annonce qu'installé", async () => {
+    // Given un premier passage complet, qui pose le relevé contre lequel tout se
+    // décidera. Il n'a rien à dire de son propre âge, étant lui-même le relevé.
+    const premier = await nuit(0);
+    expect(premier.status).toBe("OK");
+    expect(premier.seen).toBe(13);
+    expect(ceQuiAEteDit(premier.runId)).toEqual([]);
+    expect(ageDuReleveDit(premier.runId)).toBeNull();
+
+    // When une nuit se rate sur un enregistrement amont illisible, ce qui est le
+    // chemin le plus large et le plus déterministe.
+    const une = await nuit(1, { lecture: "amputée" });
+
+    // Then le passage dit qu'il n'a pas renouvelé le relevé, nomme celui contre lequel
+    // les règles continuent de décider, et le compte en passages : sans cette ligne,
+    // les seuls messages du run sont ceux de la lecture ratée, qui ne disent rien de
+    // ce que le passage vient de suspendre pour tout le monde.
+    expect(une.status).toBe("PARTIAL");
+    expect(ceQuiAEteDit(une.runId)).toEqual([
+      "membres de l'incubateur : élément 4 illisible (username requis)",
+      `${RELEVE_NON_RENOUVELE} : les règles adossées au périmètre décident toujours contre le relevé du 2026-09-01, laissé un passage en arrière`,
+    ]);
+
+    // Then une seule nuit ne s'annonce pas au nom des personnes : le compte est porté
+    // en clair dans la trace, mais il ne franchit pas encore le seuil au-delà duquel
+    // la fiche de quelqu'un en parle. Une lecture peut échouer une nuit pour une
+    // raison qui passera, et un avertissement posé sur quatre-vingt-quinze fiches à
+    // chaque incident d'une nuit cesse d'être lu.
+    expect(ageDuReleveDit(une.runId)).toBe(1);
+    expect(releveFige(1)).toBe(false);
+
+    // When la nuit suivante se rate par une porte entièrement différente : la réponse
+    // est valide, rien n'est illisible, mais le périmètre a fondu d'un tiers et le
+    // plancher de chute refuse de dater. C'est le verrou qui s'entretient lui-même, sa
+    // référence étant l'effectif d'un relevé que son propre refus empêche d'avancer.
+    const chute = await nuit(2, {
+      omis: [OMISE, "zoe.exemple", "yanis.exemple", "sacha.exemple"],
+    });
+
+    // Then le compte continue, et c'est tout l'intérêt de le tenir sur le relevé
+    // plutôt que sur un refus nommé : deux causes qui n'ont rien à voir se suivent, et
+    // un compteur de répétitions serait reparti de zéro à la seconde alors que l'effet
+    // ne s'est pas interrompu une nuit.
+    expect(chute.status).toBe("PARTIAL");
+    expect(chute.vanished).toBe(0);
+    expect(ageDuReleveDit(chute.runId)).toBe(2);
+    expect(ceQuiAEteDit(chute.runId)).toEqual([
+      "chute du périmètre : 9 personnes contre 13 au dernier relevé complet, aucune disparition datée",
+      `${RELEVE_NON_RENOUVELE} : les règles adossées au périmètre décident toujours contre le relevé du 2026-09-01, laissé 2 passages en arrière`,
+    ]);
+
+    // When une troisième nuit passe sans relevé complet.
+    const installe = await nuit(3, { lecture: "amputée" });
+
+    // Then la phrase change de nature : ce n'est plus un incident, et elle le dit. Le
+    // relevé nommé est toujours le même, trois passages en arrière, et le nombre est
+    // ce qui distingue cette ligne de la même ligne d'avant-hier.
+    expect(ageDuReleveDit(installe.runId)).toBe(3);
+    expect(releveFige(3)).toBe(true);
+    expect(ceQuiAEteDit(installe.runId).at(-1)).toBe(
+      `${RELEVE_NON_RENOUVELE} : les règles adossées au périmètre décident toujours contre le relevé du 2026-09-01, laissé 3 passages en arrière : ce n'est plus un incident, et plus rien de ce qui s'y adosse ne décide sur l'état du jour`,
+    );
+
+    // Then rien n'a été daté pendant les trois nuits, ce qui est exactement l'état que
+    // ce compte sert à rendre visible : le gel est silencieux parce qu'il n'écrit rien.
+    expect(base.fiches.filter((candidate) => candidate.vanishedAt !== null)).toEqual([]);
+
+    // When l'amont guérit et un passage se dit complet.
+    const guerie = await nuit(4);
+
+    // Then il ne dit plus rien du relevé, et pour cause : il en est un. Le relevé
+    // avance, et ce que le passage a suspendu reprend.
+    expect(guerie.status).toBe("OK");
+    expect(ceQuiAEteDit(guerie.runId)).toEqual([]);
+    expect(ageDuReleveDit(guerie.runId)).toBeNull();
+    expect(releveDeReference()?.startedAt).toEqual(NUITS[4]);
+
+    // Then la nuit ratée suivante repart de un, et nomme le relevé neuf : le compte
+    // dit l'âge du relevé et non l'historique des nuits ratées, si bien qu'une série
+    // interrompue par un passage complet n'est pas une série.
+    const apres = await nuit(5, { lecture: "amputée" });
+
+    expect(ageDuReleveDit(apres.runId)).toBe(1);
+    expect(ceQuiAEteDit(apres.runId).at(-1)).toBe(
+      `${RELEVE_NON_RENOUVELE} : les règles adossées au périmètre décident toujours contre le relevé du 2026-09-05, laissé un passage en arrière`,
+    );
+
+    // When la série dure au-delà de la fenêtre que relit l'idiome voisin des refus
+    // répétés.
+    for (const index of [6, 7, 8, 9, 10, 11, 12, 13]) {
+      await nuit(index, { lecture: "amputée" });
+    }
+    const vieux = await nuit(14, { lecture: "amputée" });
+
+    // Then le compte annoncé est celui qu'on a lu, et non celui d'une fenêtre : la
+    // borne est le relevé lui-même, et un plafond de passages donnerait un nombre
+    // faux en le donnant pour exact. C'est la seule assertion qui distingue les deux,
+    // toute histoire plus courte que ce plafond laissant les deux réponses égales.
+    expect(ageDuReleveDit(vieux.runId)).toBe(10);
+    expect(PASSAGES_RELUS).toBeLessThan(10);
+    expect(ceQuiAEteDit(vieux.runId).at(-1)).toBe(
+      `${RELEVE_NON_RENOUVELE} : les règles adossées au périmètre décident toujours contre le relevé du 2026-09-05, laissé 10 passages en arrière : ce n'est plus un incident, et plus rien de ce qui s'y adosse ne décide sur l'état du jour`,
+    );
+  });
+});
+
+/**
+ * Le plancher de chute est le seul garde-fou de ce module qui entretienne sa propre
+ * référence. Il compare l'effectif du jour à celui du dernier passage complet, et son
+ * refus dégrade le passage qui le prononce : un passage dégradé ne devient jamais ce
+ * relevé, donc la chute se rejoue demain contre l'effectif d'avant-hier, à l'identique
+ * et pour toujours. Aucune donnée périmée n'est en cause, aucune correction en amont
+ * n'y peut rien, et ce qu'il gèle n'est pas un fournisseur mais le relevé auquel tout
+ * ce module s'adosse.
+ *
+ * Sa sortie est donc la même que celle des systèmes cibles, et pour la même raison :
+ * une décision d'opérateur, motivée, consommée en un passage, jamais un réglage. Rien
+ * ne se lève tout seul, une chute pouvant aussi bien être une source qui répond mal.
+ */
+describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", () => {
+  /** Quatre départs sur treize : le périmètre passe sous le plancher de la politique. */
+  const CHUTE = [OMISE, "zoe.exemple", "yanis.exemple", "sacha.exemple"];
+
+  /** Trois de plus, pour repasser sous un plancher que le dégel vient d'abaisser. */
+  const RECHUTE = [...CHUTE, "noe.exemple", "solene.exemple", "tiphaine.exemple"];
+
+  /** Un de plus que la chute, et deux de moins que le creux qui l'a précédée. */
+  const CINQ = [...CHUTE, "noe.exemple"];
+
+  /** Le creux : ce que l'amont rendait de moins quelques passages plus tôt. */
+  const SIX = [...CINQ, "solene.exemple"];
+
+  /** Dix départs sur treize : une chute d'une tout autre ampleur que celle qu'on a lue. */
+  const EFFONDREMENT = [
+    "blandine",
+    "elias",
+    "gwendal",
+    "hakim",
+    "ines",
+    "maelys",
+    "noe",
+    "sacha",
+    "solene",
+    "tiphaine",
+  ].map((prenom) => `${prenom}.exemple`);
+
+  /** Onze départs sur treize : l'effondrement que personne n'a examiné. */
+  const EFFONDREMENT_TOTAL = [...EFFONDREMENT, "yanis.exemple"];
+
+  const levees = () => base.journal.filter((trace) => trace.action === "sync.gardefou.leve");
+  const perimees = () => base.journal.filter((trace) => trace.action === "sync.gardefou.perime");
+
+  beforeEach(() => {
+    base.runs.length = 0;
+    base.fiches.length = 0;
+    base.autorisations.length = 0;
+    base.journal.length = 0;
+    base.panneDeDatation = false;
+    base.sequence = 0;
+  });
+
+  it("refuse à l'identique tant que personne ne tranche, puis date et fait avancer le relevé", async () => {
+    // Given un premier passage complet : treize personnes, et le relevé contre lequel
+    // le plancher comparera tant qu'aucun autre passage ne se dira complet.
+    const premier = await nuit(0);
+    expect(premier.seen).toBe(13);
+    expect(releveDeReference()).toMatchObject({ itemsSeen: 13, startedAt: NUITS[0] });
+
+    // When quatre personnes s'en vont réellement la même nuit, ce qui fait passer le
+    // périmètre sous le plancher. La réponse est valide, rien n'est illisible : c'est
+    // exactement la situation que ce garde-fou existe pour ne pas conclure trop vite.
+    const chute = await nuit(1, { omis: CHUTE });
+
+    // Then aucune disparition n'est datée, et le passage se dégrade en le disant. Il
+    // dit aussi, du même coup, qu'il vient de laisser le relevé où il était.
+    expect(chute.status).toBe("PARTIAL");
+    expect(chute.vanished).toBe(0);
+    expect(chute.chuteRefusee).toEqual({ famille: "perimetre", observe: 9, reference: 13 });
+    expect(ceQuiAEteDit(chute.runId)).toEqual([
+      "chute du périmètre : 9 personnes contre 13 au dernier relevé complet, aucune disparition datée",
+      `${RELEVE_NON_RENOUVELE} : les règles adossées au périmètre décident toujours contre le relevé du 2026-09-01, laissé un passage en arrière`,
+    ]);
+
+    // When deux nuits de plus passent, à l'identique. Elles le sont nécessairement :
+    // les quatre personnes ne reviendront pas, et la référence à laquelle on les
+    // compare est celle d'un relevé que ce refus empêche d'avancer.
+    await nuit(2, { omis: CHUTE });
+    const installe = await nuit(3, { omis: CHUTE });
+
+    // Then le refus s'annonce comme installé, avec son compte de passages, et l'écran
+    // des collectes le porte en tête au lieu de le laisser dans une ligne de journal
+    // parmi soixante.
+    expect(ceQuiAEteDit(installe.runId).at(0)).toBe(
+      "chute du périmètre : 9 personnes contre 13 au dernier relevé complet, aucune disparition datée : ce refus retombe à l'identique depuis 3 passages, il ne se dénouera pas seul",
+    );
+    expect(blocagesAnnonces()).toEqual([
+      {
+        provider: "espace-membre",
+        famille: "perimetre",
+        observe: 9,
+        reference: 13,
+        passages: 3,
+      },
+    ]);
+
+    // Then le verrou est bien celui que le document décrit : la référence n'a pas
+    // bougé d'un passage, personne n'est daté, et rien dans ce qui précède ne peut
+    // dénouer cela. Ce n'est pas une donnée périmée qu'une correction en amont
+    // réparerait, c'est le refus qui entretient ce contre quoi il refuse.
+    expect(releveDeReference()).toMatchObject({ itemsSeen: 13, startedAt: NUITS[0] });
+    expect(base.fiches.filter((candidate) => candidate.vanishedAt !== null)).toEqual([]);
+    expect(levees()).toEqual([]);
+
+    // When une opératrice pose une autorisation motivée, avant la nuit suivante.
+    autoriser(4, "quatre fins de mission groupées, vérifiées une par une");
+    const degel = await nuit(4, { omis: CHUTE });
+
+    // Then ce passage-là date, une fois : les quatre départs réels reçoivent enfin
+    // leur date, et le passage se dit complet.
+    expect(degel.status).toBe("OK");
+    expect(degel.vanished).toBe(4);
+    for (const username of CHUTE) {
+      expect(fiche(username).vanishedAt).toEqual(NUITS[4]);
+    }
+
+    // Then le relevé avance, et c'est ce qui brise le verrou pour de bon plutôt que
+    // pour une nuit : la référence des passages suivants est l'effectif d'aujourd'hui.
+    expect(releveDeReference()).toMatchObject({ itemsSeen: 9, startedAt: NUITS[4] });
+    expect(blocagesAnnonces()).toEqual([]);
+
+    // Then la nuit ne ressemble pas à une nuit ordinaire dans la colonne où on relit
+    // les passages, et le journal garde qui a décidé quoi. L'autorisation, elle, est
+    // consommée : elle a nommé le passage qui l'a prise.
+    expect(ceQuiAEteDit(degel.runId)).toEqual([
+      "chute du périmètre : 9 personnes contre 13 au dernier relevé complet, datation autorisée à la main pour ce passage",
+    ]);
+    expect(levees()).toEqual([{ action: "sync.gardefou.leve", targetId: "espace-membre" }]);
+    expect(base.autorisations[0]).toMatchObject({ consumedRunId: degel.runId });
+
+    // When la nuit suivante repasse sur le même périmètre, désormais de neuf personnes.
+    const stable = await nuit(5, { omis: CHUTE });
+
+    // Then le garde-fou n'a plus rien à refuser : ce qu'il comparait à treize, il le
+    // compare maintenant à neuf, et il se tait.
+    expect(stable.status).toBe("OK");
+    expect(stable.chuteRefusee).toBeNull();
+    expect(ceQuiAEteDit(stable.runId)).toEqual([]);
+
+    // Then la décision d'hier reste hors d'atteinte : consommée, elle n'est ni reprise
+    // par ce passage ni écartée par lui, et elle nomme toujours le seul passage qui
+    // l'ait dépensée. Un passage qui la ramasserait une seconde fois en ferait un
+    // réglage, c'est-à-dire l'exact contraire de ce qu'une autorisation est.
+    expect(perimees()).toEqual([]);
+    expect(base.autorisations[0]).toMatchObject({ consumedRunId: degel.runId });
+
+    // When trois personnes de plus s'en vont, et le périmètre repasse sous le plancher.
+    const rechute = await nuit(6, { omis: RECHUTE });
+
+    // Then il refuse de nouveau, et c'est ce qui sépare une autorisation d'un réglage :
+    // elle valait un passage, celui qui l'a prise, et rien après lui.
+    expect(rechute.status).toBe("PARTIAL");
+    expect(rechute.vanished).toBe(0);
+    expect(rechute.chuteRefusee).toEqual({ famille: "perimetre", observe: 6, reference: 9 });
+    expect(levees()).toHaveLength(1);
+  });
+
+  it("ne lève pas une chute plus profonde que celle qu'on a montrée à qui décidait", async () => {
+    // Given un relevé de treize, et quatre départs que le plancher refuse de dater.
+    await nuit(0);
+    const refus = await nuit(1, { omis: CHUTE });
+    expect(refus.chuteRefusee).toEqual({ famille: "perimetre", observe: 9, reference: 13 });
+
+    // Given une opératrice qui tranche sur ces nombres-là, et sur eux seuls : la
+    // raison qu'elle écrit parle de quatre départs vérifiés un par un.
+    autoriser(2, "quatre fins de mission groupées, vérifiées une par une");
+
+    // When la nuit suivante subit un effondrement d'une tout autre ampleur : la liste
+    // ne rend plus que trois personnes.
+    const effondrement = await nuit(2, { omis: EFFONDREMENT });
+
+    // Then rien n'est daté. La décision valait pour une chute qu'on avait sous les
+    // yeux, et six personnes que personne n'a examinées ne reçoivent pas leur sortie
+    // de périmètre, en gravité haute, sur une phrase écrite pour d'autres nombres.
+    expect(effondrement.status).toBe("PARTIAL");
+    expect(effondrement.vanished).toBe(0);
+    expect(effondrement.chuteRefusee).toEqual({ famille: "perimetre", observe: 3, reference: 13 });
+    expect(base.fiches.filter((candidate) => candidate.vanishedAt !== null)).toEqual([]);
+    expect(levees()).toEqual([]);
+
+    // Then la décision est écartée, et le journal le dit sous le nom de qui l'avait
+    // prise : la laisser attendre interdirait d'en poser une autre, l'écran refusant
+    // une seconde autorisation tant que la première attend.
+    expect(perimees()).toEqual([{ action: "sync.gardefou.perime", targetId: "espace-membre" }]);
+    expect(base.autorisations[0]).toMatchObject({ consumedRunId: effondrement.runId });
+
+    // When l'amont retrouve l'ampleur d'hier et une seconde décision est posée sur les
+    // nombres que l'écran annonce ce soir-là.
+    autoriser(3, "quatre fins de mission groupées, vérifiées une par une");
+    const degel = await nuit(3, { omis: CHUTE });
+
+    // Then celle-là lève et date : la borne écarte les décisions dépassées, elle
+    // n'éteint pas la sortie.
+    expect(degel.status).toBe("OK");
+    expect(degel.vanished).toBe(4);
+    expect(levees()).toHaveLength(1);
+  });
+
+  it("écarte la décision qu'un passage complet ne trouve plus rien à lever", async () => {
+    // Given un relevé de treize, quatre départs refusés, et une opératrice qui tranche.
+    await nuit(0);
+    await nuit(1, { omis: CHUTE });
+    autoriser(2, "quatre fins de mission groupées, vérifiées une par une");
+
+    // When l'amont se répare de lui-même : la nuit suivante retrouve les treize, se
+    // dit complète, et n'a plus rien à refuser.
+    const guerie = await nuit(2);
+    expect(guerie.status).toBe("OK");
+    expect(guerie.chuteRefusee).toBeNull();
+    expect(guerie.chuteLevee).toBeNull();
+    expect(guerie.vanished).toBe(0);
+
+    // Then la décision n'est pas dépensée comme une levée, elle est écartée : écrire
+    // au journal qu'un garde-fou a été levé sur un passage qui n'a rien refusé serait
+    // faux, et c'est bien la prochaine collecte que l'écran promettait.
+    expect(levees()).toEqual([]);
+    expect(perimees()).toEqual([{ action: "sync.gardefou.perime", targetId: "espace-membre" }]);
+    expect(base.autorisations[0]).toMatchObject({ consumedRunId: guerie.runId });
+
+    // When cinq nuits ordinaires passent, puis un effondrement d'une tout autre nature.
+    for (const index of [3, 4, 5, 6, 7]) {
+      await nuit(index);
+    }
+    const effondrement = await nuit(8, { omis: EFFONDREMENT });
+
+    // Then il ne trouve plus rien qui dorme : dix personnes ne sont pas datées
+    // disparues sur une décision prise six passages plus tôt, pour quatre départs et
+    // pour la nuit d'après.
+    expect(effondrement.status).toBe("PARTIAL");
+    expect(effondrement.vanished).toBe(0);
+    expect(base.fiches.filter((candidate) => candidate.vanishedAt !== null)).toEqual([]);
+    expect(levees()).toEqual([]);
+  });
+
+  it("ne dépense pas la décision quand la datation n'aboutit pas", async () => {
+    // Given un relevé de treize, quatre départs refusés, et une opératrice qui tranche.
+    await nuit(0);
+    await nuit(1, { omis: CHUTE });
+    autoriser(2, "quatre fins de mission groupées, vérifiées une par une");
+
+    // When la base tombe au moment précis où le passage écrit ses disparitions.
+    base.panneDeDatation = true;
+    await expect(nuit(2, { omis: CHUTE })).rejects.toThrow("base indisponible");
+
+    // Then personne n'est daté, et la décision attend toujours. Dépensée avant la
+    // datation, elle serait perdue pour rien : il faudrait la reposer sans rien savoir
+    // de plus qu'hier, et le journal affirmerait qu'un garde-fou a été levé sur un
+    // passage qui n'a rien conclu.
+    expect(base.fiches.filter((candidate) => candidate.vanishedAt !== null)).toEqual([]);
+    expect(levees()).toEqual([]);
+    expect(perimees()).toEqual([]);
+    expect(base.autorisations[0]).toMatchObject({ consumedAt: null, consumedRunId: null });
+
+    // When la base répond de nouveau, la nuit suivante.
+    base.panneDeDatation = false;
+    const degel = await nuit(3, { omis: CHUTE });
+
+    // Then la décision lève ce passage-là, et les quatre départs sont datés : rien
+    // n'aura été perdu de la panne, sinon une nuit.
+    expect(degel.status).toBe("OK");
+    expect(degel.vanished).toBe(4);
+    expect(levees()).toHaveLength(1);
+  });
+
+  it("ne vaut que pour un passage commencé après elle, et n'est pas perdue pour autant", async () => {
+    // Given un relevé de treize et quatre départs que le plancher refuse.
+    await nuit(0);
+    await nuit(1, { omis: CHUTE });
+
+    // Given une opératrice qui clique alors que la collecte de la nuit suivante tourne
+    // déjà : elle décide sur un état que cette collecte a cessé de lire.
+    autoriserPendant(2, "quatre fins de mission groupées, vérifiées une par une");
+    const pendant = await nuit(2, { omis: CHUTE });
+
+    // Then cette nuit-là refuse encore, et ne touche à rien : ni levée, ni mise à
+    // l'écart, la décision n'étant d'aucun des deux côtés de la borne de ce passage.
+    expect(pendant.status).toBe("PARTIAL");
+    expect(pendant.vanished).toBe(0);
+    expect(levees()).toEqual([]);
+    expect(perimees()).toEqual([]);
+    expect(base.autorisations[0]).toMatchObject({ consumedAt: null, consumedRunId: null });
+
+    // When la nuit d'après commence, celle-ci après elle.
+    const apres = await nuit(3, { omis: CHUTE });
+
+    // Then elle lève, une fois : rien n'est perdu pour avoir été décidé à la mauvaise
+    // minute, c'est simplement la collecte suivante qui conclut.
+    expect(apres.status).toBe("OK");
+    expect(apres.vanished).toBe(4);
+    expect(levees()).toHaveLength(1);
+  });
+
+  it("ne date rien d'une nuit dont une lecture a manqué, et n'y dépense pas l'autorisation", async () => {
+    // Given un relevé de treize, quatre départs que le plancher refuse, et une
+    // autorisation posée sur ces nombres-là : c'est ce que l'écran montre, et il ne
+    // propose la sortie que sous un refus.
+    await nuit(0);
+    const refus = await nuit(1, { omis: CHUTE });
+    expect(refus.chuteRefusee).toEqual({ famille: "perimetre", observe: 9, reference: 13 });
+    autoriser(2, "quatre fins de mission groupées, vérifiées une par une");
+
+    // When la nuit suivante perd les mêmes quatre personnes et rend en plus un
+    // enregistrement illisible, que la lecture écarte sans pouvoir le nommer.
+    const amputee = await nuit(2, { omis: CHUTE, lecture: "amputée" });
+
+    // Then rien n'est daté, et l'autorisation n'y est pour rien : le plancher n'a même
+    // pas été consulté. C'est l'invariant dur de ce lot, et il tient par construction
+    // plutôt que par vigilance, la sortie n'existant que sous un passage complet. Une
+    // autorisation qui ferait dater ici dirait « conclus des départs sur une lecture
+    // que tu n'as pas comprise », ce qu'aucune décision d'opérateur ne peut vouloir
+    // dire.
+    expect(amputee.status).toBe("PARTIAL");
+    expect(amputee.vanished).toBe(0);
+    expect(amputee.chuteRefusee).toBeNull();
+    expect(amputee.chuteLevee).toBeNull();
+    expect(base.fiches.filter((candidate) => candidate.vanishedAt !== null)).toEqual([]);
+    expect(levees()).toEqual([]);
+
+    // Then elle n'est pas dépensée pour autant : consommée sans rien dater, elle
+    // aurait fait écrire au journal qu'on a autorisé ce qui n'a pas eu lieu, et il
+    // aurait fallu la reposer sans rien savoir de plus qu'hier.
+    expect(base.autorisations[0]).toMatchObject({ consumedAt: null, consumedRunId: null });
+
+    // When la nuit suivante lit la liste entière sans rien perdre d'illisible, mais la
+    // fiche du déclaré transverse cesse de répondre : le passage est complet, et il
+    // reste une personne dont il ne sait rien.
+    const muette = await nuit(3, { fiche: "muette", omis: CHUTE });
+
+    // Then l'autorisation, toujours en attente, lève le plancher de ce passage-ci, et
+    // les quatre départs réels sont datés.
+    expect(muette.status).toBe("OK");
+    expect(muette.vanished).toBe(4);
+    expect(levees()).toHaveLength(1);
+    expect(base.autorisations[0]).toMatchObject({ consumedRunId: muette.runId });
+
+    // Then elle ne lève que ce garde-fou, et c'est l'autre moitié de l'invariant : la
+    // fiche dont la lecture n'a pas répondu est retenue par une règle qu'aucune
+    // autorisation ne regarde. Personne n'a autorisé quoi que ce soit à son sujet, et
+    // ce qui la protège n'est pas un statut de run mais le fait que le passage ne
+    // sache rien d'elle.
+    expect(muette.retenuesSansReponse).toEqual([TRANSVERSE]);
+    expect(fiche(TRANSVERSE).vanishedAt).toBeNull();
+    expect(nommeesSansReponse(muette.runId)).toEqual([TRANSVERSE]);
+
+    // Then la chute annoncée est de neuf et non de huit, alors que le passage n'a
+    // résolu que huit personnes : celle qu'il retient faute de réponse est du
+    // périmètre auquel il croit, il vient de refuser de la dater, et l'en retrancher
+    // reviendrait à la compter partie du même souffle. Le relevé qu'il laisse porte le
+    // même nombre, sans quoi le plancher de demain se comparerait à un effectif que la
+    // panne aurait creusé.
+    expect(releveDeReference()).toMatchObject({ itemsSeen: 9, startedAt: NUITS[3] });
+
+    // Then la trace dit les deux à la fois, sans que l'une chasse l'autre : ce que la
+    // source a répondu en échouant, la décision qui a fait dater cette nuit-là, et le
+    // refus que cette décision n'a pas levé.
+    expect(ceQuiAEteDit(muette.runId)).toEqual([
+      `${TRANSVERSE} : 500 Internal Server Error`,
+      "chute du périmètre : 9 personnes contre 13 au dernier relevé complet, datation autorisée à la main pour ce passage",
+      `${REFUS_DE_LECTURE} : ${TRANSVERSE} ; aucune disparition datée tant que la lecture échoue`,
+    ]);
+  });
+
+  it("annonce le même effectif quelle que soit la façon dont une fiche manque, et laisse la sortie s'ouvrir", async () => {
+    // Given un premier passage complet : treize personnes, et le relevé contre lequel
+    // le plancher comparera tant qu'aucun autre passage ne se dira complet.
+    await nuit(0);
+    expect(releveDeReference()).toMatchObject({ itemsSeen: 13, startedAt: NUITS[0] });
+
+    // When quatre personnes s'en vont réellement et que, les mêmes nuits, la fiche du
+    // déclaré transverse cesse d'être lisible : la source échoue tantôt en jetant,
+    // tantôt en répondant qu'elle ne connaît pas la fiche.
+    const muette = await nuit(1, { fiche: "muette", omis: CHUTE });
+    const avouee = await nuit(2, { fiche: "absente", omis: CHUTE });
+
+    // Then les deux nuits ne retiennent pas la fiche par la même règle, et le disent :
+    // l'une n'a rien appris d'elle, l'autre a reçu un aveu d'ignorance, et ce n'est
+    // pas le même sursis.
+    expect(muette.retenuesSansReponse).toEqual([TRANSVERSE]);
+    expect(muette.retenues).toEqual([]);
+    expect(avouee.retenues).toEqual([TRANSVERSE]);
+    expect(avouee.retenuesSansReponse).toEqual([]);
+
+    // Then elles annoncent pourtant le même effectif, et c'est ce qui se joue ici : une
+    // fiche retenue est une fiche dont le passage ne conclut rien, quelle que soit la
+    // façon dont il en est arrivé là. La retrancher un soir sur deux ferait osciller le
+    // nombre montré à l'opératrice sans qu'aucun départ ne l'explique.
+    expect(muette.chuteRefusee).toEqual({ famille: "perimetre", observe: 9, reference: 13 });
+    expect(avouee.chuteRefusee).toEqual({ famille: "perimetre", observe: 9, reference: 13 });
+
+    // When l'alternance dure une nuit de plus.
+    const installe = await nuit(3, { fiche: "muette", omis: CHUTE });
+
+    // Then le refus s'annonce installé et le bandeau s'ouvre. Un effectif qui oscille
+    // ne retombe jamais deux fois sur les mêmes nombres, donc ne s'installe jamais :
+    // le relevé gèlerait sans fin pendant que la seule sortie reste hors d'atteinte,
+    // pour la seule raison que la source échoue de deux façons.
+    expect(installe.chuteRefusee).toEqual({ famille: "perimetre", observe: 9, reference: 13 });
+    expect(blocagesAnnonces()).toEqual([
+      {
+        provider: "espace-membre",
+        famille: "perimetre",
+        observe: 9,
+        reference: 13,
+        passages: 3,
+      },
+    ]);
+
+    // When une opératrice tranche sur les nombres que ce bandeau lui montre.
+    autoriser(4, "quatre fins de mission groupées, vérifiées une par une");
+    const degel = await nuit(4, { fiche: "absente", omis: CHUTE });
+
+    // Then les quatre départs réels reçoivent leur date, la fiche retenue non, et le
+    // relevé avance en la comptant encore : neuf personnes tenues pour présentes, dont
+    // une dont ce passage n'a rien conclu.
+    expect(degel.status).toBe("OK");
+    expect(degel.vanished).toBe(4);
+    expect(fiche(TRANSVERSE).vanishedAt).toBeNull();
+    expect(releveDeReference()).toMatchObject({ itemsSeen: 9, startedAt: NUITS[4] });
+
+    // Then compter n'aura pas été conclure : le sursis de l'aveu se borne toujours à un
+    // passage, et le suivant, qui ne la rend pas davantage, la date.
+    const conclu = await nuit(5, { fiche: "absente", omis: CHUTE });
+    expect(conclu.status).toBe("OK");
+    expect(conclu.retenues).toEqual([]);
+    expect(conclu.vanished).toBe(1);
+    expect(fiche(TRANSVERSE).vanishedAt).toEqual(NUITS[5]);
+  });
+
+  it("mesure l'ampleur contre le dernier refus enregistré, et non contre le plus ancien de la fenêtre", async () => {
+    // Given un relevé de treize, puis un creux : six personnes manquent à l'appel, et
+    // le plancher refuse.
+    await nuit(0);
+    const creux = await nuit(1, { omis: SIX });
+    expect(creux.chuteRefusee).toEqual({ famille: "perimetre", observe: 7, reference: 13 });
+
+    // Given l'amont qui se rétablit en partie la nuit suivante : quatre manquent
+    // encore, le plancher refuse toujours, et c'est ce refus-là que l'écran montre.
+    const montre = await nuit(2, { omis: CHUTE });
+    expect(montre.chuteRefusee).toEqual({ famille: "perimetre", observe: 9, reference: 13 });
+
+    // Given une opératrice qui tranche sur ces nombres-là, les seuls qu'elle ait eus
+    // sous les yeux : neuf personnes contre treize, qu'elle est allée vérifier.
+    autoriser(3, "quatre fins de mission groupées, vérifiées une par une");
+
+    // When la chute du soir est plus profonde que celle qu'on lui a montrée, sans
+    // atteindre le creux d'il y a deux passages.
+    const rechute = await nuit(3, { omis: CINQ });
+
+    // Then rien n'est daté : la borne d'ampleur se mesure contre le dernier refus
+    // enregistré, celui que l'écran affichait quand la décision a été prise, et non
+    // contre le plus ancien que la fenêtre relue contienne encore. Prendre le plus
+    // ancien ferait passer pour examinée une personne de plus que l'opératrice n'en a
+    // vue, et sa sortie de périmètre suit, en gravité haute.
+    expect(rechute.status).toBe("PARTIAL");
+    expect(rechute.vanished).toBe(0);
+    expect(rechute.chuteRefusee).toEqual({ famille: "perimetre", observe: 8, reference: 13 });
+    expect(base.fiches.filter((candidate) => candidate.vanishedAt !== null)).toEqual([]);
+
+    // Then la décision est écartée sous le nom de qui l'avait prise, et non dépensée :
+    // la laisser attendre interdirait d'en poser une autre sur les nombres du soir.
+    expect(levees()).toEqual([]);
+    expect(perimees()).toEqual([{ action: "sync.gardefou.perime", targetId: "espace-membre" }]);
+
+    // When l'opératrice tranche de nouveau, cette fois sur ce que le dernier passage a
+    // refusé.
+    autoriser(4, "cinq départs, dont le cinquième vérifié ce matin");
+    const degel = await nuit(4, { omis: CINQ });
+
+    // Then celle-là lève et date : la borne écarte les décisions dépassées, elle
+    // n'éteint pas la sortie.
+    expect(degel.status).toBe("OK");
+    expect(degel.vanished).toBe(5);
+    expect(levees()).toHaveLength(1);
+  });
+
+  it("écarte la décision que plus aucun refus de la fenêtre relue ne mesure", async () => {
+    // Given un relevé de treize, trois nuits que le plancher refuse, et le bandeau qui
+    // s'ouvre sur ces nombres-là.
+    await nuit(0);
+    for (const index of [1, 2, 3]) {
+      await nuit(index, { omis: CHUTE });
+    }
+    expect(blocagesAnnonces()).toEqual([
+      {
+        provider: "espace-membre",
+        famille: "perimetre",
+        observe: 9,
+        reference: 13,
+        passages: 3,
+      },
+    ]);
+
+    // Given une opératrice qui tranche sur ce que ce bandeau lui montre.
+    autoriser(4, "quatre fins de mission groupées, vérifiées une par une");
+
+    // When il passe autant de nuits dégradées que la fenêtre relue compte de passages.
+    // Aucune n'atteint le plancher, donc aucune n'écrit de refus, donc aucune ne
+    // résout la décision : elle attend toujours, et le refus qu'on lui avait montré
+    // vient de sortir de la fenêtre.
+    for (const index of [4, 5, 6, 7, 8, 9, 10, 11]) {
+      const degradee = await nuit(index, { omis: CHUTE, lecture: "amputée" });
+      expect(degradee.chuteRefusee).toBeNull();
+    }
+    expect(base.autorisations[0]).toMatchObject({ consumedAt: null, consumedRunId: null });
+
+    // When la nuit suivante est complète, et onze personnes manquent au lieu de quatre.
+    const effondrement = await nuit(12, { omis: EFFONDREMENT_TOTAL });
+
+    // Then personne n'est daté. L'ampleur montrée à qui décidait n'est plus
+    // retrouvable, la borne n'a donc plus rien contre quoi mesurer, et elle écarte au
+    // lieu de lever : onze sorties de périmètre en gravité haute ne se prononcent pas
+    // sur une phrase écrite pour quatre départs vérifiés un par un.
+    expect(effondrement.status).toBe("PARTIAL");
+    expect(effondrement.vanished).toBe(0);
+    expect(effondrement.chuteRefusee).toEqual({ famille: "perimetre", observe: 2, reference: 13 });
+    expect(base.fiches.filter((candidate) => candidate.vanishedAt !== null)).toEqual([]);
+    expect(levees()).toEqual([]);
+
+    // Then la décision est écartée sous le nom de qui l'avait prise, et non laissée en
+    // attente : l'écran refuse une seconde autorisation tant que la première attend, et
+    // une borne qui enfermerait celle qui décide ne protégerait plus personne.
+    expect(perimees()).toEqual([{ action: "sync.gardefou.perime", targetId: "espace-membre" }]);
+    expect(base.autorisations[0]).toMatchObject({ consumedRunId: effondrement.runId });
+
+    // When elle reprend sur les nombres du jour, que le bandeau annonce désormais.
+    expect(blocagesAnnonces()).toEqual([
+      {
+        provider: "espace-membre",
+        famille: "perimetre",
+        observe: 2,
+        reference: 13,
+        passages: 12,
+      },
+    ]);
+    autoriser(13, "sortie d'une startup entière, onze départs vérifiés ce matin");
+    const degel = await nuit(13, { omis: EFFONDREMENT_TOTAL });
+
+    // Then celle-là lève et date : le silence de la fenêtre écarte la décision qu'il
+    // rend immesurable, il n'éteint pas la sortie.
+    expect(degel.status).toBe("OK");
+    expect(degel.vanished).toBe(11);
+    expect(levees()).toHaveLength(1);
+  });
+
+  it("laisse derrière lui un relevé qui compte la fiche retenue, et le plancher de demain avec", async () => {
+    // Given un premier passage complet de treize personnes.
+    await nuit(0);
+
+    // When la source répond qu'elle ne connaît pas la fiche du déclaré transverse, sans
+    // que personne ne s'en aille par ailleurs.
+    const aveu = await nuit(1, { fiche: "absente" });
+
+    // Then le passage est complet, la fiche est retenue, et le relevé qu'il laisse
+    // compte treize et non douze.
+    expect(aveu.status).toBe("OK");
+    expect(aveu.retenues).toEqual([TRANSVERSE]);
+    expect(aveu.vanished).toBe(0);
+    expect(releveDeReference()).toMatchObject({ itemsSeen: 13, startedAt: NUITS[1] });
+
+    // When quatre personnes s'en vont réellement la nuit suivante, la fiche du
+    // transverse répondant de nouveau.
+    const chute = await nuit(2, { omis: CHUTE });
+
+    // Then le plancher refuse, et c'est le relevé de la veille qui le lui permet : un
+    // relevé amputé de la fiche retenue l'aurait abaissé juste assez pour que ces
+    // quatre départs passent sans que personne ne les examine.
+    expect(chute.status).toBe("PARTIAL");
+    expect(chute.vanished).toBe(0);
+    expect(chute.chuteRefusee).toEqual({ famille: "perimetre", observe: 9, reference: 13 });
+    expect(base.fiches.filter((candidate) => candidate.vanishedAt !== null)).toEqual([]);
+  });
+
+  it("ouvre la sortie même quand une nuit dégradée casse la série des refus identiques", async () => {
+    // Given un relevé complet de treize personnes.
+    await nuit(0);
+
+    // When quatre personnes s'en vont réellement et ne reviennent pas, et qu'une nuit
+    // sur trois se dégrade en plus par la porte de la liste illisible. C'est le motif
+    // qui refermait la sortie : la nuit dégradée n'atteint jamais le plancher, sa trace
+    // ne porte donc aucun refus, et le compte des refus identiques y repart de zéro.
+    const chute = await nuit(1, { omis: CHUTE });
+    const cassure = await nuit(2, { omis: CHUTE, lecture: "amputée" });
+    const reprise = await nuit(3, { omis: CHUTE });
+
+    expect(chute.chuteRefusee).toEqual({ famille: "perimetre", observe: 9, reference: 13 });
+    expect(cassure.chuteRefusee).toBeNull();
+    expect(reprise.chuteRefusee).toEqual({ famille: "perimetre", observe: 9, reference: 13 });
+
+    // Then les trois nuits ont laissé le relevé vieillir, chacune pour sa raison, et
+    // c'est le même effet pour les trois : les règles adossées au périmètre décident
+    // toujours contre le relevé de la première nuit.
+    expect([chute, cassure, reprise].map((passage) => ageDuReleveDit(passage.runId))).toEqual([
+      1, 2, 3,
+    ]);
+    expect(releveDeReference()).toMatchObject({ itemsSeen: 13, startedAt: NUITS[0] });
+
+    // Then la sortie s'offre, et ce n'est pas l'ancien compte qui l'ouvre : les refus
+    // identiques n'en sont qu'à un, la nuit dégradée du milieu ayant cassé la série. Le
+    // nombre annoncé est l'âge du relevé, qui voit les cinq portes du gel là où le compte
+    // des refus n'en voit qu'une.
+    expect(refusIdentiques([reprise.runId, cassure.runId, chute.runId])).toBe(1);
+    expect(blocagesAnnonces()).toEqual([
+      {
+        provider: "espace-membre",
+        famille: "perimetre",
+        observe: 9,
+        reference: 13,
+        passages: 3,
+      },
+    ]);
+
+    // When une opératrice tranche sur les nombres que ce bandeau lui montre.
+    autoriser(4, "quatre fins de mission groupées, vérifiées une par une");
+    const degel = await nuit(4, { omis: CHUTE });
+
+    // Then ce passage-là date, une fois, et le relevé avance : le motif qui gelait tout
+    // est rompu, et le bandeau se referme sur des nombres que plus rien ne refuse.
+    expect(degel.status).toBe("OK");
+    expect(degel.vanished).toBe(4);
+    expect(releveDeReference()).toMatchObject({ itemsSeen: 9, startedAt: NUITS[4] });
+    expect(blocagesAnnonces()).toEqual([]);
+    expect(levees()).toEqual([{ action: "sync.gardefou.leve", targetId: "espace-membre" }]);
+  });
+
+  it("n'offre rien quand le relevé gèle sans que le plancher en soit l'obstacle", async () => {
+    // Given un relevé complet, puis trois nuits que la seule porte de la liste illisible
+    // dégrade : personne ne s'en va, le périmètre ne fond pas, et le plancher n'a rien à
+    // refuser. Le relevé gèle quand même, et tout ce qui s'y adosse avec lui.
+    await nuit(0);
+    const gelees = [];
+    for (const index of [1, 2, 3]) {
+      const passage = await nuit(index, { lecture: "amputée" });
+      expect(passage.status).toBe("PARTIAL");
+      expect(passage.chuteRefusee).toBeNull();
+      gelees.push(passage);
+    }
+
+    // Then le gel est bien installé, et la fiche de chaque personne l'annonce déjà.
+    expect(gelees.map((passage) => ageDuReleveDit(passage.runId))).toEqual([1, 2, 3]);
+    expect(releveFige(3)).toBe(true);
+
+    // Then le bandeau ne s'offre pas pour autant, et c'est le cas inverse de celui que
+    // l'âge ouvre : le plancher n'est pas l'obstacle de ces nuits-là, le lever ne
+    // renouvellerait aucun relevé, et la décision attendrait un refus que personne n'a
+    // prononcé. Ce qui gèle ici se répare en amont, pas sous un nom d'opérateur.
+    expect(blocagesAnnonces()).toEqual([]);
+
+    // When une opératrice pose quand même une autorisation, sans que rien ne l'y invite.
+    autoriser(4, "décision posée alors que rien ne la réclamait");
+    const encore = await nuit(4, { lecture: "amputée" });
+
+    // Then elle dort, entière : la nuit reste dégradée par sa propre cause, rien n'est
+    // daté, rien n'est consommé, et rien n'est périmé non plus, faute d'un passage qui
+    // ait consulté le garde-fou auquel elle se rapporte.
+    expect(encore.vanished).toBe(0);
+    expect(base.fiches.filter((candidate) => candidate.vanishedAt !== null)).toEqual([]);
+    expect(base.autorisations[0]).toMatchObject({ consumedAt: null, consumedRunId: null });
+    expect(levees()).toEqual([]);
+    expect(perimees()).toEqual([]);
   });
 });

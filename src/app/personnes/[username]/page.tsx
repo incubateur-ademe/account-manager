@@ -12,7 +12,13 @@ import {
   libelleAppartenance,
   surchargeSuperflue,
 } from "@/core/appartenance";
-import { FOURNISSEUR_PERIMETRE, fraicheurDe, nonRendueAuDernierPassage } from "@/core/collecte";
+import {
+  ageDuReleveDeLaTrace,
+  FOURNISSEUR_PERIMETRE,
+  fichesSansReponse,
+  fraicheurDe,
+  nonRendueAuDernierPassage,
+} from "@/core/collecte";
 import type { ConstatKind } from "@/core/constat";
 import { ETATS_VIVANTS } from "@/core/dossier";
 import { ficheEditable, RAISON_NON_EDITABLE } from "@/core/fiche-manuelle";
@@ -136,7 +142,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
     prisma.syncRun.findFirst({
       where: { provider: FOURNISSEUR_PERIMETRE },
       orderBy: { startedAt: "desc" },
-      select: { startedAt: true },
+      select: { startedAt: true, error: true },
     }),
     // Le relevé contre lequel la collecte décide, et non le dernier passage tout
     // court : deux lectures de « la dernière fois qu'on a su » finiraient par ne plus
@@ -223,6 +229,18 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
     thresholds.collectStaleHours,
   );
   const nonRendue = nonRendueAuDernierPassage(personne, dernierComplet?.startedAt ?? null);
+  // Adossé au même verdict et non lu seul : la trace nomme les fiches que ce passage a
+  // retenues, et un passage dégradé peut avoir relu la sienne depuis sans devenir la
+  // référence. Sans ce préalable, la fiche annoncerait un angle mort dont elle est
+  // sortie.
+  const sansReponse =
+    nonRendue && fichesSansReponse(dernierComplet?.error).includes(personne.username);
+  // Lu sur le dernier passage et non sur le dernier complet : c'est le passage qui
+  // vient de ne pas renouveler le relevé qui sait depuis combien de temps il ne l'a
+  // pas fait, et le relevé, lui, l'ignore par construction. Même source que la
+  // fraîcheur juste au-dessus, qui lit déjà le dernier passage quel qu'ait été son
+  // sort, et même angle mort le temps qu'une collecte tourne.
+  const ageDuReleve = ageDuReleveDeLaTrace(dernierePasse?.error);
   const appartenance = appartenanceDeLaLigne(
     personne,
     new Map(startupsConnues.map((startup) => [startup.ghid, startup.currentPhase])),
@@ -262,7 +280,9 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
     libelleSansSurcharge: LIBELLE_APPARTENANCE[appartenance.sansSurcharge].libelle,
     ouverts,
     fraicheur,
+    ageDuReleve,
     nonRendue,
+    sansReponse,
     fermes,
     toutesStartupsTerminees: toutesTerminees,
     parEquipe,
