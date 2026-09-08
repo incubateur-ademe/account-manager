@@ -225,7 +225,6 @@ function FormulaireOctroi({
   );
 }
 
-/** Le geste qui laisse quelqu'un d'autre agir sur ce dossier. */
 function Octroi({
   dossierId,
   domainesMenaces,
