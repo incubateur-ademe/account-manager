@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { connecteur } from "@/connectors";
+import type { AuditInput } from "@/core/audit";
 import type { PlannedStep, PrecheckResult, RiskLevel, RunContext } from "@/core/connector";
 import { dossierVivant, type EtatEtape, type EtatValidation, estSoldee } from "@/core/dossier";
 import {
@@ -13,6 +14,7 @@ import {
   refusDEcart,
   refusDePeremption,
 } from "@/core/execution";
+import type { Voie } from "@/core/participation";
 import { estExecutable, type Masse, masseDuPlan, refusDeMasse } from "@/core/plan";
 import type { Prisma } from "@/generated/prisma/client";
 import { profilDeLaPolitique } from "@/lib/arrivee";
@@ -35,6 +37,26 @@ const RISQUE_LU: Record<string, RiskLevel> = { LOW: "low", MEDIUM: "medium", HIG
  * précheck `STALE` dans les deux régimes. Ce qui est soldé, lui, n'est pas retouché.
  */
 const ETATS_REPRIS: readonly EtatEtape[] = ["PENDING", "FAILED", "STALE"];
+
+/**
+ * Qui a lancé, et par quelle porte il l'a prouvé.
+ *
+ * Les deux dans un même objet plutôt que côte à côte dans les options : le nom
+ * n'autorise rien par lui-même, la voie dit ce qu'il vaut, et l'appelant a alors une
+ * session entière à passer plutôt que deux champs à prélever dessus. Réduit à ce que ce
+ * module emploie, ce qui rend une session assignable telle quelle sans faire dépendre
+ * l'exécution d'un plan de la forme de cette session.
+ *
+ * Ce que la forme ne fait pas : elle n'interdit pas de recomposer le couple. Un objet
+ * littéral satisfait cette interface aussi bien qu'une session, le typage étant
+ * structurel, et aucune signature ne dira jamais d'où viennent ces deux valeurs. Ce qui
+ * le tient est du côté de l'appelant, et s'y teste : le seul du dépôt passe la session
+ * que `requireOperateur` a résolue, entière, et son scénario l'épingle ainsi.
+ */
+export interface Operateur {
+  username: string;
+  voie: Voie;
+}
 
 export interface ResultatDExecution {
   /** Ce qui a empêché de partir. Non nul, rien n'a été ni lu ni écrit sur un système. */
@@ -199,15 +221,39 @@ function rapprocher(
  */
 export async function executerPlan(
   planId: string,
-  options: { operateur: string; masseConfirmee: boolean; maintenant: Date },
+  options: { operateur: Operateur; masseConfirmee: boolean; maintenant: Date },
 ): Promise<ResultatDExecution> {
   const { operateur, masseConfirmee, maintenant } = options;
   const runId = randomUUID();
   const dryRun = !env.ACTIONS_ENABLED;
 
+  /**
+   * Toute trace de ce passage, la voie de l'opérateur comprise.
+   *
+   * Posée une fois plutôt que recopiée dans chaque charge utile : l'action qui appelle
+   * ne journalise rien, exprès, si bien que ces lignes sont le seul endroit où la porte
+   * de l'opérateur puisse figurer. Une charge utile qui l'oublierait ne serait pas
+   * incomplète, elle serait muette pour toujours, le journal étant à rétention
+   * indéfinie et une absence ne se distinguant pas d'une ligne écrite avant que le
+   * champ existe.
+   *
+   * `after` est exigé et non facultatif : une ligne sans charge utile n'aurait aucun
+   * endroit pour l'accueillir. Et il ne peut pas nommer sa propre voie, ce que le type
+   * refuse : posée en dernier, elle écraserait celle de la charge utile sans bruit, et
+   * « posée une fois » cesserait d'être vrai à la première qui s'en donnerait une.
+   */
+  const journaliser = ({
+    after,
+    ...evenement
+  }: Omit<AuditInput, "after"> & {
+    after: Record<string, unknown> & { voie?: never };
+  }): void => {
+    audit({ ...evenement, after: { ...after, voie: operateur.voie } });
+  };
+
   const traceDuPlan = {
     actorKind: "HUMAN" as const,
-    actorUsername: operateur,
+    actorUsername: operateur.username,
     action: "plan.execution",
     targetType: "plan",
     targetId: planId,
@@ -215,7 +261,7 @@ export async function executerPlan(
   };
 
   const refuser = (raison: string, masse?: Masse): ResultatDExecution => {
-    audit({
+    journaliser({
       ...traceDuPlan,
       after: { refus: raison, simulation: dryRun, ...(masse ? { masse } : {}) },
       result: "SKIPPED",
@@ -278,10 +324,13 @@ export async function executerPlan(
     return refuser(refusMasse, masse);
   }
 
+  // `audit` tel quel et non la trace de ce passage : ce qu'un connecteur écrit est le
+  // fait d'un système, et une voie collée dessus nommerait une porte que rien n'a
+  // franchie.
   const ctx: RunContext = { runId, now: maintenant, dryRun, audit };
   const aTraiter = ordreDExecution(rapprocher(plan.steps, actuel.etapes, plan.id));
 
-  audit({
+  journaliser({
     ...traceDuPlan,
     after: {
       sens,
@@ -308,7 +357,7 @@ export async function executerPlan(
 
     const trace = {
       actorKind: "HUMAN" as const,
-      actorUsername: operateur,
+      actorUsername: operateur.username,
       action: "plan.etape.execution",
       targetType: "planStep",
       targetId: id,
@@ -324,7 +373,7 @@ export async function executerPlan(
 
     // Avant le premier appel, et sans attendre : le journal précède l'action, et une
     // panne du journal ne doit jamais faire échouer l'action qu'il documente.
-    audit({ ...trace, after: contexte, result: "SUCCESS" });
+    journaliser({ ...trace, after: contexte, result: "SUCCESS" });
 
     let precheck: PrecheckResult | null = null;
     let echecDeLecture: IssueDEtape | null = null;
@@ -346,7 +395,7 @@ export async function executerPlan(
         where: { id },
         data: { lastError: `Précheck : ${echecDeLecture.erreur ?? echecDeLecture.motif}` },
       });
-      audit({
+      journaliser({
         ...trace,
         after: { ...contexte, motif: `Le précheck a levé : ${echecDeLecture.motif}` },
         result: "FAILURE",
@@ -413,7 +462,7 @@ export async function executerPlan(
         validation === "AWAITING"
           ? {
               validation,
-              declaredBy: operateur,
+              declaredBy: operateur.username,
               validatedBy: null,
               validatedAt: null,
               validationNote: null,
@@ -468,7 +517,7 @@ export async function executerPlan(
               await prisma.planStep.update({ where: { id }, data: traceDuGeste });
             }
 
-            audit({
+            journaliser({
               ...trace,
               before: lue,
               after: {
@@ -493,7 +542,7 @@ export async function executerPlan(
       echecs += 1;
     }
 
-    audit({
+    journaliser({
       ...trace,
       after: { ...contexte, motif: issue?.motif ?? decision.motif, etat: etat ?? "inchangé" },
       result: issue?.resultat ?? decision.resultat,

@@ -909,7 +909,9 @@ export async function recalculerPlan(
  *
  * Rien n'est tracé ici : `executerPlan` journalise le plan puis chaque étape avant de
  * l'appeler, nominativement, et une trace de plus posée en amont dirait qu'un geste a
- * eu lieu avant même de savoir si le plan était exécutable.
+ * eu lieu avant même de savoir si le plan était exécutable. L'opérateur y part entier
+ * et non réduit à son nom, pour la même raison : ces lignes-là sont les seules du
+ * geste, et la porte par laquelle il est entré n'a pas d'autre endroit où figurer.
  */
 export async function lancerExecution(
   _etat: EtatAction | null,
@@ -930,7 +932,7 @@ export async function lancerExecution(
   }
 
   const resultat = await executerPlan(planId, {
-    operateur: operateur.username,
+    operateur,
     masseConfirmee,
     maintenant: new Date(),
   });

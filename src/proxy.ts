@@ -37,7 +37,10 @@ export const config = {
   //
   // Ce que cette fermeture vaut, exactement : elle tient contre qui ne porte aucun
   // cookie, et contre lui seul. La barrière constate un cookie sans le valider, si bien
-  // qu'un cookie inventé la franchit et repose la question à la route.
+  // qu'un cookie inventé la franchit. Ce qu'il trouve derrière est le refus de méthode
+  // de la route, qui ne lit pas l'adresse postée. Le guichet qui reste, lui, est
+  // l'écran de connexion, et c'est à lui de ne rien dire de la saisie : ce que ses
+  // fermetures couvrent est écrit chez lui, et cette liste ne se tient pas pour close.
   matcher: [
     "/((?!login|api/auth/callback|api/auth/error|healthz|_next/static|_next/image|favicon.ico|robots.txt).*)",
   ],

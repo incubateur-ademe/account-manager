@@ -14,7 +14,15 @@ import type {
 import { peutClore } from "@/core/dossier";
 import { calculerPlan, enregistrerPlan } from "@/lib/dossier";
 
-import { cloreDossier, confirmerPlan, pointerEtape, validerEtape } from "./actions";
+import type { ResultatDExecution } from "@/lib/execution";
+
+import {
+  cloreDossier,
+  confirmerPlan,
+  lancerExecution,
+  pointerEtape,
+  validerEtape,
+} from "./actions";
 
 process.env["DATABASE_URL"] ??= "postgresql://localhost:5432/inutilise";
 process.env["ESPACE_MEMBRE_API_KEY"] ??= "inutilisee";
@@ -127,6 +135,10 @@ const base = vi.hoisted(() => ({
    * séquentiel : sans ce point, chacune verrait toujours ce que l'autre a déjà écrit.
    */
   pendantLEcritureDeLEtape: null as (() => Promise<void>) | null,
+  /** Ce que le passage tracé a reçu, tel quel : c'est le seul endroit où il se compose. */
+  lancements: [] as { planId: string; options: Record<string, unknown> }[],
+  /** Ce que ce passage rend, refus compris, sans rien exécuter d'ici. */
+  resultatDExecution: {} as ResultatDExecution,
   connecteurs: [] as Connector[],
   modeles: [] as {
     ownerKey: string;
@@ -139,6 +151,17 @@ const base = vi.hoisted(() => ({
 vi.mock("@/connectors", () => ({ CONNECTEURS: base.connecteurs }));
 
 vi.mock("next/cache", () => ({ revalidatePath: () => undefined }));
+
+/**
+ * Le passage tracé est relevé et non joué : ce qui se décide ici est ce que l'action lui
+ * remet, et son propre harnais couvre déjà ce qu'il en fait.
+ */
+vi.mock("@/lib/execution", () => ({
+  executerPlan: (planId: string, options: Record<string, unknown>) => {
+    base.lancements.push({ planId, options });
+    return Promise.resolve(base.resultatDExecution);
+  },
+}));
 
 vi.mock("@/lib/session", () => {
   const session = () =>
@@ -529,6 +552,8 @@ beforeEach(() => {
   base.journal.length = 0;
   base.gestes.length = 0;
   base.pendantLEcritureDeLEtape = null;
+  base.lancements.length = 0;
+  base.resultatDExecution = { simulation: true, executees: 0, soldees: 0, echecs: 0 };
   base.modeles.length = 0;
   base.connecteurs.length = 0;
   base.connecteurs.push(notion, ATELIER);
@@ -2407,5 +2432,80 @@ describe("le porteur qui n'est pas de l'équipe, et son dossier qui ne tient qu'
       await pointerEtape(null, formulaire({ etapeId: celleDuDelegue.id, pointage: "fait" })),
     ).toMatchObject({ erreur: expect.stringContaining("ne vous revient pas") });
     expect(celleDuDelegue.state).toBe("PENDING");
+  });
+});
+
+describe("lancer l'exécution d'un plan, et ce que l'opérateur emporte avec lui", () => {
+  it("remet au passage tracé la session résolue et le geste de masse, et rend son refus tel quel", async () => {
+    // Given un plan confirmé, et une opératrice entrée par la porte de l'espace-membre
+    const { plan } = await dossierAvecPlan("ONBOARDING");
+
+    // When elle lance l'exécution sans cocher la masse, qui est le cas nominal
+    const rendu = await lancerExecution(null, formulaire({ planId: plan.id }));
+
+    // Then le plan visé et le geste de masse partent tels que le formulaire les dit :
+    // au-delà du plafond, un plan ne part pas sans que quelqu'un ait dit une seconde
+    // fois qu'il en répond, et ça ne se déduit pas d'un défaut
+    expect(base.lancements).toHaveLength(1);
+    expect(base.lancements[0]?.planId).toBe(plan.id);
+    expect(base.lancements[0]?.options).toMatchObject({ masseConfirmee: false });
+
+    // Then l'opérateur y part comme la garde l'a résolu, entier, et non recomposé de
+    // deux valeurs prélevées dessus. C'est le seul endroit du geste où le couple se
+    // compose : le passage tracé n'écrit sa voie que d'après ce qu'on lui remet, et
+    // aucune signature ne dira jamais d'où viennent ces deux champs
+    expect(base.lancements[0]?.options["operateur"]).toEqual({
+      username: "operatrice.exemple",
+      email: null,
+      nom: null,
+      personId: null,
+      voie: "ESPACE_MEMBRE",
+      operateur: true,
+    });
+
+    // Then rien n'est tracé ici : le passage journalise le plan puis chaque étape avant
+    // de les appeler, et une trace de plus posée en amont dirait qu'un geste a eu lieu
+    // avant même de savoir si le plan était exécutable
+    expect(base.journal).toEqual([]);
+
+    // Then le compte rendu remonte à l'écran sous sa forme, et pas en erreur
+    expect(rendu).toEqual({ execution: base.resultatDExecution });
+
+    // Given le même plan, la case de masse cochée, et un passage qui refuse
+    base.lancements.length = 0;
+    base.resultatDExecution = {
+      refus: "Ce plan dépasse le plafond de 2 étapes.",
+      simulation: true,
+      executees: 0,
+      soldees: 0,
+      echecs: 0,
+    };
+
+    // When on relance
+    const refuse = await lancerExecution(null, formulaire({ planId: plan.id, masse: "confirmee" }));
+
+    // Then la case cochée voyage, et le refus revient tel quel à l'écran : il nomme
+    // déjà ce qu'il refuse et ce qu'il faut faire, le reformuler ici le dédoublerait
+    expect(base.lancements[0]?.options).toMatchObject({ masseConfirmee: true });
+    expect(refuse).toEqual({ erreur: "Ce plan dépasse le plafond de 2 étapes." });
+
+    // Given un plan qui n'existe plus
+    base.lancements.length = 0;
+
+    // Then rien n'est lancé, et le refus le dit sans nommer de dossier
+    expect(await lancerExecution(null, formulaire({ planId: "plan-parti" }))).toEqual({
+      erreur: "Ce plan n'existe plus.",
+    });
+    expect(base.lancements).toEqual([]);
+
+    // Given une session sans qualité d'opérateur
+    base.sessionOperateur = false;
+
+    // Then la garde casse avant la moindre lecture : un participant qui atteindrait
+    // cette action doit être redirigé, pas recevoir un verdict
+    await expect(lancerExecution(null, formulaire({ planId: plan.id }))).rejects.toThrow(
+      "redirection vers /moi",
+    );
+    expect(base.lancements).toEqual([]);
   });
 });

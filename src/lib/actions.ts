@@ -49,17 +49,18 @@ export type ActionTracee<T> = Trace<T> & {
  * chemin perdrait sa trace sans que rien ne le signale. C'est aussi pourquoi il
  * s'élargit aux non-opérateurs plutôt que de se doubler d'un second passage.
  *
- * La voie d'identification part avec chaque trace de ce passage, y compris celle d'un
- * opérateur. `actorUsername` dit qui, elle dit comment il l'a prouvé, et c'est la
- * seule chose qui sépare un username beta.gouv d'un identifiant de fiche, lequel se
- * renomme. La dire seulement quand elle surprend ferait de son absence le signal, et
- * une absence ne se distingue pas d'un événement écrit avant qu'elle existe.
+ * La voie d'identification part avec toute trace humaine, y compris celle d'un
+ * opérateur, et ce passage n'en est que le chemin le plus fréquenté. `actorUsername`
+ * dit qui, elle dit comment il l'a prouvé, et c'est la seule chose qui sépare un
+ * username beta.gouv d'un identifiant de fiche, lequel se renomme. La dire seulement
+ * quand elle surprend ferait de son absence le signal, et une absence ne se distingue
+ * pas d'un événement écrit avant qu'elle existe.
  *
- * Les lignes qu'un `ecrire` pose lui-même la portent donc aussi, et c'est à lui de
- * les écrire : rien ne les relie à la trace principale de son geste, ni
- * `correlationId`, qu'aucune de ces actions ne pose, ni autre chose, et le voisinage
- * temporel n'est pas un rattachement. Une trace satellite muette sur la voie serait
- * donc muette pour toujours.
+ * La règle vaut donc au-delà d'ici, et c'est à qui écrit de la tenir : les lignes
+ * qu'un `ecrire` pose lui-même comme celles d'un module qui journalise pour son
+ * compte. Rien ne les relie à la trace principale de leur geste, ni `correlationId`,
+ * qu'aucune de ces actions ne pose, ni autre chose, et le voisinage temporel n'est pas
+ * un rattachement : une ligne muette sur la voie le resterait pour toujours.
  */
 export async function actionTracee<T>(params: ActionTracee<T>): Promise<T> {
   const utilisateur = params.utilisateur ?? (await requireOperateur());
