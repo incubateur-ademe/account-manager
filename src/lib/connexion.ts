@@ -26,6 +26,22 @@ import { policy } from "@/lib/policy";
 export const PROVIDER_ADRESSE = "nodemailer";
 
 /**
+ * Le cookie de destination du paquet, sous ses deux noms : il prend le préfixe
+ * `__Secure-` dès que l'origine est en HTTPS, et le perd ailleurs.
+ *
+ * Ici et pas dans l'écran de connexion qui s'en sert, celui-ci étant un module d'actions
+ * serveur, où rien d'autre qu'une fonction ne s'exporte. Écrits en dur parce que le
+ * paquet ne les expose pas, et vérifiés contre lui plutôt que supposés : un test le
+ * relance sur les deux protocoles et compare les noms qu'il émet à cette liste, si bien
+ * qu'un renommage amont vire au rouge au lieu de rouvrir en silence l'oracle que leur
+ * effacement ferme.
+ */
+export const COOKIES_DE_DESTINATION = [
+  "authjs.callback-url",
+  "__Secure-authjs.callback-url",
+] as const;
+
+/**
  * Par quelle porte on entre, ou rien du tout.
  *
  * Rien du tout n'est pas un cas de production, les deux fournisseurs déclarés étant

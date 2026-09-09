@@ -12,6 +12,7 @@ import type {
   SubjectRef,
 } from "@/core/connector";
 import { type EtatEtape, type EtatValidation, estSoldee, etatApresPointage } from "@/core/dossier";
+import type { Voie } from "@/core/participation";
 import type { Profil } from "@/core/policy";
 import { calculerPlan } from "@/lib/dossier";
 import { executerPlan } from "@/lib/execution";
@@ -65,6 +66,8 @@ const base = vi.hoisted(() => ({
   /** Ce que l'environnement autorise. Jamais forcé depuis le code exercé, seulement ici. */
   actionsAutorisees: false,
   jetonForge: true,
+  /** Par quelle porte celui qui lance s'est identifié. Jamais déduit dans le module exercé. */
+  voie: "ESPACE_MEMBRE" as Voie,
   plan: null as PlanEnBase | null,
   journal: [] as AuditInput[],
   /** Les gestes dans l'ordre où ils ont eu lieu, journal et appels mêlés. */
@@ -72,6 +75,8 @@ const base = vi.hoisted(() => ({
   ecritures: [] as { id: string; data: Record<string, unknown> }[],
   etatsDePlanEcrits: [] as string[],
   prechecks: {} as Record<string, PrecheckResult>,
+  /** Les clés dont la lecture casse au lieu de rendre un verdict. */
+  prechecksQuiLevent: [] as string[],
   issues: {} as Record<string, StepOutcome>,
   sujets: [] as SubjectRef[],
   intentions: [] as string[],
@@ -351,6 +356,9 @@ const FORGE: Connector = {
   },
   precheck: (step: PlannedStep) => {
     base.chronologie.push(`precheck:${cle(step)}`);
+    if (base.prechecksQuiLevent.includes(cle(step))) {
+      return Promise.reject(new Error("la forge ne répond pas"));
+    }
     return Promise.resolve(base.prechecks[cle(step)] ?? { state: "READY" });
   },
   execute: (step: PlannedStep) => {
@@ -484,7 +492,25 @@ function etape(cleNue: string): EtapeEnBase {
 }
 
 function lancer(masseConfirmee = false) {
-  return executerPlan(PLAN, { operateur: OPERATEUR, masseConfirmee, maintenant: PLUS_TARD });
+  return executerPlan(PLAN, {
+    operateur: { username: OPERATEUR, voie: base.voie },
+    masseConfirmee,
+    maintenant: PLUS_TARD,
+  });
+}
+
+/**
+ * Les lignes du passage qui ne portent pas la voie attendue.
+ *
+ * Toutes les lignes et non la seule trace du plan : l'action qui lance ne journalise
+ * rien, exprès, si bien qu'une charge utile muette sur la porte de l'opérateur l'est
+ * pour toujours.
+ */
+function sansLaVoie(attendue: Voie): readonly AuditInput[] {
+  return base.journal.filter((ligne) => {
+    const charge = ligne.after as Record<string, unknown> | null | undefined;
+    return charge?.["voie"] !== attendue;
+  });
 }
 
 const appels = () =>
@@ -505,12 +531,14 @@ beforeEach(() => {
   base.seuil = 20;
   base.actionsAutorisees = false;
   base.jetonForge = true;
+  base.voie = "ESPACE_MEMBRE";
   base.plan = null;
   base.journal.length = 0;
   base.chronologie.length = 0;
   base.ecritures.length = 0;
   base.etatsDePlanEcrits.length = 0;
   base.prechecks = {};
+  base.prechecksQuiLevent.length = 0;
   base.issues = {};
   base.sujets.length = 0;
   base.intentions.length = 0;
@@ -565,6 +593,28 @@ describe("la simulation lit tout et n'écrit rien", () => {
     expect(surLEtape).toHaveLength(2);
     expect(JSON.stringify(surLEtape[1]?.after)).toContain("ACTIONS_ENABLED");
     expect(surLEtape[1]?.result).toBe("SKIPPED");
+
+    // Then chaque ligne du passage porte la porte par laquelle l'opérateur est entré,
+    // celle du plan comme celles des étapes : le journal est à rétention indéfinie, et
+    // une ligne muette ne se distinguerait pas d'une ligne écrite avant que le champ
+    // existe
+    expect(new Set(base.journal.map(({ targetType }) => targetType))).toEqual(
+      new Set(["plan", "planStep"]),
+    );
+    expect(sansLaVoie("ESPACE_MEMBRE")).toEqual([]);
+
+    // Given le même plan relancé par quelqu'un entré par l'autre porte
+    base.voie = "ADRESSE";
+    base.journal.length = 0;
+
+    // When on relance
+    await lancer();
+
+    // Then la voie journalisée est celle que l'appelant annonce, et non celle que ce
+    // chemin pourrait déduire : la déduire serait juste tant qu'il reste réservé aux
+    // opérateurs, et faux le jour où il s'élargit, sans que rien ne le signale
+    expect(base.journal.length).toBeGreaterThan(0);
+    expect(sansLaVoie("ADRESSE")).toEqual([]);
   });
 });
 
@@ -647,6 +697,11 @@ describe("l'exécution autorisée", () => {
     // Then l'état du plan se déduit de ses étapes et ne se pose jamais à la main
     expect(base.etatsDePlanEcrits).toEqual(["PARTIALLY_EXECUTED"]);
     expect(resultat).toMatchObject({ simulation: false, executees: 2, soldees: 2, echecs: 1 });
+
+    // Then la voie part avec toutes les lignes du passage et pas seulement celles qui
+    // se passent bien : l'échec et l'écart en disent au moins autant sur qui a lancé
+    expect(base.journal.some(({ result }) => result === "FAILURE")).toBe(true);
+    expect(sansLaVoie("ESPACE_MEMBRE")).toEqual([]);
   });
 
   it("ne solde pas ce que le plan a confié au regard d'un autre, même exécuté sans faute", async () => {
@@ -699,23 +754,27 @@ describe("l'exécution autorisée", () => {
     // `pointerEtape` puis `validerEtape` écrivent, joué entre la lecture et l'écriture
     const dejaFait: string[] = [];
 
-    base.pendantLEcritureDeLEtape = {
-      etape: controlee.id,
-      jouer: () => {
-        dejaFait.push(...appels());
+    const armerLeVerdict = (cible: EtapeEnBase): void => {
+      base.pendantLEcritureDeLEtape = {
+        etape: cible.id,
+        jouer: () => {
+          dejaFait.push(...appels());
 
-        controlee.state = "SUCCEEDED";
-        controlee.validation = "AWAITING";
-        controlee.declaredBy = USERNAME;
-        controlee.attempts += 1;
+          cible.state = "SUCCEEDED";
+          cible.validation = "AWAITING";
+          cible.declaredBy = USERNAME;
+          cible.attempts += 1;
 
-        controlee.state = "PENDING";
-        controlee.validation = "REFUSED";
-        controlee.validatedBy = CONTROLEUR;
-        controlee.validatedAt = PLUS_TARD;
-        controlee.validationNote = "La capture ne montre pas le compte.";
-      },
+          cible.state = "PENDING";
+          cible.validation = "REFUSED";
+          cible.validatedBy = CONTROLEUR;
+          cible.validatedAt = PLUS_TARD;
+          cible.validationNote = "La capture ne montre pas le compte.";
+        },
+      };
     };
+
+    armerLeVerdict(controlee);
 
     const resultat = await lancer();
 
@@ -765,6 +824,7 @@ describe("l'exécution autorisée", () => {
       declaredBy: null,
       attempts: tentatives,
     });
+    expect(conflit[0]?.after).toMatchObject({ voie: "ESPACE_MEMBRE" });
 
     // Then les étapes suivantes du passage ne sont pas abandonnées : une seule d'entre
     // elles était en cause, et lever au milieu aurait laissé les autres en plan
@@ -825,9 +885,28 @@ describe("l'exécution autorisée", () => {
     expect(seconde.soldees).toBe(3);
     expect(base.etatsDePlanEcrits).toEqual([]);
     expect(base.plan?.state).toBe("EXECUTING");
+
+    // Given le premier verdict rejoué, mais par quelqu'un entré par l'autre porte :
+    // aucun autre scénario ne produit la charge utile du conflit, et la voir sous une
+    // seule voie ne dirait pas si elle la rapporte ou si elle la récite
+    await figerLePlan();
+    base.voie = "ADRESSE";
+    base.journal.length = 0;
+    armerLeVerdict(etape(CLE_ADMIN));
+
+    // When on relance
+    await lancer();
+
+    // Then c'est la voie annoncée qui part, sur la ligne du conflit comme sur les autres
+    expect(
+      base.journal.filter(
+        (ligne) => ligne.targetId === etape(CLE_ADMIN).id && ligne.result === "SKIPPED",
+      ),
+    ).toHaveLength(1);
+    expect(sansLaVoie("ADRESSE")).toEqual([]);
   });
 
-  it("reprend une étape retenue en écart, et lui laisse de quoi comprendre l'écart", async () => {
+  it("reprend ce que rien n'a exécuté, écart de rôle comme lecture cassée, et dit pourquoi", async () => {
     // Given une simulation, qui est le défaut, et un précheck qui constate un autre rôle
     // que celui du plan
     expect(base.actionsAutorisees).toBe(false);
@@ -874,6 +953,58 @@ describe("l'exécution autorisée", () => {
     // Then ce qui était soldé n'a pas été retouché : la reprise ne rejoue que ce qui
     // attend encore
     expect(appels().filter((geste) => geste.startsWith("execute:"))).toHaveLength(3);
+
+    // Given le même plan repris à zéro, et un précheck qui casse au lieu de rendre un
+    // verdict : l'autre façon dont une étape traverse la boucle sans que rien ne soit
+    // tenté
+    await figerLePlan();
+    base.prechecksQuiLevent.push(CLE_MEMBRE);
+    base.chronologie.length = 0;
+
+    // When on relance
+    const cassee = await lancer();
+
+    // Then rien n'a été tenté sur elle et son état ne bouge pas : une lecture qui casse
+    // n'est pas une écriture manquée, et poser FAILED dirait qu'on a essayé d'écrire
+    expect(appels()).not.toContain(`execute:${CLE_MEMBRE}`);
+    expect(etape(CLE_MEMBRE).state).toBe("PENDING");
+    expect(etape(CLE_MEMBRE).attempts).toBe(0);
+    expect(etape(CLE_MEMBRE).executedAt).toBeNull();
+    expect(etape(CLE_MEMBRE).lastError).toContain("Précheck :");
+    expect(cassee.echecs).toBe(1);
+
+    // Then la ligne d'échec porte la voie comme les autres : c'est la seule charge
+    // utile que ce chemin-là produit, et elle sort de la boucle avant toutes les autres
+    const lecture = base.journal.filter(
+      (ligne) => ligne.targetId === etape(CLE_MEMBRE).id && ligne.result === "FAILURE",
+    );
+    expect(lecture).toHaveLength(1);
+    expect(lecture[0]?.after).toMatchObject({ voie: "ESPACE_MEMBRE" });
+    expect(sansLaVoie("ESPACE_MEMBRE")).toEqual([]);
+
+    // Then les étapes suivantes du passage ne sont pas abandonnées : une seule d'entre
+    // elles était en cause
+    expect(etape(CLE_LECTEUR).state).toBe("SUCCEEDED");
+    expect(etape(CLE_ADMIN).state).toBe("SUCCEEDED");
+
+    // Given la même lecture cassée, reprise par quelqu'un entré par l'autre porte :
+    // aucun autre scénario ne produit cette charge utile, et la voir sous une seule voie
+    // ne dirait pas si elle la rapporte ou si elle la récite
+    await figerLePlan();
+    base.prechecksQuiLevent.push(CLE_MEMBRE);
+    base.voie = "ADRESSE";
+    base.journal.length = 0;
+
+    // When on relance
+    await lancer();
+
+    // Then c'est la voie annoncée qui part, sur cette ligne comme sur les autres
+    expect(
+      base.journal.filter(
+        (ligne) => ligne.targetId === etape(CLE_MEMBRE).id && ligne.result === "FAILURE",
+      ),
+    ).toHaveLength(1);
+    expect(sansLaVoie("ADRESSE")).toEqual([]);
   });
 });
 
@@ -898,10 +1029,12 @@ describe("les gardes qui précèdent la moindre lecture", () => {
     expect(base.plan?.state).toBe("EXECUTING");
     expect(base.plan?.steps.every((etape) => etape.state === "PENDING")).toBe(true);
 
-    // Then le refus est au journal, sous le plan
+    // Then le refus est au journal, sous le plan, et il porte la voie : un plan retenu
+    // est un geste dont on répond autant qu'un plan qui part
     expect(base.journal).toHaveLength(1);
     expect(base.journal[0]?.result).toBe("SKIPPED");
     expect(base.journal[0]?.targetId).toBe(PLAN);
+    expect(base.journal[0]?.after).toMatchObject({ voie: "ESPACE_MEMBRE", refus: refuse.refus });
 
     // Given le même plan, encore dans sa date
     await figerLePlan();
@@ -963,8 +1096,12 @@ describe("les gardes qui précèdent la moindre lecture", () => {
 
 describe("le plafond de masse", () => {
   it("retient un plan anormalement gros tant qu'un humain n'a pas dit une seconde fois qu'il en répond", async () => {
-    // Given un plafond que ce plan dépasse : trois étapes exécutables pour deux
+    // Given un plafond que ce plan dépasse : trois étapes exécutables pour deux, et
+    // quelqu'un entré par la porte de l'adresse. La garde datée, elle, joue le même
+    // refus depuis l'autre porte : la charge utile est commune aux deux scénarios, et
+    // c'est ce qui interdit à sa voie d'être une constante plutôt qu'un rapport
     base.seuil = 2;
+    base.voie = "ADRESSE";
     await figerLePlan();
 
     // When on lance l'exécution sans le geste supplémentaire, qui est le cas nominal
@@ -976,6 +1113,8 @@ describe("le plafond de masse", () => {
     expect(refuse.refus).toContain("plafond de 2");
     expect(refuse.refus).toContain("relisez la liste");
     expect(refuse.masse).toEqual({ executables: 3, seuil: 2, depasse: true });
+    expect(base.journal).toHaveLength(1);
+    expect(base.journal[0]?.after).toMatchObject({ voie: "ADRESSE", masse: refuse.masse });
 
     // Then la masse est mesurée avant toute lecture : rien n'a été interrogé, rien
     // n'a été écrit
