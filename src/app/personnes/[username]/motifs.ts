@@ -224,7 +224,7 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
       cle: "releve-fige",
       severite: "warning",
       titre: "Aucune sortie du référentiel n'est constatée en ce moment",
-      description: `Les passages de collecte tournent, et ce qu'affiche cette fiche vient bien du dernier, mais aucun ne s'est dit complet depuis ${etat.ageDuReleve} passages. Tant que c'est le cas, l'outil ne date aucune disparition et n'annonce aucune fiche non rendue, pour personne : que rien ici ne signale un départ ne dit donc rien du sien. Ce qui bloque est nommé dans la trace du dernier passage, sur l'écran des collectes.`,
+      description: `Les passages de collecte tournent, et ce qu'affiche cette fiche vient bien du dernier, mais aucun ne s'est dit complet depuis ${etat.ageDuReleve} passages. Tant que c'est le cas, l'outil ne date aucune disparition, pour personne : que rien ici ne signale un départ ne dit donc rien du sien. Ce qui se lit plus bas, s'il y a quelque chose, a été constaté par le dernier passage qui s'est dit complet et non par celui de cette nuit. Ce qui bloque est nommé dans la trace du dernier passage, sur l'écran des collectes.`,
     });
   }
 
