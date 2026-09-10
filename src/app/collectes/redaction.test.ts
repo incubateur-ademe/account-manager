@@ -19,15 +19,14 @@ describe("ce que le bandeau promet à qui autorise une datation", () => {
     // rejoignent plus, parce que lui seul l'écarte et lui seul en rend une autre posable.
     expect(REDACTION.perimetre.suite).toMatch(portee);
 
-    // Then elle énumère les TROIS motifs d'écart et pas deux. La borne échoue fermé,
-    // donc une chute identique à celle annoncée est écartée elle aussi dès que trop de
-    // passages dégradés s'intercalent pour qu'on puisse encore la comparer. En promettre
-    // deux quand le code en écarte trois ferait disparaître une décision sans que rien
-    // ne dise pourquoi, et c'est le seul de ces motifs qu'une opératrice ne peut pas
-    // deviner en lisant les nombres du jour.
+    // Then elle énumère les DEUX motifs d'écart, et pas un de plus. La décision emporte
+    // les nombres qu'on lui a montrés, si bien que la chute du soir se compare toujours
+    // à eux : rien ne la rend immesurable, et une chute identique à celle annoncée lève,
+    // quel que soit le nombre de nuits dégradées qui se sont intercalées. Promettre un
+    // troisième motif ferait reprendre une décision que rien n'aurait touchée.
     expect(REDACTION.perimetre.suite).toContain("plus profonde");
     expect(REDACTION.perimetre.suite).toContain("n'en trouve plus du tout");
-    expect(REDACTION.perimetre.suite).toContain("passages dégradés s'intercalent");
+    expect(REDACTION.perimetre.suite).not.toMatch(/passages dégradés/u);
 
     // Then les systèmes cibles se taisent là-dessus : chez eux une décision lève quelle
     // que soit l'ampleur de la chute du soir, et rien ne l'écarte quand aucune chute ne

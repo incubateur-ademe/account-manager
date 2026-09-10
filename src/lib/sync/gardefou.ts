@@ -51,40 +51,6 @@ function passagesRelus(provider: string, runCourant: string): Promise<{ error: u
 }
 
 /**
- * Le dernier refus que ce fournisseur ait enregistré pour cette famille dans la fenêtre
- * relue, c'est-à-dire celui que l'écran montrait à qui a décidé, ou rien si la fenêtre
- * n'en porte aucun.
- *
- * Rien en base ne dit sur quelle chute une autorisation a été posée, et c'est cette
- * lecture qui en tient lieu. Elle ne le fait qu'à moitié, et mieux vaut le savoir que le
- * déduire : elle retrouve ce qu'un passage a enregistré, pas ce qu'un écran a affiché. Le
- * formulaire ne poste aucun nombre et la page ne se rafraîchit pas, si bien qu'une
- * décision prise depuis un onglet de la veille porte sur une chute que le passage du soir
- * a pu creuser depuis.
- *
- * Ce qu'elle couvre est l'intervalle entre la pose et la dépense, où seuls des passages
- * dégradés peuvent s'intercaler sans rien résoudre : au-delà de la fenêtre, ils emportent
- * le refus montré hors de portée, et l'absence de mesure écarte la décision au lieu de la
- * laisser lever. Un passage peut aussi consulter le garde-fou et ne rien résoudre, en
- * levant sur une écriture plus loin ; il n'atteint alors pas sa clôture, sa trace reste
- * vide, et il ne peut donc pas substituer un autre refus à celui qu'on a montré.
- */
-async function refusMontre(
-  provider: string,
-  famille: FamilleDeChute,
-  runCourant: string,
-): Promise<RefusDeDatation | null> {
-  for (const passage of await passagesRelus(provider, runCourant)) {
-    const refus = refusDeLaTrace(passage.error, famille);
-    if (refus !== null) {
-      return refus;
-    }
-  }
-
-  return null;
-}
-
-/**
  * Le message dit ce qui a été refusé, et depuis combien de passages il l'est à
  * l'identique. La différence n'est pas cosmétique : un avertissement qui retombe
  * chaque nuit avec les mêmes nombres cesse d'être lu, alors qu'il annonce que plus
@@ -133,7 +99,7 @@ export interface AutorisationPosee {
  * enferme celle qui décide au lieu de la protéger. Un appelant de plus doit donc
  * choisir, et ne peut pas hériter du choix d'un voisin.
  */
-export type BorneDAmpleur = "pas plus profonde que le refus montré" | "aucune";
+export type BorneDAmpleur = "pas plus profonde que la chute annoncée" | "aucune";
 
 /**
  * Ce qu'une autorisation doit être pour valoir pour ce passage.
@@ -153,34 +119,42 @@ function attente(provider: string, famille: FamilleDeChute, run: { startedAt: Da
  * qui date : consommée avant, une panne en base entre les deux la brûlerait sans rien
  * dater et ferait écrire au journal qu'on a autorisé ce qui n'a pas eu lieu.
  *
- * Sous la borne de l'ampleur montrée, elle ne vaut que pour une chute qui n'est pas
- * plus profonde que celle qui a été affichée. Rien en base ne dit sur quels nombres un
- * opérateur a décidé, et sans cette borne une décision prise sur quatre départs
+ * Sous la borne de l'ampleur, elle ne vaut que pour une chute qui n'est pas plus
+ * profonde que celle qu'on a montrée à qui a tranché, et ce sont les nombres portés par
+ * la ligne qui le disent : sans cette borne, une décision prise sur quatre départs
  * vérifiés un par un daterait en bloc un effondrement d'une tout autre ampleur survenu
- * depuis. La borne échoue donc fermé : quand le refus montré n'est plus dans la fenêtre
- * relue, l'ampleur affichée n'est plus retrouvable nulle part, et une décision qu'on ne
- * peut plus mesurer est écartée plutôt que levée sans mesure. Élargir la fenêtre ne
- * ferait que déplacer la frontière, tout motif de nuits dégradées plus long la défaisant
- * de nouveau. Elle n'est tenable que chez un appelant qui périme ce qu'elle écarte.
+ * depuis. Les relire dans la trace du dernier passage ne donnerait pas la même chose,
+ * et c'est la raison d'être de ces colonnes : ce qu'un passage a enregistré n'est pas ce
+ * qu'un écran a affiché.
+ *
+ * Une ligne qui ne porte aucun nombre ne se mesure pas, et la borne échoue fermé : elle
+ * est écartée plutôt que levée sans mesure, comme l'est une chute trop profonde. Elle
+ * n'est donc tenable que chez un appelant qui périme ce qu'elle écarte.
  */
 export async function autorisationEnAttente(
   provider: string,
   chute: RefusDeDatation,
-  run: { id: string; startedAt: Date },
+  run: { startedAt: Date },
   borne: BorneDAmpleur,
 ): Promise<AutorisationPosee | null> {
-  if (borne === "pas plus profonde que le refus montré") {
-    const montre = await refusMontre(provider, chute.famille, run.id);
-    if (montre === null || chute.observe < montre.observe) {
-      return null;
-    }
-  }
-
-  return prisma.scopeDropOverride.findFirst({
+  const autorisation = await prisma.scopeDropOverride.findFirst({
     where: attente(provider, chute.famille, run),
     orderBy: { createdAt: "asc" },
-    select: { reason: true, createdBy: true },
+    select: { reason: true, createdBy: true, observe: true },
   });
+
+  if (autorisation === null) {
+    return null;
+  }
+
+  if (
+    borne === "pas plus profonde que la chute annoncée" &&
+    (autorisation.observe === null || chute.observe < autorisation.observe)
+  ) {
+    return null;
+  }
+
+  return { reason: autorisation.reason, createdBy: autorisation.createdBy };
 }
 
 /**

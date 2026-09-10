@@ -22,6 +22,11 @@ import { REDACTION } from "./redaction";
  * L'écran le dit, et offre d'en sortir une fois. Il ne le fait pas tout seul : une
  * chute peut aussi venir d'un système qui répond mal plusieurs nuits d'affilée, et
  * lever le garde-fou automatiquement ferait disparaître des accès bien vivants.
+ *
+ * Le formulaire poste les nombres qu'il affiche parce qu'une décision porte l'ampleur
+ * qu'on avait sous les yeux, et sur elle seule. Ils ne sont pas crus sur parole : cette
+ * page ne se rafraîchit pas, un passage de nuit peut avoir creusé la chute depuis
+ * qu'elle est ouverte, et l'action les recalcule et refuse ce qui ne correspond plus.
  */
 export function GardeFouBloque({ blocage }: { blocage: BlocageInstalle }) {
   const redaction = REDACTION[blocage.famille];
@@ -44,6 +49,8 @@ export function GardeFouBloque({ blocage }: { blocage: BlocageInstalle }) {
           <form action={formAction}>
             <input type="hidden" name="provider" value={blocage.provider} />
             <input type="hidden" name="famille" value={blocage.famille} />
+            <input type="hidden" name="observe" value={blocage.observe} />
+            <input type="hidden" name="reference" value={blocage.reference} />
 
             <div className={fr.cx("fr-input-group")}>
               <label className={fr.cx("fr-label")} htmlFor={idRaison}>

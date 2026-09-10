@@ -10,6 +10,8 @@ import { deconnecter, prisma } from "@/lib/db";
 import { requireOperateur } from "@/lib/session";
 import { collecteEnCours, executerSync } from "@/lib/sync/executer";
 
+import { blocagesDuMoment } from "./blocages";
+
 export interface EtatLancement {
   message?: string;
   erreur?: string;
@@ -100,6 +102,14 @@ export type EtatAutorisation = { erreur: string } | null;
  * L'autorisation ne vaut que pour un passage, et elle est nominative : c'est une
  * décision, pas un réglage. Rien n'est écrit ici sur les accès eux-mêmes, c'est la
  * prochaine collecte qui conclura, avec ce que ses propres yeux auront vu.
+ *
+ * Elle emporte les nombres du refus, et cette action ne croit pas ceux qu'on lui poste :
+ * elle recalcule le blocage et refuse tout ce qui ne correspond pas. Les croire ferait
+ * de ce formulaire la porte par laquelle on écrit l'ampleur de son choix, et la borne
+ * qui mesure la chute du soir mesurerait contre elle. Les recalculer ferme du même geste
+ * la décision prise depuis un onglet que le passage du soir a périmé : la page ne se
+ * rafraîchit pas toute seule, et une opératrice qui tranche sur des nombres vieux d'une
+ * nuit doit l'apprendre ici plutôt que de le découvrir dans une datation en bloc.
  */
 export async function autoriserDatation(
   _etat: EtatAutorisation,
@@ -110,6 +120,8 @@ export async function autoriserDatation(
   const provider = String(formData.get("provider") ?? "").trim();
   const famille = String(formData.get("famille") ?? "").trim();
   const raison = String(formData.get("raison") ?? "").trim();
+  const observe = entierPoste(formData, "observe");
+  const reference = entierPoste(formData, "reference");
 
   if (!estFamilleDeChute(famille)) {
     return { erreur: "Famille de garde-fou non reconnue." };
@@ -121,6 +133,22 @@ export async function autoriserDatation(
     return {
       erreur:
         "Indiquez pourquoi cette chute est légitime : lever un garde-fou sans motif est une décision qu'on ne saura pas réexaminer.",
+    };
+  }
+
+  const montre = (await blocagesDuMoment()).find(
+    (blocage) => blocage.provider === provider && blocage.famille === famille,
+  );
+  if (!montre) {
+    return {
+      erreur:
+        "Ce garde-fou ne bloque plus rien. Rechargez la page : la sortie ne s'offre que sous un refus, et une décision posée sans lui attendrait un passage qui ne la prendra peut-être jamais.",
+    };
+  }
+  if (montre.observe !== observe || montre.reference !== reference) {
+    return {
+      erreur:
+        "La chute a changé depuis l'affichage de cette page. Rechargez-la et décidez sur les nombres du jour : une décision porte l'ampleur qu'on avait sous les yeux, et rien de plus profond ne sera daté sur elle.",
     };
   }
 
@@ -136,14 +164,27 @@ export async function autoriserDatation(
     action: "sync.gardefou.autorise",
     targetType: "system",
     targetId: provider,
-    after: { famille, raison },
+    after: { famille, raison, observe, reference },
     revalider: ["/collectes"],
     ecrire: async (operateur) => {
       await prisma.scopeDropOverride.create({
-        data: { provider, famille, reason: raison, createdBy: operateur.username },
+        data: {
+          provider,
+          famille,
+          reason: raison,
+          createdBy: operateur.username,
+          observe,
+          reference,
+        },
       });
     },
   });
 
   return null;
+}
+
+/** Un entier tel que l'écran l'a posté, ou rien. */
+function entierPoste(formData: FormData, champ: string): number | null {
+  const brut = formData.get(champ);
+  return typeof brut === "string" && /^\d+$/.test(brut) ? Number(brut) : null;
 }

@@ -58,6 +58,9 @@ interface AutorisationEnBase {
   reason: string;
   createdBy: string;
   createdAt: Date;
+  /** Les nombres du refus tels que le bandeau les montrait à qui a tranché. */
+  observe: number | null;
+  reference: number | null;
   consumedAt: Date | null;
   consumedRunId: string | null;
 }
@@ -549,27 +552,45 @@ function refusIdentiques(runIds: readonly string[]): number {
   return dernier ? refusRepete(dernier, lus.slice(1)) : 0;
 }
 
+/** Les nombres que le bandeau montrait à qui a tranché, et que sa décision emporte. */
+interface NombresMontres {
+  observe: number;
+  reference: number;
+}
+
 /**
  * Ce qu'une opératrice pose depuis l'écran des collectes, avant la nuit qu'elle
  * autorise : posée pendant la collecte, elle vaudrait pour la suivante, l'écran
  * promettant d'autoriser la prochaine et non celle qui tourne.
+ *
+ * Les nombres se disent à chaque appel, et c'est ce que ces scénarios ont à dire : ce
+ * contre quoi la borne mesure est ce que l'écran montrait, et un harnais qui le
+ * redéduirait de la trace du dernier passage rejouerait la mesure qu'on vient d'ôter du
+ * code.
  */
-function autoriser(index: number, raison: string): void {
-  poser(new Date(quand(index).getTime() - 3_600_000), raison);
+function autoriser(index: number, raison: string, montre: NombresMontres): void {
+  poser(new Date(quand(index).getTime() - 3_600_000), raison, montre);
 }
 
 /** La même décision, cliquée alors que la collecte de cette nuit-là tourne déjà. */
-function autoriserPendant(index: number, raison: string): void {
-  poser(new Date(quand(index).getTime() + 3_600_000), raison);
+function autoriserPendant(index: number, raison: string, montre: NombresMontres): void {
+  poser(new Date(quand(index).getTime() + 3_600_000), raison, montre);
 }
 
-function poser(createdAt: Date, raison: string): void {
+/** Une ligne d'avant la migration : elle attend, et rien ne dit sur quoi. */
+function autoriserSansNombres(index: number, raison: string): void {
+  poser(new Date(quand(index).getTime() - 3_600_000), raison, null);
+}
+
+function poser(createdAt: Date, raison: string, montre: NombresMontres | null): void {
   base.autorisations.push({
     provider: "espace-membre",
     famille: "perimetre",
     reason: raison,
     createdBy: "capucine.exemple",
     createdAt,
+    observe: montre?.observe ?? null,
+    reference: montre?.reference ?? null,
     consumedAt: null,
     consumedRunId: null,
   });
@@ -1474,7 +1495,10 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     expect(levees()).toEqual([]);
 
     // When une opératrice pose une autorisation motivée, avant la nuit suivante.
-    autoriser(4, "quatre fins de mission groupées, vérifiées une par une");
+    autoriser(4, "quatre fins de mission groupées, vérifiées une par une", {
+      observe: 9,
+      reference: 13,
+    });
     const degel = await nuit(4, { omis: CHUTE });
 
     // Then ce passage-là date, une fois : les quatre départs réels reçoivent enfin
@@ -1534,7 +1558,10 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
 
     // Given une opératrice qui tranche sur ces nombres-là, et sur eux seuls : la
     // raison qu'elle écrit parle de quatre départs vérifiés un par un.
-    autoriser(2, "quatre fins de mission groupées, vérifiées une par une");
+    autoriser(2, "quatre fins de mission groupées, vérifiées une par une", {
+      observe: 9,
+      reference: 13,
+    });
 
     // When la nuit suivante subit un effondrement d'une tout autre ampleur : la liste
     // ne rend plus que trois personnes.
@@ -1555,13 +1582,18 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     expect(perimees()).toEqual([{ action: "sync.gardefou.perime", targetId: "espace-membre" }]);
     expect(base.autorisations[0]).toMatchObject({ consumedRunId: effondrement.runId });
 
-    // When l'amont retrouve l'ampleur d'hier et une seconde décision est posée sur les
-    // nombres que l'écran annonce ce soir-là.
-    autoriser(3, "quatre fins de mission groupées, vérifiées une par une");
+    // When une seconde décision est posée sur les nombres que l'écran annonce ce
+    // soir-là, ceux de l'effondrement, et que l'amont retrouve entre-temps l'ampleur
+    // d'avant-hier.
+    autoriser(3, "sortie d'une startup entière, dix départs vérifiés ce matin", {
+      observe: 3,
+      reference: 13,
+    });
     const degel = await nuit(3, { omis: CHUTE });
 
-    // Then celle-là lève et date : la borne écarte les décisions dépassées, elle
-    // n'éteint pas la sortie.
+    // Then celle-là lève et date les quatre départs du soir : la borne écarte ce qui
+    // est plus profond que l'ampleur examinée, elle n'écarte pas ce qui l'est moins, et
+    // elle n'éteint pas la sortie.
     expect(degel.status).toBe("OK");
     expect(degel.vanished).toBe(4);
     expect(levees()).toHaveLength(1);
@@ -1571,7 +1603,10 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     // Given un relevé de treize, quatre départs refusés, et une opératrice qui tranche.
     await nuit(0);
     await nuit(1, { omis: CHUTE });
-    autoriser(2, "quatre fins de mission groupées, vérifiées une par une");
+    autoriser(2, "quatre fins de mission groupées, vérifiées une par une", {
+      observe: 9,
+      reference: 13,
+    });
 
     // When l'amont se répare de lui-même : la nuit suivante retrouve les treize, se
     // dit complète, et n'a plus rien à refuser.
@@ -1607,7 +1642,10 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     // Given un relevé de treize, quatre départs refusés, et une opératrice qui tranche.
     await nuit(0);
     await nuit(1, { omis: CHUTE });
-    autoriser(2, "quatre fins de mission groupées, vérifiées une par une");
+    autoriser(2, "quatre fins de mission groupées, vérifiées une par une", {
+      observe: 9,
+      reference: 13,
+    });
 
     // When la base tombe au moment précis où le passage écrit ses disparitions.
     base.panneDeDatation = true;
@@ -1640,7 +1678,10 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
 
     // Given une opératrice qui clique alors que la collecte de la nuit suivante tourne
     // déjà : elle décide sur un état que cette collecte a cessé de lire.
-    autoriserPendant(2, "quatre fins de mission groupées, vérifiées une par une");
+    autoriserPendant(2, "quatre fins de mission groupées, vérifiées une par une", {
+      observe: 9,
+      reference: 13,
+    });
     const pendant = await nuit(2, { omis: CHUTE });
 
     // Then cette nuit-là refuse encore, et ne touche à rien : ni levée, ni mise à
@@ -1668,7 +1709,10 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     await nuit(0);
     const refus = await nuit(1, { omis: CHUTE });
     expect(refus.chuteRefusee).toEqual({ famille: "perimetre", observe: 9, reference: 13 });
-    autoriser(2, "quatre fins de mission groupées, vérifiées une par une");
+    autoriser(2, "quatre fins de mission groupées, vérifiées une par une", {
+      observe: 9,
+      reference: 13,
+    });
 
     // When la nuit suivante perd les mêmes quatre personnes et rend en plus un
     // enregistrement illisible, que la lecture écarte sans pouvoir le nommer.
@@ -1777,7 +1821,10 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     ]);
 
     // When une opératrice tranche sur les nombres que ce bandeau lui montre.
-    autoriser(4, "quatre fins de mission groupées, vérifiées une par une");
+    autoriser(4, "quatre fins de mission groupées, vérifiées une par une", {
+      observe: 9,
+      reference: 13,
+    });
     const degel = await nuit(4, { fiche: "absente", omis: CHUTE });
 
     // Then les quatre départs réels reçoivent leur date, la fiche retenue non, et le
@@ -1797,31 +1844,44 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     expect(fiche(TRANSVERSE).vanishedAt).toEqual(NUITS[5]);
   });
 
-  it("mesure l'ampleur contre le dernier refus enregistré, et non contre le plus ancien de la fenêtre", async () => {
-    // Given un relevé de treize, puis un creux : six personnes manquent à l'appel, et
-    // le plancher refuse.
+  it("mesure l'ampleur contre les nombres que la décision emporte, et non contre le dernier refus enregistré", async () => {
+    // Given un relevé de treize et trois nuits que le plancher refuse à l'identique :
+    // le bandeau s'ouvre, et il annonce neuf personnes contre treize.
     await nuit(0);
-    const creux = await nuit(1, { omis: SIX });
+    for (const index of [1, 2, 3]) {
+      await nuit(index, { omis: CHUTE });
+    }
+    expect(blocagesAnnonces()).toEqual([
+      {
+        provider: "espace-membre",
+        famille: "perimetre",
+        observe: 9,
+        reference: 13,
+        passages: 3,
+      },
+    ]);
+
+    // Given une nuit qui creuse la chute pendant que l'écran ouvert devant l'opératrice
+    // continue d'annoncer neuf : deux personnes de plus manquent à l'appel, et ce
+    // refus-là est désormais le dernier que la base porte.
+    const creux = await nuit(4, { omis: SIX });
     expect(creux.chuteRefusee).toEqual({ famille: "perimetre", observe: 7, reference: 13 });
 
-    // Given l'amont qui se rétablit en partie la nuit suivante : quatre manquent
-    // encore, le plancher refuse toujours, et c'est ce refus-là que l'écran montre.
-    const montre = await nuit(2, { omis: CHUTE });
-    expect(montre.chuteRefusee).toEqual({ famille: "perimetre", observe: 9, reference: 13 });
+    // Given l'opératrice qui tranche sur les nombres qu'elle a sous les yeux, et sur eux
+    // seuls : neuf contre treize, quatre départs qu'elle est allée vérifier un par un.
+    autoriser(5, "quatre fins de mission groupées, vérifiées une par une", {
+      observe: 9,
+      reference: 13,
+    });
 
-    // Given une opératrice qui tranche sur ces nombres-là, les seuls qu'elle ait eus
-    // sous les yeux : neuf personnes contre treize, qu'elle est allée vérifier.
-    autoriser(3, "quatre fins de mission groupées, vérifiées une par une");
+    // When la chute du soir se place entre les deux : plus profonde que les neuf
+    // examinés, moins profonde que les sept du creux.
+    const rechute = await nuit(5, { omis: CINQ });
 
-    // When la chute du soir est plus profonde que celle qu'on lui a montrée, sans
-    // atteindre le creux d'il y a deux passages.
-    const rechute = await nuit(3, { omis: CINQ });
-
-    // Then rien n'est daté : la borne d'ampleur se mesure contre le dernier refus
-    // enregistré, celui que l'écran affichait quand la décision a été prise, et non
-    // contre le plus ancien que la fenêtre relue contienne encore. Prendre le plus
-    // ancien ferait passer pour examinée une personne de plus que l'opératrice n'en a
-    // vue, et sa sortie de périmètre suit, en gravité haute.
+    // Then rien n'est daté. Mesurée contre le dernier refus que la base porte, cette
+    // chute passait : huit est au-dessus des sept du creux, et la décision aurait daté
+    // une personne que personne n'a jamais eue sous les yeux, en gravité haute. Mesurée
+    // contre ce que la décision emporte, elle est écartée.
     expect(rechute.status).toBe("PARTIAL");
     expect(rechute.vanished).toBe(0);
     expect(rechute.chuteRefusee).toEqual({ famille: "perimetre", observe: 8, reference: 13 });
@@ -1831,20 +1891,42 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     // la laisser attendre interdirait d'en poser une autre sur les nombres du soir.
     expect(levees()).toEqual([]);
     expect(perimees()).toEqual([{ action: "sync.gardefou.perime", targetId: "espace-membre" }]);
+    expect(base.autorisations[0]).toMatchObject({ consumedRunId: rechute.runId });
 
-    // When l'opératrice tranche de nouveau, cette fois sur ce que le dernier passage a
-    // refusé.
-    autoriser(4, "cinq départs, dont le cinquième vérifié ce matin");
-    const degel = await nuit(4, { omis: CINQ });
+    // When l'opératrice reprend sur les nombres du jour, que le bandeau annonce
+    // désormais.
+    autoriser(6, "cinq départs, dont le cinquième vérifié ce matin", {
+      observe: 8,
+      reference: 13,
+    });
+    const degel = await nuit(6, { omis: CINQ });
 
     // Then celle-là lève et date : la borne écarte les décisions dépassées, elle
     // n'éteint pas la sortie.
     expect(degel.status).toBe("OK");
     expect(degel.vanished).toBe(5);
     expect(levees()).toHaveLength(1);
+
+    // When une ligne d'avant la migration attend à son tour : trois personnes de plus
+    // s'en vont, le plancher refuse contre le relevé de huit que le dégel a laissé, et
+    // la décision qui attend ne dit pas sur quels nombres elle a été prise.
+    const apresLeDegel = [...CINQ, "blandine.exemple", "gwendal.exemple", "hakim.exemple"];
+    const apres = await nuit(7, { omis: apresLeDegel });
+    expect(apres.chuteRefusee).toEqual({ famille: "perimetre", observe: 5, reference: 8 });
+    autoriserSansNombres(8, "décision d'avant que la ligne ne porte les nombres");
+    const sansMesure = await nuit(8, { omis: apresLeDegel });
+
+    // Then elle est écartée, et non levée : une décision qu'on ne sait pas mesurer ne
+    // date rien, exactement comme celle dont l'ampleur montrée est dépassée. C'est le
+    // seul comportement qui tienne l'invariant, et il vaut aussi pour les lignes que la
+    // migration a laissées derrière elle.
+    expect(sansMesure.status).toBe("PARTIAL");
+    expect(sansMesure.vanished).toBe(0);
+    expect(levees()).toHaveLength(1);
+    expect(perimees()).toHaveLength(2);
   });
 
-  it("écarte la décision que plus aucun refus de la fenêtre relue ne mesure", async () => {
+  it("écarte l'effondrement qu'aucune décision n'a examiné, si vieux que soit le refus montré", async () => {
     // Given un relevé de treize, trois nuits que le plancher refuse, et le bandeau qui
     // s'ouvre sur ces nombres-là.
     await nuit(0);
@@ -1862,12 +1944,15 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     ]);
 
     // Given une opératrice qui tranche sur ce que ce bandeau lui montre.
-    autoriser(4, "quatre fins de mission groupées, vérifiées une par une");
+    autoriser(4, "quatre fins de mission groupées, vérifiées une par une", {
+      observe: 9,
+      reference: 13,
+    });
 
-    // When il passe autant de nuits dégradées que la fenêtre relue compte de passages.
-    // Aucune n'atteint le plancher, donc aucune n'écrit de refus, donc aucune ne
-    // résout la décision : elle attend toujours, et le refus qu'on lui avait montré
-    // vient de sortir de la fenêtre.
+    // When il passe autant de nuits dégradées que la fenêtre des refus répétés compte
+    // de passages. Aucune n'atteint le plancher, donc aucune n'écrit de refus, donc
+    // aucune ne résout la décision : elle attend toujours, et le refus qu'on lui avait
+    // montré est sorti de la fenêtre que relit la phrase des chutes.
     for (const index of [4, 5, 6, 7, 8, 9, 10, 11]) {
       const degradee = await nuit(index, { omis: CHUTE, lecture: "amputée" });
       expect(degradee.chuteRefusee).toBeNull();
@@ -1877,10 +1962,12 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     // When la nuit suivante est complète, et onze personnes manquent au lieu de quatre.
     const effondrement = await nuit(12, { omis: EFFONDREMENT_TOTAL });
 
-    // Then personne n'est daté. L'ampleur montrée à qui décidait n'est plus
-    // retrouvable, la borne n'a donc plus rien contre quoi mesurer, et elle écarte au
-    // lieu de lever : onze sorties de périmètre en gravité haute ne se prononcent pas
-    // sur une phrase écrite pour quatre départs vérifiés un par un.
+    // Then personne n'est daté. La décision porte les neuf qu'on lui a montrés, la
+    // chute du soir en compte deux, elle est donc plus profonde que ce qui a été
+    // examiné : onze sorties de périmètre en gravité haute ne se prononcent pas sur
+    // une phrase écrite pour quatre départs vérifiés un par un. L'âge du refus montré
+    // n'y est pour rien, et c'est ce qui change ici : la mesure voyage avec la
+    // décision, elle ne se cherche plus dans une fenêtre de passages.
     expect(effondrement.status).toBe("PARTIAL");
     expect(effondrement.vanished).toBe(0);
     expect(effondrement.chuteRefusee).toEqual({ famille: "perimetre", observe: 2, reference: 13 });
@@ -1903,14 +1990,62 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
         passages: 12,
       },
     ]);
-    autoriser(13, "sortie d'une startup entière, onze départs vérifiés ce matin");
+    autoriser(13, "sortie d'une startup entière, onze départs vérifiés ce matin", {
+      observe: 2,
+      reference: 13,
+    });
     const degel = await nuit(13, { omis: EFFONDREMENT_TOTAL });
 
-    // Then celle-là lève et date : le silence de la fenêtre écarte la décision qu'il
-    // rend immesurable, il n'éteint pas la sortie.
+    // Then celle-là lève et date : la borne écarte les décisions dépassées, elle
+    // n'éteint pas la sortie.
     expect(degel.status).toBe("OK");
     expect(degel.vanished).toBe(11);
     expect(levees()).toHaveLength(1);
+  });
+
+  it("garde sa mesure au travers d'une fenêtre entière de nuits dégradées", async () => {
+    // Given un relevé de treize, trois nuits que le plancher refuse, et une opératrice
+    // qui tranche sur les nombres du bandeau.
+    await nuit(0);
+    for (const index of [1, 2, 3]) {
+      await nuit(index, { omis: CHUTE });
+    }
+    autoriser(4, "quatre fins de mission groupées, vérifiées une par une", {
+      observe: 9,
+      reference: 13,
+    });
+
+    // When il passe autant de nuits dégradées que la fenêtre des refus répétés compte
+    // de passages, les quatre mêmes personnes manquant toujours : aucune n'atteint le
+    // plancher, aucune n'écrit de refus, aucune ne résout la décision.
+    for (const index of [4, 5, 6, 7, 8, 9, 10, 11]) {
+      const degradee = await nuit(index, { omis: CHUTE, lecture: "amputée" });
+      expect(degradee.chuteRefusee).toBeNull();
+    }
+    expect(base.autorisations[0]).toMatchObject({ consumedAt: null, consumedRunId: null });
+
+    // When la nuit suivante est complète, et ce sont les quatre mêmes qui manquent.
+    const degel = await nuit(12, { omis: CHUTE });
+
+    // Then la décision lève et date, alors que rien de la chute n'a bougé depuis
+    // qu'elle a été prise. C'est ce qu'une mesure cherchée dans la fenêtre des
+    // passages relus perdait : le refus montré en sortait, l'ampleur n'était plus
+    // retrouvable, et la décision était écartée sans qu'aucun nombre n'ait changé. Un
+    // motif de nuits dégradées un peu plus long que cette fenêtre refermait ainsi la
+    // seule sortie du gel, et l'élargir n'aurait fait que déplacer la frontière.
+    expect(degel.status).toBe("OK");
+    expect(degel.vanished).toBe(4);
+    for (const username of CHUTE) {
+      expect(fiche(username).vanishedAt).toEqual(NUITS[12]);
+    }
+    expect(levees()).toEqual([{ action: "sync.gardefou.leve", targetId: "espace-membre" }]);
+    expect(perimees()).toEqual([]);
+    expect(base.autorisations[0]).toMatchObject({ consumedRunId: degel.runId });
+
+    // Then le relevé avance, et le bandeau se referme : la sortie a bien dénoué le gel
+    // plutôt que de le reporter d'une nuit.
+    expect(releveDeReference()).toMatchObject({ itemsSeen: 9, startedAt: NUITS[12] });
+    expect(blocagesAnnonces()).toEqual([]);
   });
 
   it("laisse derrière lui un relevé qui compte la fiche retenue, et le plancher de demain avec", async () => {
@@ -1981,7 +2116,10 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     ]);
 
     // When une opératrice tranche sur les nombres que ce bandeau lui montre.
-    autoriser(4, "quatre fins de mission groupées, vérifiées une par une");
+    autoriser(4, "quatre fins de mission groupées, vérifiées une par une", {
+      observe: 9,
+      reference: 13,
+    });
     const degel = await nuit(4, { omis: CHUTE });
 
     // Then ce passage-là date, une fois, et le relevé avance : le motif qui gelait tout
@@ -2017,7 +2155,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     expect(blocagesAnnonces()).toEqual([]);
 
     // When une opératrice pose quand même une autorisation, sans que rien ne l'y invite.
-    autoriser(4, "décision posée alors que rien ne la réclamait");
+    autoriser(4, "décision posée alors que rien ne la réclamait", { observe: 9, reference: 13 });
     const encore = await nuit(4, { lecture: "amputée" });
 
     // Then elle dort, entière : la nuit reste dégradée par sa propre cause, rien n'est

@@ -871,7 +871,7 @@ model ScopeDropOverride {
 
   provider String
 
-  /// « identites » ou « ressources » : les deux verrous sont distincts, une
+  /// « identites », « ressources » ou « perimetre » : les verrous sont distincts, une
   /// autorisation ne lève que le sien.
   famille String
 
@@ -881,6 +881,16 @@ model ScopeDropOverride {
 
   createdBy String
   createdAt DateTime @default(now())
+
+  /// Les nombres du refus tels qu'ils ont été montrés à qui décidait, figés ici plutôt
+  /// que redevinés à la consommation. Sans eux, la borne d'ampleur relisait le dernier
+  /// refus enregistré, qui n'est pas forcément celui de l'écran : une décision prise sur
+  /// une chute annoncée pouvait alors en laisser passer une plus profonde.
+  ///
+  /// Nullables pour les lignes antérieures, et une décision sans nombres ne se mesure
+  /// pas, donc ne lève pas : elle est écartée, et se repose sur les nombres du jour.
+  observe   Int?
+  reference Int?
 
   /// Se consomme au premier passage qui s'en sert, et ne vaut donc que pour lui : une
   /// autorisation qui durerait éteindrait le garde-fou au lieu de le lever une fois.

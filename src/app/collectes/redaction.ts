@@ -28,7 +28,7 @@ export interface Redaction {
  * décision qui l'attend toujours, et l'écran refuserait la seconde.
  */
 const PORTEE =
-  " Elle ne vaut que pour la chute annoncée ici : si le passage suivant en trouve une plus profonde, s'il n'en trouve plus du tout, ou si trop de passages dégradés s'intercalent pour qu'on puisse encore la comparer à ce qui vous est montré ici, la décision est écartée et il faut la reprendre sur les nombres du jour.";
+  " Elle ne vaut que pour la chute annoncée ici, dont elle emporte les nombres : si le passage suivant en trouve une plus profonde, ou s'il n'en trouve plus du tout, la décision est écartée et il faut la reprendre sur les nombres du jour.";
 
 /**
  * Les deux garde-fous d'un système cible comparent ce qu'une lecture vient de rendre à

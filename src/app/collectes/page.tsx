@@ -3,11 +3,11 @@ import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import { Table } from "@codegouvfr/react-dsfr/Table";
 
-import { blocagesInstalles } from "@/core/collecte";
 import { prisma } from "@/lib/db";
 import { requireOperateur } from "@/lib/session";
 import { collecteEnCours } from "@/lib/sync/executer";
 import { BoutonCollecte } from "./BoutonCollecte";
+import { blocagesDuMoment, PASSAGES_AFFICHES } from "./blocages";
 import { GardeFouBloque } from "./GardeFouBloque";
 
 export const dynamic = "force-dynamic";
@@ -52,10 +52,10 @@ export default async function CollectesPage() {
   await requireOperateur();
 
   const maintenant = new Date();
-  const [runs, enCours] = await Promise.all([
+  const [runs, blocages, enCours] = await Promise.all([
     prisma.syncRun.findMany({
       orderBy: { startedAt: "desc" },
-      take: 60,
+      take: PASSAGES_AFFICHES,
       select: {
         id: true,
         provider: true,
@@ -67,13 +67,14 @@ export default async function CollectesPage() {
         error: true,
       },
     }),
+    // Une seconde lecture des mêmes passages, et non un tri de ceux qu'on vient de
+    // lire : c'est l'appel que refait l'action de sortie pour vérifier ce qu'on lui
+    // poste, et les nombres qu'elle compare doivent venir du même endroit que ceux
+    // qu'on affiche ici. Un garde-fou qui refuse toujours la même chose ne se lit pas
+    // dans une ligne de journal parmi soixante, il se dit en tête d'écran.
+    blocagesDuMoment(),
     collecteEnCours(maintenant),
   ]);
-
-  // Sur les runs relus ci-dessus, du plus récent au plus ancien : un garde-fou qui
-  // refuse toujours la même chose ne se lit pas dans une ligne de journal parmi
-  // soixante, il se dit en tête d'écran.
-  const blocages = blocagesInstalles(runs);
 
   return (
     <main className={fr.cx("fr-container", "fr-my-6w")}>

@@ -565,7 +565,7 @@ export async function syncPerimetre(
             FOURNISSEUR_PERIMETRE,
             chute,
             run,
-            "pas plus profonde que le refus montré",
+            "pas plus profonde que la chute annoncée",
           );
     const levee = autorisation !== null;
 
