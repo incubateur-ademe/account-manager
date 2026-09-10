@@ -259,6 +259,23 @@ export interface RefusDeDatation {
   famille: FamilleDeChute;
   observe: number;
   reference: number;
+  /**
+   * Combien de fiches la datation toucherait si elle avait lieu, compté avec la requête
+   * même qui les daterait. Les deux nombres du dessus disent des tailles de listes,
+   * celui-ci dit la conséquence, et les deux mondes ne coïncident pas : une nuit
+   * dégradée fait naître des fiches sans toucher la référence, si bien qu'un écart
+   * annoncé de quatre peut en dater onze.
+   *
+   * Propre au périmètre. Un système cible ne l'écrit pas : sa référence est déjà un
+   * décompte de lignes tenues pour vivantes, donc déjà la conséquence. Absent aussi
+   * quand le comptage n'a pas abouti, ce qui ne change rien au refus : sans ce nombre
+   * il n'y a pas d'ampleur à mesurer, donc pas de décision qui lève.
+   *
+   * Hors de la comparaison des refus répétés, qui ne lit que les deux nombres du
+   * dessus : ce compte bouge dès qu'une fiche naît, et un refus par ailleurs identique
+   * cesserait de s'annoncer installé pour cette seule raison, refermant la sortie.
+   */
+  datables?: number;
 }
 
 const FAMILLES: readonly FamilleDeChute[] = ["identites", "ressources", "perimetre"];
@@ -271,6 +288,30 @@ const FAMILLES: readonly FamilleDeChute[] = ["identites", "ressources", "perimet
  */
 export function estFamilleDeChute(valeur: string): valeur is FamilleDeChute {
   return (FAMILLES as readonly string[]).includes(valeur);
+}
+
+/**
+ * Les familles dont une décision se mesure à ce qu'une datation toucherait.
+ *
+ * Une table plutôt qu'une condition, comme partout où cette famille se décline : une
+ * famille de plus qui ne dirait pas si son ampleur se mesure ne compilerait pas, là où
+ * une condition l'enverrait sans bruit du côté de celles qui ne mesurent rien.
+ */
+const AMPLEUR_EXIGEE: Record<FamilleDeChute, boolean> = {
+  identites: false,
+  ressources: false,
+  perimetre: true,
+};
+
+/**
+ * Y a-t-il de quoi mesurer une décision contre ce refus ?
+ *
+ * Le nombre manque quand le comptage n'a pas abouti, et une décision posée là-dessus
+ * est écartée sans rien dater. La question se pose donc au moment où quelqu'un tranche
+ * et peut encore l'apprendre, et pas seulement au passage qui l'écarterait.
+ */
+export function ampleurMesurable(refus: RefusDeDatation): boolean {
+  return !AMPLEUR_EXIGEE[refus.famille] || refus.datables !== undefined;
 }
 
 /**
@@ -369,6 +410,19 @@ export function releveFige(passages: number): boolean {
 export const RELEVE_NON_RENOUVELE = "relevé non renouvelé";
 
 /**
+ * Ce par quoi commence la phrase qu'un passage laisse quand il n'a pas pu compter ce
+ * qu'une datation toucherait.
+ *
+ * Ce compte-là ne sert qu'à qui tranche, et un passage qui le rate refuse de toute
+ * façon : la panne ne change donc rien à ce qu'il conclut, et rien n'en porterait
+ * trace. Or elle décide de tout ce qu'une opératrice peut faire ensuite, chaque
+ * décision posée sans ce nombre étant écartée par le passage suivant. Sans cette ligne,
+ * trois nuits de refus se lisent comme trois nuits ordinaires, et ce qui coince
+ * n'apparaît nulle part.
+ */
+export const AMPLEUR_NON_COMPTEE = "ampleur non comptée";
+
+/**
  * L'âge du relevé tel qu'un passage l'a porté dans sa trace, quand il l'a porté.
  *
  * Le compte est relu et non recalculé par l'écran : le passage seul connaît son propre
@@ -390,6 +444,10 @@ export function ageDuReleveDeLaTrace(error: unknown): number | null {
  *
  * La trace est du JSON libre côté base : la lire ici plutôt que chez chaque appelant
  * évite que l'écran et la collecte ne s'accordent plus sur ce qu'ils y cherchent.
+ *
+ * Recomposé champ par champ plutôt que rendu tel quel : ce qu'on n'a pas reconnu ne
+ * doit pas voyager jusqu'au bandeau sous le nom d'une mesure, l'ampleur annoncée à qui
+ * tranche étant exactement ce que sa décision emporte.
  */
 export function refusDeLaTrace(error: unknown, famille: FamilleDeChute): RefusDeDatation | null {
   if (!error || typeof error !== "object" || !("refus" in error)) {
@@ -409,7 +467,13 @@ export function refusDeLaTrace(error: unknown, famille: FamilleDeChute): RefusDe
       typeof (entree as RefusDeDatation).observe === "number" &&
       typeof (entree as RefusDeDatation).reference === "number"
     ) {
-      return entree as RefusDeDatation;
+      const lu = entree as RefusDeDatation;
+      return {
+        famille,
+        observe: lu.observe,
+        reference: lu.reference,
+        datables: typeof lu.datables === "number" ? lu.datables : undefined,
+      };
     }
   }
 

@@ -1,5 +1,6 @@
 import type { Attachment } from "@/core/appartenance";
 import {
+  AMPLEUR_NON_COMPTEE,
   ageDuReleve,
   autrePassageCompletDepuis,
   chuteExcessive,
@@ -541,11 +542,21 @@ export async function syncPerimetre(
     );
     retenues = rendues.surAveu;
     retenuesSansReponse = rendues.sansReponse;
+    const connues = [...known, ...retenues, ...retenuesSansReponse];
 
     const reference = precedent?.itemsSeen ?? 0;
     const effectif = effectifTenu(resolues.length, [...retenues, ...retenuesSansReponse]);
-    const chute = chuteExcessive(reference, effectif, policy().thresholds.maxScopeDrop)
-      ? ({ famille: "perimetre", observe: effectif, reference } as const)
+    const chute: RefusDeDatation | null = chuteExcessive(
+      reference,
+      effectif,
+      policy().thresholds.maxScopeDrop,
+    )
+      ? {
+          famille: "perimetre",
+          observe: effectif,
+          reference,
+          datables: await ampleurDeLaDatation(connues),
+        }
       : null;
 
     // L'autorisation ne se cherche qu'ici, sous le statut complet, et c'est ce qui la
@@ -577,6 +588,16 @@ export async function syncPerimetre(
         // Une réponse valide mais amputée ne se distingue d'un départ collectif que par
         // son ampleur : dans le doute, on ne date aucune disparition.
         errors.push(dit);
+        // Dit là où l'écran relit les passages, et à côté du refus qu'il explique. Sans
+        // cette ligne, une panne du comptage ne laisse aucune trace nulle part alors
+        // qu'elle décide de tout ce qu'une opératrice peut faire ensuite : sans ampleur
+        // à mesurer, chaque décision qu'elle posera sera écartée, et elle ne verrait que
+        // des nuits de refus qui ressemblent à toutes les autres.
+        if (chute.datables === undefined) {
+          errors.push(
+            `${AMPLEUR_NON_COMPTEE} : ce qu'une datation toucherait n'a pas pu être compté, aucune décision ne se mesurera tant que ce compte échouera`,
+          );
+        }
         chuteRefusee = chute;
         status = "PARTIAL";
       }
@@ -584,11 +605,7 @@ export async function syncPerimetre(
 
     if (chute === null || levee) {
       const gone = await prisma.person.updateMany({
-        where: {
-          username: { notIn: [...known, ...retenues, ...retenuesSansReponse] },
-          vanishedAt: null,
-          source: { not: "SERVICE" },
-        },
+        where: fichesADater(connues),
         data: { vanishedAt: now },
       });
       vanished = gone.count;
@@ -658,6 +675,50 @@ export async function syncPerimetre(
  */
 function effectifTenu(resolues: number, retenues: readonly string[]): number {
   return resolues + retenues.length;
+}
+
+/** Un compte de service n'appartient à personne, donc ne part avec personne. */
+const HORS_PERIMETRE: PersonSource = "SERVICE";
+
+/**
+ * Les fiches qu'une datation toucherait, écrit une fois pour les deux qui en dépendent :
+ * le décompte montré à qui tranche, et l'écriture que sa décision autorise.
+ *
+ * Une seule formulation, et c'est tout l'objet de cette fonction. Le nombre annoncé au
+ * bandeau dit ce qui va arriver à des gens ; le jour où l'une des deux conditions
+ * bougerait sans l'autre, il dirait ce qui va arriver à d'autres gens, et une décision
+ * se prendrait sur une ampleur qui n'est pas celle du geste.
+ */
+function fichesADater(connues: readonly string[]) {
+  return {
+    username: { notIn: [...connues] },
+    vanishedAt: null,
+    source: { not: HORS_PERIMETRE },
+  };
+}
+
+/**
+ * Combien de fiches la datation de ce soir toucherait, ou rien si le compte n'aboutit
+ * pas.
+ *
+ * L'écart des deux nombres du plancher ne le donne pas : ils comparent des tailles de
+ * listes, celui-ci compte des lignes vivantes en base, et la résolution amont tourne
+ * avant que le statut du passage ne soit connu, si bien qu'une nuit dégradée fait naître
+ * des fiches sans jamais toucher à la référence. Le fossé se creuse par là, et sans
+ * mesure il ne se voit nulle part.
+ *
+ * Une requête de plus sur un chemin qui vit hors du `try` du passage, d'où le
+ * rattrapage : le refus est déjà la conclusion sûre, et une panne du comptage ne doit
+ * pas ajouter un mode d'échec à un passage qui a tout ce qu'il lui faut pour refuser.
+ * Sans ce nombre la décision ne se mesure pas, donc ne lèvera pas, et l'opératrice
+ * reprendra sur les nombres du passage suivant.
+ */
+async function ampleurDeLaDatation(connues: readonly string[]): Promise<number | undefined> {
+  try {
+    return await prisma.person.count({ where: fichesADater(connues) });
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -906,7 +967,12 @@ async function closeRun(id: string, now: Date, result: PerimetreSyncResult): Pro
     messages: string[];
     sansReponse?: string[];
     ageDuReleve?: number;
-    refus?: { famille: FamilleDeChute; observe: number; reference: number }[];
+    refus?: {
+      famille: FamilleDeChute;
+      observe: number;
+      reference: number;
+      datables?: number;
+    }[];
   } = { messages: dits };
   if (result.retenuesSansReponse.length > 0) {
     trace.sansReponse = result.retenuesSansReponse;
@@ -920,6 +986,7 @@ async function closeRun(id: string, now: Date, result: PerimetreSyncResult): Pro
         famille: result.chuteRefusee.famille,
         observe: result.chuteRefusee.observe,
         reference: result.chuteRefusee.reference,
+        datables: result.chuteRefusee.datables,
       },
     ];
   }

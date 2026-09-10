@@ -28,6 +28,17 @@ describe("ce que le bandeau promet à qui autorise une datation", () => {
     expect(REDACTION.perimetre.suite).toContain("n'en trouve plus du tout");
     expect(REDACTION.perimetre.suite).not.toMatch(/passages dégradés/u);
 
+    // Then elle dit ce que chacun des deux laisse derrière lui, et c'est le second qui
+    // a besoin d'être dit : une chute plus profonde n'a rien daté et le travail reste
+    // entier, alors que plus de chute du tout veut dire que le passage a daté le soir
+    // même, de lui-même et sans que le nombre annoncé le borne. Les confondre ferait
+    // lire ce nombre comme un plafond sur la nuit, alors qu'il n'en est un que sur le
+    // geste qu'une décision emporte, et ferait attendre un travail à reprendre là où il
+    // a déjà eu lieu, plus large.
+    expect(REDACTION.perimetre.suite).toContain("sans que rien ne soit daté");
+    expect(REDACTION.perimetre.suite).toMatch(/date les disparitions du soir de lui-même/u);
+    expect(REDACTION.perimetre.suite).toContain("sans décision");
+
     // Then les systèmes cibles se taisent là-dessus : chez eux une décision lève quelle
     // que soit l'ampleur de la chute du soir, et rien ne l'écarte quand aucune chute ne
     // vient la lever. La leur promettre ferait reprendre une décision qui attend
@@ -39,6 +50,47 @@ describe("ce que le bandeau promet à qui autorise une datation", () => {
     for (const famille of ["identites", "ressources", "perimetre"] as const) {
       expect(REDACTION[famille].suite).toContain("Recopié au journal avec votre nom");
       expect(REDACTION[famille].quoi.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("dit combien de personnes la datation constaterait parties, plutôt que de le laisser déduire", () => {
+    // Given un bandeau où l'écart des deux listes se lit à quatre et où onze fiches
+    // seraient datées : des nuits dégradées ont fait naître des fiches sans que le
+    // relevé bouge, et les deux nombres du refus ne disent rien de ce fossé.
+    const blocage: BlocageInstalle = {
+      provider: "espace-membre",
+      famille: "perimetre",
+      observe: 9,
+      reference: 13,
+      datables: 11,
+      passages: 4,
+    };
+
+    // Then la phrase donne le nombre du geste, et dit pourquoi il ne se déduit pas de
+    // l'écart : c'est l'inférence de qui lit qui était plus étroite que la datation, et
+    // c'est un nombre qui manquait, pas une phrase qui mentait.
+    const constat = REDACTION.perimetre.constat(blocage);
+    expect(constat).toContain("départ de 11 personnes");
+    expect(constat).toContain("tailles de listes");
+
+    // Then elle s'accorde en nombre, une personne n'étant pas un décompte.
+    expect(REDACTION.perimetre.constat({ ...blocage, datables: 1 })).toContain(
+      "départ de 1 personne,",
+    );
+
+    // Then sans ce nombre, elle ne promet rien qu'elle ne tienne : une décision posée
+    // là-dessus sera écartée faute d'ampleur à mesurer, et l'apprendre ici vaut mieux
+    // que de le découvrir d'une nuit qui n'a rien daté.
+    const sansMesure = REDACTION.perimetre.constat({ ...blocage, datables: undefined });
+    expect(sansMesure).toContain("n'a pas pu être compté");
+    expect(sansMesure).toMatch(/écartée/u);
+    expect(sansMesure).not.toMatch(/départ de/u);
+
+    // Then les systèmes cibles se taisent là-dessus, et c'est juste : leur référence est
+    // déjà un décompte de lignes tenues pour vivantes, donc déjà la conséquence, et il
+    // n'y a chez eux aucun second nombre à montrer.
+    for (const famille of ["identites", "ressources"] as const) {
+      expect(REDACTION[famille].constat({ ...blocage, famille })).not.toMatch(/constaterait/u);
     }
   });
 

@@ -892,6 +892,16 @@ model ScopeDropOverride {
   observe   Int?
   reference Int?
 
+  /// Combien de fiches la datation toucherait, compté avec la requête qui les daterait.
+  /// Les deux nombres du dessus disent la taille des listes, celui-ci dit la conséquence,
+  /// et les deux mondes ne coïncident pas : une nuit dégradée fait naître des fiches sans
+  /// toucher la référence, si bien qu'un écart annoncé de quatre pouvait en dater onze.
+  /// C'est ce nombre-là qu'on montre, et c'est donc lui que la décision emporte.
+  ///
+  /// Propre au périmètre. Les systèmes cibles ne l'écrivent pas : leur référence est un
+  /// décompte de lignes vivantes, donc déjà la conséquence.
+  datables Int?
+
   /// Se consomme au premier passage qui s'en sert, et ne vaut donc que pour lui : une
   /// autorisation qui durerait éteindrait le garde-fou au lieu de le lever une fois.
   consumedAt    DateTime?

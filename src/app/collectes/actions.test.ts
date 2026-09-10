@@ -22,6 +22,8 @@ interface AutorisationEnBase {
   /** Les nombres du refus tels que le bandeau les montrait à qui a tranché. */
   observe: number | null;
   reference: number | null;
+  /** Et parmi eux celui qui dit ce qui arrivera à des personnes si la datation a lieu. */
+  datables: number | null;
   consumedAt: Date | null;
 }
 
@@ -104,6 +106,7 @@ vi.mock("@/lib/db", () => ({
           createdBy: string;
           observe: number | null;
           reference: number | null;
+          datables: number | null;
         };
       }) => {
         base.autorisations.push({ ...data, consumedAt: null });
@@ -152,12 +155,15 @@ function nuit(index: number): Date {
  * l'action retrouve soit ce que l'écran affiche et non ce qu'un double aurait décidé
  * pour eux deux.
  */
-function plancherDuPerimetre(observe: number, reference: number): void {
+function plancherDuPerimetre(observe: number, reference: number, datables?: number): void {
   for (const passage of [1, 2, 3]) {
     base.runs.push({
       provider: "espace-membre",
       startedAt: nuit(passage),
-      error: { refus: [{ famille: "perimetre", observe, reference }], ageDuReleve: passage },
+      error: {
+        refus: [{ famille: "perimetre", observe, reference, datables }],
+        ageDuReleve: passage,
+      },
     });
   }
 }
@@ -183,7 +189,7 @@ describe("ce que l'action de sortie accepte de l'écran qui l'appelle", () => {
   it("écrit la décision du périmètre comme celle des systèmes cibles, avec les nombres du bandeau", async () => {
     // Given le bandeau des blocages installés, qui annonce le plancher du périmètre au
     // même titre que ceux des systèmes cibles et poste la même chose.
-    plancherDuPerimetre(9, 13);
+    plancherDuPerimetre(9, 13, 11);
     chuteDesComptes("ovh", 12, 31);
 
     // When une opératrice tranche depuis ce bandeau-là, sur les nombres qu'il montre.
@@ -195,6 +201,7 @@ describe("ce que l'action de sortie accepte de l'écran qui l'appelle", () => {
         raison: "quatre fins de mission groupées, vérifiées une par une",
         observe: 9,
         reference: 13,
+        datables: 11,
       }),
     );
 
@@ -210,6 +217,7 @@ describe("ce que l'action de sortie accepte de l'écran qui l'appelle", () => {
         createdBy: "capucine.exemple",
         observe: 9,
         reference: 13,
+        datables: 11,
         consumedAt: null,
       },
     ]);
@@ -247,6 +255,7 @@ describe("ce que l'action de sortie accepte de l'écran qui l'appelle", () => {
         raison: "les mêmes quatre départs",
         observe: 9,
         reference: 13,
+        datables: 11,
       }),
     );
 
@@ -271,6 +280,7 @@ describe("ce que l'action de sortie accepte de l'écran qui l'appelle", () => {
         raison: "trois départs de plus, vérifiés eux aussi",
         observe: 9,
         reference: 13,
+        datables: 11,
       }),
     );
 
@@ -292,6 +302,7 @@ describe("ce que l'action de sortie accepte de l'écran qui l'appelle", () => {
         raison: "au hasard",
         observe: 9,
         reference: 13,
+        datables: 11,
       }),
     );
 
@@ -304,7 +315,7 @@ describe("ce que l'action de sortie accepte de l'écran qui l'appelle", () => {
 
   it("refuse les nombres qu'aucun écran du moment n'annonce, et le dit au lieu de les écrire", async () => {
     // Given le bandeau qui annonce neuf personnes contre treize.
-    plancherDuPerimetre(9, 13);
+    plancherDuPerimetre(9, 13, 11);
 
     // When ce qui arrive porte d'autres nombres que ceux-là : un onglet ouvert la
     // veille, dont le passage du soir a creusé la chute, ou un envoi fabriqué qui
@@ -317,6 +328,7 @@ describe("ce que l'action de sortie accepte de l'écran qui l'appelle", () => {
         raison: "quatre fins de mission groupées, vérifiées une par une",
         observe: 3,
         reference: 13,
+        datables: 11,
       }),
     );
 
@@ -328,6 +340,29 @@ describe("ce que l'action de sortie accepte de l'écran qui l'appelle", () => {
       erreur:
         "La chute a changé depuis l'affichage de cette page. Rechargez-la et décidez sur les nombres du jour : une décision porte l'ampleur qu'on avait sous les yeux, et rien de plus profond ne sera daté sur elle.",
     });
+    expect(base.autorisations).toEqual([]);
+    expect(base.journal).toEqual([]);
+
+    // When ce qui arrive porte bien les deux nombres du bandeau, mais une autre ampleur :
+    // un onglet ouvert avant que la nuit ne fasse naître des fiches, ou un envoi qui
+    // choisit ce que sa décision emportera.
+    const autreAmpleur = await autoriserDatation(
+      null,
+      poste({
+        provider: "espace-membre",
+        famille: "perimetre",
+        raison: "quatre fins de mission groupées, vérifiées une par une",
+        observe: 9,
+        reference: 13,
+        datables: 4,
+      }),
+    );
+
+    // Then même refus, et c'est celui qui compte le plus des trois : les deux premiers
+    // nombres comparent des tailles de listes, celui-là dit combien de personnes seraient
+    // constatées parties. Cru sur parole, il ferait de ce formulaire la porte par
+    // laquelle on écrit l'ampleur de son propre geste.
+    expect(autreAmpleur?.erreur).toContain("Rechargez-la");
     expect(base.autorisations).toEqual([]);
     expect(base.journal).toEqual([]);
 
@@ -359,6 +394,7 @@ describe("ce que l'action de sortie accepte de l'écran qui l'appelle", () => {
         raison: "quatre fins de mission groupées, vérifiées une par une",
         observe: 9,
         reference: 13,
+        datables: 11,
       }),
     );
 
@@ -371,7 +407,7 @@ describe("ce que l'action de sortie accepte de l'écran qui l'appelle", () => {
 
     // When l'opératrice recharge et tranche sur les nombres que le bandeau annonce
     // désormais, la chute étant repartie plus creuse qu'hier.
-    plancherDuPerimetre(3, 13);
+    plancherDuPerimetre(3, 13, 10);
     const rechargee = await autoriserDatation(
       null,
       poste({
@@ -380,6 +416,7 @@ describe("ce que l'action de sortie accepte de l'écran qui l'appelle", () => {
         raison: "sortie d'une startup entière, dix départs vérifiés ce matin",
         observe: 3,
         reference: 13,
+        datables: 10,
       }),
     );
 
@@ -394,14 +431,90 @@ describe("ce que l'action de sortie accepte de l'écran qui l'appelle", () => {
         createdBy: "capucine.exemple",
         observe: 3,
         reference: 13,
+        datables: 10,
         consumedAt: null,
       },
     ]);
   });
 
+  it("refuse la décision qu'aucune ampleur ne mesure, plutôt que d'occuper la place avec elle", async () => {
+    // Given un bandeau ouvert par un plancher dont le comptage n'a pas abouti : la
+    // chute est là, l'ampleur qu'une datation emporterait n'est nulle part.
+    plancherDuPerimetre(9, 13);
+
+    // When l'opératrice tranche quand même, sur les deux nombres que le bandeau porte.
+    const sansMesure = await autoriserDatation(
+      null,
+      poste({
+        provider: "espace-membre",
+        famille: "perimetre",
+        raison: "quatre fins de mission groupées, vérifiées une par une",
+        observe: 9,
+        reference: 13,
+      }),
+    );
+
+    // Then l'action refuse et dit ce qui manque. L'accueillir aurait coûté plus qu'une
+    // nuit : la borne du soir l'aurait écartée sans rien dater, et l'écran aurait refusé
+    // toute autre décision jusque-là, si bien qu'une ligne condamnée d'avance aurait
+    // fermé la seule sortie du garde-fou.
+    expect(sansMesure).toEqual({
+      erreur:
+        "Le dernier passage n'a pas pu compter combien de personnes une datation ferait partir. Une décision posée maintenant serait écartée sans rien dater : reprenez-la quand ce nombre sera de nouveau annoncé.",
+    });
+    expect(base.autorisations).toEqual([]);
+    expect(base.journal).toEqual([]);
+
+    // When le comptage répond de nouveau et le bandeau annonce les onze du geste.
+    base.runs.length = 0;
+    plancherDuPerimetre(9, 13, 11);
+    const mesuree = await autoriserDatation(
+      null,
+      poste({
+        provider: "espace-membre",
+        famille: "perimetre",
+        raison: "onze départs, les arrivées de la panne comprises, vérifiés ce matin",
+        observe: 9,
+        reference: 13,
+        datables: 11,
+      }),
+    );
+
+    // Then celle-là passe : le refus du dessus tient à ce qui manquait, il n'éteint pas
+    // la sortie.
+    expect(mesuree).toBeNull();
+    expect(base.autorisations).toHaveLength(1);
+  });
+
+  it("laisse un système cible décider sans ampleur, n'ayant chez lui rien à mesurer", async () => {
+    // Given une chute de comptes sur un système cible, dont le refus ne porte aucune
+    // ampleur et n'en portera jamais : sa référence est déjà un décompte de lignes
+    // tenues pour vivantes, donc déjà la conséquence.
+    chuteDesComptes("github", 4, 30);
+
+    // When l'opératrice tranche sur les deux nombres que le bandeau lui montre.
+    const cible = await autoriserDatation(
+      null,
+      poste({
+        provider: "github",
+        famille: "identites",
+        raison: "purge d'une organisation, vérifiée compte par compte",
+        observe: 4,
+        reference: 30,
+      }),
+    );
+
+    // Then elle passe. Le refus qui précède ne se transporte pas d'une famille à
+    // l'autre : là où rien ne se mesure, l'absence d'ampleur n'est pas une panne, et
+    // exiger ce nombre partout fermerait la sortie des deux systèmes qui n'en ont pas.
+    expect(cible).toBeNull();
+    expect(base.autorisations).toHaveLength(1);
+    expect(base.autorisations[0]).toMatchObject({ provider: "github", datables: null });
+  });
+
   it("referme la sortie le temps qu'un passage tourne, et la rouvre sur ce qu'il laisse", async () => {
     // Given le bandeau installé, sur lequel une décision passerait.
-    plancherDuPerimetre(9, 13);
+    plancherDuPerimetre(9, 13, 11);
 
     // When le passage du soir s'ouvre et n'a encore rien écrit, l'opératrice tranchant
     // sur les nombres que son onglet montre toujours. Un passage s'ouvre en échec et
@@ -415,6 +528,7 @@ describe("ce que l'action de sortie accepte de l'écran qui l'appelle", () => {
         raison: "quatre fins de mission groupées, vérifiées une par une",
         observe: 9,
         reference: 13,
+        datables: 11,
       }),
     );
 
@@ -440,6 +554,7 @@ describe("ce que l'action de sortie accepte de l'écran qui l'appelle", () => {
         raison: "quatre fins de mission groupées, vérifiées une par une",
         observe: 9,
         reference: 13,
+        datables: 11,
       }),
     );
 
@@ -452,7 +567,10 @@ describe("ce que l'action de sortie accepte de l'écran qui l'appelle", () => {
     base.runs.push({
       provider: "espace-membre",
       startedAt: nuit(6),
-      error: { refus: [{ famille: "perimetre", observe: 9, reference: 13 }], ageDuReleve: 6 },
+      error: {
+        refus: [{ famille: "perimetre", observe: 9, reference: 13, datables: 11 }],
+        ageDuReleve: 6,
+      },
     });
     const apres = await autoriserDatation(
       null,
@@ -462,6 +580,7 @@ describe("ce que l'action de sortie accepte de l'écran qui l'appelle", () => {
         raison: "quatre fins de mission groupées, vérifiées une par une",
         observe: 9,
         reference: 13,
+        datables: 11,
       }),
     );
 
@@ -477,6 +596,7 @@ describe("ce que l'action de sortie accepte de l'écran qui l'appelle", () => {
         createdBy: "capucine.exemple",
         observe: 9,
         reference: 13,
+        datables: 11,
         consumedAt: null,
       },
     ]);

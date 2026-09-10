@@ -127,9 +127,17 @@ function attente(provider: string, famille: FamilleDeChute, run: { startedAt: Da
  * et c'est la raison d'être de ces colonnes : ce qu'un passage a enregistré n'est pas ce
  * qu'un écran a affiché.
  *
+ * Deux mesures, parce que deux ampleurs se sont trouvées disjointes. L'observé dit la
+ * taille de la liste rendue ; ce que la datation toucherait dit combien de personnes
+ * seraient constatées parties, ce qui est le geste lui-même. L'une ne borne pas l'autre :
+ * une nuit dégradée fait naître des fiches sans toucher au relevé, si bien qu'une chute
+ * identique à celle annoncée peut en dater bien plus qu'on n'en avait examiné.
+ *
  * Une ligne qui ne porte aucun nombre ne se mesure pas, et la borne échoue fermé : elle
- * est écartée plutôt que levée sans mesure, comme l'est une chute trop profonde. Elle
- * n'est donc tenable que chez un appelant qui périme ce qu'elle écarte.
+ * est écartée plutôt que levée sans mesure, comme l'est une chute trop profonde. Vaut
+ * pour les deux mesures, et pour la même raison : un soir dont l'ampleur n'a pas pu être
+ * comptée ne se compare à rien. Elle n'est donc tenable que chez un appelant qui périme
+ * ce qu'elle écarte.
  */
 export async function autorisationEnAttente(
   provider: string,
@@ -140,18 +148,24 @@ export async function autorisationEnAttente(
   const autorisation = await prisma.scopeDropOverride.findFirst({
     where: attente(provider, chute.famille, run),
     orderBy: { createdAt: "asc" },
-    select: { reason: true, createdBy: true, observe: true },
+    select: { reason: true, createdBy: true, observe: true, datables: true },
   });
 
   if (autorisation === null) {
     return null;
   }
 
-  if (
-    borne === "pas plus profonde que la chute annoncée" &&
-    (autorisation.observe === null || chute.observe < autorisation.observe)
-  ) {
-    return null;
+  if (borne === "pas plus profonde que la chute annoncée") {
+    if (autorisation.observe === null || chute.observe < autorisation.observe) {
+      return null;
+    }
+    if (
+      autorisation.datables === null ||
+      chute.datables === undefined ||
+      chute.datables > autorisation.datables
+    ) {
+      return null;
+    }
   }
 
   return { reason: autorisation.reason, createdBy: autorisation.createdBy };
@@ -194,6 +208,7 @@ export async function consommerAutorisation(
       famille: chute.famille,
       observe: chute.observe,
       reference: chute.reference,
+      datables: chute.datables,
       raison: autorisation.reason,
       autorisePar: autorisation.createdBy,
     },

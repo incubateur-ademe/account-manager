@@ -51,6 +51,7 @@ export function GardeFouBloque({ blocage }: { blocage: BlocageInstalle }) {
             <input type="hidden" name="famille" value={blocage.famille} />
             <input type="hidden" name="observe" value={blocage.observe} />
             <input type="hidden" name="reference" value={blocage.reference} />
+            <input type="hidden" name="datables" value={blocage.datables ?? ""} />
 
             <div className={fr.cx("fr-input-group")}>
               <label className={fr.cx("fr-label")} htmlFor={idRaison}>

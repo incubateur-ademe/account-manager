@@ -370,6 +370,16 @@ describe("un garde-fou qui refuse toujours la même chose n'annonce plus un inci
     expect(refusRepete(surLesRessources, [{ ...surLesRessources, observe: 34 }])).toBe(1);
     expect(refusRepete(surLesRessources, [{ ...surLesRessources, reference: 64 }])).toBe(1);
 
+    // Ce que la datation toucherait, lui, ne compte pas dans la répétition, et il ne le
+    // doit pas : ce nombre bouge dès qu'une fiche naît, y compris les nuits où le refus
+    // ne bouge pas d'un chiffre. Le comparer ferait qu'un refus figé cesserait de
+    // s'annoncer installé, refermant la seule sortie du gel pour une raison qui n'a rien
+    // à voir avec lui. La comparaison reste donc champ par champ, et sur ces champs-là.
+    expect(refusRepete(surLesRessources, [{ ...surLesRessources, datables: 12 }])).toBe(2);
+    expect(
+      refusRepete({ ...surLesRessources, datables: 4 }, [{ ...surLesRessources, datables: 12 }]),
+    ).toBe(2);
+
     // Et le seuil reste celui du noyau, jamais recopié chez l'appelant.
     expect(chuteInstallee(2)).toBe(false);
     expect(chuteInstallee(3)).toBe(true);
@@ -459,6 +469,29 @@ describe("les blocages que l'écran doit annoncer plutôt que de les laisser au 
         passages: 3,
       },
     ]);
+
+    // Et ce que la datation toucherait voyage avec le refus jusqu'au bandeau, quand le
+    // passage l'a compté : c'est le seul des trois nombres qui dise ce qui arrivera à
+    // des personnes, les deux autres comparant des tailles de listes.
+    const avecAmpleur = (datables: unknown) =>
+      blocagesInstalles(
+        Array.from({ length: 3 }, (_, rang) => ({
+          provider: "espace-membre",
+          error: {
+            messages: [],
+            ageDuReleve: 3 - rang,
+            refus: [{ famille: "perimetre", observe: 9, reference: 13, datables }],
+          },
+        })),
+      )[0];
+
+    expect(avecAmpleur(11)).toMatchObject({ observe: 9, reference: 13, datables: 11 });
+
+    // Et ce qu'on n'a pas reconnu ne voyage pas : la trace est du JSON libre, et un
+    // bandeau qui annoncerait sous le nom d'une ampleur ce qu'il n'a pas su lire ferait
+    // décider sur autre chose que le geste.
+    expect(avecAmpleur("onze")?.datables).toBeUndefined();
+    expect(avecAmpleur(undefined)?.datables).toBeUndefined();
 
     // Et le seul chemin par lequel on en sorte reconnaît les mêmes familles que
     // l'écran qui les annonce : une famille annoncée en tête d'écran et refusée par

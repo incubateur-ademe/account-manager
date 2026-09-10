@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import { after } from "next/server";
 
-import { estFamilleDeChute } from "@/core/collecte";
+import { ampleurMesurable, estFamilleDeChute } from "@/core/collecte";
 import { actionTracee } from "@/lib/actions";
 import { deconnecter, prisma } from "@/lib/db";
 import { requireOperateur } from "@/lib/session";
@@ -103,13 +103,23 @@ export type EtatAutorisation = { erreur: string } | null;
  * décision, pas un réglage. Rien n'est écrit ici sur les accès eux-mêmes, c'est la
  * prochaine collecte qui conclura, avec ce que ses propres yeux auront vu.
  *
- * Elle emporte les nombres du refus, et cette action ne croit pas ceux qu'on lui poste :
- * elle recalcule le blocage et refuse tout ce qui ne correspond pas. Les croire ferait
- * de ce formulaire la porte par laquelle on écrit l'ampleur de son choix, et la borne
- * qui mesure la chute du soir mesurerait contre elle. Les recalculer ferme du même geste
+ * Elle emporte les nombres du refus, celui de ce que la datation toucherait compris, et
+ * c'est ce dernier qui dit ce qui arrivera à des personnes : les deux autres comparent
+ * des tailles de listes, et leur écart est plus étroit que le geste.
+ *
+ * Cette action ne croit aucun de ceux qu'on lui poste : elle recalcule le blocage par la
+ * fonction même dont l'écran se sert, et refuse tout ce qui ne correspond pas. Les croire
+ * ferait de ce formulaire la porte par laquelle on écrit l'ampleur de son choix, et la
+ * borne qui mesure la chute du soir mesurerait contre elle. Les recalculer ferme du même geste
  * la décision prise depuis un onglet que le passage du soir a périmé : la page ne se
  * rafraîchit pas toute seule, et une opératrice qui tranche sur des nombres vieux d'une
  * nuit doit l'apprendre ici plutôt que de le découvrir dans une datation en bloc.
+ *
+ * Elle refuse de même ce qui ne se mesure pas. Un passage dont le comptage n'a pas
+ * abouti n'annonce aucune ampleur, et l'accueillir quand même occuperait la seule place
+ * disponible d'une ligne que la collecte écartera : l'écran interdit une seconde
+ * décision tant que la première attend, si bien que l'accepter fermerait la sortie
+ * jusqu'à la nuit suivante au lieu de dire ce qui manque.
  */
 export async function autoriserDatation(
   _etat: EtatAutorisation,
@@ -122,6 +132,7 @@ export async function autoriserDatation(
   const raison = String(formData.get("raison") ?? "").trim();
   const observe = entierPoste(formData, "observe");
   const reference = entierPoste(formData, "reference");
+  const datables = entierPoste(formData, "datables");
 
   if (!estFamilleDeChute(famille)) {
     return { erreur: "Famille de garde-fou non reconnue." };
@@ -145,7 +156,17 @@ export async function autoriserDatation(
         "Ce garde-fou ne bloque plus rien. Rechargez la page : la sortie ne s'offre que sous un refus, et une décision posée sans lui attendrait un passage qui ne la prendra peut-être jamais.",
     };
   }
-  if (montre.observe !== observe || montre.reference !== reference) {
+  if (!ampleurMesurable(montre)) {
+    return {
+      erreur:
+        "Le dernier passage n'a pas pu compter combien de personnes une datation ferait partir. Une décision posée maintenant serait écartée sans rien dater : reprenez-la quand ce nombre sera de nouveau annoncé.",
+    };
+  }
+  if (
+    montre.observe !== observe ||
+    montre.reference !== reference ||
+    (montre.datables ?? null) !== datables
+  ) {
     return {
       erreur:
         "La chute a changé depuis l'affichage de cette page. Rechargez-la et décidez sur les nombres du jour : une décision porte l'ampleur qu'on avait sous les yeux, et rien de plus profond ne sera daté sur elle.",
@@ -164,7 +185,7 @@ export async function autoriserDatation(
     action: "sync.gardefou.autorise",
     targetType: "system",
     targetId: provider,
-    after: { famille, raison, observe, reference },
+    after: { famille, raison, observe, reference, datables },
     revalider: ["/collectes"],
     ecrire: async (operateur) => {
       await prisma.scopeDropOverride.create({
@@ -175,6 +196,7 @@ export async function autoriserDatation(
           createdBy: operateur.username,
           observe,
           reference,
+          datables,
         },
       });
     },
