@@ -127,10 +127,15 @@ vi.mock("@/lib/db", () => ({
       // fenêtre fixe et n'en lit que la trace : ignorer son `take` ferait passer pour
       // installé un refus qui ne l'est pas. Rendre à l'une ce que l'autre demande
       // laisserait chacune des deux vraie pour la mauvaise raison.
+      //
+      // C'est le `select` qui les sépare, et non la présence d'une borne : faute de
+      // relevé, l'âge relit tout ce que ce fournisseur a laissé et part donc sans borne,
+      // exactement comme le refus répété.
       findMany: ({
         where,
         orderBy,
         take,
+        select,
       }: {
         where: {
           provider: string;
@@ -140,6 +145,7 @@ vi.mock("@/lib/db", () => ({
         };
         orderBy: OrdreDesPassages;
         take?: number;
+        select: { status?: true; error?: true };
       }) => {
         const borne = where.startedAt;
         const passages = base.runs
@@ -151,7 +157,7 @@ vi.mock("@/lib/db", () => ({
               (borne === undefined || run.startedAt.getTime() >= borne.gte.getTime()),
           )
           .sort(parDate(orderBy))
-          .map((run) => (borne === undefined ? { error: run.error } : { status: run.status }));
+          .map((run) => (select.error ? { error: run.error } : { status: run.status }));
         return Promise.resolve(take === undefined ? passages : passages.slice(0, take));
       },
       update: ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
@@ -1515,6 +1521,27 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
   /** Sept arrivées que seules des nuits dégradées ont vues. */
   const RENFORTS = ["aurele", "bastien", "chloe", "damien", "eva", "fanny", "gaspard"];
 
+  /** Dix-sept arrivées que seules des nuits dégradées ont vues. */
+  const VAGUE = [
+    "aurele",
+    "bastien",
+    "chloe",
+    "damien",
+    "eva",
+    "fanny",
+    "gaspard",
+    "helene",
+    "ismael",
+    "jonas",
+    "kenza",
+    "lucie",
+    "marius",
+    "nadia",
+    "oscar",
+    "prune",
+    "quentin",
+  ];
+
   const levees = () => base.journal.filter((trace) => trace.action === "sync.gardefou.leve");
   const perimees = () => base.journal.filter((trace) => trace.action === "sync.gardefou.perime");
 
@@ -1546,6 +1573,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     expect(chute.vanished).toBe(0);
     expect(chute.chuteRefusee).toEqual({
       famille: "perimetre",
+      cote: "releve",
       observe: 9,
       reference: 13,
       datables: 4,
@@ -1571,6 +1599,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
       {
         provider: "espace-membre",
         famille: "perimetre",
+        cote: "releve",
         observe: 9,
         reference: 13,
         datables: 4,
@@ -1641,6 +1670,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     expect(rechute.vanished).toBe(0);
     expect(rechute.chuteRefusee).toEqual({
       famille: "perimetre",
+      cote: "releve",
       observe: 6,
       reference: 9,
       datables: 3,
@@ -1654,6 +1684,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     const refus = await nuit(1, { omis: CHUTE });
     expect(refus.chuteRefusee).toEqual({
       famille: "perimetre",
+      cote: "releve",
       observe: 9,
       reference: 13,
       datables: 4,
@@ -1678,6 +1709,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     expect(effondrement.vanished).toBe(0);
     expect(effondrement.chuteRefusee).toEqual({
       famille: "perimetre",
+      cote: "releve",
       observe: 3,
       reference: 13,
       datables: 10,
@@ -1823,6 +1855,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     const refus = await nuit(1, { omis: CHUTE });
     expect(refus.chuteRefusee).toEqual({
       famille: "perimetre",
+      cote: "releve",
       observe: 9,
       reference: 13,
       datables: 4,
@@ -1920,12 +1953,14 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     // nombre montré à l'opératrice sans qu'aucun départ ne l'explique.
     expect(muette.chuteRefusee).toEqual({
       famille: "perimetre",
+      cote: "releve",
       observe: 9,
       reference: 13,
       datables: 4,
     });
     expect(avouee.chuteRefusee).toEqual({
       famille: "perimetre",
+      cote: "releve",
       observe: 9,
       reference: 13,
       datables: 4,
@@ -1940,6 +1975,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     // pour la seule raison que la source échoue de deux façons.
     expect(installe.chuteRefusee).toEqual({
       famille: "perimetre",
+      cote: "releve",
       observe: 9,
       reference: 13,
       datables: 4,
@@ -1948,6 +1984,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
       {
         provider: "espace-membre",
         famille: "perimetre",
+        cote: "releve",
         observe: 9,
         reference: 13,
         datables: 4,
@@ -1991,6 +2028,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
       {
         provider: "espace-membre",
         famille: "perimetre",
+        cote: "releve",
         observe: 9,
         reference: 13,
         datables: 4,
@@ -2004,6 +2042,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     const creux = await nuit(4, { omis: SIX });
     expect(creux.chuteRefusee).toEqual({
       famille: "perimetre",
+      cote: "releve",
       observe: 7,
       reference: 13,
       datables: 6,
@@ -2029,6 +2068,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     expect(rechute.vanished).toBe(0);
     expect(rechute.chuteRefusee).toEqual({
       famille: "perimetre",
+      cote: "releve",
       observe: 8,
       reference: 13,
       datables: 5,
@@ -2063,6 +2103,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     const apres = await nuit(7, { omis: apresLeDegel });
     expect(apres.chuteRefusee).toEqual({
       famille: "perimetre",
+      cote: "releve",
       observe: 5,
       reference: 8,
       datables: 3,
@@ -2091,6 +2132,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
       {
         provider: "espace-membre",
         famille: "perimetre",
+        cote: "releve",
         observe: 9,
         reference: 13,
         datables: 4,
@@ -2128,6 +2170,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     expect(effondrement.vanished).toBe(0);
     expect(effondrement.chuteRefusee).toEqual({
       famille: "perimetre",
+      cote: "releve",
       observe: 2,
       reference: 13,
       datables: 11,
@@ -2146,6 +2189,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
       {
         provider: "espace-membre",
         famille: "perimetre",
+        cote: "releve",
         observe: 2,
         reference: 13,
         datables: 11,
@@ -2238,6 +2282,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     expect(chute.vanished).toBe(0);
     expect(chute.chuteRefusee).toEqual({
       famille: "perimetre",
+      cote: "releve",
       observe: 9,
       reference: 13,
       datables: 4,
@@ -2259,6 +2304,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
 
     expect(chute.chuteRefusee).toEqual({
       famille: "perimetre",
+      cote: "releve",
       observe: 9,
       reference: 13,
       datables: 4,
@@ -2266,6 +2312,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     expect(cassure.chuteRefusee).toBeNull();
     expect(reprise.chuteRefusee).toEqual({
       famille: "perimetre",
+      cote: "releve",
       observe: 9,
       reference: 13,
       datables: 4,
@@ -2288,6 +2335,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
       {
         provider: "espace-membre",
         famille: "perimetre",
+        cote: "releve",
         observe: 9,
         reference: 13,
         datables: 4,
@@ -2378,6 +2426,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     expect(refus.status).toBe("PARTIAL");
     expect(refus.chuteRefusee).toEqual({
       famille: "perimetre",
+      cote: "releve",
       observe: 9,
       reference: 13,
       datables: 11,
@@ -2386,6 +2435,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
       {
         provider: "espace-membre",
         famille: "perimetre",
+        cote: "releve",
         observe: 9,
         reference: 13,
         datables: 11,
@@ -2421,6 +2471,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
       {
         provider: "espace-membre",
         famille: "perimetre",
+        cote: "releve",
         observe: 9,
         reference: 13,
         datables: 11,
@@ -2461,6 +2512,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     // tenue, donc la datation ne la toucherait pas.
     expect(refus.chuteRefusee).toEqual({
       famille: "perimetre",
+      cote: "releve",
       observe: 9,
       reference: 13,
       datables: 4,
@@ -2469,6 +2521,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
       {
         provider: "espace-membre",
         famille: "perimetre",
+        cote: "releve",
         observe: 9,
         reference: 13,
         datables: 4,
@@ -2504,6 +2557,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
       {
         provider: "espace-membre",
         famille: "perimetre",
+        cote: "releve",
         observe: 9,
         reference: 13,
         datables: 5,
@@ -2540,7 +2594,12 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     // a tout ce qu'il lui faut pour conclure ce qu'il conclut.
     expect(aveugle.status).toBe("PARTIAL");
     expect(aveugle.vanished).toBe(0);
-    expect(aveugle.chuteRefusee).toEqual({ famille: "perimetre", observe: 9, reference: 13 });
+    expect(aveugle.chuteRefusee).toEqual({
+      famille: "perimetre",
+      cote: "releve",
+      observe: 9,
+      reference: 13,
+    });
     expect(aveugle.chuteRefusee?.datables).toBeUndefined();
     // Then il le dit, à côté du refus qu'il explique. C'est la seule ligne qui sépare
     // ces nuits-là de nuits de refus ordinaires : sans elle, une opératrice verrait ses
@@ -2575,6 +2634,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     const revenue = await nuit(3, { omis: CHUTE });
     expect(revenue.chuteRefusee).toEqual({
       famille: "perimetre",
+      cote: "releve",
       observe: 9,
       reference: 13,
       datables: 4,
@@ -2590,5 +2650,218 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     expect(degel.status).toBe("OK");
     expect(degel.vanished).toBe(4);
     expect(levees()).toHaveLength(1);
+  });
+  it("refuse la datation en bloc que deux relevés semblables laissaient passer, et la rouvre une fois examinée", async () => {
+    // Given un relevé complet de treize personnes, celui contre lequel le premier
+    // déclencheur comparera tant qu'aucun autre passage ne se dira complet.
+    await nuit(0);
+    expect(releveDeReference()).toMatchObject({ itemsSeen: 13, startedAt: NUITS[0] });
+
+    // Given trois nuits dégradées pendant lesquelles dix-sept personnes arrivent. La
+    // résolution amont tourne avant que le statut du passage ne soit connu : ces nuits
+    // font naître dix-sept fiches sans que le relevé bouge d'un.
+    for (const index of [1, 2, 3]) {
+      await nuit(index, { lecture: "amputée", renforts: VAGUE });
+    }
+    expect(releveDeReference()).toMatchObject({ itemsSeen: 13, startedAt: NUITS[0] });
+    expect(base.fiches.filter((candidate) => candidate.vanishedAt === null)).toHaveLength(30);
+
+    // When une nuit complète rend les treize du relevé, et plus aucun des renforts.
+    const refus = await nuit(4);
+
+    // Then les deux tailles de listes se ressemblent trait pour trait, treize contre
+    // treize, et le déclencheur du relevé n'a rien à dire. C'est la base qui parle :
+    // dix-sept fiches partiraient d'un seul geste, sur une population de trente.
+    expect(refus.seen).toBe(13);
+    expect(refus.status).toBe("PARTIAL");
+    expect(refus.vanished).toBe(0);
+    expect(refus.chuteRefusee).toEqual({
+      famille: "perimetre",
+      cote: "population",
+      observe: 13,
+      reference: 30,
+      datables: 17,
+    });
+
+    // Then la trace le dit dans les termes de ce côté-là : la phrase du relevé y
+    // annoncerait un dernier passage complet qui n'a rien à voir avec ce refus.
+    expect(ceQuiAEteDit(refus.runId)).toContain(
+      "chute du périmètre : la datation ferait partir 17 personnes sur les 30 tenues pour présentes, il n'en resterait que 13, aucune disparition datée",
+    );
+
+    // Then le bandeau s'ouvre, et il porte le côté jusqu'à l'écran qui le rédige.
+    expect(blocagesAnnonces()).toEqual([
+      {
+        provider: "espace-membre",
+        famille: "perimetre",
+        cote: "population",
+        observe: 13,
+        reference: 30,
+        datables: 17,
+        passages: 4,
+      },
+    ]);
+
+    // When une opératrice tranche sur les dix-sept, qui est le geste qu'on lui montre.
+    autoriser(5, "les dix-sept renforts de la panne, tous sortis du dispositif", {
+      observe: 13,
+      reference: 30,
+      datables: 17,
+    });
+    const degel = await nuit(5);
+
+    // Then la datation a lieu, et elle vaut exactement ce qui a été examiné.
+    expect(degel.status).toBe("OK");
+    expect(degel.vanished).toBe(17);
+    expect(levees()).toHaveLength(1);
+    expect(blocagesAnnonces()).toEqual([]);
+
+    // Then le motif se referme et ne revient pas : ce déclencheur-là compare à une
+    // population que la datation vient de ramener à treize, et sa référence se corrige
+    // donc d'elle-même dès qu'un passage date. Trois nuits de plus pour le dire.
+    for (const index of [6, 7, 8]) {
+      const apres = await nuit(index);
+      expect(apres.status).toBe("OK");
+      expect(apres.chuteRefusee).toBeNull();
+      expect(apres.vanished).toBe(0);
+    }
+    expect(blocagesAnnonces()).toEqual([]);
+  });
+
+  it("ne date rien la nuit où le comptage tombe sans que le relevé ait rien à redire, et n'y dépense pas la décision qui attend", async () => {
+    // Given le même creux que ci-dessus : un relevé de treize, trois nuits dégradées
+    // qui font naître dix-sept fiches, et une population de trente qu'aucune liste ne
+    // réclame plus qu'à moitié.
+    await nuit(0);
+    for (const index of [1, 2, 3]) {
+      await nuit(index, { lecture: "amputée", renforts: VAGUE });
+    }
+    expect(base.fiches.filter((candidate) => candidate.vanishedAt === null)).toHaveLength(30);
+
+    // Given une opératrice qui a déjà tranché sur les dix-sept, sur les nombres mêmes
+    // que le refus de ce soir montrerait.
+    autoriser(4, "les dix-sept renforts de la panne, tous sortis du dispositif", {
+      observe: 13,
+      reference: 30,
+      datables: 17,
+    });
+
+    // When la base cesse de répondre au seul comptage de ce qu'une datation ferait, la
+    // nuit où une réponse par ailleurs complète rend les treize du relevé.
+    base.panneDeComptage = true;
+    const aveugle = await nuit(4);
+
+    // Then rien n'est daté. Les deux tailles de listes se ressemblent, donc le premier
+    // déclencheur n'a rien à redire, et sans ce compte le second n'a rien contre quoi
+    // juger le geste du soir : le passage se dégrade au lieu de conclure. Le laisser
+    // passer daterait les dix-sept d'un coup, sur une nuit que personne n'a examinée,
+    // ce qui est exactement ce que ce déclencheur existe pour retenir.
+    expect(aveugle.seen).toBe(13);
+    expect(aveugle.status).toBe("PARTIAL");
+    expect(aveugle.vanished).toBe(0);
+    expect(aveugle.chuteRefusee).toBeNull();
+    expect(base.fiches.filter((candidate) => candidate.vanishedAt === null)).toHaveLength(30);
+
+    // Then il le dit, et c'est la seule ligne qui sépare cette nuit-là d'une nuit
+    // complète ordinaire : sans elle, une nuit qui n'a rien conclu ne se distingue plus
+    // d'une nuit où il n'y avait rien à conclure.
+    expect(ceQuiAEteDit(aveugle.runId)).toContain(
+      `${AMPLEUR_NON_COMPTEE} : ce qu'une datation toucherait n'a pas pu être compté, aucune disparition datée`,
+    );
+
+    // Then rien n'est offert à l'écran, et c'est juste : aucun garde-fou n'a refusé, il
+    // n'y a donc rien à lever et rien sur quoi trancher.
+    expect(blocagesAnnonces()).toEqual([]);
+
+    // Then la décision qui attendait attend toujours : cette nuit n'a rien constaté de
+    // l'état auquel elle se rapporte, et la périmer là-dessus la ferait perdre pour
+    // rien, sur une panne qui ne dit rien de ce qu'elle a examiné.
+    expect(levees()).toEqual([]);
+    expect(perimees()).toEqual([]);
+    expect(base.autorisations.filter((posee) => posee.consumedAt === null)).toHaveLength(1);
+
+    // When la base répond de nouveau, sur le même creux.
+    base.panneDeComptage = false;
+    const degel = await nuit(5);
+
+    // Then le second déclencheur refuse comme il l'aurait fait la veille, la décision
+    // d'hier le lève, et les dix-sept partent : la panne aura coûté une nuit, pas la
+    // sortie.
+    expect(degel.status).toBe("OK");
+    expect(degel.vanished).toBe(17);
+    expect(levees()).toHaveLength(1);
+    expect(blocagesAnnonces()).toEqual([]);
+  });
+
+  it("ouvre la sortie au refus qui tombe avant que le moindre passage ne se soit dit complet", async () => {
+    // Given trois nuits dégradées, et pas une seule qui se soit dite complète : treize
+    // fiches naissent, et aucun relevé n'existe. C'est ce que voit une installation
+    // neuve, une base restaurée sans historique de passages, ou un fournisseur qu'on
+    // vient de changer.
+    for (const index of [0, 1, 2]) {
+      await nuit(index, { lecture: "amputée" });
+    }
+    expect(releveDeReference()).toBeNull();
+    expect(base.fiches.filter((candidate) => candidate.vanishedAt === null)).toHaveLength(13);
+
+    // When une nuit par ailleurs complète cesse de rendre quatre personnes sur treize.
+    const refus = await nuit(3, { omis: CHUTE });
+
+    // Then c'est la population qui refuse, et elle seule : le premier déclencheur
+    // compare à un relevé qui n'existe pas, donc à zéro, et rien ne tombe jamais de
+    // zéro. Le second, lui, ne lit pas le relevé.
+    expect(refus.status).toBe("PARTIAL");
+    expect(refus.vanished).toBe(0);
+    expect(refus.chuteRefusee).toEqual({
+      famille: "perimetre",
+      cote: "population",
+      observe: 9,
+      reference: 13,
+      datables: 4,
+    });
+
+    // Then l'âge se compte quand même, et c'est ce qui ouvre la sortie. Se taire faute
+    // de relevé enfermerait l'opératrice pour de bon : le refus dégrade le passage, un
+    // passage dégradé ne se dit pas complet, et sans passage complet il n'y aurait ni
+    // âge, ni bandeau, ni formulaire. La seule issue restante serait une datation en
+    // bloc, le jour où l'amont rerendrait les manquants, sans que personne ait rien
+    // examiné.
+    expect(ageDuReleveDit(refus.runId)).toBe(4);
+    expect(releveFige(4)).toBe(true);
+    expect(ceQuiAEteDit(refus.runId)).toContain(
+      `${RELEVE_NON_RENOUVELE} : aucun passage ne s'est encore dit complet, et les règles adossées au périmètre décident donc sans relevé depuis 4 passages : ce n'est plus un incident, et plus rien de ce qui s'y adosse ne décide sur l'état du jour`,
+    );
+    expect(blocagesAnnonces()).toEqual([
+      {
+        provider: "espace-membre",
+        famille: "perimetre",
+        cote: "population",
+        observe: 9,
+        reference: 13,
+        datables: 4,
+        passages: 4,
+      },
+    ]);
+
+    // When une opératrice tranche sur les quatre que le bandeau lui montre.
+    autoriser(4, "quatre fins de mission groupées, vérifiées une par une", {
+      observe: 9,
+      reference: 13,
+      datables: 4,
+    });
+    const degel = await nuit(4, { omis: CHUTE });
+
+    // Then les quatre partent, et le passage laisse enfin le premier relevé complet
+    // derrière lui : le motif se referme, et les deux déclencheurs ont désormais chacun
+    // leur référence.
+    expect(degel.status).toBe("OK");
+    expect(degel.vanished).toBe(4);
+    expect(levees()).toHaveLength(1);
+    expect(releveDeReference()).toMatchObject({ itemsSeen: 9 });
+    expect(blocagesAnnonces()).toEqual([]);
+
+    const apres = await nuit(5, { omis: CHUTE });
+    expect(apres.status).toBe("OK");
+    expect(apres.chuteRefusee).toBeNull();
   });
 });

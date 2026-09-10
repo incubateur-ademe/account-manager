@@ -94,6 +94,79 @@ describe("ce que le bandeau promet à qui autorise une datation", () => {
     }
   });
 
+  it("dit de quel côté vient le refus, la phrase du relevé étant fausse sur l'autre", () => {
+    // Given le refus que le second déclencheur du plancher prononce : trente personnes
+    // tenues pour présentes en base, dix-sept que la datation ferait partir d'un seul
+    // geste, treize qui resteraient. Le relevé, lui, n'avait rien à redire.
+    const population: BlocageInstalle = {
+      provider: "espace-membre",
+      famille: "perimetre",
+      cote: "population",
+      observe: 13,
+      reference: 30,
+      datables: 17,
+      passages: 4,
+    };
+
+    // Then la phrase parle de la base et de ce qu'il en resterait, dit l'ampleur du
+    // geste, et dit pourquoi ce déclencheur parle là où l'autre se tait.
+    const dit = REDACTION.perimetre.constat(population);
+    expect(dit).toContain("30 personnes y sont tenues pour présentes");
+    expect(dit).toContain("il n'en resterait que 13");
+    expect(dit).toContain("départ de 17 personnes");
+    expect(dit).toContain("Aucun passage ne s'est dit complet depuis 4 passages");
+
+    // Then elle n'affirme rien du relevé, et c'est là qu'elle mentirait le plus
+    // facilement : ce déclencheur parle parce que l'autre s'est tu, et l'autre se tait
+    // aussi bien sur une liste qui a grossi que sur deux relevés qui se ressemblent. La
+    // première proposition que lit une opératrice qui va trancher sur dix-sept personnes
+    // doit être vraie par construction, et « les deux relevés se ressemblent » ne l'est
+    // pas. Elle ne désigne pas non plus « ce relevé » : ce refus se prononce sans en
+    // lire aucun, donc avant le premier passage complet aussi, et il n'y a alors rien à
+    // désigner.
+    expect(dit).toContain("Ce n'est pas la liste rendue ce soir qui a fait parler");
+    expect(dit).not.toMatch(/se ressemblent/u);
+    expect(dit).not.toMatch(/Ce relevé/u);
+
+    // Then elle ne raconte rien du monde des listes : annoncer « le dernier relevé
+    // complet comptait trente personnes, le dernier passage n'en a résolu que treize »
+    // serait faux sur les deux nombres et sur ce qu'ils comparent, et enverrait
+    // chercher un effondrement de la liste qui n'a jamais eu lieu.
+    expect(dit).not.toMatch(/dernier relevé complet comptait/u);
+    expect(dit).not.toMatch(/n'en a résolu que/u);
+    expect(dit).not.toMatch(/tailles de listes/u);
+
+    // Then elle n'envoie pas non plus chercher l'ampleur ailleurs que dans l'écart de
+    // ses deux nombres : de ce côté-là, cet écart est le geste, et rien d'autre.
+    expect(dit).not.toMatch(/ne se lit pas dans l'écart/u);
+
+    // Then elle dit la boucle de ce côté-là, et pas celle de l'autre : la référence de
+    // ce refus se corrigerait d'elle-même dès qu'un passage daterait, et c'est la
+    // datation que le refus retient. Lui prêter la boucle du relevé serait juste sur le
+    // gel et faux sur ce qui l'entretient.
+    expect(dit).toContain("c'est justement la datation que le refus retient");
+    expect(dit).not.toMatch(/sert de référence à ce refus/u);
+
+    // Then les mêmes nombres, annoncés du côté du relevé, donnent l'autre phrase : le
+    // côté seul les sépare, et une trace d'avant le second déclencheur, qui n'en porte
+    // aucun, dit le relevé comme elle l'a toujours dit.
+    for (const cote of ["releve", undefined] as const) {
+      const releve = REDACTION.perimetre.constat({ ...population, cote });
+      expect(releve).toContain("Le dernier relevé complet du périmètre comptait 30 personnes");
+      expect(releve).toContain("n'en a résolu que 13");
+      expect(releve).toContain("départ de 17 personnes");
+      expect(releve).toContain("Aucun passage ne s'est dit complet depuis 4 passages");
+      expect(releve).toContain("Or c'est le dernier relevé complet qui sert de référence");
+    }
+
+    // Then sans ampleur comptée, la phrase de la population ne promet toujours rien
+    // qu'elle ne tienne : c'est le même sens sûr que de l'autre côté, et la décision
+    // sera écartée faute de mesure.
+    const sansMesure = REDACTION.perimetre.constat({ ...population, datables: undefined });
+    expect(sansMesure).toContain("n'a pas pu être compté");
+    expect(sansMesure).not.toMatch(/départ de/u);
+  });
+
   it("annonce à chaque famille le compte de passages qui est le sien", () => {
     // Given un blocage installé depuis cinq passages. Le nombre est le même pour les
     // trois familles, ce qu'il compte ne l'est pas : un système cible a refusé à
@@ -111,8 +184,9 @@ describe("ce que le bandeau promet à qui autorise une datation", () => {
     // l'âge de ce relevé qui dit son installation, et une nuit dégradée pour un tout
     // autre motif le fait vieillir sans qu'aucun refus ne retombe.
     const perimetre = REDACTION.perimetre.constat(blocage("perimetre"));
-    expect(perimetre).toContain("Ce relevé n'a pas été renouvelé depuis 5 passages");
+    expect(perimetre).toContain("Aucun passage ne s'est dit complet depuis 5 passages");
     expect(perimetre).not.toMatch(/à l'identique/u);
+    expect(perimetre).not.toMatch(/Ce relevé/u);
 
     // Then les systèmes cibles disent l'inverse, parce que c'est l'inverse : leur
     // référence est un décompte de lignes vivantes que la moindre datation corrige, si

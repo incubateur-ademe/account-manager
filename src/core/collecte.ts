@@ -255,27 +255,138 @@ export function systemesMuets(
  */
 export type FamilleDeChute = "identites" | "ressources" | "perimetre";
 
+/**
+ * De quel monde vient le refus du plancher du périmètre.
+ *
+ * Ce plancher a deux déclencheurs parce qu'il a deux façons de perdre du monde, et
+ * qu'une seule mesure n'en voyait qu'une. `releve` compare deux tailles de listes,
+ * celle du dernier passage complet et celle de ce soir : il attrape la réponse
+ * tronquée, l'amont qui rend d'un coup la moitié de ce qu'il rendait. `population`
+ * compare ce qui est tenu pour présent en base à ce qu'il en resterait après la
+ * datation de ce soir : il attrape ce que l'autre ne peut pas voir, un relevé qui ne
+ * bouge pas, ou qui grossit, pendant que le fossé se creuse entre lui et la base, ce
+ * qu'une nuit dégradée fait en faisant naître des fiches sans jamais toucher au relevé.
+ *
+ * Le côté se porte jusqu'à l'écran parce que les phrases ne s'échangent pas : dire
+ * « le dernier relevé complet comptait treize personnes, le dernier passage n'en a
+ * résolu que neuf » d'un refus venu de la base serait faux sur les deux nombres et sur
+ * ce qu'ils comparent.
+ */
+export type CoteDeChute = "releve" | "population";
+
+const COTES: readonly CoteDeChute[] = ["releve", "population"];
+
 export interface RefusDeDatation {
   famille: FamilleDeChute;
   observe: number;
   reference: number;
   /**
+   * Lequel des deux déclencheurs du plancher a parlé.
+   *
+   * Propre au périmètre, seul à en avoir deux. Un système cible ne l'écrit pas : sa
+   * référence est déjà un décompte de lignes vivantes, donc il a déjà ce déclencheur-là
+   * et il n'en a qu'un. Absent aussi des traces écrites avant que le second n'existe,
+   * qui disent toutes le relevé.
+   *
+   * Hors de la comparaison des refus répétés, comme le compte du dessous : deux refus
+   * qui ne parlent pas du même monde ne portent déjà pas les mêmes nombres, et lire le
+   * côté en plus ne trancherait rien qu'ils ne tranchent, tout en cassant la série le
+   * soir où le même gel se dit de l'autre côté.
+   */
+  cote?: CoteDeChute;
+  /**
    * Combien de fiches la datation toucherait si elle avait lieu, compté avec la requête
-   * même qui les daterait. Les deux nombres du dessus disent des tailles de listes,
-   * celui-ci dit la conséquence, et les deux mondes ne coïncident pas : une nuit
-   * dégradée fait naître des fiches sans toucher la référence, si bien qu'un écart
-   * annoncé de quatre peut en dater onze.
+   * même qui les daterait. Du côté du relevé, les deux nombres du dessus disent des
+   * tailles de listes, celui-ci dit la conséquence, et les deux mondes ne coïncident
+   * pas : une nuit dégradée fait naître des fiches sans toucher la référence, si bien
+   * qu'un écart annoncé de quatre peut en dater onze. Du côté de la population, il est
+   * cet écart, ce déclencheur ne mesurant rien d'autre que lui.
    *
    * Propre au périmètre. Un système cible ne l'écrit pas : sa référence est déjà un
-   * décompte de lignes tenues pour vivantes, donc déjà la conséquence. Absent aussi
-   * quand le comptage n'a pas abouti, ce qui ne change rien au refus : sans ce nombre
-   * il n'y a pas d'ampleur à mesurer, donc pas de décision qui lève.
+   * décompte de lignes tenues pour vivantes, donc déjà la conséquence. Absent d'un
+   * refus du relevé quand le comptage n'a pas abouti, ce qui ne change rien à ce refus :
+   * sans ce nombre il n'y a pas d'ampleur à mesurer, donc pas de décision qui lève.
+   * Jamais absent d'un refus de la population, qui n'existe pas sans ce compte.
    *
    * Hors de la comparaison des refus répétés, qui ne lit que les deux nombres du
    * dessus : ce compte bouge dès qu'une fiche naît, et un refus par ailleurs identique
    * cesserait de s'annoncer installé pour cette seule raison, refermant la sortie.
    */
   datables?: number;
+}
+
+/**
+ * Ce que la datation de ce soir ferait à la base, quand elle a pu être comptée.
+ *
+ * Les deux nombres sortent de la même clause, à l'exclusion des connues près : ce qui
+ * est tenu pour présent hors comptes de service, et ce qu'une datation en retirerait.
+ * Séparés, ils finiraient par ne plus parler du même périmètre, et le plancher
+ * mesurerait une chute entre deux populations qui ne se recouvrent pas.
+ */
+export interface AmpleurEnBase {
+  vivantes: number;
+  datables: number;
+}
+
+/**
+ * Ce que le plancher du périmètre refuse ce soir, et de quel côté il l'a vu.
+ *
+ * Deux déclencheurs de la même forme, mesurés sur les deux mondes que ce système tient
+ * en parallèle. Le premier compare la liste rendue à celle du dernier passage complet ;
+ * le second compare ce qui est tenu pour présent en base à ce qu'il en resterait. La
+ * même part maximale les borne, parce que c'est la même question posée deux fois : au
+ * delà d'un cinquième perdu d'un coup, on ne sait pas distinguer un départ collectif
+ * d'une réponse amputée, et dater finit par couper des accès.
+ *
+ * Un seul déclencheur ne suffisait pas, et l'écart entre les deux mondes est ce qui le
+ * dit : la résolution amont tourne avant que le statut du passage ne soit connu, donc
+ * une nuit dégradée fait naître des fiches sans toucher au relevé. Deux listes qui se
+ * ressemblent laissaient alors passer une datation de toute autre ampleur, sans refus,
+ * sans bandeau, et sans que personne n'ait rien à examiner.
+ *
+ * Le relevé est consulté le premier, et c'est le côté qui s'annonce quand les deux
+ * parlent : c'est lui qui porte l'histoire de la référence gelée, celle que l'écran
+ * raconte pour dire pourquoi le refus ne se dénouera pas seul.
+ *
+ * Sans ampleur comptée, le plancher ne conclut rien du second côté et le dit : il rend
+ * `aveugle` plutôt que rien, et l'appelant ne peut donc pas le prendre pour un feu
+ * vert. Rendre nul reviendrait à laisser une panne du comptage rouvrir le trou même que
+ * ce second déclencheur ferme, puisque ce compte est tout ce qui dit ce qu'une datation
+ * ferait. Le relevé, lui, a déjà conclu quand il refuse, et son refus n'attend rien de
+ * ce nombre : il part avec ce qu'on a pu compter, éventuellement rien, et l'écran dit
+ * alors qu'aucune décision ne se mesurera cette nuit-là.
+ */
+export function plancherDuPerimetre(
+  releve: { reference: number; observe: number },
+  ampleur: AmpleurEnBase | undefined,
+  partMax: number,
+): RefusDeDatation | "aveugle" | null {
+  if (chuteExcessive(releve.reference, releve.observe, partMax)) {
+    return {
+      famille: "perimetre",
+      cote: "releve",
+      observe: releve.observe,
+      reference: releve.reference,
+      datables: ampleur?.datables,
+    };
+  }
+
+  if (ampleur === undefined) {
+    return "aveugle";
+  }
+
+  const restantes = ampleur.vivantes - ampleur.datables;
+  if (!chuteExcessive(ampleur.vivantes, restantes, partMax)) {
+    return null;
+  }
+
+  return {
+    famille: "perimetre",
+    cote: "population",
+    observe: restantes,
+    reference: ampleur.vivantes,
+    datables: ampleur.datables,
+  };
 }
 
 const FAMILLES: readonly FamilleDeChute[] = ["identites", "ressources", "perimetre"];
@@ -413,12 +524,14 @@ export const RELEVE_NON_RENOUVELE = "relevé non renouvelé";
  * Ce par quoi commence la phrase qu'un passage laisse quand il n'a pas pu compter ce
  * qu'une datation toucherait.
  *
- * Ce compte-là ne sert qu'à qui tranche, et un passage qui le rate refuse de toute
- * façon : la panne ne change donc rien à ce qu'il conclut, et rien n'en porterait
- * trace. Or elle décide de tout ce qu'une opératrice peut faire ensuite, chaque
- * décision posée sans ce nombre étant écartée par le passage suivant. Sans cette ligne,
- * trois nuits de refus se lisent comme trois nuits ordinaires, et ce qui coince
- * n'apparaît nulle part.
+ * Elle se dit de deux nuits qui n'ont pas la même allure. Sous un refus du relevé, le
+ * passage avait déjà de quoi conclure et la panne ne change rien à ce qu'il conclut ;
+ * elle décide en revanche de tout ce qu'une opératrice peut faire ensuite, chaque
+ * décision posée sans ce nombre étant écartée par le passage suivant, et sans cette
+ * ligne trois nuits de refus se lisent comme trois nuits ordinaires. Sans ce refus, le
+ * passage n'a plus rien pour juger la datation du soir et ne conclut donc rien : c'est
+ * alors cette ligne, et elle seule, qui dit pourquoi une nuit par ailleurs complète
+ * s'est dégradée sans nommer personne.
  */
 export const AMPLEUR_NON_COMPTEE = "ampleur non comptée";
 
@@ -470,6 +583,7 @@ export function refusDeLaTrace(error: unknown, famille: FamilleDeChute): RefusDe
       const lu = entree as RefusDeDatation;
       return {
         famille,
+        cote: COTES.find((connu) => connu === lu.cote),
         observe: lu.observe,
         reference: lu.reference,
         datables: typeof lu.datables === "number" ? lu.datables : undefined,

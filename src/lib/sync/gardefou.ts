@@ -11,6 +11,7 @@
  */
 
 import {
+  type CoteDeChute,
   chuteInstallee,
   type FamilleDeChute,
   type RefusDeDatation,
@@ -36,8 +37,24 @@ const QUOI: Record<FamilleDeChute, (chute: RefusDeDatation) => string> = {
     `chute de la collecte : ${chute.observe} éléments contre ${chute.reference} tenus pour vivants`,
   ressources: (chute) =>
     `chute des ressources : ${chute.observe} contre ${chute.reference} connues`,
-  perimetre: (chute) =>
+  perimetre: (chute) => COTE_DU_PERIMETRE[chute.cote ?? "releve"](chute),
+};
+
+/**
+ * Le plancher du périmètre a deux déclencheurs, et deux phrases, parce qu'ils ne
+ * comptent pas la même chose. Celle du relevé sur un refus venu de la base annoncerait
+ * un dernier passage complet qui n'a rien à voir avec ce qui vient d'être refusé, et
+ * c'est le genre de ligne qu'on relit des semaines plus tard en cherchant un incident
+ * qui n'a jamais eu lieu.
+ *
+ * Une table plutôt qu'une condition, pour la raison qui vaut déjà chez les familles : un
+ * côté de plus qui ne dirait pas sa phrase ne compilerait pas.
+ */
+const COTE_DU_PERIMETRE: Record<CoteDeChute, (chute: RefusDeDatation) => string> = {
+  releve: (chute) =>
     `chute du périmètre : ${chute.observe} personnes contre ${chute.reference} au dernier relevé complet`,
+  population: (chute) =>
+    `chute du périmètre : la datation ferait partir ${chute.datables} personnes sur les ${chute.reference} tenues pour présentes, il n'en resterait que ${chute.observe}`,
 };
 
 /** Les traces des derniers passages de ce fournisseur, du plus récent au plus ancien. */
@@ -127,11 +144,14 @@ function attente(provider: string, famille: FamilleDeChute, run: { startedAt: Da
  * et c'est la raison d'être de ces colonnes : ce qu'un passage a enregistré n'est pas ce
  * qu'un écran a affiché.
  *
- * Deux mesures, parce que deux ampleurs se sont trouvées disjointes. L'observé dit la
- * taille de la liste rendue ; ce que la datation toucherait dit combien de personnes
- * seraient constatées parties, ce qui est le geste lui-même. L'une ne borne pas l'autre :
- * une nuit dégradée fait naître des fiches sans toucher au relevé, si bien qu'une chute
- * identique à celle annoncée peut en dater bien plus qu'on n'en avait examiné.
+ * Deux mesures, parce que deux ampleurs se sont trouvées disjointes. L'observé dit ce que
+ * son côté a compté, une taille de liste ou ce qui resterait en base ; ce que la datation
+ * toucherait dit combien de personnes seraient constatées parties, ce qui est le geste
+ * lui-même. L'une ne borne pas l'autre : une nuit dégradée fait naître des fiches sans
+ * toucher au relevé, si bien qu'une chute identique à celle annoncée peut en dater bien
+ * plus qu'on n'en avait examiné. C'est donc la seconde qui tient la borne quand le refus
+ * du soir vient de l'autre côté que celui qu'on a montré : le geste, lui, est le même des
+ * deux côtés, et c'est sur lui qu'on a tranché.
  *
  * Une ligne qui ne porte aucun nombre ne se mesure pas, et la borne échoue fermé : elle
  * est écartée plutôt que levée sans mesure, comme l'est une chute trop profonde. Vaut
@@ -206,6 +226,7 @@ export async function consommerAutorisation(
     targetId: provider,
     after: {
       famille: chute.famille,
+      cote: chute.cote,
       observe: chute.observe,
       reference: chute.reference,
       datables: chute.datables,

@@ -160,6 +160,12 @@ vi.mock("@/lib/db", () => ({
         }
         return Promise.resolve(base.fiches.filter((fiche) => retenuePar(fiche, where)));
       },
+      // Le comptage de ce qu'une datation toucherait passe par le même magasin que
+      // l'écriture qui la ferait, et il relit la condition de la même façon : sans lui,
+      // le plancher se déclare aveugle et dégrade le passage, ce que ces scénarios
+      // prendraient pour un défaut de la règle d'échéance qu'ils éprouvent.
+      count: ({ where }: { where: FiltreDeFiches }) =>
+        Promise.resolve(base.fiches.filter((fiche) => retenuePar(fiche, where)).length),
       updateMany: ({ where, data }: { where: FiltreDeFiches; data: { vanishedAt: Date } }) => {
         const touchees = base.fiches.filter((fiche) => retenuePar(fiche, where));
         for (const fiche of touchees) {

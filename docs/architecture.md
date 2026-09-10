@@ -155,13 +155,37 @@ sans qu'aucune erreur ne soit levée. Au-delà d'un cinquième perdu d'un coup, 
 collecte ne date aucune disparition et se déclare partielle. Ce plancher complète la
 règle générale : une collecte qui n'est pas `OK` ne pose jamais de `vanishedAt`.
 
-**Ce plancher a une sortie nominative, et il en a besoin.** Sa référence est l'effectif du
-dernier passage complet, et son refus dégrade le passage qui le prononce : le refus entretient
-donc sa propre référence, et une chute réelle qui dure ne se dénouerait jamais seule. Un
-opérateur peut autoriser un passage à dater malgré elle, avec un motif, sous son nom, pour une
-fois. La sortie s'offre quand le relevé n'a pas été renouvelé depuis assez de passages, et non
-quand le même refus retombe à l'identique : le gel a cinq causes et une seule signature, et
-compter les refus identiques ne verrait que la sienne.
+**Ce plancher a deux déclencheurs, et il en a besoin.** Le premier compare la liste rendue ce
+soir à l'effectif du dernier passage complet : il attrape la réponse tronquée, l'amont qui rend
+d'un coup la moitié de ce qu'il rendait. Le second compare ce que la base tient pour présent,
+comptes de service exclus, à ce qu'il en resterait après la datation du soir. Il attrape ce que
+le premier ne peut pas voir : la résolution amont tourne avant qu'un passage sache s'il est
+complet, donc une nuit dégradée fait naître des fiches que plus aucune liste ne réclame, sans que
+le relevé en sache rien. Un relevé qui ne bouge pas, ou qui grossit, laissait alors passer une
+datation de tout autre ampleur, sans refus, sans bandeau, et sans que personne n'ait eu quoi que
+ce soit à examiner.
+
+Même part maximale pour les deux, parce que c'est la même question posée sur deux mondes. Le
+plancher refuse si l'un des deux refuse, et la trace dit lequel : les deux phrases ne s'échangent
+pas, celle du relevé sur un refus venu de la base serait fausse sur ses deux nombres comme sur ce
+qu'ils comparent. Le second a besoin d'un compte que la base peut lui refuser, et l'absence de
+mesure n'est pas une absence de chute : le passage qui ne l'obtient pas ne conclut rien, se
+dégrade, ne date personne, et laisse intacte la décision qui attendait.
+
+**Ce plancher a une sortie nominative, et il en a besoin.** Les deux déclencheurs entretiennent
+ce qu'ils refusent, mais pas par le même chemin. Du côté du relevé, la référence est l'effectif du
+dernier passage complet et le refus dégrade le passage qui le prononce : le refus entretient sa
+propre référence, et une chute réelle qui dure ne se dénouerait jamais seule. Du côté de la
+population, la référence se corrigerait d'elle-même dès qu'une datation passe, et c'est
+précisément la datation que le refus retient. Un opérateur peut autoriser un passage à dater
+malgré elle, avec un motif, sous son nom, pour une fois.
+
+La sortie s'offre quand le relevé n'a pas été renouvelé depuis assez de passages, et non quand le
+même refus retombe à l'identique : le gel a cinq causes et une seule signature, et compter les
+refus identiques ne verrait que la sienne. Ce compte-là ne s'interrompt pas faute de relevé, et
+c'est le second déclencheur qui l'exige : il refuse sans en lire aucun, donc avant le premier
+passage complet aussi, et se taire là refermerait la sortie exactement là où rien ne la
+rouvrirait, son propre refus étant ce qui empêche ce premier passage complet d'arriver.
 
 Elle ne lève que ce garde-fou, et elle ne lève rien qu'on n'ait mesuré : une décision se compare
 à la chute qu'on a montrée à qui décidait, et si plus rien ne permet cette comparaison, elle est

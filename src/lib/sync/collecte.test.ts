@@ -228,6 +228,19 @@ function attendue(posee: AutorisationEnBase, where: AttenteDAutorisation): boole
   );
 }
 
+/**
+ * Les refus tels que la trace du passage les porte, sans les recomposer : c'est
+ * l'écriture brute qui doit être vérifiée, un lecteur qui reconstruit champ par champ
+ * rendrait un champ de trop invisible.
+ */
+function traceDuRefus(error: unknown): Record<string, unknown>[] | undefined {
+  if (!error || typeof error !== "object" || !("refus" in error)) {
+    return undefined;
+  }
+  const refus = (error as { refus: unknown }).refus;
+  return Array.isArray(refus) ? refus : undefined;
+}
+
 const MAINTENANT = new Date("2026-08-24T02:00:00Z");
 const PROVIDER = "atelier";
 
@@ -401,6 +414,16 @@ describe("ce qu'une collecte a le droit de faire disparaître", () => {
     expect(base.runs[0]?.error).toMatchObject({
       refus: [{ famille: "identites", observe: 5, reference: 10 }],
     });
+
+    // Then rien de ce refus ne nomme un côté. Ce garde-fou compare déjà ce qu'une
+    // lecture rend à un décompte de lignes tenues pour vivantes : il a donc déjà le
+    // déclencheur que le plancher du périmètre vient d'ajouter, et il n'en a qu'un.
+    // Sa trace n'a pas de côté à porter, et sa phrase n'a pas de côté à dire.
+    expect(resultat.refus?.[0]).not.toHaveProperty("cote");
+    expect(traceDuRefus(base.runs[0]?.error)?.[0]).not.toHaveProperty("cote");
+    expect(resultat.erreurs[0]).toBe(
+      "chute de la collecte : 5 éléments contre 10 tenus pour vivants, aucune disparition datée",
+    );
   });
 });
 

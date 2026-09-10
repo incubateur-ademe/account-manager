@@ -14,6 +14,7 @@ import {
   fraicheurDe,
   nonRendueAuDernierPassage,
   PLANCHER_ARRIVEES,
+  plancherDuPerimetre,
   type RefusDeDatation,
   type ReleveSysteme,
   refusRepete,
@@ -84,6 +85,78 @@ describe("chute d'une collecte d'un relevé à l'autre", () => {
 
   it("ne bronche pas quand la collecte grossit", () => {
     expect(chuteExcessive(100, 500, PART_MAX)).toBe(false);
+  });
+
+  it("mesure le plancher du périmètre sur ses deux mondes, et dit lequel a parlé", () => {
+    // Une nuit ordinaire : la liste rendue vaut le relevé, et la datation du soir ne
+    // toucherait qu'une poignée de fiches sur une population entière. Rien à refuser
+    // d'aucun des deux côtés, et c'est ce qui doit rester vrai le plus souvent.
+    expect(
+      plancherDuPerimetre({ reference: 95, observe: 93 }, { vivantes: 95, datables: 2 }, PART_MAX),
+    ).toBeNull();
+
+    // Une réponse amputée : la liste fond, et c'est le relevé qui l'attrape. Il parle
+    // le premier quand les deux parlent, parce que c'est lui qui porte l'histoire de
+    // la référence que le refus lui-même empêche d'avancer.
+    expect(
+      plancherDuPerimetre({ reference: 95, observe: 70 }, { vivantes: 95, datables: 25 }, PART_MAX),
+    ).toEqual({
+      famille: "perimetre",
+      cote: "releve",
+      observe: 70,
+      reference: 95,
+      datables: 25,
+    });
+
+    // Le défaut que le second déclencheur ferme : deux tailles de listes qui se
+    // ressemblent trait pour trait, et pourtant dix-sept fiches sur trente que la
+    // datation ferait partir d'un seul geste. Le relevé ne voit rien, la base parle.
+    expect(
+      plancherDuPerimetre({ reference: 13, observe: 13 }, { vivantes: 30, datables: 17 }, PART_MAX),
+    ).toEqual({
+      famille: "perimetre",
+      cote: "population",
+      observe: 13,
+      reference: 30,
+      datables: 17,
+    });
+
+    // Sans ampleur comptée, le plancher se déclare aveugle plutôt que muet : ce compte
+    // est tout ce qui dit ce qu'une datation ferait, et le rendre nul laisserait une
+    // panne de la base rouvrir le trou que ce second déclencheur vient de fermer.
+    expect(plancherDuPerimetre({ reference: 13, observe: 13 }, undefined, PART_MAX)).toBe(
+      "aveugle",
+    );
+
+    // Le relevé, lui, a déjà conclu quand il refuse, et son refus n'attend rien de ce
+    // nombre : il part avec ce qu'on a pu compter, ici rien.
+    expect(plancherDuPerimetre({ reference: 95, observe: 70 }, undefined, PART_MAX)).toEqual({
+      famille: "perimetre",
+      cote: "releve",
+      observe: 70,
+      reference: 95,
+    });
+
+    // Une base vide ne devient pas un refus permanent : sans rien à perdre il n'y a
+    // rien à soupçonner, des deux côtés, sans quoi le premier passage d'une
+    // installation neuve refuserait pour toujours ce qu'elle n'a jamais eu.
+    expect(
+      plancherDuPerimetre({ reference: 0, observe: 0 }, { vivantes: 0, datables: 0 }, PART_MAX),
+    ).toBeNull();
+    expect(
+      plancherDuPerimetre({ reference: 0, observe: 42 }, { vivantes: 0, datables: 0 }, PART_MAX),
+    ).toBeNull();
+
+    // Et une population qui grossit ne referme pas la sortie : plus elle est large,
+    // plus la même datation y pèse peu, donc ce déclencheur se tait au lieu de retomber
+    // chaque nuit sur qui n'a rien à se reprocher.
+    expect(
+      plancherDuPerimetre(
+        { reference: 95, observe: 95 },
+        { vivantes: 300, datables: 17 },
+        PART_MAX,
+      ),
+    ).toBeNull();
   });
 });
 
@@ -588,6 +661,58 @@ describe("les blocages que l'écran doit annoncer plutôt que de les laisser au 
         })),
       ),
     ).toEqual([]);
+
+    // Then le côté du refus voyage jusqu'au bandeau, qui n'a pas d'autre moyen de savoir
+    // laquelle des deux phrases écrire. Une trace d'avant le second déclencheur n'en
+    // porte aucun, et se lit du côté du relevé, qui est ce qu'elle a toujours dit.
+    expect(
+      blocagesInstalles([
+        {
+          provider: "espace-membre",
+          error: {
+            messages: [],
+            ageDuReleve: 4,
+            refus: [
+              {
+                famille: "perimetre",
+                cote: "population",
+                observe: 13,
+                reference: 30,
+                datables: 17,
+              },
+            ],
+          },
+        },
+      ]),
+    ).toEqual([
+      {
+        provider: "espace-membre",
+        famille: "perimetre",
+        cote: "population",
+        observe: 13,
+        reference: 30,
+        datables: 17,
+        passages: 4,
+      },
+    ]);
+
+    // Then un côté que personne n'a écrit ne voyage pas sous le nom d'un côté connu : la
+    // trace est du JSON libre, et une valeur qu'on n'a pas reconnue ferait rédiger le
+    // bandeau contre une phrase choisie au hasard plutôt que contre le refus du soir.
+    expect(
+      blocagesInstalles([
+        {
+          provider: "espace-membre",
+          error: {
+            messages: [],
+            ageDuReleve: 4,
+            refus: [{ ...CHUTE, cote: "n'importe quoi" }],
+          },
+        },
+      ]),
+    ).toEqual([
+      { provider: "espace-membre", famille: "perimetre", observe: 9, reference: 13, passages: 4 },
+    ]);
   });
 });
 
