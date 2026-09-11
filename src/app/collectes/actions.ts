@@ -4,10 +4,13 @@ import { randomUUID } from "node:crypto";
 
 import { after } from "next/server";
 
+import { ampleurMesurable, estFamilleDeChute } from "@/core/collecte";
 import { actionTracee } from "@/lib/actions";
 import { deconnecter, prisma } from "@/lib/db";
 import { requireOperateur } from "@/lib/session";
 import { collecteEnCours, executerSync } from "@/lib/sync/executer";
+
+import { blocagesDuMoment } from "./blocages";
 
 export interface EtatLancement {
   message?: string;
@@ -89,9 +92,34 @@ export type EtatAutorisation = { erreur: string } | null;
  * que ce refus empêche justement de nettoyer, il se maintient lui-même et plus aucune
  * disparition n'est jamais datée pour ce système.
  *
+ * Sur le périmètre, il se maintient par un autre chemin et sans même que des données
+ * soient en cause : la référence est l'effectif du dernier passage complet, le refus
+ * dégrade le passage qui le prononce, donc un passage dégradé ne devient jamais ce
+ * relevé, donc la chute se rejoue contre l'effectif d'avant. Une chute réelle qui dure
+ * n'y a aucune autre issue que celle-ci, et elle gèle du même coup tout ce qui
+ * s'adosse au relevé.
+ *
  * L'autorisation ne vaut que pour un passage, et elle est nominative : c'est une
  * décision, pas un réglage. Rien n'est écrit ici sur les accès eux-mêmes, c'est la
  * prochaine collecte qui conclura, avec ce que ses propres yeux auront vu.
+ *
+ * Elle emporte les nombres du refus, celui de ce que la datation toucherait compris, et
+ * c'est ce dernier qui dit ce qui arrivera à des personnes : les deux autres comparent
+ * des tailles de listes, et leur écart est plus étroit que le geste.
+ *
+ * Cette action ne croit aucun de ceux qu'on lui poste : elle recalcule le blocage par la
+ * fonction même dont l'écran se sert, et refuse tout ce qui ne correspond pas. Les croire
+ * ferait de ce formulaire la porte par laquelle on écrit l'ampleur de son choix, et la
+ * borne qui mesure la chute du soir mesurerait contre elle. Les recalculer ferme du même geste
+ * la décision prise depuis un onglet que le passage du soir a périmé : la page ne se
+ * rafraîchit pas toute seule, et une opératrice qui tranche sur des nombres vieux d'une
+ * nuit doit l'apprendre ici plutôt que de le découvrir dans une datation en bloc.
+ *
+ * Elle refuse de même ce qui ne se mesure pas. Un passage dont le comptage n'a pas
+ * abouti n'annonce aucune ampleur, et l'accueillir quand même occuperait la seule place
+ * disponible d'une ligne que la collecte écartera : l'écran interdit une seconde
+ * décision tant que la première attend, si bien que l'accepter fermerait la sortie
+ * jusqu'à la nuit suivante au lieu de dire ce qui manque.
  */
 export async function autoriserDatation(
   _etat: EtatAutorisation,
@@ -102,8 +130,11 @@ export async function autoriserDatation(
   const provider = String(formData.get("provider") ?? "").trim();
   const famille = String(formData.get("famille") ?? "").trim();
   const raison = String(formData.get("raison") ?? "").trim();
+  const observe = entierPoste(formData, "observe");
+  const reference = entierPoste(formData, "reference");
+  const datables = entierPoste(formData, "datables");
 
-  if (famille !== "identites" && famille !== "ressources") {
+  if (!estFamilleDeChute(famille)) {
     return { erreur: "Famille de garde-fou non reconnue." };
   }
   if (!provider) {
@@ -113,6 +144,32 @@ export async function autoriserDatation(
     return {
       erreur:
         "Indiquez pourquoi cette chute est légitime : lever un garde-fou sans motif est une décision qu'on ne saura pas réexaminer.",
+    };
+  }
+
+  const montre = (await blocagesDuMoment()).find(
+    (blocage) => blocage.provider === provider && blocage.famille === famille,
+  );
+  if (!montre) {
+    return {
+      erreur:
+        "Ce garde-fou ne bloque plus rien. Rechargez la page : la sortie ne s'offre que sous un refus, et une décision posée sans lui attendrait un passage qui ne la prendra peut-être jamais.",
+    };
+  }
+  if (!ampleurMesurable(montre)) {
+    return {
+      erreur:
+        "Le dernier passage n'a pas pu compter combien de personnes une datation ferait partir. Une décision posée maintenant serait écartée sans rien dater : reprenez-la quand ce nombre sera de nouveau annoncé.",
+    };
+  }
+  if (
+    montre.observe !== observe ||
+    montre.reference !== reference ||
+    (montre.datables ?? null) !== datables
+  ) {
+    return {
+      erreur:
+        "La chute a changé depuis l'affichage de cette page. Rechargez-la et décidez sur les nombres du jour : une décision porte l'ampleur qu'on avait sous les yeux, et rien de plus profond ne sera daté sur elle.",
     };
   }
 
@@ -128,14 +185,28 @@ export async function autoriserDatation(
     action: "sync.gardefou.autorise",
     targetType: "system",
     targetId: provider,
-    after: { famille, raison },
+    after: { famille, raison, observe, reference, datables },
     revalider: ["/collectes"],
     ecrire: async (operateur) => {
       await prisma.scopeDropOverride.create({
-        data: { provider, famille, reason: raison, createdBy: operateur.username },
+        data: {
+          provider,
+          famille,
+          reason: raison,
+          createdBy: operateur.username,
+          observe,
+          reference,
+          datables,
+        },
       });
     },
   });
 
   return null;
+}
+
+/** Un entier tel que l'écran l'a posté, ou rien. */
+function entierPoste(formData: FormData, champ: string): number | null {
+  const brut = formData.get(champ);
+  return typeof brut === "string" && /^\d+$/.test(brut) ? Number(brut) : null;
 }

@@ -165,7 +165,13 @@ const CHARGES: Readonly<Record<string, readonly unknown[]>> = {
   lancerCollecte: [],
   autoriserDatation: [
     null,
-    champs({ provider: "ovh", famille: "identites", raison: "purge des comptes de test" }),
+    champs({
+      provider: "ovh",
+      famille: "identites",
+      raison: "purge des comptes de test",
+      observe: "12",
+      reference: "31",
+    }),
   ],
   ouvrirDepart: [null, champs({ username: PERSONNE })],
   ouvrirArrivee: [null, champs({ username: PERSONNE })],

@@ -46,8 +46,10 @@ vi.mock("@/lib/db", () => ({
       },
       findFirst: ({
         where,
+        orderBy,
       }: {
         where: { provider: string; capability: string; status: string };
+        orderBy: { startedAt: "asc" | "desc" };
       }) => {
         const candidats = base.runs
           .filter(
@@ -56,8 +58,50 @@ vi.mock("@/lib/db", () => ({
               run.capability === where.capability &&
               run.status === where.status,
           )
-          .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
+          .sort((a, b) =>
+            orderBy.startedAt === "asc"
+              ? a.startedAt.getTime() - b.startedAt.getTime()
+              : b.startedAt.getTime() - a.startedAt.getTime(),
+          );
         return Promise.resolve(candidats[0] ?? null);
+      },
+      // Deux relectures des passages, le courant excepté, et deux formes de `where`
+      // qu'il ne faut pas confondre. L'âge du relevé borne par le relevé lui-même et ne
+      // lit que le statut ; le refus répété relit une fenêtre fixe et n'en lit que la
+      // trace. Aucun scénario d'échéance ne les fait parler, mais elles sont toutes
+      // deux sur le chemin dès qu'un passage cesse d'être complet ou qu'une chute
+      // survient : sans elles, la première garde qu'on éprouverait ici tomberait en
+      // `TypeError` au lieu d'une assertion, c'est-à-dire pour la mauvaise raison.
+      findMany: ({
+        where,
+        orderBy,
+        take,
+      }: {
+        where: {
+          provider: string;
+          capability: string;
+          id: { not: string };
+          startedAt?: { gte: Date };
+        };
+        orderBy: { startedAt: "asc" | "desc" };
+        take?: number;
+      }) => {
+        const borne = where.startedAt;
+        const passages = base.runs
+          .filter(
+            (run) =>
+              run.provider === where.provider &&
+              run.capability === where.capability &&
+              run.id !== where.id.not &&
+              (borne === undefined || run.startedAt.getTime() >= borne.gte.getTime()),
+          )
+          .sort((a, b) =>
+            orderBy.startedAt === "asc"
+              ? a.startedAt.getTime() - b.startedAt.getTime()
+              : b.startedAt.getTime() - a.startedAt.getTime(),
+          )
+          .map((run) => (borne === undefined ? { error: run.error } : { status: run.status }));
+        return Promise.resolve(take === undefined ? passages : passages.slice(0, take));
       },
       update: ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
         const run = base.runs.find((candidat) => candidat.id === where.id);
@@ -110,41 +154,66 @@ vi.mock("@/lib/db", () => ({
         base.fiches.push(fiche);
         return Promise.resolve(fiche);
       },
-      findMany: ({ where }: { where: Record<string, unknown> }) => {
-        const parNom = where["username"] as { in: string[] } | undefined;
-        if (!parNom) {
+      findMany: ({ where }: { where: FiltreDeFiches }) => {
+        if (where.OR) {
           return Promise.resolve([]);
         }
-        return Promise.resolve(
-          base.fiches.filter(
-            (fiche) =>
-              parNom.in.includes(fiche.username) &&
-              fiche.vanishedAt === null &&
-              fiche.source !== "SERVICE",
-          ),
-        );
+        return Promise.resolve(base.fiches.filter((fiche) => retenuePar(fiche, where)));
       },
-      updateMany: ({
-        where,
-        data,
-      }: {
-        where: { username: { notIn: string[] } };
-        data: { vanishedAt: Date };
-      }) => {
-        const touchees = base.fiches.filter(
-          (fiche) =>
-            !where.username.notIn.includes(fiche.username) &&
-            fiche.vanishedAt === null &&
-            fiche.source !== "SERVICE",
-        );
+      // Le comptage de ce qu'une datation toucherait passe par le même magasin que
+      // l'écriture qui la ferait, et il relit la condition de la même façon : sans lui,
+      // le plancher se déclare aveugle et dégrade le passage, ce que ces scénarios
+      // prendraient pour un défaut de la règle d'échéance qu'ils éprouvent.
+      count: ({ where }: { where: FiltreDeFiches }) =>
+        Promise.resolve(base.fiches.filter((fiche) => retenuePar(fiche, where)).length),
+      updateMany: ({ where, data }: { where: FiltreDeFiches; data: { vanishedAt: Date } }) => {
+        const touchees = base.fiches.filter((fiche) => retenuePar(fiche, where));
         for (const fiche of touchees) {
           fiche.vanishedAt = data.vanishedAt;
         }
         return Promise.resolve({ count: touchees.length });
       },
     },
+    // Aucune décision d'opérateur ici, mais un magasin quand même : depuis que le
+    // chemin de la panne laisse le passage complet, ces scénarios atteignent le bloc
+    // de datation, qui périme toute autorisation qu'aucune chute n'a levée.
+    scopeDropOverride: {
+      findFirst: () => Promise.resolve(null),
+      updateMany: () => Promise.resolve({ count: 0 }),
+    },
   },
 }));
+
+/**
+ * Ce qu'une requête sur les fiches énonce, et rien de plus : un double qui rejouerait
+ * de son côté la condition qu'il reçoit rendrait sa disparition du code de production
+ * invisible.
+ */
+interface FiltreDeFiches {
+  username?: { in?: string[]; notIn?: string[] };
+  vanishedAt?: null;
+  source?: string | { not: string };
+  OR?: unknown[];
+}
+
+function retenuePar(fiche: FicheEnBase, where: FiltreDeFiches): boolean {
+  if (where.username?.in && !where.username.in.includes(fiche.username)) {
+    return false;
+  }
+  if (where.username?.notIn?.includes(fiche.username)) {
+    return false;
+  }
+  if (where.vanishedAt === null && fiche.vanishedAt !== null) {
+    return false;
+  }
+  if (typeof where.source === "string" && fiche.source !== where.source) {
+    return false;
+  }
+  if (typeof where.source === "object" && fiche.source === where.source.not) {
+    return false;
+  }
+  return true;
+}
 
 vi.mock("@/lib/espace-membre", () => ({
   fetchIncubatorStartups: () =>
@@ -161,7 +230,8 @@ vi.mock("@/lib/espace-membre", () => ({
     }),
   fetchIncubatorMembers: () => Promise.resolve({ items: base.membres, erreurs: [] }),
   // Deux façons d'échouer, et l'écriture ne doit dépendre ni de l'une ni de l'autre :
-  // un 404 rend `null` et laisse le passage complet, tout le reste jette et le dégrade.
+  // un 404 rend `null` et nomme la fiche que la source ne connaît pas, tout le reste
+  // jette sans rien dire d'elle.
   fetchMemberDetail: (username: string) => {
     if (base.pannes.has(username)) {
       return Promise.reject(new Error(`${username} : 500 Internal Server Error`));
@@ -273,8 +343,9 @@ const NUITS = Array.from(
 /**
  * Un passage de collecte, et les deux façons d'y perdre une fiche complète.
  *
- * `chemin` dit laquelle : `"404"` nomme la fiche manquante et laisse le passage
- * complet, `"panne"` jette et le dégrade.
+ * `chemin` dit laquelle : `"404"` nomme la fiche manquante, `"panne"` jette sans rien
+ * dire d'elle. Ni l'une ni l'autre ne dégrade le passage, ces personnes étant rendues
+ * par la liste scopée : elles restent du périmètre, et seule leur échéance manque.
  */
 async function nuit(
   index: number,
@@ -426,19 +497,27 @@ describe("ce qu'un passage écrit d'une échéance qu'il n'a pas su relire", () 
     await nuit(0);
     expect(echeance(DEUX_VOIES)).toEqual(new Date("2028-06-30T00:00:00Z"));
 
-    // When la fiche complète ne répond plus par un 404 mais par une panne, qui jette :
-    // le passage se dégrade et nomme les personnes dans ses erreurs. C'est le chemin le
-    // plus fréquent des deux, et le garde-fou de dégradation ne le couvre pas : il
-    // protège les disparitions, pas les colonnes, l'écriture ayant lieu avant lui. Et
-    // pendant cette panne, une personne rattachée par une équipe entre au périmètre.
+    // When la fiche complète ne répond plus par un 404 mais par une panne, qui jette.
+    // C'est le chemin le plus fréquent des deux, et le garde-fou de dégradation ne le
+    // couvre pas : il protège les disparitions, pas les colonnes, l'écriture ayant lieu
+    // avant lui. Et pendant cette panne, une personne rattachée par une équipe entre au
+    // périmètre.
     const panne = await nuit(1, {
       sansFiche: [PAR_EQUIPE, DEUX_VOIES, DEUX_VOIES_SANS_FIN, ENTRANTE],
       chemin: "panne",
       entrante: true,
     });
 
-    expect(panne.status).toBe("PARTIAL");
-    expect(panne.errors).toHaveLength(4);
+    // Then le passage reste complet, là où il se dégradait. Ces quatre-là sont rendues
+    // par la liste scopée : la lecture manquée ne retire personne du périmètre, elle ne
+    // coûte que l'échéance, et le refus qui protège cette colonne les nomme déjà sans
+    // rien dégrader. Se dégrader pour un nom connu gelait le relevé, donc les vrais
+    // départs de toutes les nuits suivantes, sans protéger quoi que ce soit.
+    expect(panne.status).toBe("OK");
+    expect(panne.errors).toEqual([]);
+    expect(panne.lecturesManquees).toHaveLength(4);
+    expect(panne.retenues).toEqual([]);
+    expect(panne.retenuesSansReponse).toEqual([]);
 
     // Then ce qui était connu est conservé, exactement comme sur l'autre chemin : ce
     // qui décide n'est pas la façon dont la lecture a manqué, c'est qu'on écrive sans
@@ -464,9 +543,10 @@ describe("ce qu'un passage écrit d'une échéance qu'il n'a pas su relire", () 
     // rien à garder. C'est tout ce qu'on peut faire pour elle.
     expect(panne.echeancesNonEcrites).toContain(ENTRANTE);
 
-    // Then la trace porte les deux natures d'incident sans que l'une chasse l'autre :
-    // les erreurs de lecture, qui l'ont dégradé, et le refus d'écriture, qui ne dégrade
-    // rien mais que personne ne verrait autrement.
+    // Then la trace porte les deux natures de fait sans que l'une chasse l'autre : ce
+    // que la source a répondu en échouant, qui ne dégrade plus mais qui reste la seule
+    // chose à distinguer la panne d'une nuit d'un enregistrement amont mal formé, et le
+    // refus d'écriture que personne ne verrait autrement.
     expect(ceQuiAEteDit(panne.runId)).toHaveLength(5);
     expect(ceQuiAEteDit(panne.runId).at(-1)).toBe(
       `${REFUS_D_ECHEANCE} : ${PAR_EQUIPE}, ${DEUX_VOIES}, ${DEUX_VOIES_SANS_FIN}, ${ENTRANTE} ; fiche complète non lue`,

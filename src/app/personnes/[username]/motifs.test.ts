@@ -34,7 +34,9 @@ function fiche(over: Partial<EtatDeLaFiche> = {}): EtatDeLaFiche {
     ouverts: [],
     fermes: [],
     fraicheur: { perimee: false, heures: 2 },
+    ageDuReleve: null,
     nonRendue: false,
+    sansReponse: false,
     toutesStartupsTerminees: false,
     parEquipe: false,
     departVivant: null,
@@ -256,6 +258,22 @@ describe("les gestes que porte le bloc d'action d'une fiche", () => {
         .every((motif) => motif.gestes === undefined && motif.lien === undefined),
     ).toBe(true);
 
+    // Le même angle mort, l'autre cause : la lecture de sa fiche n'a pas répondu, et
+    // rien en base ne l'en distingue. Un seul motif prend la place de l'autre, parce
+    // que deux lignes qui parlent du même silence en promettant deux suites opposées
+    // laisseraient l'opérateur choisir laquelle croire. La suite change, et c'est tout
+    // ce qui se joue ici : celle du dessus annonce une sortie au prochain passage
+    // complet, celle-ci annonce qu'aucun passage ne conclura tant que la source ne
+    // répondra pas, et dirige vers l'amont.
+    const muette = motifsDAction(fiche({ nonRendue: true, sansReponse: true }));
+
+    expect(muette.map((motif) => motif.cle)).toEqual(["sans-reponse"]);
+    expect(muette[0]?.severite).toBe("warning");
+    expect(muette[0]?.description).toContain("tant qu'elle échouera");
+    expect(muette[0]?.description).toContain("espace-membre");
+    expect(muette[0]?.description).not.toContain("sera constatée");
+    expect(muette[0]?.gestes).toBeUndefined();
+
     const complete = motifsDAction(
       fiche({
         statut: "SORTI",
@@ -277,5 +295,52 @@ describe("les gestes que porte le bloc d'action d'une fiche", () => {
     expect(new Set(complete.flatMap((motif) => nomsDesGestes(motif.gestes)))).toEqual(
       new Set(["clore", "rattacher-startup"]),
     );
+  });
+
+  it("n'annonce un relevé qui n'avance plus qu'une fois que ce n'est plus un incident", () => {
+    // Given une nuit ratée, puis deux. Le passage porte déjà le compte dans sa trace,
+    // et cet écran-ci se tait : une lecture échoue une nuit pour une raison qui
+    // passera, et le même avertissement posé sur les quatre-vingt-quinze fiches à
+    // chaque incident d'une nuit cesse d'être lu, ce qui coûterait justement la seule
+    // fois où il compte.
+    expect(motifsDAction(fiche({ ageDuReleve: 1 }))).toEqual([]);
+    expect(motifsDAction(fiche({ ageDuReleve: 2 }))).toEqual([]);
+
+    // When la série s'installe. Rien n'a changé sur cette personne, et c'est le point :
+    // ce que l'écran annonce n'est pas un fait sur elle, c'est le fait que plus rien
+    // n'est conclu sur personne.
+    const fige = motifsDAction(fiche({ ageDuReleve: 3 }));
+
+    // Then il le dit avec son compte, dit que le silence ne la concerne pas
+    // particulièrement, et n'offre aucun geste : il n'y a rien à faire d'ici, la
+    // cause est dans le journal des collectes.
+    expect(fige.map((motif) => motif.cle)).toEqual(["releve-fige"]);
+    expect(fige[0]?.severite).toBe("warning");
+    expect(fige[0]?.description).toContain("3 passages");
+    expect(fige[0]?.description).toContain("pour personne");
+    expect(fige[0]?.gestes).toBeUndefined();
+    expect(fige[0]?.lien).toBeUndefined();
+
+    // Then il voisine la fraîcheur au lieu de la remplacer, et les deux ne disent pas
+    // la même chose : celle du dessus dit que la collecte n'a pas tourné, celui-ci dit
+    // qu'elle tourne et qu'elle ne conclut rien. C'est le second cas qui est traître,
+    // l'écran restant au vert de bout en bout.
+    const avecFraicheur = motifsDAction(
+      fiche({ ageDuReleve: 12, fraicheur: { perimee: true, heures: 96 } }),
+    );
+
+    expect(avecFraicheur.map((motif) => motif.cle)).toEqual(["fraicheur", "releve-fige"]);
+    expect(avecFraicheur[1]?.description).toContain("12 passages");
+
+    // Then il ne nie pas ce que son voisin annonce. Les deux motifs viennent de
+    // passages différents, le gel du dernier et la retenue du dernier qui s'est dit
+    // complet, et rien ne les exclut : une phrase qui dirait qu'aucune fiche non rendue
+    // n'est annoncée pour personne se lirait donc juste au-dessus de celle qui en
+    // annonce une, sur l'écran où l'on décide de couper un accès.
+    const geleEtRetenu = motifsDAction(fiche({ ageDuReleve: 5, sansReponse: true }));
+
+    expect(geleEtRetenu.map((motif) => motif.cle)).toEqual(["releve-fige", "sans-reponse"]);
+    expect(geleEtRetenu[0]?.description).not.toContain("n'annonce aucune fiche non rendue");
+    expect(geleEtRetenu[0]?.description).toContain("dernier passage qui s'est dit complet");
   });
 });

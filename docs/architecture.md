@@ -155,6 +155,45 @@ sans qu'aucune erreur ne soit levée. Au-delà d'un cinquième perdu d'un coup, 
 collecte ne date aucune disparition et se déclare partielle. Ce plancher complète la
 règle générale : une collecte qui n'est pas `OK` ne pose jamais de `vanishedAt`.
 
+**Ce plancher a deux déclencheurs, et il en a besoin.** Le premier compare la liste rendue ce
+soir à l'effectif du dernier passage complet : il attrape la réponse tronquée, l'amont qui rend
+d'un coup la moitié de ce qu'il rendait. Le second compare ce que la base tient pour présent,
+comptes de service exclus, à ce qu'il en resterait après la datation du soir. Il attrape ce que
+le premier ne peut pas voir : la résolution amont tourne avant qu'un passage sache s'il est
+complet, donc une nuit dégradée fait naître des fiches que plus aucune liste ne réclame, sans que
+le relevé en sache rien. Un relevé qui ne bouge pas, ou qui grossit, laissait alors passer une
+datation de tout autre ampleur, sans refus, sans bandeau, et sans que personne n'ait eu quoi que
+ce soit à examiner.
+
+Même part maximale pour les deux, parce que c'est la même question posée sur deux mondes. Le
+plancher refuse si l'un des deux refuse, et la trace dit lequel : les deux phrases ne s'échangent
+pas, celle du relevé sur un refus venu de la base serait fausse sur ses deux nombres comme sur ce
+qu'ils comparent. Le second a besoin d'un compte que la base peut lui refuser, et l'absence de
+mesure n'est pas une absence de chute : le passage qui ne l'obtient pas ne conclut rien, se
+dégrade, ne date personne, et laisse intacte la décision qui attendait.
+
+**Ce plancher a une sortie nominative, et il en a besoin.** Les deux déclencheurs entretiennent
+ce qu'ils refusent, mais pas par le même chemin. Du côté du relevé, la référence est l'effectif du
+dernier passage complet et le refus dégrade le passage qui le prononce : le refus entretient sa
+propre référence, et une chute réelle qui dure ne se dénouerait jamais seule. Du côté de la
+population, la référence se corrigerait d'elle-même dès qu'une datation passe, et c'est
+précisément la datation que le refus retient. Un opérateur peut autoriser un passage à dater
+malgré elle, avec un motif, sous son nom, pour une fois.
+
+La sortie s'offre quand le relevé n'a pas été renouvelé depuis assez de passages, et non quand le
+même refus retombe à l'identique : le gel a cinq causes et une seule signature, et compter les
+refus identiques ne verrait que la sienne. Ce compte-là ne s'interrompt pas faute de relevé, et
+c'est le second déclencheur qui l'exige : il refuse sans en lire aucun, donc avant le premier
+passage complet aussi, et se taire là refermerait la sortie exactement là où rien ne la
+rouvrirait, son propre refus étant ce qui empêche ce premier passage complet d'arriver.
+
+Elle ne lève que ce garde-fou, et elle ne lève rien qu'on n'ait mesuré : une décision se compare
+à la chute qu'on a montrée à qui décidait, et si plus rien ne permet cette comparaison, elle est
+écartée plutôt que suivie. Rien n'autorise à dater sur une lecture qui a manqué, la décision ne
+se dépensant que sur un passage complet. Sur les systèmes cibles, dont la référence est un
+décompte de lignes vivantes que la moindre datation corrige, elle lève quelle que soit l'ampleur :
+ce garde-fou-là ne s'entretient pas lui-même, et il n'a donc pas la même sortie.
+
 **Une fiche qu'un passage sait ne pas avoir lue ne disparaît pas le soir même.** Une disparition
 ordinaire se conclut d'un silence : la personne n'est plus dans la réponse, et rien ne la nomme.
 Un refus de la source est autre chose, elle nomme la fiche qu'elle ne connaît pas, et en conclure
@@ -168,6 +207,25 @@ sans condition le lui retirerait pour toujours. Il ne peut pas non plus s'entret
 contrairement au plancher de chute : le passage qui retient détruit la condition de sa propre
 retenue en devenant, à sa clôture, le dernier passage complet qui n'a pas rendu la fiche. Ce
 qu'il a retenu se lit dans sa trace et sur la fiche de la personne, où se décide une coupure.
+
+**Une lecture qui n'a pas répondu n'est pas un aveu.** Un refus nommé dit que la source ne
+connaît pas la fiche ; une lecture qui lève ne dit rien, ni sa présence ni son absence. Elle ne
+peut donc pas se transformer en départ au passage suivant : la fiche est retenue tant que la
+lecture ne répond pas, sans borne, et cette retenue-là n'est pas une exemption parce qu'une
+suppression en amont ne passe pas par ce chemin, elle nomme la fiche qu'elle a supprimée. Le
+passage le dit dans sa trace, sur la fiche de la personne, et il dit depuis combien de passages
+il le dit.
+
+**Ce qui dégrade un passage est ce qu'il ne peut pas nommer.** Un élément de liste illisible sort
+de la réponse sans qu'aucun identifiant ne le désigne : son absence ne se distingue d'un départ
+par rien, et le passage doit alors refuser de conclure pour tout le monde. Une fiche complète
+porte un nom, et se dégrader pour un nom qu'on connaît perdrait tous les vrais départs de la nuit
+sans rien protéger. La règle vaut dans les deux sens, et l'erreur qu'elle évite est à chaque fois
+celle qui coupe un accès à tort.
+
+Une fiche retenue, quelle que soit la façon dont elle manque, compte dans l'effectif du relevé
+que le passage laisse derrière lui. Compter n'est pas conclure : la retirer de ce nombre ferait
+de la retenue elle-même la chute que le plancher refuse.
 
 **Une collecte qui s'arrête doit se voir.** Sans elle, les échéances ne bougent plus
 et les statuts restent au vert : les écrans continueraient d'affirmer un périmètre

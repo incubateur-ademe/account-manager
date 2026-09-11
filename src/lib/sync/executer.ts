@@ -249,6 +249,17 @@ export async function executerSync(
       }`,
     );
   }
+  // Une ligne à part, et non la même : « introuvable » dirait que la source a répondu
+  // qu'elle ne connaissait pas la fiche, ce qui est le contraire de ce qui s'est passé
+  // et le contraire de ce qui va suivre, ces deux réponses n'ayant pas la même suite.
+  const muettes = new Set(perimetre.retenuesSansReponse);
+  for (const lecture of perimetre.lecturesManquees) {
+    journal(
+      `[sync] fiche sans réponse dans l'espace-membre : ${lecture.username} : ${lecture.message}${
+        muettes.has(lecture.username) ? ", disparition non datée tant que la lecture échoue" : ""
+      }`,
+    );
+  }
   for (const username of perimetre.missingDeclared) {
     journal(`[sync] déclaré dans la politique mais non résolu ce passage : ${username}`);
   }
@@ -256,6 +267,12 @@ export async function executerSync(
     journal(
       `[sync] revue après disparition, retour non daté : ${retour.username}, disparue le ${retour.disparueLe.toISOString().slice(0, 10)} sans qu'aucun autre passage complet le confirme`,
     );
+  }
+  // Hors de la boucle qui suit parce que ce message n'est pas dans `errors` : un
+  // plancher levé n'a rien dégradé. Il se dit quand même, une décision d'opérateur
+  // ayant fait dater cette nuit-là ce qu'aucune autre n'aurait daté.
+  if (perimetre.chuteLevee !== null) {
+    journal(`[sync] ${perimetre.chuteLevee}`);
   }
   for (const message of perimetre.errors) {
     journal(`[sync] ${message}`);

@@ -1,11 +1,21 @@
 import type { Attachment } from "@/core/appartenance";
 import {
+  AMPLEUR_NON_COMPTEE,
+  type AmpleurEnBase,
+  ageDuReleve,
   autrePassageCompletDepuis,
-  chuteExcessive,
+  type CoteDeChute,
+  type FamilleDeChute,
   FOURNISSEUR_PERIMETRE,
+  fichesSansReponse,
+  plancherDuPerimetre,
   REFUS_D_ECHEANCE,
   REFUS_DE_DISPARITION,
+  REFUS_DE_LECTURE,
   REFUS_DE_RETOUR,
+  RELEVE_NON_RENOUVELE,
+  type RefusDeDatation,
+  releveFige,
 } from "@/core/collecte";
 import {
   emailDeContact,
@@ -27,6 +37,12 @@ import {
   mapLimit,
 } from "@/lib/espace-membre";
 import { policy } from "@/lib/policy";
+import {
+  autorisationEnAttente,
+  consommerAutorisation,
+  messageDeChute,
+  perimerAutorisation,
+} from "@/lib/sync/gardefou";
 
 const CONCURRENCE = 8;
 
@@ -40,14 +56,50 @@ export interface PerimetreSyncResult {
   vanished: number;
   missingDeclared: string[];
   introuvables: string[];
-  /** Celles que ce passage a refusé de faire disparaître, faute de les avoir lues. */
+  /** Celles qu'il a refusé de faire disparaître sur un aveu d'ignorance trop frais. */
   retenues: string[];
+  /** Celles qu'il retient sans borne, la lecture de leur fiche n'ayant pas répondu. */
+  retenuesSansReponse: string[];
+  /** Ce qu'ont dit les lectures de fiche qui n'ont pas répondu, personne par personne. */
+  lecturesManquees: LectureManquee[];
   /** Celles dont il a effacé la disparition sans dater le retour, faute de confirmation. */
   retoursNonDates: RetourNonDate[];
   /** Celles dont il n'a pas écrit l'échéance, faute d'avoir obtenu la fiche qui la porte. */
   echeancesNonEcrites: string[];
+  /**
+   * Ce que le plancher de chute a refusé, dit assez précisément pour que le passage
+   * suivant reconnaisse le même refus, et de quel côté il l'a vu.
+   *
+   * Le seul garde-fou de ce module qui entretienne sa propre référence, et c'est pour
+   * cela qu'il a besoin d'être reconnu : du côté du relevé, il compare l'effectif du
+   * jour à celui du dernier passage complet, et son refus dégrade le passage qui le
+   * prononce, si bien que la référence contre laquelle il refusera demain est celle
+   * d'avant la chute. Du côté de la population, la référence se corrigerait d'elle-même
+   * dès qu'une datation passe, et c'est précisément la datation que le refus retient.
+   * Une chute réelle qui dure ne se dénoue donc jamais d'elle-même, des deux côtés.
+   */
+  chuteRefusee: RefusDeDatation | null;
+  /**
+   * Ce que le plancher a dit quand une autorisation nominative l'a levé pour ce
+   * passage. Hors des `errors`, et c'est tout le point : levé, il n'a rien dégradé.
+   */
+  chuteLevee: string | null;
   errors: string[];
   startups: IncubatorStartup[];
+}
+
+/**
+ * Une fiche complète dont la lecture n'a pas répondu, et ce qu'elle a dit en échouant.
+ *
+ * Le message est repris ici parce qu'il n'a plus d'autre sortie : cette lecture ne
+ * dégrade plus le passage, donc elle ne rejoint plus `errors`, et sans lui la trace
+ * dirait qu'une fiche n'a pas répondu sans jamais dire ce que la source a répondu. Or
+ * c'est la seule chose qui distingue une panne d'une nuit d'un enregistrement amont
+ * durablement mal formé, et la sortie de la seconde est en amont.
+ */
+export interface LectureManquee {
+  username: string;
+  message: string;
 }
 
 /**
@@ -253,8 +305,12 @@ export async function syncPerimetre(
   const resolues: PersonneResolue[] = [];
   let precedent: PassageComplet | null = null;
   let retenues: string[] = [];
+  let retenuesSansReponse: string[] = [];
+  const lecturesManquees: LectureManquee[] = [];
   const retoursNonDates: RetourNonDate[] = [];
   const echeancesNonEcrites: string[] = [];
+  let chuteRefusee: RefusDeDatation | null = null;
+  let chuteLevee: string | null = null;
   let absents: string[] = [];
   let startups: IncubatorStartup[] = [];
 
@@ -285,6 +341,15 @@ export async function syncPerimetre(
       ]),
     ];
 
+    // Ni le 404 ni la panne ne dégradent ce passage, et c'est la même raison pour les
+    // deux : ce qui dégrade un passage est ce qu'il ne peut pas nommer. Un élément que
+    // la liste rend illisible sort de la réponse sans qu'aucun identifiant ne le
+    // désigne, son absence ne se distingue d'un départ par rien, et le refus de
+    // conclure est alors le seul filet. Une fiche complète porte un nom : se dégrader
+    // pour un nom connu ne protège personne et coûte tous les vrais départs de la
+    // nuit, le relevé cessant d'avancer et avec lui tous les garde-fous qui s'y
+    // adossent. Les deux façons de ne pas lire se séparent plus bas, où elles n'ont
+    // pas la même borne, et pas ici, où elles ne diffèrent pas.
     const details = new Map<string, MembreDetaille>();
     await mapLimit(aDetailler, CONCURRENCE, async (username) => {
       try {
@@ -295,7 +360,10 @@ export async function syncPerimetre(
           introuvables.push(username);
         }
       } catch (error: unknown) {
-        errors.push(`${username} : ${error instanceof Error ? error.message : String(error)}`);
+        lecturesManquees.push({
+          username,
+          message: error instanceof Error ? error.message : String(error),
+        });
       }
     });
 
@@ -412,8 +480,12 @@ export async function syncPerimetre(
       missingDeclared: absents,
       introuvables,
       retenues: [],
+      retenuesSansReponse: [],
+      lecturesManquees,
       retoursNonDates,
       echeancesNonEcrites,
+      chuteRefusee: null,
+      chuteLevee: null,
       errors,
       startups,
     };
@@ -426,64 +498,141 @@ export async function syncPerimetre(
   // Un run dégradé ne fait disparaître personne : une collecte tronquée conclurait
   // à tort que la moitié de l'incubateur est partie.
   if (status === "OK") {
-    const reference = precedent?.itemsSeen ?? 0;
+    // Une fiche créée à la main pour nommer un compte n'existe que par lui : elle
+    // n'est réclamée par aucune source amont, et la faire disparaître à la collecte
+    // suivante reviendrait à effacer chaque nuit ce qu'un opérateur vient d'écrire.
+    // Elle vit donc tant que son compte est observé, ou tant qu'un rattachement
+    // qu'on lui a posé court encore : dire qu'une personne est là jusqu'à telle
+    // date et la faire disparaître la nuit même serait se contredire.
+    //
+    // `source: "LOCAL"` reste en tête et hors du `OR` : une personne venue de
+    // l'espace-membre qui en sort doit continuer de lever `SCOPE_EXIT`, qui est le
+    // constat le plus important du système.
+    const adossees = await prisma.person.findMany({
+      where: {
+        source: "LOCAL",
+        OR: [
+          { identities: { some: { vanishedAt: null } } },
+          {
+            startupAssignments: {
+              some: { endedAt: null, until: { gte: new Date(jourUTC(now)) } },
+            },
+          },
+        ],
+      },
+      select: { username: true },
+    });
 
-    if (chuteExcessive(reference, resolues.length, policy().thresholds.maxScopeDrop)) {
-      // Une réponse valide mais amputée ne se distingue d'un départ collectif que par
-      // son ampleur : dans le doute, on ne date aucune disparition.
+    const known = [
+      ...resolues.map((personne) => personne.username),
+      ...adossees.map((personne) => personne.username),
+    ];
+
+    // Une fiche que ce passage sait n'avoir pas lue rejoint les connues : il l'a
+    // demandée, la source ne l'a pas rendue, et ce qu'un passage avoue ne pas savoir
+    // ne vaut pas un départ. C'est l'inverse d'une disparition ordinaire, qui se
+    // conclut d'un silence.
+    //
+    // Résolu avant que le plancher ne soit consulté, et non après : ce qu'un passage
+    // retient fait partie du périmètre auquel il croit, donc du nombre qu'il compare
+    // comme de celui qu'il laisse. Le calculer après ferait de la retenue elle-même
+    // une chute, tout en laissant un relevé plus petit que le périmètre pour toute la
+    // durée de la retenue.
+    const rendues = await fichesRetenues(
+      introuvables,
+      lecturesManquees.map((lecture) => lecture.username),
+      known,
+      precedent,
+    );
+    retenues = rendues.surAveu;
+    retenuesSansReponse = rendues.sansReponse;
+    const connues = [...known, ...retenues, ...retenuesSansReponse];
+
+    const reference = precedent?.itemsSeen ?? 0;
+    const effectif = effectifTenu(resolues.length, [...retenues, ...retenuesSansReponse]);
+    const verdict = plancherDuPerimetre(
+      { reference, observe: effectif },
+      await ampleurDeLaDatation(connues),
+      policy().thresholds.maxScopeDrop,
+    );
+
+    if (verdict === "aveugle") {
+      // Le comptage n'a pas répondu et le relevé n'a rien à redire : ce passage n'a donc
+      // rien contre quoi juger la datation du soir, et la laisser passer daterait
+      // exactement ce que ce second déclencheur retient. Il se dégrade plutôt que de
+      // conclure, comme de toute lecture qui manque, et il ne touche pas à la décision
+      // qui attendait : une nuit qui n'a rien constaté de l'état auquel elle se rapporte
+      // la ferait perdre pour rien.
       errors.push(
-        `chute du périmètre : ${resolues.length} personnes contre ${reference} au dernier relevé complet, aucune disparition datée`,
+        `${AMPLEUR_NON_COMPTEE} : ce qu'une datation toucherait n'a pas pu être compté, aucune disparition datée`,
       );
       status = "PARTIAL";
     } else {
-      // Une fiche créée à la main pour nommer un compte n'existe que par lui : elle
-      // n'est réclamée par aucune source amont, et la faire disparaître à la collecte
-      // suivante reviendrait à effacer chaque nuit ce qu'un opérateur vient d'écrire.
-      // Elle vit donc tant que son compte est observé, ou tant qu'un rattachement
-      // qu'on lui a posé court encore : dire qu'une personne est là jusqu'à telle
-      // date et la faire disparaître la nuit même serait se contredire.
+      const chute: RefusDeDatation | null = verdict;
+
+      // L'autorisation ne se cherche qu'ici, sous le statut complet, et c'est ce qui la
+      // borne : un passage dégradé n'atteint pas cette ligne, donc aucune décision
+      // d'opérateur ne peut faire dater une nuit dont une lecture a manqué, et celle
+      // qu'il a posée n'est pas consommée pour rien, elle attend le passage suivant.
+      // Elle ne lève que ce garde-fou : les fiches que ce passage sait n'avoir pas lues
+      // sont retenues par une règle qu'aucune autorisation ne regarde.
       //
-      // `source: "LOCAL"` reste en tête et hors du `OR` : une personne venue de
-      // l'espace-membre qui en sort doit continuer de lever `SCOPE_EXIT`, qui est le
-      // constat le plus important du système.
-      const adossees = await prisma.person.findMany({
-        where: {
-          source: "LOCAL",
-          OR: [
-            { identities: { some: { vanishedAt: null } } },
-            {
-              startupAssignments: {
-                some: { endedAt: null, until: { gte: new Date(jourUTC(now)) } },
-              },
-            },
-          ],
-        },
-        select: { username: true },
-      });
+      // Lue sans être dépensée, la dépense venant après la datation : brûlée avant, une
+      // panne en base entre les deux la perdrait sans que rien ne soit daté, et il
+      // faudrait la reposer sans rien savoir de plus qu'hier.
+      const autorisation =
+        chute === null
+          ? null
+          : await autorisationEnAttente(
+              FOURNISSEUR_PERIMETRE,
+              chute,
+              run,
+              "pas plus profonde que la chute annoncée",
+            );
+      const levee = autorisation !== null;
 
-      const known = [
-        ...resolues.map((personne) => personne.username),
-        ...adossees.map((personne) => personne.username),
-      ];
+      if (chute !== null) {
+        const dit = await messageDeChute(FOURNISSEUR_PERIMETRE, run.id, chute, levee);
+        if (levee) {
+          chuteLevee = dit;
+        } else {
+          // Une réponse valide mais amputée ne se distingue d'un départ collectif que
+          // par son ampleur : dans le doute, on ne date aucune disparition.
+          errors.push(dit);
+          // Dit là où l'écran relit les passages, et à côté du refus qu'il explique.
+          // Sans cette ligne, une panne du comptage ne laisse aucune trace nulle part
+          // alors qu'elle décide de tout ce qu'une opératrice peut faire ensuite : sans
+          // ampleur à mesurer, chaque décision qu'elle posera sera écartée, et elle ne
+          // verrait que des nuits de refus qui ressemblent à toutes les autres.
+          if (chute.datables === undefined) {
+            errors.push(
+              `${AMPLEUR_NON_COMPTEE} : ce qu'une datation toucherait n'a pas pu être compté, aucune décision ne se mesurera tant que ce compte échouera`,
+            );
+          }
+          chuteRefusee = chute;
+          status = "PARTIAL";
+        }
+      }
 
-      // Une fiche que ce passage sait n'avoir pas lue rejoint les connues : il l'a
-      // demandée, la source a répondu qu'elle ne la connaissait pas, et un aveu
-      // d'ignorance ne vaut pas un départ tant qu'il n'a pas duré. C'est l'inverse
-      // d'une disparition ordinaire, qui se conclut d'un silence.
-      retenues = await fichesRetenues(introuvables, known, precedent?.startedAt ?? null);
+      if (chute === null || levee) {
+        const gone = await prisma.person.updateMany({
+          where: fichesADater(connues),
+          data: { vanishedAt: now },
+        });
+        vanished = gone.count;
+      }
 
-      const gone = await prisma.person.updateMany({
-        where: {
-          username: { notIn: [...known, ...retenues] },
-          vanishedAt: null,
-          source: { not: "SERVICE" },
-        },
-        data: { vanishedAt: now },
-      });
-      vanished = gone.count;
+      // Dernière écriture du passage, et c'est là tout l'objet des deux temps. Un
+      // passage qui n'a rien levé périme celle qui attendait : elle a été posée sur des
+      // nombres que ce passage vient de constater autres, et la laisser dormir la
+      // ferait lever, des semaines plus tard, une chute que personne n'a examinée.
+      if (chute !== null && autorisation !== null) {
+        await consommerAutorisation(FOURNISSEUR_PERIMETRE, chute, run, autorisation);
+      } else {
+        await perimerAutorisation(FOURNISSEUR_PERIMETRE, "perimetre", run);
+      }
     }
   }
-
   const result: PerimetreSyncResult = {
     runId: run.id,
     status,
@@ -494,8 +643,12 @@ export async function syncPerimetre(
     missingDeclared: absents,
     introuvables,
     retenues,
+    retenuesSansReponse,
+    lecturesManquees,
     retoursNonDates,
     echeancesNonEcrites,
+    chuteRefusee,
+    chuteLevee,
     errors,
     startups,
   };
@@ -512,8 +665,100 @@ export async function syncPerimetre(
 }
 
 /**
+ * L'effectif du périmètre auquel un passage croit : ce qu'il a résolu, plus ce qu'il
+ * retient.
+ *
+ * Une fiche retenue n'est pas une fiche absente, c'est une fiche dont ce passage ne
+ * conclut rien, et il le dit en refusant de la dater. La compter ailleurs que dans son
+ * effectif reviendrait à la dire partie du même souffle : la chute du soir se
+ * creuserait de la retenue elle-même, et le relevé laissé derrière abaisserait le
+ * plancher des nuits suivantes pour toute sa durée. C'est le même nombre qui se
+ * compare et qui s'écrit, sans quoi les deux cessent de parler du même périmètre.
+ *
+ * Les deux façons de retenir y sont, et sans distinction. Elles ne diffèrent que par
+ * la borne du sursis, c'est-à-dire par le passage où la fiche cessera d'être retenue,
+ * et pas du tout par ce que celui-ci en conclut, qui est rien dans les deux cas :
+ * compter n'est pas conclure. Les séparer ici ferait osciller le nombre annoncé au gré
+ * de la façon dont la source échoue, sans qu'aucun départ ne l'explique, et un refus
+ * qui ne retombe jamais deux fois sur les mêmes nombres ne s'annonce jamais installé :
+ * le relevé gèlerait sans qu'aucun bandeau ne s'ouvre, c'est-à-dire sans que la sortie
+ * nominative soit atteignable. La distinction reste entière là où elle a un sens, dans
+ * `fichesRetenues`, qui décide de la borne et donc du passage qui datera.
+ */
+function effectifTenu(resolues: number, retenues: readonly string[]): number {
+  return resolues + retenues.length;
+}
+
+/** Un compte de service n'appartient à personne, donc ne part avec personne. */
+const HORS_PERIMETRE: PersonSource = "SERVICE";
+
+/**
+ * Ce que la base tient pour présent ce soir : la population contre laquelle le second
+ * déclencheur du plancher mesure ce qu'une datation ferait.
+ *
+ * La clause de base des fiches à dater, et rien d'autre. Écrite ici pour que la
+ * population et ce qu'on lui retirerait ne puissent pas cesser de se recouvrir : deux
+ * clauses qui se ressemblent finissent par diverger, et une chute mesurée entre deux
+ * populations disjointes ne mesure plus rien.
+ */
+function fichesVivantes() {
+  return { vanishedAt: null, source: { not: HORS_PERIMETRE } };
+}
+
+/**
+ * Les fiches qu'une datation toucherait, écrit une fois pour les trois qui en dépendent :
+ * le décompte montré à qui tranche, le déclencheur qui le compare à la population, et
+ * l'écriture que sa décision autorise.
+ *
+ * Une seule formulation, et c'est tout l'objet de cette fonction. Le nombre annoncé au
+ * bandeau dit ce qui va arriver à des gens ; le jour où l'une des conditions bougerait
+ * sans les autres, il dirait ce qui va arriver à d'autres gens, et une décision se
+ * prendrait sur une ampleur qui n'est pas celle du geste.
+ */
+function fichesADater(connues: readonly string[]) {
+  return { ...fichesVivantes(), username: { notIn: [...connues] } };
+}
+
+/**
+ * Ce que la datation de ce soir ferait à la base, ou rien si le compte n'aboutit pas.
+ *
+ * L'écart des deux nombres du relevé ne le donne pas : ils comparent des tailles de
+ * listes, ceux-ci comptent des lignes vivantes en base, et la résolution amont tourne
+ * avant que le statut du passage ne soit connu, si bien qu'une nuit dégradée fait naître
+ * des fiches sans jamais toucher à la référence. Le fossé se creuse par là, et sans
+ * mesure il ne se voit nulle part.
+ *
+ * Les deux comptes partent ensemble et sortent de la même clause, à l'exclusion des
+ * connues près, et c'est cela qui les tient plutôt que l'instant où ils sont lus.
+ * Séparer les clauses ferait mesurer une chute entre deux populations qui ne se
+ * recouvrent pas ; séparer les instants ne décale que la fiche née entre les deux,
+ * d'une unité et sur un seul des deux nombres. Deux `count` ne partagent aucun
+ * instantané, et une transaction ordinaire n'en donnerait pas davantage, PostgreSQL
+ * prenant le sien par requête sous son isolement par défaut : la lecture réellement
+ * atomique se paierait d'un niveau d'isolement posé sur le chemin de la collecte, et
+ * cela ne s'achète pas pour une fiche.
+ *
+ * Deux requêtes de plus sur un chemin qui vit hors du `try` du passage, d'où le
+ * rattrapage : jeter ici ferait sortir la collecte sans refermer son run. L'absence de
+ * ces nombres n'est pas pour autant un feu vert, et c'est le plancher qui le dit en se
+ * déclarant aveugle : le passage se dégrade alors sans rien dater, et la décision qui
+ * attendait attend le passage suivant.
+ */
+async function ampleurDeLaDatation(connues: readonly string[]): Promise<AmpleurEnBase | undefined> {
+  try {
+    const [vivantes, datables] = await Promise.all([
+      prisma.person.count({ where: fichesVivantes() }),
+      prisma.person.count({ where: fichesADater(connues) }),
+    ]);
+    return { vivantes, datables };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Les fiches que ce passage sait n'avoir pas lues, et dont il n'a donc rien à conclure
- * ce soir.
+ * ce soir. Deux façons de ne pas lire, deux bornes, et c'est tout l'objet de ce module.
  *
  * Un 404 de la source n'est pas un silence : le passage nomme la fiche qui lui manque,
  * et il conclurait un départ d'un aveu d'ignorance. La borne est celle du retour, lue
@@ -524,50 +769,164 @@ export async function syncPerimetre(
  * exemption : une fiche réellement supprimée en amont garde son départ, avec un
  * passage de retard, là où l'épargner sans condition le lui retirerait pour toujours.
  *
- * Rien n'est retenu de ce que la collecte a résolu par ailleurs, une personne
- * rattachée par une équipe restant du périmètre même quand sa fiche complète manque,
- * ni de ce qui a déjà disparu, ni d'un compte de service, que l'`updateMany` épargne
- * de toute façon : dans les trois cas il n'y a rien à retenir, et l'annoncer ferait
- * mentir la trace.
+ * Encore faut-il que ce passage-là ait lu la fiche. Un passage complet qui l'a lui
+ * aussi retenue faute de réponse n'a rien appris d'elle, et lui faire consommer le
+ * sursis le ramènerait à zéro pour qui sort d'une panne : le premier 404 daterait
+ * alors le soir même, sur le constat qui coupe des accès. Il ne le consomme donc pas,
+ * et deux aveux restent nécessaires.
+ *
+ * Le regard en arrière ne va pas plus loin qu'un passage, mais il se refait à chaque
+ * passage, et une source qui alterne panne et aveu rend donc le sursis à chaque aveu :
+ * le passage qui précède chacun d'eux a lui-même retenu la fiche faute de réponse, la
+ * disparition n'est jamais datée, et cette grâce-là se représente indéfiniment. C'est
+ * assumé, et c'est le prix de la règle du dessus : deux aveux valent départ parce
+ * qu'ils disent deux fois la même chose, et une source incapable de le dire deux fois
+ * de suite ne l'a jamais dit qu'une fois. L'écart qui reste va du côté qui ne coupe
+ * aucun accès.
+ *
+ * Une lecture qui jette n'est pas un aveu : la source n'a pas répondu, elle n'a rien
+ * dit de la fiche, et un angle mort qui dure ne dit toujours rien de la personne. Ces
+ * fiches sont donc retenues tant que la lecture échoue, sans borne, et cette retenue
+ * n'exempte personne : une suppression en amont répond 404, elle nomme la fiche qu'elle
+ * a supprimée, et aucun départ réel n'emprunte ce chemin. La borner comme l'aveu
+ * daterait un départ après deux nuits de panne, sur le constat qui coupe des accès.
+ *
+ * Rien n'est retenu de ce que la collecte a résolu par ailleurs, ni de ce qui a déjà
+ * disparu, ni d'un compte de service, que l'`updateMany` épargne de toute façon : dans
+ * les trois cas il n'y a rien à retenir, et l'annoncer ferait mentir la trace. Ce
+ * filtre-là sépare aussi les deux populations qu'une fiche complète concerne, et c'est
+ * pourquoi il n'y en a pas d'autre : une personne que la liste scopée rend encore reste
+ * du périmètre quand sa fiche manque, quelle que soit la façon dont elle manque, et
+ * seul un déclaré transverse n'a que sa fiche pour y entrer.
  */
 async function fichesRetenues(
   introuvables: readonly string[],
+  sansReponse: readonly string[],
   known: readonly string[],
-  dernierPassage: Date | null,
-): Promise<string[]> {
+  precedent: PassageComplet | null,
+): Promise<{ surAveu: string[]; sansReponse: string[] }> {
   const deja = new Set(known);
-  const candidates = introuvables.filter((username) => !deja.has(username));
-  if (candidates.length === 0) {
-    return [];
+  const surAveu = new Set(introuvables.filter((username) => !deja.has(username)));
+  const muettes = new Set(sansReponse.filter((username) => !deja.has(username)));
+  if (surAveu.size === 0 && muettes.size === 0) {
+    return { surAveu: [], sansReponse: [] };
   }
 
+  // Les fiches que le dernier passage complet a lui-même retenues faute de réponse :
+  // il n'a rien appris d'elles, donc il ne consomme pas le sursis qu'elles ont.
+  const muettesDuPrecedent = new Set(fichesSansReponse(precedent?.error));
+
+  // Une seule requête pour les deux listes : elles ne se distinguent que par la borne
+  // qu'on leur applique, et la condition d'existence est la même.
   const fiches = await prisma.person.findMany({
-    where: { username: { in: candidates }, vanishedAt: null, source: { not: "SERVICE" } },
+    where: {
+      username: { in: [...surAveu, ...muettes] },
+      vanishedAt: null,
+      source: { not: "SERVICE" },
+    },
     select: { username: true, lastSeenAt: true },
   });
 
-  return fiches
-    .filter((fiche) => !autrePassageCompletDepuis(fiche.lastSeenAt, dernierPassage))
-    .map((fiche) => fiche.username);
+  return {
+    surAveu: fiches
+      .filter(
+        (fiche) =>
+          surAveu.has(fiche.username) &&
+          (muettesDuPrecedent.has(fiche.username) ||
+            !autrePassageCompletDepuis(fiche.lastSeenAt, precedent?.startedAt ?? null)),
+      )
+      .map((fiche) => fiche.username),
+    sansReponse: fiches
+      .filter((fiche) => muettes.has(fiche.username))
+      .map((fiche) => fiche.username),
+  };
 }
 
 /** Le dernier passage dont on a le droit de tirer des conclusions. */
 export interface PassageComplet {
   itemsSeen: number;
   startedAt: Date;
+  /**
+   * Ce qu'il a dit, pour qui doit relire au nom de qui il l'a dit. Une fiche retenue
+   * faute de réponse ne laisse rien d'autre : en base, elle a la même dernière vue
+   * restée en arrière qu'une fiche retenue sur un aveu, et seule la trace sépare celle
+   * dont la sortie viendra de celle dont elle ne viendra pas.
+   */
+  error: unknown;
 }
 
 export async function dernierPassageComplet(): Promise<PassageComplet | null> {
   return prisma.syncRun.findFirst({
     where: { provider: FOURNISSEUR_PERIMETRE, capability: "list", status: "OK" },
     orderBy: { startedAt: "desc" },
-    select: { itemsSeen: true, startedAt: true },
+    select: { itemsSeen: true, startedAt: true, error: true },
   });
 }
 
 /** Le jour d'un instant, dans la forme que les messages du dépôt emploient déjà. */
 function jour(date: Date): string {
   return date.toISOString().slice(0, 10);
+}
+
+/**
+ * Ce qu'un passage qui ne s'est pas dit complet doit dire du relevé qu'il laisse
+ * derrière lui, et depuis combien de passages il le laisse.
+ *
+ * Sans cette phrase, une nuit ratée et un mois de nuits ratées se lisent exactement
+ * pareil : les mêmes messages retombent dans la même colonne, et rien ne dit que ce
+ * qui ressemble à un incident a cessé d'en être un. Or c'est la seule différence qui
+ * compte, parce que la seconde situation a suspendu tout ce qui s'adosse au relevé,
+ * pour tout le monde, sans qu'aucun de ces garde-fous puisse le signaler lui-même.
+ *
+ * La fenêtre relue est bornée par le relevé et non par un nombre de passages, à la
+ * différence de l'idiome voisin des refus répétés : le nombre annoncé est alors celui
+ * qu'on a lu, là où une fenêtre fixe le plafonnerait en le donnant pour exact. Elle ne
+ * contient que des passages non complets, le relevé mis à part, puisque c'est le
+ * dernier `OK` qui la commence.
+ *
+ * Faute de relevé, la fenêtre est tout ce que ce fournisseur a jamais laissé, et c'est
+ * bien un gel qui se compte là. Se taire tant qu'aucun passage ne s'est dit complet
+ * n'était vrai qu'avec un seul déclencheur : le second ne lit pas le relevé, il compare
+ * ce qui est en base à ce qu'il en resterait, donc il refuse aussi bien avant le premier
+ * passage complet, et son refus est précisément ce qui empêche ce passage d'arriver.
+ * Sans ce compte, le gel qu'il installe ne s'annonce nulle part et la sortie nominative,
+ * qui s'ouvre sur lui, ne s'ouvre jamais : la seule issue serait alors une datation en
+ * bloc, le jour où l'amont rerendrait les manquants, sans que personne ait rien examiné.
+ */
+async function ageDuReleveLaisse(
+  runCourant: string,
+  status: PerimetreSyncResult["status"],
+): Promise<{ passages: number; message: string } | null> {
+  if (status === "OK") {
+    return null;
+  }
+
+  const precedent = await dernierPassageComplet();
+
+  const depuis = await prisma.syncRun.findMany({
+    where: {
+      provider: FOURNISSEUR_PERIMETRE,
+      capability: "list",
+      id: { not: runCourant },
+      startedAt: precedent === null ? undefined : { gte: precedent.startedAt },
+    },
+    orderBy: { startedAt: "desc" },
+    select: { status: true },
+  });
+
+  const passages = ageDuReleve([status, ...depuis.map((passage) => passage.status)]);
+  const compte = passages === 1 ? "un passage" : `${passages} passages`;
+  const dit =
+    precedent === null
+      ? `${RELEVE_NON_RENOUVELE} : aucun passage ne s'est encore dit complet, et les règles adossées au périmètre décident donc sans relevé depuis ${compte}`
+      : `${RELEVE_NON_RENOUVELE} : les règles adossées au périmètre décident toujours contre le relevé du ${jour(precedent.startedAt)}, laissé ${compte} en arrière`;
+
+  return {
+    passages,
+    message: releveFige(passages)
+      ? `${dit} : ce n'est plus un incident, et plus rien de ce qui s'y adosse ne décide sur l'état du jour`
+      : dit,
+  };
 }
 
 async function closeRun(id: string, now: Date, result: PerimetreSyncResult): Promise<void> {
@@ -581,11 +940,34 @@ async function closeRun(id: string, now: Date, result: PerimetreSyncResult): Pro
   // garde sa disparition en attente, alors qu'un retour non daté a effacé la sienne,
   // et sans cette phrase rien ne distinguerait plus une absence de trois semaines
   // d'une fiche qui n'a pas bougé.
-  const dits = [...result.errors];
+  //
+  // Les lectures qui n'ont pas répondu sont dites dans la même forme qu'avant, à la
+  // seule différence qu'elles ne dégradent plus : ce que la source a répondu en
+  // échouant est la seule chose qui sépare la panne d'une nuit de l'enregistrement
+  // amont durablement mal formé, et la retirer d'ici ne laisserait ce message qu'au
+  // journal de la console, que personne ne relit.
+  //
+  // Un plancher de chute levé à la main est de la même nature et arrive donc ici, et
+  // non dans les `errors` où va le même plancher quand il refuse : levé, il n'a rien
+  // dégradé, le passage est complet et il a daté ses disparitions. La phrase reste,
+  // parce qu'une nuit où un garde-fou a été levé ne doit pas ressembler à une nuit
+  // ordinaire dans la colonne où on relit les passages.
+  const dits = [
+    ...result.errors,
+    ...result.lecturesManquees.map((lecture) => `${lecture.username} : ${lecture.message}`),
+  ];
+  if (result.chuteLevee !== null) {
+    dits.push(result.chuteLevee);
+  }
   if (result.retenues.length > 0) {
     // Point-virgule et non virgule : les noms en portent déjà, et la conclusion se
     // lirait comme un nom de plus dès qu'il y en a deux.
     dits.push(`${REFUS_DE_DISPARITION} : ${result.retenues.join(", ")} ; aucune disparition datée`);
+  }
+  if (result.retenuesSansReponse.length > 0) {
+    dits.push(
+      `${REFUS_DE_LECTURE} : ${result.retenuesSansReponse.join(", ")} ; aucune disparition datée tant que la lecture échoue`,
+    );
   }
   if (result.retoursNonDates.length > 0) {
     const revenues = result.retoursNonDates
@@ -599,13 +981,66 @@ async function closeRun(id: string, now: Date, result: PerimetreSyncResult): Pro
     );
   }
 
+  // En dernier, et c'est sa place : les lignes du dessus disent ce que ce passage n'a
+  // pas conclu, celle-ci dit ce que plus aucun passage ne conclura tant qu'aucun ne
+  // sera complet. Elle est la seule à parler du passage entier plutôt que de quelqu'un.
+  const releve = await ageDuReleveLaisse(id, result.status);
+  if (releve) {
+    dits.push(releve.message);
+  }
+
+  // La liste des fiches retenues faute de réponse est portée en clair à côté des
+  // phrases, et non déduite de l'une d'elles : c'est un passage complet qui la pose,
+  // donc rien en base ne distingue plus ces fiches de celles qu'un aveu retient, et
+  // l'écran d'une personne doit pouvoir dire nommément laquelle des deux elle est.
+  // Relire un identifiant dans une phrase où les noms sont joints par des virgules
+  // finirait par en confondre un avec le morceau d'un autre.
+  // L'âge suit la même règle, et pour une raison de plus : la fiche d'une personne
+  // n'annonce le gel qu'à partir du passage où ce n'est plus un incident, donc elle a
+  // besoin du nombre et non de la phrase, et relire un nombre dans une phrase serait
+  // s'en remettre à sa rédaction.
+  // Le refus du plancher est porté dans une liste alors qu'il n'y en a qu'un, et ce
+  // n'est pas une précaution pour plus tard : c'est la forme que tous les fournisseurs
+  // écrivent et que l'écran relit sans savoir lequel il lit. En diverger ici rendrait
+  // le périmètre invisible au bandeau qui annonce les blocages installés, ce qui est
+  // exactement ce que ce lot existe pour finir.
+  const trace: {
+    messages: string[];
+    sansReponse?: string[];
+    ageDuReleve?: number;
+    refus?: {
+      famille: FamilleDeChute;
+      cote?: CoteDeChute;
+      observe: number;
+      reference: number;
+      datables?: number;
+    }[];
+  } = { messages: dits };
+  if (result.retenuesSansReponse.length > 0) {
+    trace.sansReponse = result.retenuesSansReponse;
+  }
+  if (releve) {
+    trace.ageDuReleve = releve.passages;
+  }
+  if (result.chuteRefusee !== null) {
+    trace.refus = [
+      {
+        famille: result.chuteRefusee.famille,
+        cote: result.chuteRefusee.cote,
+        observe: result.chuteRefusee.observe,
+        reference: result.chuteRefusee.reference,
+        datables: result.chuteRefusee.datables,
+      },
+    ];
+  }
+
   await prisma.syncRun.update({
     where: { id },
     data: {
       finishedAt: now,
       status: result.status,
-      itemsSeen: result.seen,
-      error: dits.length > 0 ? { messages: dits } : undefined,
+      itemsSeen: effectifTenu(result.seen, [...result.retenues, ...result.retenuesSansReponse]),
+      error: dits.length > 0 ? trace : undefined,
     },
   });
 }

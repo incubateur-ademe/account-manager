@@ -9,23 +9,27 @@ import type { BlocageInstalle } from "@/core/collecte";
 import { messageObligatoire } from "@/ui/validation";
 
 import { autoriserDatation, type EtatAutorisation } from "./actions";
-
-const QUOI = {
-  identites: "des comptes",
-  ressources: "des ressources",
-} as const;
+import { REDACTION } from "./redaction";
 
 /**
- * Un garde-fou qui refuse la même chose depuis assez de passages ne décrit plus un
+ * Un garde-fou dont le blocage tient depuis assez de passages ne décrit plus un
  * incident : il décrit un état que son propre refus entretient. Les données périmées
  * déclenchent la chute, la chute interdit de les dater comme disparues, et rien n'en
- * sort.
+ * sort. Ce qui se compte en passages n'est pas le même d'une famille à l'autre, et
+ * c'est la rédaction de chacune qui le dit : un système cible refuse à l'identique, le
+ * plancher du périmètre laisse vieillir le relevé qui lui sert de référence.
  *
  * L'écran le dit, et offre d'en sortir une fois. Il ne le fait pas tout seul : une
  * chute peut aussi venir d'un système qui répond mal plusieurs nuits d'affilée, et
  * lever le garde-fou automatiquement ferait disparaître des accès bien vivants.
+ *
+ * Le formulaire poste les nombres qu'il affiche parce qu'une décision porte l'ampleur
+ * qu'on avait sous les yeux, et sur elle seule. Ils ne sont pas crus sur parole : cette
+ * page ne se rafraîchit pas, un passage de nuit peut avoir creusé la chute depuis
+ * qu'elle est ouverte, et l'action les recalcule et refuse ce qui ne correspond plus.
  */
 export function GardeFouBloque({ blocage }: { blocage: BlocageInstalle }) {
+  const redaction = REDACTION[blocage.famille];
   const idRaison = useId();
   const [etat, formAction, pending] = useActionState<EtatAutorisation, FormData>(
     autoriserDatation,
@@ -36,32 +40,23 @@ export function GardeFouBloque({ blocage }: { blocage: BlocageInstalle }) {
     <Alert
       className={fr.cx("fr-mb-3w")}
       severity="warning"
-      title={`Sur ${blocage.provider}, plus aucune disparition ${QUOI[blocage.famille]} n'est datée`}
+      title={`Sur ${blocage.provider}, plus aucune disparition ${redaction.quoi} n'est datée`}
       description={
         <>
-          <p className={fr.cx("fr-mb-1w")}>
-            La dernière lecture en a rendu {blocage.observe} là où {blocage.reference} sont tenues
-            pour vivantes, une chute que le garde-fou juge trop forte pour conclure. Il refuse à
-            l'identique depuis {blocage.repetitions} passages : ce n'est plus un incident, et il ne
-            se dénouera pas seul, puisque ce qu'il refuse de dater est justement ce qui provoque la
-            chute.
-          </p>
-          <p className={fr.cx("fr-mb-1w")}>
-            Tant que cela dure, une disparition réelle sur ce système ne sera pas constatée, et les
-            accès qu'elle emporte resteront tenus pour vivants.
-          </p>
+          <p className={fr.cx("fr-mb-1w")}>{redaction.constat(blocage)}</p>
+          <p className={fr.cx("fr-mb-1w")}>{redaction.consequence}</p>
 
           <form action={formAction}>
             <input type="hidden" name="provider" value={blocage.provider} />
             <input type="hidden" name="famille" value={blocage.famille} />
+            <input type="hidden" name="observe" value={blocage.observe} />
+            <input type="hidden" name="reference" value={blocage.reference} />
+            <input type="hidden" name="datables" value={blocage.datables ?? ""} />
 
             <div className={fr.cx("fr-input-group")}>
               <label className={fr.cx("fr-label")} htmlFor={idRaison}>
                 Pourquoi cette chute est légitime
-                <span className={fr.cx("fr-hint-text")}>
-                  Recopié au journal avec votre nom. La prochaine collecte datera les disparitions
-                  de ce système, une fois, puis le garde-fou reprendra.
-                </span>
+                <span className={fr.cx("fr-hint-text")}>{redaction.suite}</span>
               </label>
               <input
                 className={fr.cx("fr-input")}

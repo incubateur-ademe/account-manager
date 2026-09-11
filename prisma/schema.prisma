@@ -871,7 +871,7 @@ model ScopeDropOverride {
 
   provider String
 
-  /// « identites » ou « ressources » : les deux verrous sont distincts, une
+  /// « identites », « ressources » ou « perimetre » : les verrous sont distincts, une
   /// autorisation ne lève que le sien.
   famille String
 
@@ -881,6 +881,26 @@ model ScopeDropOverride {
 
   createdBy String
   createdAt DateTime @default(now())
+
+  /// Les nombres du refus tels qu'ils ont été montrés à qui décidait, figés ici plutôt
+  /// que redevinés à la consommation. Sans eux, la borne d'ampleur relisait le dernier
+  /// refus enregistré, qui n'est pas forcément celui de l'écran : une décision prise sur
+  /// une chute annoncée pouvait alors en laisser passer une plus profonde.
+  ///
+  /// Nullables pour les lignes antérieures, et une décision sans nombres ne se mesure
+  /// pas, donc ne lève pas : elle est écartée, et se repose sur les nombres du jour.
+  observe   Int?
+  reference Int?
+
+  /// Combien de fiches la datation toucherait, compté avec la requête qui les daterait.
+  /// Les deux nombres du dessus disent la taille des listes, celui-ci dit la conséquence,
+  /// et les deux mondes ne coïncident pas : une nuit dégradée fait naître des fiches sans
+  /// toucher la référence, si bien qu'un écart annoncé de quatre pouvait en dater onze.
+  /// C'est ce nombre-là qu'on montre, et c'est donc lui que la décision emporte.
+  ///
+  /// Propre au périmètre. Les systèmes cibles ne l'écrivent pas : leur référence est un
+  /// décompte de lignes vivantes, donc déjà la conséquence.
+  datables Int?
 
   /// Se consomme au premier passage qui s'en sert, et ne vaut donc que pour lui : une
   /// autorisation qui durerait éteindrait le garde-fou au lieu de le lever une fois.
