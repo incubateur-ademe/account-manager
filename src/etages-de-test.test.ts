@@ -17,7 +17,7 @@ import { describe, expect, it } from "vitest";
  * accusant le code plutôt que son propre nom.
  */
 
-const SOURCES = import.meta.glob(["./**/*.test.ts", "!./generated/**"], {
+const SOURCES = import.meta.glob(["./**/*.{test,spec}.ts", "!./generated/**"], {
   query: "?raw",
   import: "default",
   eager: true,
@@ -70,6 +70,14 @@ describe("les étages de test ne se mélangent pas", () => {
       return /from ["']@\/lib\/db["']/.test(source) && !/vi\.mock\(["']@\/lib\/db["']/.test(source);
     });
     expect(menteurs).toEqual([]);
+
+    // Then aucun scénario de bout en bout ne s'est égaré ici. Ils vivent dans `e2e/`,
+    // hors de `src/`, et portent le suffixe de Playwright : posé sous `src/`, un tel
+    // fichier ne serait joué par personne, Vitest ne collectant que `.test.ts` et
+    // Playwright ne regardant que son propre répertoire. Il passerait donc pour un test
+    // écrit, joué par rien.
+    const egares = fichiers.filter((chemin) => chemin.includes(".spec."));
+    expect(egares).toEqual([]);
 
     // Then l'étage d'intégration porte exactement ce qu'on a décidé d'y mettre. La
     // liste est écrite à la main, contrairement à tout le reste de ce fichier, et c'est

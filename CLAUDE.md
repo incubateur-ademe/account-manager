@@ -49,6 +49,7 @@ Zod 4 pour la validation.
 | `pnpm test` | étage unitaire (`vitest run --project unite`) |
 | `pnpm db:deploy:test` | applique les migrations sur `account_manager_test` |
 | `pnpm test:integration` | étage d'intégration, sur cette base dédiée |
+| `pnpm test:e2e` | étage de bout en bout, à la main avant une livraison |
 | `pnpm verify` | lint + typecheck + test |
 | `pnpm sync` | collecte sur les systèmes cibles |
 | `pnpm db:generate` / `db:migrate` / `db:deploy` / `db:studio` | Prisma |
@@ -101,6 +102,16 @@ Ses deux commandes suivent `POSTGRES_PORT` comme `docker-compose.yml`, et Vitest
 d'environnement : sur un poste où PostgreSQL n'écoute pas sur 5432, c'est `POSTGRES_PORT=5433 pnpm
 test:integration`. Une `DATABASE_URL` déjà posée l'emporte, et le refus du nom non dédié s'applique
 quand même.
+
+`e2e/*.spec.ts` est l'étage de **bout en bout**, hors de `src/`, lancé à la main avant une livraison
+par `pnpm test:e2e` et **jamais dans la vérification continue**. Trois choses seulement s'y tiennent :
+qu'un cookie franchisse la barrière de `src/proxy.ts`, que la garde de session distingue vraiment un
+opérateur d'un participant, et qu'un écran s'hydrate sans mourir. Tout le reste se tient plus bas. Un
+scénario instable s'y supprime, il ne se rejoue pas : `retries` vaut zéro, et un `retry` transforme un
+défaut intermittent en bruit vert.
+
+Le cookie s'y forge plutôt que de passer par le lien de connexion : la porte elle-même est tenue par
+ses tests unitaires, et une connexion à la main avant une livraison reste nécessaire.
 
 `src/etages-de-test.test.ts` tient cette frontière, et ce n'est pas décoratif : une règle écrite se
 contourne sans mauvaise foi, simplement en ne la lisant pas.
