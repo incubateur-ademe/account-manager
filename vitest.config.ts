@@ -36,10 +36,11 @@ export default defineConfig({
   // et c'est ce que ce réglage rétablit pour les tests.
   esbuild: { jsx: "automatic" },
   test: {
-    // L'étage d'intégration n'a pas encore de scénario. Le déclarer vide plutôt que de
-    // l'omettre pose la convention et le refus qui la garde, pour que le premier
-    // scénario n'ait qu'à s'écrire.
-    passWithNoTests: true,
+    // Les deux étages portent des scénarios, donc n'en trouver aucun est un défaut et
+    // non un cas de figure. Sans ce refus, un motif d'inclusion cassé rendrait la
+    // vérification verte en ne jouant rien, ce qui est le seul échec qu'une suite de
+    // tests ne sait pas signaler d'elle-même.
+    passWithNoTests: false,
     projects: [
       {
         extends: true,

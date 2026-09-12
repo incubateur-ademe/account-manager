@@ -12,6 +12,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # L'étage unitaire, et tout ce qui se vérifie sans rien démarrer. Aucun service :
+  # c'est la garantie que cet étage n'a besoin de rien, et elle se perdrait le jour où
+  # une base traînerait à côté de lui.
   verify:
     runs-on: ubuntu-latest
 
@@ -57,3 +60,50 @@ jobs:
             echo "Les schémas versionnés ne suivent plus les schémas Zod : lancez pnpm policy:schema et commitez le résultat."
             exit 1
           fi
+
+  # L'étage d'intégration, dans un job séparé plutôt qu'à la suite du premier. Les deux
+  # échouent pour des raisons différentes, et un seul job les confondrait dans un même
+  # rouge ; ils tournent en parallèle, donc la séparation ne coûte rien au temps
+  # d'attente.
+  integration:
+    runs-on: ubuntu-latest
+
+    services:
+      # Même image que `docker-compose.yml`, pour que ce qui passe ici passe en local.
+      # Les identifiants sont ceux du poste de développement et n'ouvrent rien : la
+      # base naît avec le job et meurt avec lui. Elle s'appelle `account_manager_test`
+      # parce que l'étage refuse toute base dont le nom ne le dit pas, et ce refus vaut
+      # ici comme ailleurs.
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: account_manager
+          POSTGRES_PASSWORD: account_manager
+          POSTGRES_DB: account_manager_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U account_manager -d account_manager_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm db:generate
+
+      # Les deux commandes retombent sur la même adresse par défaut, celle que le
+      # service expose : rien à passer, et rien à désynchroniser entre elles.
+      - run: pnpm db:deploy:test
+
+      - run: pnpm test:integration
