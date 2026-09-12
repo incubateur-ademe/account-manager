@@ -71,9 +71,11 @@ describe("les étages de test ne se mélangent pas", () => {
     });
     expect(menteurs).toEqual([]);
 
-    // Then l'étage d'intégration est vide aujourd'hui, et ce test le dira quand il
-    // cessera de l'être : le premier scénario qui s'y range est celui qui aura besoin
-    // d'une relecture, pas le centième.
-    expect(integration).toEqual([]);
+    // Then l'étage d'intégration porte exactement ce qu'on a décidé d'y mettre. La
+    // liste est écrite à la main, contrairement à tout le reste de ce fichier, et c'est
+    // délibéré : cet étage coûte une vraie base et quelques centaines de millisecondes
+    // par scénario, donc un ajout doit être une décision et non une dérive. Un scénario
+    // qui apparaît ici sans passer par cette ligne n'a été relu par personne.
+    expect(integration).toEqual(["./lib/sync/collecte.integration.test.ts"]);
   });
 });
