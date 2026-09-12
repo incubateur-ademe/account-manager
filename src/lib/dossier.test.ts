@@ -16,9 +16,6 @@ import {
   ouvrirDossier,
 } from "@/lib/dossier";
 
-process.env["DATABASE_URL"] ??= "postgresql://localhost:5432/inutilise";
-process.env["ESPACE_MEMBRE_API_KEY"] ??= "inutilisee";
-
 interface IdentiteEnBase {
   personId: string;
   provider: string;

@@ -26,9 +26,26 @@ const BASE = `http://localhost:${PORT}`;
  * dessus : un scénario qui sème dans une base et interroge un serveur branché sur une
  * autre passerait son temps à ne rien trouver.
  */
-export const BASE_DE_TEST =
-  process.env["DATABASE_URL"] ??
-  `postgresql://account_manager:account_manager@127.0.0.1:${process.env["POSTGRES_PORT"] ?? "5432"}/account_manager_test`;
+function baseDediee(): string {
+  const url =
+    process.env["DATABASE_URL"] ??
+    `postgresql://account_manager:account_manager@127.0.0.1:${process.env["POSTGRES_PORT"] ?? "5432"}/account_manager_test`;
+
+  // Ici et pas dans un scénario : ce fichier décide de la base sur laquelle le serveur
+  // démarre. Posé plus loin, le refus laisserait un Next tourner sur la base de
+  // développement de qui lance, avec un secret connu et une allowlist forgée, et sa
+  // portée dépendrait de ce que chaque scénario futur pense à appeler.
+  const nom = new URL(url).pathname.replace(/^\//, "");
+  if (!nom.endsWith("_test")) {
+    throw new Error(
+      `Refus de démarrer les scénarios de bout en bout sur la base « ${nom} » : ils l'effacent, et seule une base dont le nom finit par « _test » peut l'accepter.`,
+    );
+  }
+
+  return url;
+}
+
+export const BASE_DE_TEST = baseDediee();
 
 /** Le même secret des deux côtés : le scénario forge le cookie que le serveur relira. */
 export const SECRET = "un-secret-de-bout-en-bout-assez-long-pour-hkdf";
@@ -56,7 +73,6 @@ const ENVIRONNEMENT = {
 
 export default defineConfig({
   testDir: "./e2e",
-  fullyParallel: false,
   workers: 1,
   retries: 0,
   forbidOnly: true,

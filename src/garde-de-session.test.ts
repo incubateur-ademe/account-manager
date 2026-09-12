@@ -1,11 +1,5 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 
-process.env["DATABASE_URL"] ??= "postgresql://localhost:5432/inutilise";
-process.env["ESPACE_MEMBRE_API_KEY"] ??= "inutilisee";
-process.env["AUTH_SECRET"] ??= "inutilise";
-process.env["SMTP_URL"] ??= "smtp://localhost:1025";
-process.env["SMTP_EMAIL_FROM"] ??= "inutilise@example.org";
-
 /**
  * L'inverse du harnais de `dossiers/[id]/actions.test.ts`, qui résout un opérateur :
  * ici la garde refuse, et tout ce qui sortirait du processus échoue en se signalant,

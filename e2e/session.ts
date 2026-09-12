@@ -30,13 +30,8 @@ import { BASE_DE_TEST, SECRET } from "../playwright.config";
 const COOKIE = "authjs.session-token";
 
 async function connexion(): Promise<Client> {
-  const nom = new URL(BASE_DE_TEST).pathname.replace(/^\//, "");
-  if (!nom.endsWith("_test")) {
-    throw new Error(
-      `Refus de jouer les scénarios de bout en bout sur la base « ${nom} » : ils l'effacent, et seule une base dont le nom finit par « _test » peut l'accepter.`,
-    );
-  }
-
+  // La base est déjà refusée si elle n'est pas dédiée : la configuration le tranche
+  // avant que le serveur ne démarre.
   const client = new Client({ connectionString: BASE_DE_TEST });
   await client.connect();
   return client;

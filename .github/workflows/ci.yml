@@ -83,7 +83,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U account_manager -d account_manager_test"
+          --health-cmd "pg_isready -h 127.0.0.1 -U account_manager -d account_manager_test"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 20
@@ -103,7 +103,9 @@ jobs:
       - run: pnpm db:generate
 
       # Les deux commandes retombent sur la même adresse par défaut, celle que le
-      # service expose : rien à passer, et rien à désynchroniser entre elles.
+      # service expose. L'adresse est écrite deux fois dans `package.json` : les
+      # changer ensemble, sinon les migrations partent sur une base et les scénarios
+      # sur une autre, et les deux passent le garde-fou du suffixe sans protester.
       - run: pnpm db:deploy:test
 
       - run: pnpm test:integration

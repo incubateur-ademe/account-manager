@@ -89,32 +89,37 @@ Emplacement : `src/**/<nom>.test.ts`, à côté du code. Voir le skill `/add-tes
 s'il ne descend pas d'un étage : une phrase d'écran sortie dans une table de rédaction s'épingle sans
 base ni navigateur, et la vérifier plus haut coûte mille fois plus pour la même garantie.
 
-`src/**/<nom>.test.ts` est l'étage **unitaire** : ni base, ni réseau, ni navigateur. Son passage de
-mise en place pose des adresses mortes, donc un double oublié échoue au lieu d'atteindre pour de vrai
-ce qu'il croyait doubler.
+`src/**/<nom>.test.ts` est l'étage **unitaire** : ni base, ni réseau, ni navigateur. `vitest.config.ts`
+lui pose un environnement qui ne mène nulle part, si bien qu'un double oublié échoue au lieu
+d'atteindre pour de vrai ce qu'il croyait doubler. `src/etages-de-test.test.ts` tient cette seule
+propriété, parce qu'elle est la seule qui pourrisse en silence.
 
 `src/**/<nom>.integration.test.ts` est l'étage d'**intégration** : une vraie base, dédiée, dont le nom
-doit finir par `_test`. Il existe pour ce que l'unitaire ne peut pas tenir, à commencer par les
-requêtes : un test qui vérifie un `where` contre un double écrit à la main vérifie surtout qu'on a
-écrit le double comme on a écrit le code.
-
-Ses deux commandes suivent `POSTGRES_PORT` comme `docker-compose.yml`, et Vitest ne lit aucun fichier
-d'environnement : sur un poste où PostgreSQL n'écoute pas sur 5432, c'est `POSTGRES_PORT=5433 pnpm
-test:integration`. Une `DATABASE_URL` déjà posée l'emporte, et le refus du nom non dédié s'applique
-quand même.
+doit finir par `_test`. Il existe pour ce qu'un double écrit à la main ne peut pas honorer sans
+réécrire un moteur, à commencer par un compte à travers une relation. La remise à zéro est posée par
+le passage de mise en place : un scénario n'a rien à appeler, il sème.
 
 `e2e/*.spec.ts` est l'étage de **bout en bout**, hors de `src/`, lancé à la main avant une livraison
-par `pnpm test:e2e` et **jamais dans la vérification continue**. Trois choses seulement s'y tiennent :
-qu'un cookie franchisse la barrière de `src/proxy.ts`, que la garde de session distingue vraiment un
-opérateur d'un participant, et qu'un écran s'hydrate sans mourir. Tout le reste se tient plus bas. Un
-scénario instable s'y supprime, il ne se rejoue pas : `retries` vaut zéro, et un `retry` transforme un
-défaut intermittent en bruit vert.
+et **jamais dans la vérification continue**. Trois choses seulement s'y tiennent : qu'un cookie signé
+franchisse la barrière de `src/proxy.ts` et soit décodé, que le même serveur traite deux identités
+différemment quand seul le nom change, et qu'un écran s'hydrate au lieu de seulement se rendre. Un
+scénario instable s'y supprime, il ne se rejoue pas : `retries` vaut zéro. Le cookie s'y forge plutôt
+que de passer par le lien de connexion, si bien qu'une connexion à la main avant une livraison reste
+nécessaire.
 
-Le cookie s'y forge plutôt que de passer par le lien de connexion : la porte elle-même est tenue par
-ses tests unitaires, et une connexion à la main avant une livraison reste nécessaire.
+**Les deux étages du bas ne partent pas d'un clone.** Une fois pour toutes :
 
-`src/etages-de-test.test.ts` tient cette frontière, et ce n'est pas décoratif : une règle écrite se
-contourne sans mauvaise foi, simplement en ne la lisant pas.
+```bash
+docker compose up -d
+docker compose exec postgres createdb -U account_manager account_manager_test
+pnpm db:deploy:test
+pnpm exec playwright install chromium   # seulement pour le bout en bout
+```
+
+Ensuite `pnpm test:integration` et `pnpm test:e2e`. Les deux suivent `POSTGRES_PORT` comme
+`docker-compose.yml`, et rien ici ne lit de fichier d'environnement : sur un poste où PostgreSQL
+n'écoute pas sur 5432, c'est `POSTGRES_PORT=5433 pnpm test:integration`. Une `DATABASE_URL` déjà
+posée l'emporte, et le refus du nom non dédié s'applique quand même.
 
 ## Invariants non négociables
 

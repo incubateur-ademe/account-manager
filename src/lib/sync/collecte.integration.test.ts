@@ -1,24 +1,25 @@
 import { copyFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { viderLaBase } from "@test";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { CollectResult, Connector } from "@/core/connector";
-import { deconnecter, prisma } from "@/lib/db";
+import { prisma } from "@/lib/db";
 import { executerCollecte, nouvelleExecution } from "@/lib/sync/collecte";
 
 /**
  * Le garde-fou de chute, exercé contre une vraie base.
  *
  * Il décide de la seule écriture irréversible de cet outil : poser une date de
- * disparition sur un compte, c'est déclarer que quelqu'un est parti. Trois lectures
- * décident, et les trois sont des requêtes qu'un double écrit à la main ne peut pas
- * honorer sans réécrire un moteur. Le harnais unitaire voisin les rejoue donc de son
- * côté, et l'une d'elles, `resource.count`, y rend zéro en dur : comme
- * `chuteExcessive` sort faux dès que la référence est nulle, le second verrou est
- * désarmé dans les quatre scénarios de ce fichier-là, sans qu'aucune assertion ne le
- * dise. Ce scénario est le seul endroit du dépôt où ce verrou existe.
+ * disparition sur un compte, c'est déclarer que quelqu'un est parti.
+ *
+ * Ce qui ne se tient pas plus bas tient en une phrase. `ressourcesTenuesPourVivantes`
+ * compte les ressources par les accès qu'elles portent encore, à travers la relation
+ * `grants: { some: { vanishedAt: null } }`, et un double qui réimplémenterait cette
+ * jointure vérifierait sa propre jointure. C'est l'assertion « référence de trois et
+ * non de quatre » qui porte tout ce fichier : la quatrième équipe existe, mais son
+ * dernier accès est daté, et la compter ferait grossir la référence à chaque équipe
+ * supprimée jusqu'à déclencher le garde-fou sur une collecte parfaitement saine.
  *
  * Une seule histoire, deux nuits, parce que la garantie est une suite : ce qu'une nuit
  * refuse de conclure, la suivante doit pouvoir le conclure sans que le refus d'hier ne
@@ -130,11 +131,7 @@ const dateDe = async (externalId: string): Promise<Date | null> =>
 const accesVivants = () => prisma.accessGrant.count({ where: { vanishedAt: null } });
 
 describe("le garde-fou de chute, contre une vraie base", () => {
-  beforeEach(async () => {
-    await viderLaBase();
-    await semer();
-  });
-  afterAll(deconnecter);
+  beforeEach(semer);
 
   it("ne date personne la nuit où la moitié du parc manque, puis date les comptes sans toucher aux accès", async () => {
     // Given un système qui tient quatre comptes vivants et trois équipes encore

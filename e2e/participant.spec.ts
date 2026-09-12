@@ -29,7 +29,14 @@ async function semerLeDroit(): Promise<void> {
   await semer(async (client) => {
     await client.query(
       `INSERT INTO "Person" (id, username, fullname, source) VALUES ($1, $2, $3, 'LOCAL'), ($4, $5, $6, 'LOCAL')`,
-      ["per-solene", PORTEUSE.username, PORTEUSE.fullname, PARTICIPANTE, PARTICIPANT.username, PARTICIPANT.fullname],
+      [
+        "per-solene",
+        PORTEUSE.username,
+        PORTEUSE.fullname,
+        PARTICIPANTE,
+        PARTICIPANT.username,
+        PARTICIPANT.fullname,
+      ],
     );
     await client.query(
       `INSERT INTO "AccessCase" (id, "personId", kind, state) VALUES ($1, 'per-solene', 'OFFBOARDING', 'CONFIRMED')`,
@@ -60,13 +67,13 @@ test("un droit nominatif ouvre un seul dossier à qui n'est pas opérateur", asy
   await sansPersonne.close();
 
   // Given la session du participant, telle qu'un lien suivi l'aurait posée.
-  const cotePartipant = await browser.newContext();
-  await ouvrirUneSession(cotePartipant, {
+  const coteParticipant = await browser.newContext();
+  await ouvrirUneSession(coteParticipant, {
     username: PARTICIPANT.username,
     personId: PARTICIPANTE,
     nom: PARTICIPANT.fullname,
   });
-  const sien = await cotePartipant.newPage();
+  const sien = await coteParticipant.newPage();
 
   /**
    * Ce que le navigateur a trouvé à redire, mis de côté plutôt qu'assert tout de
@@ -106,7 +113,9 @@ test("un droit nominatif ouvre un seul dossier à qui n'est pas opérateur", asy
   await expect(sien).toHaveURL(new RegExp(`/moi/dossiers/${DOSSIER}$`));
   // Le titre de la page, nommé par son rôle : le système de design embarque sa
   // propre modale de thème, dont le titre est aussi un `h1`.
-  await expect(sien.getByRole("heading", { level: 1, name: new RegExp(PORTEUSE.fullname) })).toBeVisible();
+  await expect(
+    sien.getByRole("heading", { level: 1, name: new RegExp(PORTEUSE.fullname) }),
+  ).toBeVisible();
 
   // Then l'écran n'est pas seulement rendu, il est vivant : la modale d'affichage du
   // système de design est un composant client, et son ouverture prouve que React a
@@ -126,7 +135,7 @@ test("un droit nominatif ouvre un seul dossier à qui n'est pas opérateur", asy
 
   // Then et il s'est hydraté sans rien casser en chemin.
   expect(plaintes).toEqual([]);
-  await cotePartipant.close();
+  await coteParticipant.close();
 
   // Given la session d'une opératrice, dont le nom est dans l'allowlist.
   const coteOperatrice = await browser.newContext();
@@ -139,7 +148,9 @@ test("un droit nominatif ouvre un seul dossier à qui n'est pas opérateur", asy
   // Then elle y entre, sur le même serveur, avec la même barrière et le même cookie
   // signé. Seul le nom change, et c'est tout ce qui sépare les deux.
   await expect(leSien).toHaveURL(new RegExp(`/dossiers/${DOSSIER}$`));
-  await expect(leSien.getByRole("heading", { level: 1, name: new RegExp(PORTEUSE.fullname) })).toBeVisible();
+  await expect(
+    leSien.getByRole("heading", { level: 1, name: new RegExp(PORTEUSE.fullname) }),
+  ).toBeVisible();
 
   // Then et son espace à elle ne porte aucun dossier : elle n'a pas de fiche, donc pas
   // de droit de participation. Être opératrice n'ouvre pas la porte du participant.

@@ -6,9 +6,6 @@ import type { RiskLevel, StepActor, TemplateKind } from "@/generated/prisma/enum
 
 import { ajouterEtape, type EtapeSaisie, modifierEtape } from "./modele-plan-edition";
 
-process.env["DATABASE_URL"] ??= "postgresql://localhost:5432/inutilise";
-process.env["ESPACE_MEMBRE_API_KEY"] ??= "inutilisee";
-
 interface ModeleEnBase {
   id: string;
   ownerKey: string;

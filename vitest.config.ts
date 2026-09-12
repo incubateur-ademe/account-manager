@@ -5,29 +5,40 @@ import { defaultExclude, defineConfig } from "vitest/config";
 /**
  * Deux étages, et la frontière est ce qui compte.
  *
- * L'unitaire ne touche rien : ni base, ni réseau, ni navigateur. Son passage de mise en
- * place pose des adresses mortes plutôt que de s'en remettre à la discipline de qui
- * écrit le test, si bien qu'un double oublié échoue tout de suite au lieu d'atteindre
- * pour de vrai ce qu'il croyait doubler. C'est lui que `pnpm test` joue, et il doit
- * rester une commande qui tourne sans rien démarrer : c'est ce qui décide s'il sera
- * joué souvent.
+ * L'unitaire ne touche rien : ni base, ni réseau, ni navigateur. Son environnement ne
+ * mène nulle part, le port 1 n'écoutant jamais, si bien qu'un double oublié échoue tout
+ * de suite au lieu d'atteindre pour de vrai ce qu'il croyait doubler. Le cas qui le
+ * justifie à lui seul est `ESPACE_MEMBRE_URL`, dont le schéma pose par défaut l'adresse
+ * de production : un test qui oublie de piéger `fetch` interroge le vrai référentiel des
+ * personnes, et l'appel réussit. C'est `pnpm test` qui le joue, et il doit rester une
+ * commande qui tourne sans rien démarrer.
  *
- * L'intégration écrit dans une vraie base, et seulement dans une base dédiée dont le
- * nom le dit. Elle existe pour ce que l'unitaire ne peut pas tenir : les doubles de
- * base écrits à la main recodent la condition qu'ils reçoivent au lieu de l'honorer,
- * et un test qui vérifie un `where` contre un double vérifie surtout qu'on a écrit le
- * double comme on a écrit le code.
+ * L'intégration écrit dans une vraie base, et seulement dans une base dédiée dont le nom
+ * le dit. Elle existe pour ce que l'unitaire ne peut pas tenir : une requête qu'un
+ * double ne peut honorer sans réécrire un moteur, à commencer par un compte à travers
+ * une relation. Une vraie base ne donne pas droit au reste, et les adresses mortes
+ * valent pour elle aussi.
  *
  * Le bout en bout ne vit pas ici, il a son propre lanceur : un navigateur n'est pas un
- * environnement de Vitest, et le mélanger à ces deux étages ferait payer son démarrage
- * à chaque `pnpm test`.
+ * environnement de Vitest, et le mélanger ferait payer son démarrage à chaque
+ * `pnpm test`.
  */
+
+const MORT = "127.0.0.1:1";
+
+/** Ce qu'aucun étage n'a le droit d'atteindre. Posé avant les fichiers de mise en place. */
+const ADRESSES_MORTES = {
+  ESPACE_MEMBRE_URL: `http://${MORT}`,
+  ESPACE_MEMBRE_API_KEY: "aucune-cle-en-test",
+  AUTH_SECRET: "aucun-secret-en-test",
+  SMTP_URL: `smtp://${MORT}`,
+  SMTP_EMAIL_FROM: "personne@exemple.invalid",
+};
+
 export default defineConfig({
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
-      // Le harnais d'intégration, hors de `src/` pour ne jamais partir en production.
-      "@test": fileURLToPath(new URL("./vitest.base-de-test.ts", import.meta.url)),
     },
   },
   // `jsx: "preserve"` dans le tsconfig laisse esbuild retomber sur `React.createElement`,
@@ -51,7 +62,10 @@ export default defineConfig({
           // Sans cette exclusion, l'étage qui exige une base serait joué par celui qui
           // s'interdit d'en avoir une : les deux suffixes finissent par `.test.ts`.
           exclude: [...defaultExclude, "src/**/*.integration.test.ts"],
-          setupFiles: ["./vitest.setup.unite.ts"],
+          env: {
+            ...ADRESSES_MORTES,
+            DATABASE_URL: `postgresql://interdit:interdit@${MORT}/aucune-base-en-unitaire`,
+          },
         },
       },
       {
@@ -60,6 +74,9 @@ export default defineConfig({
           name: "integration",
           environment: "node",
           include: ["src/**/*.integration.test.ts"],
+          // La base, elle, vient de l'appelant : la poser ici la rendrait implicite, et
+          // le refus du nom non dédié perdrait son sens.
+          env: ADRESSES_MORTES,
           setupFiles: ["./vitest.setup.integration.ts"],
           // Un scénario qui sème puis efface ne supporte pas d'en croiser un autre sur
           // la même base : l'isolation vient de la remise à zéro, donc de l'ordre.

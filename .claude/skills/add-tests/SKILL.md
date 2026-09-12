@@ -49,10 +49,13 @@ fait, tu tries la liste parce qu'il y a un `orderBy`, tu rends un nombre choisi 
 **Arrête-toi. Le test que tu écris ne prouvera rien.** Il vérifiera que tu as écrit le double comme
 tu as écrit le code. Retire la clause du code de production : ton test restera vert.
 
-Ce dépôt en porte l'exemple. Un double rendait `resource.count() => 0` en dur là où la vraie requête
-compte à travers une relation. Comme `chuteExcessive` sort faux dès que la référence est nulle, le
-second verrou du garde-fou était désarmé dans les quatre scénarios du fichier, sans qu'aucune
-assertion ne le dise. Le défaut a vécu jusqu'à ce qu'un scénario d'intégration l'exerce.
+Ce dépôt en porte deux exemples. Le double de `externalIdentity.count`, dans
+`src/lib/sync/collecte.test.ts`, type son argument comme `{ where: { provider } }` et refiltre
+`vanishedAt === null` de sa propre main : retire cette clause de la requête de production, le test
+reste vert, et la collecte se met à compter les partis parmi les vivants. Et
+`ressourcesTenuesPourVivantes` compte à travers `grants: { some: { vanishedAt: null } }` : un double
+qui réimplémenterait cette jointure vérifierait sa propre jointure, ce qui est le contraire d'un
+test.
 
 Un double reste légitime quand il rend une valeur dont le contenu ne décide de rien dans le
 scénario. Il devient un mensonge quand la condition qu'il reçoit décide du résultat attendu.
@@ -138,7 +141,7 @@ Communes aux trois étages :
 
 - Imports explicites de `describe`, `it`, `expect`, `vi` depuis `vitest` : les globals ne sont **pas**
   activés.
-- Alias `@/` vers `src/`, `@test` vers le harnais d'intégration.
+- Alias `@/` vers `src/`.
 - Noms de scénarios : une phrase française qui décrit le comportement, lisible dans le rapport.
 - Assertions précises (`toBe`, `toEqual`, `toMatchObject`) plutôt que vagues (`toBeTruthy`).
 - Jamais de tiret cadratin ni demi-cadratin.
@@ -147,10 +150,10 @@ Communes aux trois étages :
 doubler la fonction qui les appelle : on teste le parsing et la gestion d'erreur, pas le double. Le
 passage de mise en place pose des adresses mortes : un double oublié échoue tout de suite.
 
-**Intégration.** `beforeEach(viderLaBase)` depuis `@test`, puis sème. Le client est celui de
-l'application, pour exercer le même chemin que le produit. Sème le moins possible : un scénario qui
-demande quinze tables est un scénario perdu d'avance. Ajoute le fichier à la liste écrite à la main
-dans `src/etages-de-test.test.ts`, qui refuse toute apparition non déclarée.
+**Intégration.** Sème dans un `beforeEach`, rien d'autre : la remise à zéro et la fermeture de la
+connexion sont posées par le passage de mise en place. Le client est celui de l'application, pour
+exercer le même chemin que le produit. Sème le moins possible : un scénario qui demande quinze tables
+est un scénario perdu d'avance. La base se crée une fois, voir `CLAUDE.md`.
 
 **Bout en bout.** Dans `e2e/`, jamais sous `src/`. Nomme les éléments par leur rôle et leur nom
 accessible, jamais par un sélecteur CSS ni par `locator("h1")` : le système de design pose ses
@@ -176,7 +179,7 @@ plutôt que de le supposer.
 
 ```bash
 pnpm test                              # unitaire
-POSTGRES_PORT=5433 pnpm test:integration   # si un scénario y a été ajouté
+pnpm test:integration                  # si un scénario y a été ajouté
 pnpm test:e2e                          # idem, et seulement dans ce cas
 ```
 
@@ -200,14 +203,8 @@ pnpm test             : PASS | FAIL (détail)
 ## Règles dures
 
 - **L'étage avant le test.** Un scénario hors de l'unitaire sans son « pourquoi pas plus bas » ne
-  s'écrit pas.
-- **Scénarios validés avant code.** Jamais d'implémentation sans accord de l'utilisateur sur la liste.
-- **Peu de tests, mais des gros.** Au dixième `it()` de quatre lignes, arrête-toi et fusionne.
+  s'écrit pas, et le doute fait descendre.
 - **Ne double jamais une condition que le test vérifie.** Si le double rejoue le `where`, le scénario
   monte d'un étage.
 - **Aucun test n'est terminé avant d'avoir été vu rouge.**
-- **Un test rouge ne se skip pas**, et un scénario de bout en bout instable **se supprime** plutôt que
-  de se rejouer en `retry` : un défaut intermittent transformé en bruit vert est la façon la plus
-  sûre de perdre confiance dans une suite sans s'en apercevoir.
-- **La vraie base n'est pas interdite, elle est réservée.** Elle appartient à l'étage d'intégration,
-  sur une base dédiée dont le nom finit par `_test`. Un test unitaire qui la touche est un défaut.
+- **Un scénario de bout en bout instable se supprime**, il ne se rejoue pas en `retry`.

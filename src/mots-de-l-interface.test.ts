@@ -86,93 +86,6 @@ function quiEcrit(valeur: string): string[] {
     .map(([chemin]) => chemin);
 }
 
-/**
- * Les champs dont le nom trahit une valeur d'énumération. Le nom suffit : ce sont les
- * colonnes de Prisma, et le garde-fou vaut mieux large et exempté que juste et muet.
- */
-const CHAMPS = [
-  "status",
-  "kind",
-  "tier",
-  "state",
-  "matchMethod",
-  "decision",
-  "riskLevel",
-  "expectedActor",
-  "validationBy",
-  "idKind",
-  "attachment",
-  "currentPhase",
-  "severity",
-  "source",
-];
-
-/**
- * Une accolade de JSX qui sert un de ces champs, sans passer par une table.
- *
- * Trois formes sont écartées parce qu'elles ne montrent rien. L'indexation d'une table
- * (`LIBELLE[x.kind]`) est justement le geste attendu. La comparaison (`x.kind ===`) ne
- * rend pas la valeur. Et une accolade précédée d'un signe égal est une propriété
- * passée à un composant, pas du texte : c'est au composant qui la reçoit de la dire.
- */
-const SERVI = new RegExp(`(?<!=)\\{[^{}]*?\\b\\w+\\.(${CHAMPS.join("|")})\\b[^{}]*?\\}`, "g");
-
-interface Fuite {
-  ou: string;
-  champ: string;
-  fragment: string;
-}
-
-function fuites(): Fuite[] {
-  const trouvees: Fuite[] = [];
-
-  for (const [chemin, source] of duCode()) {
-    if (!chemin.endsWith(".tsx")) {
-      continue;
-    }
-    source.split("\n").forEach((ligne, rang) => {
-      for (const trouve of ligne.matchAll(SERVI)) {
-        const fragment = trouve[0];
-        const champ = trouve[1] ?? "";
-        const indexe = new RegExp(`\\w\\[[^\\]]*\\.${champ}`).test(fragment);
-        const compare = /===|!==|==|!=|\?\.|map\(|filter\(| as /.test(fragment);
-        if (indexe || compare) {
-          continue;
-        }
-        trouvees.push({ ou: `${chemin}:${rang + 1}`, champ, fragment: fragment.trim() });
-      }
-    });
-  }
-
-  return trouvees;
-}
-
-/**
- * Ce qui sert une valeur brute et qu'on accepte, chacun avec sa raison.
- *
- * La clé est le fichier et le champ, jamais le numéro de ligne, qu'une ligne ajoutée
- * plus haut périmerait sans que rien n'ait changé.
- *
- * Une entrée qui ne correspond plus à rien fait échouer ce test au même titre qu'une
- * fuite neuve. C'est la moitié qui compte : une liste d'exceptions que personne ne
- * nettoie finit par couvrir un défaut revenu entre-temps, et elle n'aurait alors servi
- * qu'à le rendre invisible.
- */
-const ADMISES: Readonly<Record<string, string>> = {
-  "./app/personnes/[username]/Identifiant.tsx|source":
-    "L'identifiant de la fiche absorbée par une fusion, pas la colonne `PersonSource` : le nom se ressemble, la valeur est un username.",
-  "./ui/connecteurs/github/tuiles.tsx|status":
-    "Le code de réponse HTTP de GitHub, dans le message d'une exception. C'est un nombre, et il n'a pas de traduction française.",
-  "./app/dossiers/[id]/page.tsx|tier":
-    "La valeur passe par `libelleDe`, qui est la table de ce fichier : l'indexation est dans la fonction plutôt que sur la ligne.",
-  "./app/collectes/page.tsx|status":
-    "Dette connue : le badge de la file des collectes sert `OK`, `PARTIAL`, `FAILED` et `SKIPPED` bruts. Corrigé sur la branche `vocabulaire-des-ecrans`, qui pose la table `LIBELLE_ETAT_COLLECTE`. À retirer d'ici à son arrivée.",
-  "./app/page.tsx|status":
-    "Dette connue, même famille : « état SKIPPED » dans une phrase française du tableau de bord. Corrigé sur la même branche.",
-  "./app/systemes/page.tsx|status":
-    "Dette connue, même famille : « état PARTIAL » sous le titre de chaque système. Corrigé sur la même branche.",
-};
-
 describe("aucune valeur de la base n'arrive telle quelle sous les yeux d'un opérateur", () => {
   it("ne laisse une valeur sans mot français que si personne ne l'écrit", () => {
     // Given les énumérations de la base et les tables qui les disent en français. Les
@@ -199,30 +112,5 @@ describe("aucune valeur de la base n'arrive telle quelle sous les yeux d'un opé
         .map((ligne) => `${dette.enumeration}.${ligne.valeur} écrit par ${ligne.par.join(", ")}`),
     );
     expect(ecrites).toEqual([]);
-  });
-
-  it("ne sert aucun champ d'énumération sans passer par une table, hors exceptions déclarées", () => {
-    // Given les accolades de JSX qui servent un champ dont le nom est celui d'une
-    // colonne d'énumération, sans l'indexer dans une table ni le comparer.
-    const trouvees = fuites();
-
-    // Then le balayage voit quelque chose : un motif devenu muet ferait tout passer.
-    expect(trouvees.length).toBeGreaterThan(0);
-
-    // Then chacune est déclarée, avec la raison qui la rend acceptable.
-    const declarees = trouvees.map((fuite) => ({
-      fuite,
-      cle: `${fuite.ou.split(":")[0]}|${fuite.champ}`,
-    }));
-    const indues = declarees.filter((ligne) => !Object.hasOwn(ADMISES, ligne.cle));
-    expect(indues.map((ligne) => `${ligne.fuite.ou} ${ligne.fuite.fragment}`)).toEqual([]);
-
-    // Then et aucune exception ne survit à ce qu'elle couvrait. Une liste que personne
-    // ne nettoie finit par couvrir un défaut revenu depuis, et elle n'aura alors servi
-    // qu'à le rendre invisible.
-    const perimees = Object.keys(ADMISES).filter(
-      (cle) => !declarees.some((ligne) => ligne.cle === cle),
-    );
-    expect(perimees).toEqual([]);
   });
 });

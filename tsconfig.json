@@ -9,8 +9,7 @@
     // impose un contournement à chaque intégration sans rien apporter.
     "exactOptionalPropertyTypes": false,
     "paths": {
-      "@/*": ["./src/*"],
-      "@test": ["./vitest.base-de-test.ts"]
+      "@/*": ["./src/*"]
     }
   },
   "include": [

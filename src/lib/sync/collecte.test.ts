@@ -8,9 +8,6 @@ import { z } from "zod";
 import type { CollectResult, Connector, RunContext } from "@/core/connector";
 import { executerCollecte } from "@/lib/sync/collecte";
 
-process.env["DATABASE_URL"] ??= "postgresql://localhost:5432/inutilise";
-process.env["ESPACE_MEMBRE_API_KEY"] ??= "inutilisee";
-
 /**
  * La politique se lit sur le disque, et `config/` ne contient que des modèles. Le
  * seuil de chute vient donc d'un répertoire jetable, où seul le fichier des comptes
