@@ -46,7 +46,8 @@ Zod 4 pour la validation.
 | `pnpm lint:fix` | `biome check --write .` |
 | `pnpm format` | `biome format --write .` |
 | `pnpm typecheck` | `next typegen && tsc --noEmit` |
-| `pnpm test` | `vitest run` |
+| `pnpm test` | étage unitaire (`vitest run --project unite`) |
+| `pnpm test:integration` | étage d'intégration, sur une vraie base dédiée |
 | `pnpm verify` | lint + typecheck + test |
 | `pnpm sync` | collecte sur les systèmes cibles |
 | `pnpm db:generate` / `db:migrate` / `db:deploy` / `db:studio` | Prisma |
@@ -81,6 +82,22 @@ Vise cinq à dix scénarios costauds par feature, pas cinquante micro-cas.
 On teste ce qui coûte cher quand ça casse : résolution du tier, runs de collecte y compris tronqués,
 calcul de plan et empreinte, rapprochement d'identité, machines à états, audit, mode simulation.
 Emplacement : `src/**/<nom>.test.ts`, à côté du code. Voir le skill `/add-tests`.
+
+**Chaque garantie se tient au plus bas niveau qui sait la tenir.** Avant d'écrire un test, demande-toi
+s'il ne descend pas d'un étage : une phrase d'écran sortie dans une table de rédaction s'épingle sans
+base ni navigateur, et la vérifier plus haut coûte mille fois plus pour la même garantie.
+
+`src/**/<nom>.test.ts` est l'étage **unitaire** : ni base, ni réseau, ni navigateur. Son passage de
+mise en place pose des adresses mortes, donc un double oublié échoue au lieu d'atteindre pour de vrai
+ce qu'il croyait doubler.
+
+`src/**/<nom>.integration.test.ts` est l'étage d'**intégration** : une vraie base, dédiée, dont le nom
+doit finir par `_test`. Il existe pour ce que l'unitaire ne peut pas tenir, à commencer par les
+requêtes : un test qui vérifie un `where` contre un double écrit à la main vérifie surtout qu'on a
+écrit le double comme on a écrit le code.
+
+`src/etages-de-test.test.ts` tient cette frontière, et ce n'est pas décoratif : une règle écrite se
+contourne sans mauvaise foi, simplement en ne la lisant pas.
 
 ## Invariants non négociables
 
