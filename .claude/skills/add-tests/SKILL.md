@@ -1,48 +1,85 @@
 ---
 name: add-tests
-description: Ajoute des tests Vitest pour la feature de la session courante. Peu de tests mais des gros - BDD ou grosse integration, jamais une nuee de micro-tests unitaires. Propose les scenarios, attend validation, implemente, puis lance /verif.
+description: Ajoute des tests pour la feature de la session courante, à l'étage le plus bas qui sache tenir la garantie. Peu de tests mais des gros. Propose les scénarios, attend validation, implémente, prouve par mutation, puis lance /verif.
 ---
 
 # /add-tests - Ajout de tests
 
-## Regle non negociable
+## Les deux règles, dans cet ordre
 
-> **Peu de tests, mais des gros. Soit du BDD, soit de gros tests d'integration.
-> Ne jamais produire une tonne de petits tests unitaires.**
+> **1. Chaque garantie se tient à l'étage le plus bas qui sache la tenir.**
+>
+> **2. Peu de tests, mais des gros. Jamais une nuée de micro-tests.**
 
-C'est la regle de l'utilisateur, elle prime sur toute habitude par defaut. Concretement :
+La seconde est ancienne et n'a pas bougé. La première la précède : avant de se demander comment
+écrire un test, il faut se demander où. Un test placé trop haut est plus lent, plus fragile, et
+moins précis dans ce qu'il dit quand il casse.
 
-- Un test couvre un **comportement metier complet** de bout en bout, pas une fonction isolee.
-- Il se lit comme une histoire : etat initial, action, resultat observable. Given / When / Then.
-- Plusieurs assertions dans un meme test sont normales et souhaitables : c'est le scenario qui est
-  l'unite, pas l'assertion.
-- **Signaux d'alerte** : un fichier de test avec quinze `it()` de trois lignes chacun, un test par
-  branche de `if`, un test qui verifie qu'un getter retourne ce qu'on lui a mis. Tout ca se supprime
-  ou se fusionne.
-- Un helper pur et trivial ne merite pas son test dedie. Il est couvert par le scenario qui
-  l'utilise. On teste ce qui casse et ce qui coute cher quand ca casse.
+## Étape 0 : à quel étage ?
 
-Ordre de grandeur vise : cinq a dix scenarios costauds pour une feature, pas cinquante micro-cas.
+**Cette étape passe avant toutes les autres.** Elle se tranche garantie par garantie, pas fichier par
+fichier : une même feature en pose souvent à deux étages.
 
-## Ce qui merite un test dans ce projet
+Pose-toi les questions dans cet ordre, et arrête-toi à la première qui répond oui.
 
-Priorise par le cout d'une regression, pas par la facilite a tester :
+**La garantie tient-elle sans base, sans serveur et sans navigateur ?** Alors c'est de l'**unitaire**,
+`src/**/<nom>.test.ts`. C'est le cas de toute logique de décision, de toute machine à états, et de
+tout texte d'écran extrait dans une table de rédaction. Une phrase qu'un écran promet s'épingle ici
+en trois secondes ; la vérifier dans un navigateur coûte mille fois plus pour la même garantie.
 
-| Perimetre | Ce qu'on teste | Pourquoi |
+**Dépend-elle d'une requête réellement exécutée ?** Alors c'est de l'**intégration**,
+`src/**/<nom>.integration.test.ts`. Un `where` avec plusieurs clauses, un `orderBy` qui décide du
+résultat, un compte à travers une relation, un index unique posé à la main dans une migration, une
+cascade de suppression, un aller-retour JSON dans une colonne. Voir le signal d'alerte ci-dessous.
+
+**Dépend-elle du cookie, de la barrière, de la séparation des droits, ou de l'hydratation ?** Alors
+c'est du **bout en bout**, `e2e/*.spec.ts`. Et seulement ça : cet étage ne tourne pas dans la
+vérification continue, chaque ajout se paie en minutes et en fragilité.
+
+**En cas de doute, descends.** Un test qu'on découvre trop bas se remonte facilement. L'inverse coûte
+une suite qu'on ne croit plus.
+
+### Le signal d'alerte qui dit « intégration »
+
+Tu écris un test unitaire, tu doubles `@/lib/db`, et tu te retrouves à **réécrire la condition** que
+le code passe à Prisma : tu filtres `vanishedAt === null` à la main parce que la vraie requête le
+fait, tu tries la liste parce qu'il y a un `orderBy`, tu rends un nombre choisi parce qu'il y a un
+`count`.
+
+**Arrête-toi. Le test que tu écris ne prouvera rien.** Il vérifiera que tu as écrit le double comme
+tu as écrit le code. Retire la clause du code de production : ton test restera vert.
+
+Ce dépôt en porte l'exemple. Un double rendait `resource.count() => 0` en dur là où la vraie requête
+compte à travers une relation. Comme `chuteExcessive` sort faux dès que la référence est nulle, le
+second verrou du garde-fou était désarmé dans les quatre scénarios du fichier, sans qu'aucune
+assertion ne le dise. Le défaut a vécu jusqu'à ce qu'un scénario d'intégration l'exerce.
+
+Un double reste légitime quand il rend une valeur dont le contenu ne décide de rien dans le
+scénario. Il devient un mensonge quand la condition qu'il reçoit décide du résultat attendu.
+
+## Ce qui mérite un test dans ce projet
+
+Priorise par le coût d'une régression, pas par la facilité à tester.
+
+| Périmètre | Ce qu'on teste | Étage |
 |---|---|---|
-| `src/core/connector.ts` | resolution du tier effectif, degradation, `none` par absence de voie | c'est le contrat auquel tous les connecteurs se conforment |
-| Connecteurs (`list`, `plan`, `precheck`, `execute`) | un run complet contre des reponses distantes figees, y compris pagination tronquee et erreur unitaire | un `ok` menteur produit de fausses revocations |
-| Calcul d'ecart et de plan | du perimetre + collecte jusqu'aux steps figes, avec l'empreinte | c'est ce que l'operateur confirme |
-| Rapprochement d'identite | `matchMethod`, `personId` nul, compte isole | une identite forcee vers une personne coupe l'acces de quelqu'un en poste |
-| Machine a etats `AccessCase` et `Plan` | transitions valides et invalides, `graceDays`, expiration | un depart deduit d'un seul signal est un bug grave |
-| Audit | l'evenement est ecrit avant l'action, et une panne d'audit ne fait pas echouer l'action | invariant du produit |
-| `ACTIONS_ENABLED=false` | un plan complet s'execute en simulation sans aucun appel d'ecriture | garde-fou principal |
-| Tests de contrat de connecteur | la forme de la reponse distante n'a pas change (section 4.8 de `docs/architecture.md`) | les API amont ne sont ni versionnees ni documentees |
+| `src/core/connector.ts` | résolution du tier effectif, dégradation, `none` par absence de voie | unitaire |
+| Connecteurs (`list`, `plan`, `precheck`, `execute`) | un run complet contre des réponses figées, pagination tronquée et erreur unitaire comprises | unitaire |
+| Calcul d'écart et de plan | du périmètre jusqu'aux étapes figées, avec l'empreinte | unitaire |
+| Rapprochement d'identité | `matchMethod`, `personId` nul, compte isolé | unitaire |
+| Machines à états `AccessCase` et `Plan` | transitions valides et invalides, `graceDays`, expiration | unitaire |
+| Textes d'écran extraits en table | ce que la phrase promet, et qu'elle ne promet pas plus que le code ne tient | unitaire |
+| Audit | la trace précède l'action, et sa panne ne fait pas échouer l'action | unitaire |
+| `ACTIONS_ENABLED=false` | un plan complet s'exécute en simulation sans aucun appel d'écriture | unitaire |
+| Garde-fous de chute, datation des disparitions | les comptes de référence et les clauses de vie des écritures | **intégration** |
+| Index uniques et partiels posés à la main en migration | la base refuse vraiment, et le code traduit son refus | **intégration** |
+| Lectures dont l'`orderBy`, le `distinct` ou une relation décide | le plan courant, le dernier relevé complet, les droits vivants | **intégration** |
+| Barrière de session, séparation opérateur et participant, hydratation | le câblage, du cookie au bouton | **bout en bout** |
 
-Ce qui ne merite generalement **pas** de test dedie : les composants DSFR de presentation, les
-mappers triviaux, le typage (le compilateur s'en charge), les getters et setters.
+Ne méritent généralement pas de test dédié : les composants de présentation, les mappers triviaux, le
+typage (le compilateur s'en charge), les accesseurs.
 
-## Etapes
+## Étapes
 
 ### 1. Analyse de la session
 
@@ -51,85 +88,126 @@ git diff main --name-only
 git log main..HEAD --oneline
 ```
 
-Pour chaque fichier touche, determine ce qui a change **semantiquement** : nouveau comportement,
-nouvelle transition d'etat, nouvelle voie d'erreur. Pas "quelles fonctions ont bouge".
+Pour chaque fichier touché, détermine ce qui a changé **sémantiquement** : nouveau comportement,
+nouvelle transition, nouvelle voie d'erreur. Pas « quelles fonctions ont bougé ».
 
-### 2. Redaction des scenarios
+### 2. Rédaction des scénarios
 
-Ecris-les en Given / When / Then avant tout code :
-
-```
-Scenario : un run de collecte partiel ne fait rien disparaitre
-  Given une identite deja connue sur le provider notion
-  And une collecte qui remonte status "partial" avec une erreur de pagination
-  When le socle applique le resultat
-  Then vanishedAt reste nul sur l'identite
-  And le SyncRun est enregistre en PARTIAL avec son erreur
-```
-
-Un scenario par comportement observable, pas par fonction appelee. Couvre le chemin nominal **et** le
-chemin de degradation le plus couteux. Les cas limites qui ne changent pas la decision metier ne
-meritent pas leur scenario.
-
-### 3. Validation utilisateur avant implementation
-
-Presente la liste et **attends la confirmation explicite** avant d'ecrire une ligne de test :
+En Given / When / Then, avant tout code, et **chacun annoté de son étage**.
 
 ```
-## Scenarios proposes pour <feature>
+Scénario : un passage qui perd la moitié du parc ne date personne   [intégration]
+  Given quatre comptes vivants et six départs déjà datés
+  When une collecte n'en rend que deux
+  Then aucune disparition n'est datée
+  And les six départs portent toujours leur date d'origine
+  Pourquoi pas plus bas : la référence vient d'un `count` avec clause de vie,
+  et la datation d'un `updateMany` dont le `notIn` est le seul garde.
+```
 
-1. <titre> - <une ligne>
-2. <titre> - <une ligne>
+La ligne **« pourquoi pas plus bas »** est obligatoire dès qu'un scénario sort de l'unitaire. Si tu
+n'arrives pas à l'écrire, le scénario descend d'un étage.
+
+Couvre le chemin nominal **et** la dégradation la plus coûteuse. Un cas limite qui ne change aucune
+décision métier ne mérite pas son scénario.
+
+### 3. Validation utilisateur avant implémentation
+
+Présente la liste et **attends la confirmation explicite** avant d'écrire une ligne.
+
+```
+## Scénarios proposés pour <feature>
+
+Unitaire     : N
+Intégration  : N   (chacun avec son « pourquoi pas plus bas »)
+Bout en bout : N   (idem, et il en faut une très bonne raison)
+
+1. <titre> [étage] - <une ligne>
 ...
 
-Total : N scenarios.
-Ecarte volontairement : <ce que tu as decide de ne pas tester, et pourquoi>
+Écarté volontairement : <ce que tu ne testes pas, et pourquoi>
+Descendu d'un étage   : <ce que tu pensais mettre plus haut, et ce qui l'a fait descendre>
 ```
 
-La section "ecarte volontairement" n'est pas optionnelle : c'est la ou se verifie que la regle
-"peu de tests mais des gros" a ete appliquee.
+Les deux dernières sections ne sont pas optionnelles : c'est là que se vérifie que les deux règles
+ont été appliquées.
 
-### 4. Implementation
+### 4. Implémentation
 
-- Emplacement : `src/**/<nom>.test.ts`, a cote du code teste. C'est le pattern de `vitest.config.ts`
-  (`include: ["src/**/*.test.ts"]`) et l'existant (`src/core/connector.test.ts`).
-- Alias `@/` disponible, il est declare dans `vitest.config.ts`.
+Communes aux trois étages :
+
 - Imports explicites de `describe`, `it`, `expect`, `vi` depuis `vitest` : les globals ne sont **pas**
-  actives dans ce projet.
-- Nommage : `it("un run partiel ne fait rien disparaitre", ...)`. Une phrase francaise qui decrit le
-  comportement, lisible dans le rapport de run.
-- Assertions precises (`toBe`, `toEqual`, `toMatchObject`) plutot que vagues (`toBeTruthy`).
-- Pour les appels distants, fige des reponses realistes en fixture plutot que de mocker la fonction
-  qui les appelle. On veut tester le parsing et la gestion d'erreur, pas le mock.
-- Pas de test qui touche la vraie base ni un vrai systeme cible. Si un scenario l'exige, remonte-le a
-  l'utilisateur au lieu de l'improviser.
+  activés.
+- Alias `@/` vers `src/`, `@test` vers le harnais d'intégration.
+- Noms de scénarios : une phrase française qui décrit le comportement, lisible dans le rapport.
+- Assertions précises (`toBe`, `toEqual`, `toMatchObject`) plutôt que vagues (`toBeTruthy`).
+- Jamais de tiret cadratin ni demi-cadratin.
 
-### 5. Verification
+**Unitaire.** À côté du code. Pour les appels distants, fige des réponses réalistes plutôt que de
+doubler la fonction qui les appelle : on teste le parsing et la gestion d'erreur, pas le double. Le
+passage de mise en place pose des adresses mortes : un double oublié échoue tout de suite.
+
+**Intégration.** `beforeEach(viderLaBase)` depuis `@test`, puis sème. Le client est celui de
+l'application, pour exercer le même chemin que le produit. Sème le moins possible : un scénario qui
+demande quinze tables est un scénario perdu d'avance. Ajoute le fichier à la liste écrite à la main
+dans `src/etages-de-test.test.ts`, qui refuse toute apparition non déclarée.
+
+**Bout en bout.** Dans `e2e/`, jamais sous `src/`. Nomme les éléments par leur rôle et leur nom
+accessible, jamais par un sélecteur CSS ni par `locator("h1")` : le système de design pose ses
+propres titres. Prouve l'hydratation par un composant de l'application qui répond, pas par un texte
+présent.
+
+### 5. Prouver par mutation
+
+**Un test qui n'a jamais été vu rouge ne prouve rien.** Avant de déclarer terminé :
+
+1. Sauvegarde le fichier de production visé.
+2. Casse la garantie, une seule à la fois : retire la clause, inverse la condition, supprime la
+   garde.
+3. Joue le test, et vérifie qu'il rougit **sur l'assertion attendue** et pas sur autre chose.
+4. Restaure depuis la sauvegarde, et vérifie que le fichier est identique.
+5. Rejoue : vert.
+
+Une mutation qui laisse le test vert est un résultat, pas un échec : soit le test ne prouve rien et
+il faut le renforcer, soit la garantie est tenue à un autre étage, et il faut aller le vérifier
+plutôt que de le supposer.
+
+### 6. Vérification
 
 ```bash
-pnpm test
+pnpm test                              # unitaire
+POSTGRES_PORT=5433 pnpm test:integration   # si un scénario y a été ajouté
+pnpm test:e2e                          # idem, et seulement dans ce cas
 ```
 
-Puis lance `/verif` pour la passe complete.
+Puis `/verif` pour la passe complète.
 
 ## Rapport attendu
 
 ```
 ## /add-tests - <feature>
 
-Scenarios valides   : N
-Fichiers crees      : <liste>
-Couvert             : <les comportements, en une ligne chacun>
-Ecarte volontairement : <liste + raison>
-pnpm test           : PASS | FAIL (detail)
-/verif              : PASS | FAIL
+Scénarios validés     : N unitaires, N intégration, N bout en bout
+Fichiers créés        : <liste>
+Couvert               : <les comportements, une ligne chacun>
+Écarté volontairement : <liste + raison>
+Descendu d'un étage   : <liste + ce qui l'a fait descendre>
+Mutations jouées      : <mutation → rouge obtenu, une ligne chacune>
+pnpm test             : PASS | FAIL (détail)
+/verif                : PASS | FAIL
 ```
 
-## Regles dures
+## Règles dures
 
-- **Scenarios valides avant code.** Jamais d'implementation sans go-ahead utilisateur sur la liste.
-- **Peu de tests, mais des gros.** Si tu te retrouves a ecrire un dixieme `it()` de quatre lignes,
-  arrete-toi : tu es en train de violer la regle, fusionne.
-- **Ne teste pas le mock.** Si le test passerait meme avec l'implementation supprimee, il ne sert a
-  rien.
-- **Un test rouge ne se skip pas.** Il se comprend, puis soit le test soit le code se corrige.
+- **L'étage avant le test.** Un scénario hors de l'unitaire sans son « pourquoi pas plus bas » ne
+  s'écrit pas.
+- **Scénarios validés avant code.** Jamais d'implémentation sans accord de l'utilisateur sur la liste.
+- **Peu de tests, mais des gros.** Au dixième `it()` de quatre lignes, arrête-toi et fusionne.
+- **Ne double jamais une condition que le test vérifie.** Si le double rejoue le `where`, le scénario
+  monte d'un étage.
+- **Aucun test n'est terminé avant d'avoir été vu rouge.**
+- **Un test rouge ne se skip pas**, et un scénario de bout en bout instable **se supprime** plutôt que
+  de se rejouer en `retry` : un défaut intermittent transformé en bruit vert est la façon la plus
+  sûre de perdre confiance dans une suite sans s'en apercevoir.
+- **La vraie base n'est pas interdite, elle est réservée.** Elle appartient à l'étage d'intégration,
+  sur une base dédiée dont le nom finit par `_test`. Un test unitaire qui la touche est un défaut.
