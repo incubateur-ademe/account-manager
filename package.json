@@ -6,6 +6,7 @@
   "scripts": {
     "build": "next build",
     "db:deploy": "prisma migrate deploy",
+    "db:deploy:test": "DATABASE_URL=\"${DATABASE_URL:-postgresql://account_manager:account_manager@127.0.0.1:${POSTGRES_PORT:-5432}/account_manager_test}\" NODE_ENV=test prisma migrate deploy",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
@@ -20,7 +21,7 @@
     "start": "next start",
     "sync": "node --import tsx src/cli/sync.ts",
     "test": "vitest run --project unite",
-    "test:integration": "vitest run --project integration",
+    "test:integration": "DATABASE_URL=\"${DATABASE_URL:-postgresql://account_manager:account_manager@127.0.0.1:${POSTGRES_PORT:-5432}/account_manager_test}\" vitest run --project integration",
     "typecheck": "next typegen && tsc --noEmit",
     "verify": "pnpm lint && pnpm typecheck && pnpm test"
   },

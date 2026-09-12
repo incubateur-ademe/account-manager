@@ -26,6 +26,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
+      // Le harnais d'intégration, hors de `src/` pour ne jamais partir en production.
+      "@test": fileURLToPath(new URL("./vitest.base-de-test.ts", import.meta.url)),
     },
   },
   // `jsx: "preserve"` dans le tsconfig laisse esbuild retomber sur `React.createElement`,

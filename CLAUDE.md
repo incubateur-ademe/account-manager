@@ -47,7 +47,8 @@ Zod 4 pour la validation.
 | `pnpm format` | `biome format --write .` |
 | `pnpm typecheck` | `next typegen && tsc --noEmit` |
 | `pnpm test` | étage unitaire (`vitest run --project unite`) |
-| `pnpm test:integration` | étage d'intégration, sur une vraie base dédiée |
+| `pnpm db:deploy:test` | applique les migrations sur `account_manager_test` |
+| `pnpm test:integration` | étage d'intégration, sur cette base dédiée |
 | `pnpm verify` | lint + typecheck + test |
 | `pnpm sync` | collecte sur les systèmes cibles |
 | `pnpm db:generate` / `db:migrate` / `db:deploy` / `db:studio` | Prisma |
@@ -95,6 +96,11 @@ ce qu'il croyait doubler.
 doit finir par `_test`. Il existe pour ce que l'unitaire ne peut pas tenir, à commencer par les
 requêtes : un test qui vérifie un `where` contre un double écrit à la main vérifie surtout qu'on a
 écrit le double comme on a écrit le code.
+
+Ses deux commandes suivent `POSTGRES_PORT` comme `docker-compose.yml`, et Vitest ne lit aucun fichier
+d'environnement : sur un poste où PostgreSQL n'écoute pas sur 5432, c'est `POSTGRES_PORT=5433 pnpm
+test:integration`. Une `DATABASE_URL` déjà posée l'emporte, et le refus du nom non dédié s'applique
+quand même.
 
 `src/etages-de-test.test.ts` tient cette frontière, et ce n'est pas décoratif : une règle écrite se
 contourne sans mauvaise foi, simplement en ne la lisant pas.
