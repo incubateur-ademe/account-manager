@@ -31,6 +31,12 @@ const ADRESSES_MORTES = {
   ESPACE_MEMBRE_URL: `http://${MORT}`,
   ESPACE_MEMBRE_API_KEY: "aucune-cle-en-test",
   AUTH_SECRET: "aucun-secret-en-test",
+  // Vidé plutôt qu'absent : un jeton hérité du shell ferait sortir un appel réel.
+  NOTION_SCIM_TOKEN: "",
+  // Redit ici bien qu'il vaille faux par défaut : l'invariant du produit est qu'aucune
+  // exécution n'écrit sans autorisation explicite, et un poste qui l'autorise ne doit
+  // pas le transmettre à une suite de tests.
+  ACTIONS_ENABLED: "false",
   SMTP_URL: `smtp://${MORT}`,
   SMTP_EMAIL_FROM: "personne@exemple.invalid",
 };
@@ -61,11 +67,24 @@ export default defineConfig({
           include: ["src/**/*.test.ts"],
           // Sans cette exclusion, l'étage qui exige une base serait joué par celui qui
           // s'interdit d'en avoir une : les deux suffixes finissent par `.test.ts`.
-          exclude: [...defaultExclude, "src/**/*.integration.test.ts"],
+          exclude: [...defaultExclude, "src/**/*.integration.test.ts", "src/**/*.contrat.test.ts"],
           env: {
             ...ADRESSES_MORTES,
             DATABASE_URL: `postgresql://interdit:interdit@${MORT}/aucune-base-en-unitaire`,
           },
+        },
+      },
+      {
+        extends: true,
+        test: {
+          // Les tests de contrat interrogent une vraie API distante, par conception :
+          // ils existent pour voir une réponse changer de forme sans annonce, ce qu'un
+          // enregistrement figé ne montrerait jamais. Ils ne sont donc pas unitaires,
+          // et leur laisser une adresse morte les viderait de leur sens. Hors de
+          // `pnpm test` : ils dépendent d'un jeton et du réseau.
+          name: "contrat",
+          environment: "node",
+          include: ["src/**/*.contrat.test.ts"],
         },
       },
       {

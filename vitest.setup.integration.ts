@@ -43,6 +43,17 @@ if (!nom.endsWith("_test")) {
 }
 
 /**
+ * Un identifiant de table se cite, il ne se colle pas.
+ *
+ * La source est `pg_tables`, donc le risque est théorique, mais cette requête efface
+ * tout : un nom portant un guillemet la rendrait invalide, et c'est le genre de
+ * prudence qui ne coûte rien là où l'erreur ne se rattrape pas.
+ */
+function citer(table: string): string {
+  return `"public"."${table.replace(/"/gu, '""')}"`;
+}
+
+/**
  * Les tables sont lues dans le catalogue plutôt qu'écrites ici : une liste à la main se
  * périme à la première migration, et une table oubliée fait fuir l'état d'un scénario
  * dans le suivant.
@@ -66,7 +77,7 @@ beforeEach(async () => {
     );
   }
 
-  const cibles = tables.map((table) => `"public"."${table.tablename}"`).join(", ");
+  const cibles = tables.map((table) => citer(table.tablename)).join(", ");
   await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${cibles} RESTART IDENTITY CASCADE`);
 });
 

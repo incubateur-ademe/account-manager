@@ -11,7 +11,8 @@ import { describe, expect, it } from "vitest";
  *
  * Le reste de la frontière n'a pas besoin d'un test. Un scénario mal rangé se voit dans
  * un diff, et se paie tout de suite : suffixé `.integration` il réclame une base,
- * suffixé autrement il échoue sur une adresse morte.
+ * suffixé `.contrat` il réclame un jeton et le réseau, suffixé autrement il échoue sur
+ * une adresse morte.
  */
 
 describe("l'étage unitaire n'atteint rien", () => {
@@ -39,10 +40,15 @@ describe("l'étage unitaire n'atteint rien", () => {
     // et une adresse inventée dans un scénario peut appartenir à quelqu'un.
     expect(new URL(process.env["SMTP_URL"] ?? "").port).toBe("1");
 
-    // Then une exception connue, nommée plutôt que niée : `notion.contrat.test.ts`
-    // interroge une URL écrite en dur, qu'aucune adresse morte n'intercepte. Son
-    // `describe.skipIf` borne la décision sur la présence du jeton, et c'est le fichier
-    // que `pnpm test` rapporte comme sauté.
-    expect(process.env["NOTION_SCIM_TOKEN"] ?? "").toBe("");
+    // Then le jeton de Notion est vidé, et pas seulement absent. Une adresse morte
+    // n'intercepte pas une URL écrite en dur : `notion.contrat.test.ts` en porte une, et
+    // un jeton hérité du shell suffisait à lui faire interroger l'API réelle. Il vit
+    // désormais dans son propre étage, et ce vidage est la seconde serrure.
+    expect(process.env["NOTION_SCIM_TOKEN"]).toBe("");
+
+    // Then aucune écriture n'est autorisée, quoi qu'en dise le poste : l'invariant du
+    // produit est qu'une exécution est une simulation tant que rien ne l'autorise, et
+    // une suite de tests n'est pas ce qui l'autorise.
+    expect(process.env["ACTIONS_ENABLED"]).toBe("false");
   });
 });

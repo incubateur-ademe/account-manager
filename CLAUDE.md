@@ -49,6 +49,7 @@ Zod 4 pour la validation.
 | `pnpm test` | étage unitaire (`vitest run --project unite`) |
 | `pnpm db:deploy:test` | applique les migrations sur `account_manager_test` |
 | `pnpm test:integration` | étage d'intégration, sur cette base dédiée |
+| `pnpm test:contrat` | étage de contrat, contre les vraies API distantes |
 | `pnpm test:e2e` | étage de bout en bout, à la main avant une livraison |
 | `pnpm verify` | lint + typecheck + test |
 | `pnpm sync` | collecte sur les systèmes cibles |
@@ -98,6 +99,11 @@ propriété, parce qu'elle est la seule qui pourrisse en silence.
 doit finir par `_test`. Il existe pour ce qu'un double écrit à la main ne peut pas honorer sans
 réécrire un moteur, à commencer par un compte à travers une relation. La remise à zéro est posée par
 le passage de mise en place : un scénario n'a rien à appeler, il sème.
+
+`src/**/<nom>.contrat.test.ts` est l'étage de **contrat** : il interroge une vraie API distante, par
+conception. Il existe pour voir une réponse changer de forme sans annonce, ce qu'un enregistrement
+figé ne montrerait jamais, et lui donner une adresse morte le viderait de son sens. Il est donc hors
+de `pnpm test`, et il s'ignore proprement sans jeton.
 
 `e2e/*.spec.ts` est l'étage de **bout en bout**, hors de `src/`, lancé à la main avant une livraison
 et **jamais dans la vérification continue**. Trois choses seulement s'y tiennent : qu'un cookie signé

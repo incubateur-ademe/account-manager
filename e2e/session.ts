@@ -48,7 +48,17 @@ export async function semer(lignes: (client: Client) => Promise<void>): Promise<
     const tables = await client.query<{ tablename: string }>(
       "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'",
     );
-    const cibles = tables.rows.map((table) => `"public"."${table.tablename}"`).join(", ");
+    if (tables.rows.length === 0) {
+      throw new Error(
+        "Aucune table dans la base de test : les migrations n'y ont jamais été appliquées. Lancez `pnpm db:deploy:test`.",
+      );
+    }
+
+    // Un identifiant de table se cite, il ne se colle pas. La source est `pg_tables`,
+    // donc le risque est théorique, mais cette requête efface tout.
+    const cibles = tables.rows
+      .map((table) => `"public"."${table.tablename.replace(/"/gu, '""')}"`)
+      .join(", ");
     await client.query(`TRUNCATE TABLE ${cibles} RESTART IDENTITY CASCADE`);
     await lignes(client);
   } finally {

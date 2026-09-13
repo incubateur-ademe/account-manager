@@ -7,6 +7,12 @@ on:
 
 # Une exécution par référence : pousser deux fois de suite annule la première,
 # qui n'apprendrait plus rien sur l'état courant.
+# Le jeton ne sert qu'à lire le dépôt : aucun des deux jobs n'écrit, ne commente ni ne
+# publie. Borné ici plutôt que par job, faute de quoi un job ajouté demain hériterait
+# des permissions par défaut sans que personne ne le décide.
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

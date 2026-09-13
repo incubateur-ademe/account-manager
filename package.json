@@ -21,6 +21,7 @@
     "start": "next start",
     "sync": "node --import tsx src/cli/sync.ts",
     "test": "vitest run --project unite",
+    "test:contrat": "vitest run --project contrat",
     "test:e2e": "playwright test",
     "test:integration": "DATABASE_URL=\"${DATABASE_URL:-postgresql://account_manager:account_manager@127.0.0.1:${POSTGRES_PORT:-5432}/account_manager_test}\" vitest run --project integration",
     "typecheck": "next typegen && tsc --noEmit",
