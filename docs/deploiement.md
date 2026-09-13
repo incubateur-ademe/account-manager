@@ -295,6 +295,43 @@ pnpm db:migrate    # cree prisma/migrations/<timestamp>_init
 git add prisma/migrations && git commit
 ```
 
+### Le second regard ne s'installe pas tout seul
+
+**Consigne permanente**, à relire à chaque nouveau déploiement. Le mécanisme du second
+regard est complet dans le code, mais il ne s'applique qu'aux étapes qui nomment un
+contrôleur, et un modèle de plan est une **donnée**, pas du code. Une base neuve part donc
+d'une table vide : aucune étape ne nomme personne, et la garantie « personne n'instruit
+son propre départ de bout en bout » n'est tenue par rien tant que quelqu'un ne l'a pas
+posée à la main. Rien ne le signale à l'écran, d'où cette page.
+
+**Le geste.** Sur `/modeles/incubateur`, moment « Départ », poser un contrôleur sur les
+étapes jugées sensibles. Les candidates naturelles sont celles que la personne fait
+elle-même : rendre le matériel, restituer le badge, signer la décharge.
+
+**La répartition retenue est « la personne concernée agit, un opérateur contrôle ».**
+Elle ne coûte rien au cas ordinaire : sur le dossier d'un tiers, un opérateur solde
+l'étape d'un seul geste par substitution, le pointage lui restant ouvert quel que soit
+l'acteur attendu. Elle ne mord que là où c'est justement le sujet : sur son propre
+dossier, il pointe, l'étape reste en attente, et la règle qui interdit de valider sa
+propre déclaration l'empêche de la signer.
+
+L'autre répartition possible, « un opérateur agit, un opérateur contrôle », ferme le même
+trou mais bloque **tous** les départs, y compris ceux qui ne posent aucun problème, et
+demande deux noms à chaque fois. Elle ne devient saine que sur un déploiement qui compte
+plusieurs opérateurs.
+
+**Le départ de l'unique opérateur.** Sur un déploiement à un seul nom, une étape sous
+contrôle rend son propre départ inclôturable. C'est le sens de la règle et non un défaut,
+mais il se découvre le jour venu si personne ne l'a lu avant. La sortie est un geste de
+déploiement et non de code : `estOperateur` (`src/core/identite.ts`) accepte un nom
+présent dans l'une **ou** l'autre des deux listes, si bien qu'un nom ajouté à
+`BREAK_GLASS_USERNAMES` est un opérateur de plein droit devant un dossier et peut porter
+le second regard. Deux façons de vivre avec, et le déploiement doit en avoir choisi une :
+garder en permanence un second nom dans l'une des deux listes, ou accepter que ce
+départ-là demande de l'ajouter le moment venu. La seconde suffit tant que cet ajout reste
+possible sans la personne qui part, ce qui cesse d'être vrai si elle est seule à tenir
+l'hébergeur.
+
 ### Avant la mise en service de l'acteur attendu et du valideur
 
 **Consigne à usage unique**, pour la release qui introduit `expectedActor` et
