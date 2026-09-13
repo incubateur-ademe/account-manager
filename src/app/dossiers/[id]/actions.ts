@@ -341,7 +341,7 @@ export async function pointerEtape(
     (nouvelEtat === "ALREADY_ABSENT" || nouvelEtat === "ALREADY_PRESENT") &&
     nouvelEtat !== CONSTAT_DU_SENS[sens]
   ) {
-    return { erreur: "Ce constat ne vaut pas dans le sens de ce dossier." };
+    return { erreur: LIBELLE_DOSSIER[sens].constat.refus };
   }
 
   // L'appartenance à l'équipe se dit à côté du rôle, qui la tait quand il vaut
@@ -371,7 +371,7 @@ export async function pointerEtape(
   if (!origine.success) {
     return {
       erreur:
-        "L'origine déclarée de cette étape est illisible : reprenez-la depuis son modèle avant de la pointer.",
+        "L'origine déclarée de cette étape est illisible : reprenez-la depuis son modèle avant de la cocher.",
     };
   }
 

@@ -23,6 +23,7 @@ import {
   type SensDossier,
 } from "@/core/dossier";
 import { peutExecuter } from "@/core/execution";
+import { motDuTier } from "@/core/lexique";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 import {
   CLE_INCUBATEUR,
@@ -56,6 +57,7 @@ import {
   BoutonRecalculer,
   Validation,
 } from "./Pointage";
+import { LIBELLE_LANCEMENT } from "./redaction-execution";
 
 export const dynamic = "force-dynamic";
 
@@ -67,19 +69,6 @@ export const dynamic = "force-dynamic";
  */
 const dateLocale = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long" });
 
-const TIER: Record<
-  string,
-  { libelle: string; severite: "success" | "warning" | "info" | "error" }
-> = {
-  auto: { libelle: "automatique", severite: "success" },
-  assisted: { libelle: "assisté", severite: "info" },
-  manual: { libelle: "à faire à la main", severite: "warning" },
-  // Une étape peut sortir sans aucune voie praticable : elle est émise quand même,
-  // portant le runbook du contrat, parce qu'une ligne d'arrivée qui manque est le mode
-  // de panne que ce produit existe pour éviter.
-  none: { libelle: "sans voie", severite: "error" },
-};
-
 const ECART: Record<RaisonDEcart, string> = {
   doublon: "déjà demandée plus haut",
   "doublon-sans-controle": "déjà demandée plus haut, sans son second regard",
@@ -87,17 +76,22 @@ const ECART: Record<RaisonDEcart, string> = {
   "saisie-illisible": "saisie attendue illisible",
 };
 
+/** « GITHUB_TOKEN » et « OVH_APP_KEY » se lisent « GITHUB_TOKEN et OVH_APP_KEY ». */
+function enumeration(mots: readonly string[]): string {
+  return new Intl.ListFormat("fr", { type: "conjunction" }).format(mots);
+}
+
 const PREFIXE_STARTUP = "modele:startup:";
 
 function origineLisible(origine: OrigineEtape, nomsDeStartup: ReadonlyMap<string, string>): string {
   if (origine === "connecteur") {
-    return "connecteur";
+    return "un système couvert";
   }
   if (origine === "modele:incubateur") {
-    return "modèle de l'incubateur";
+    return "le modèle de l'incubateur";
   }
   const ghid = origine.slice(PREFIXE_STARTUP.length);
-  return `modèle de la startup ${nomsDeStartup.get(ghid) ?? ghid}`;
+  return `le modèle de la startup ${nomsDeStartup.get(ghid) ?? ghid}`;
 }
 
 interface MarcheASuivre {
@@ -190,17 +184,18 @@ function voieLisible(
   tierDuJour: string | undefined,
   resolue: ResolvedCapability | undefined,
 ): string | null {
-  const libelleDe = (tier: string) => TIER[tier]?.libelle ?? tier;
+  const libelleDe = (tier: string) => motDuTier(tier).libelle;
+  const manquants = resolue?.degradedFrom?.missing ?? [];
   const manque =
     tierDuJour !== "auto" && resolue?.degradedFrom
-      ? `Pour faire mieux : ${libelleDe(resolue.degradedFrom.tier)} si ${resolue.degradedFrom.missing.join(", ")}.`
+      ? `Elle serait ${libelleDe(resolue.degradedFrom.tier)} si ${enumeration(manquants)} ${manquants.length > 1 ? "étaient renseignés" : "était renseigné"}.`
       : "";
 
   if (tierDuJour === undefined || tierDuJour === tierFige) {
     return manque === "" ? null : manque;
   }
 
-  return `Ce plan a figé « ${libelleDe(tierFige)} » ; aujourd'hui cette voie est ${libelleDe(tierDuJour)}, et c'est celle-là qu'une exécution emprunterait. ${manque}`.trim();
+  return `Ce plan a figé « ${libelleDe(tierFige)} » ; aujourd'hui cette étape est ${libelleDe(tierDuJour)}, et c'est ce qui vaudra au lancement. ${manque}`.trim();
 }
 
 /**
@@ -297,7 +292,7 @@ function attenteDeControle(enAttente: number, restantes: number): string {
     sujet = `${enAttente} d'entre elles attendent`;
   }
 
-  return ` ${sujet} un second regard : une déclaration que personne n'a contrôlée ne solde pas son étape.`;
+  return ` ${sujet} un second regard : une déclaration que personne n'a contrôlée ne termine pas son étape.`;
 }
 
 /**
@@ -332,7 +327,7 @@ function EtapeOperateur({
   valideur: ActeurNomme;
 }) {
   const aide = marche(etape.manual);
-  const tier = TIER[etape.tier] ?? { libelle: etape.tier, severite: "info" as const };
+  const tier = motDuTier(etape.tier);
   const validation = etape.validation as EtatValidation;
 
   // Adossé à la garde plutôt que rejoué ici : l'écran qui connaît la règle de son côté
@@ -394,10 +389,9 @@ function EtapeOperateur({
           ) : null}
           {etape.grantExpiresAt ? (
             <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-              <strong>Accès accordé jusqu'au {dateLocale.format(etape.grantExpiresAt)}.</strong> Le
-              terme est absolu et compté depuis le calcul de ce plan : une prolongation de mission
-              ne le repousse pas, et reconduire cet accès demandera un nouveau plan, donc une
-              nouvelle décision tracée.
+              <strong>Accès accordé jusqu'au {dateLocale.format(etape.grantExpiresAt)}.</strong> Ce
+              terme est compté depuis le calcul de ce plan : une prolongation de mission ne le
+              repousse pas, et reconduire cet accès demandera un nouveau plan.
             </p>
           ) : null}
         </>
@@ -411,7 +405,7 @@ function EtapeOperateur({
           ) : null}
           {etape.executedAt ? (
             <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-              Pointée le {dateLocale.format(etape.executedAt)}
+              Déclarée le {dateLocale.format(etape.executedAt)}
               {etape.declaredBy ? ` par ${etape.declaredBy}` : ""}.
             </p>
           ) : null}
@@ -475,6 +469,7 @@ export default async function DossierPage({
         orderBy: { expiresAt: "asc" },
         select: {
           id: true,
+          personId: true,
           reason: true,
           channelEmail: true,
           grantedBy: true,
@@ -692,6 +687,7 @@ export default async function DossierPage({
         droit.channelEmail,
         declaresLocaux,
         politique.mail.domainsLostOnDeparture,
+        { sens: dossier.kind, concerne: dossier.person.id, beneficiaire: droit.personId },
       );
       return {
         id: droit.id,
@@ -830,7 +826,7 @@ export default async function DossierPage({
                 </p>
               ) : (
                 <p className={fr.cx("fr-mb-0")}>
-                  Il ne partira pas et ne se recalcule plus : pointez à la main ce qui a été fait,
+                  Il ne partira pas et ne se recalcule plus : cochez à la main ce qui a été fait,
                   clôturez ce dossier, et rouvrez-en un pour repartir d'un plan à jour.
                 </p>
               )}
@@ -870,8 +866,8 @@ export default async function DossierPage({
             <>
               <p className={fr.cx("fr-mb-1w")}>
                 Un accès du profil appliqué ne s'applique pas en l'état. Rien ne s'enregistre à
-                moitié : tant que ces lignes ne sont pas corrigées, aucune étape d'octroi ne sort,
-                et le recalcul refusera de la même façon.
+                moitié : tant que ces lignes ne sont pas corrigées, aucune étape n'est produite, et
+                le recalcul refusera de la même façon.
               </p>
               <ul className={fr.cx("fr-mb-1w")}>
                 {actuel.refus.map((refus) => (
@@ -895,7 +891,7 @@ export default async function DossierPage({
         <Alert
           severity="warning"
           className={fr.cx("fr-mb-3w")}
-          title="Des comptes ne sont couverts par aucun connecteur"
+          title="Des comptes sont hors des systèmes couverts"
           description={`${actuel.sansConnecteur.join(", ")}. Ces accès existent, mais rien ici ne sait quoi en faire : ils sont à traiter hors de l'outil.`}
         />
       ) : null}
@@ -967,7 +963,7 @@ export default async function DossierPage({
             <>
               <p className={fr.cx("fr-text--sm")}>
                 Confirmer, c'est dire que vous répondez de cette liste. Elle ne bougera plus
-                ensuite, et chaque étape pourra être pointée.
+                ensuite, et chaque étape pourra être cochée.
               </p>
               <BoutonConfirmer planId={plan.id} />
             </>
@@ -999,7 +995,7 @@ export default async function DossierPage({
       {plan && masse ? (
         <section className={fr.cx("fr-mt-4w")}>
           <h2 className={fr.cx("fr-h5")}>
-            {simulation ? "Lancer une simulation" : "Lancer l'exécution"}
+            {simulation ? LIBELLE_LANCEMENT.titre.simulation : LIBELLE_LANCEMENT.titre.reel}
           </h2>
 
           {/* Avant le bouton et non après : une simulation qui ressemble à une
@@ -1010,33 +1006,24 @@ export default async function DossierPage({
               severity="info"
               className={fr.cx("fr-mb-2w")}
               small
-              title="Rien ne partira"
-              description="Les actions ne sont pas autorisées sur ce serveur : aucune écriture n'aura lieu sur les systèmes couverts, et ce bouton n'en fera aucune. Seul le précheck part, qui est une lecture. Une étape prête restera à faire, son état ne bougeant pas, parce que c'est le seul état honnête d'un geste qui n'a pas eu lieu ; le journal, lui, dira étape par étape ce qui aurait été appelé."
+              title={LIBELLE_LANCEMENT.simulation.titre}
+              description={LIBELLE_LANCEMENT.simulation.description}
             />
           ) : (
             <Alert
               severity="warning"
               className={fr.cx("fr-mb-2w")}
               small
-              title="Les actions sont autorisées"
-              description="Ce bouton écrira réellement sur les systèmes couverts, étape par étape, dans l'ordre de la réversibilité décroissante : ce qui se défait le mieux part en premier, pour qu'une exécution interrompue laisse derrière elle ce qu'on sait le mieux reprendre."
+              title={LIBELLE_LANCEMENT.reel.titre}
+              description={LIBELLE_LANCEMENT.reel.description}
             />
           )}
 
-          <p className={fr.cx("fr-text--sm")}>
-            Le précheck précède chaque étape, y compris celles à faire à la main : éviter d'envoyer
-            quelqu'un faire ce qui est déjà fait en est le meilleur usage. Une étape qu'il trouve
-            déjà en place est soldée sans le moindre appel. Une étape dont l'état constaté diffère
-            de l'état attendu n'est jamais exécutée : un octroi n'est pas idempotent, et le refaire
-            changerait le rôle en place au lieu de ne rien faire.
-          </p>
+          <p className={fr.cx("fr-text--sm")}>{LIBELLE_LANCEMENT.verification}</p>
 
           {echeances.length > 0 ? (
             <>
-              <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-                Ce plan pose des termes, et ils n'entrent pas dans l'empreinte qui garde son
-                exécution : à lire avant de lancer, pas après.
-              </p>
+              <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>{LIBELLE_LANCEMENT.termes}</p>
               <ul className={fr.cx("fr-text--sm")}>
                 {echeances.map(({ id, label, terme }) => (
                   <li key={id}>
@@ -1049,8 +1036,8 @@ export default async function DossierPage({
 
           <p className={fr.cx("fr-text--sm")}>
             {masse.executables === 0
-              ? "Aucune étape de ce plan n'a de voie que la boucle emprunte elle-même : le lancement s'arrêtera au précheck, ce qui reste utile."
-              : `${masse.executables} étape${masse.executables > 1 ? "s" : ""} de ce plan ${masse.executables > 1 ? "portent" : "porte"} une voie que la boucle emprunte elle-même, pour un plafond de ${masse.seuil}.`}
+              ? LIBELLE_LANCEMENT.masse.aucune
+              : LIBELLE_LANCEMENT.masse.quelques(masse.executables, masse.seuil)}
           </p>
 
           <BoutonExecuter
@@ -1066,8 +1053,8 @@ export default async function DossierPage({
         <section className={fr.cx("fr-mt-4w")}>
           <h2 className={fr.cx("fr-h5")}>Ce que le calcul n'a pas retenu</h2>
           <p className={fr.cx("fr-text--sm")}>
-            Ces étapes ont été proposées puis écartées à l'assemblage du calcul du jour. Rien n'est
-            écarté en silence : si l'une d'elles compte, elle est à traiter hors de ce plan.
+            Ces étapes ont été proposées, le calcul du jour ne les a pas retenues. Rien n'est laissé
+            de côté en silence : si l'une d'elles compte, elle est à traiter hors de ce plan.
           </p>
           <ul>
             {actuel.ecartees.map((ecartee) => (

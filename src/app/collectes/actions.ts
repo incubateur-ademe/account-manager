@@ -143,7 +143,7 @@ export async function autoriserDatation(
   if (raison.length < 3) {
     return {
       erreur:
-        "Indiquez pourquoi cette chute est légitime : lever un garde-fou sans motif est une décision qu'on ne saura pas réexaminer.",
+        "Indiquez pourquoi cette chute est légitime : votre motif sera recopié au journal, avec votre nom.",
     };
   }
 
@@ -153,13 +153,13 @@ export async function autoriserDatation(
   if (!montre) {
     return {
       erreur:
-        "Ce garde-fou ne bloque plus rien. Rechargez la page : la sortie ne s'offre que sous un refus, et une décision posée sans lui attendrait un passage qui ne la prendra peut-être jamais.",
+        "Ce garde-fou ne bloque plus rien. Rechargez la page : la sortie ne s'offre que sous un refus, et une décision posée sans lui attendrait une collecte qui ne la prendra peut-être jamais.",
     };
   }
   if (!ampleurMesurable(montre)) {
     return {
       erreur:
-        "Le dernier passage n'a pas pu compter combien de personnes une datation ferait partir. Une décision posée maintenant serait écartée sans rien dater : reprenez-la quand ce nombre sera de nouveau annoncé.",
+        "La dernière collecte n'a pas pu compter combien de personnes une datation ferait partir. Une décision posée maintenant resterait sans effet et ne daterait rien : reprenez-la quand ce nombre sera de nouveau annoncé.",
     };
   }
   if (

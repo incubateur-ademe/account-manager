@@ -8,6 +8,7 @@ import { useState } from "react";
 
 import type { SuggestionRattachement } from "@/core/suggestion-rattachement";
 import type { Suggestion } from "@/ui/ChampAvecListe";
+import { useCleDOuverture } from "@/ui/modale";
 import { TableCustom } from "@/ui/TableCustom";
 
 import { Rattacher } from "./Rattacher";
@@ -46,6 +47,7 @@ export function FileDesComptesIsoles({
   cibles: readonly Suggestion[];
 }) {
   const [choisi, setChoisi] = useState<LigneCompteIsole | null>(null);
+  const ouverture = useCleDOuverture(modale);
 
   return (
     <>
@@ -166,7 +168,7 @@ export function FileDesComptesIsoles({
               manque une fiche, plutôt qu'il ne faut retirer un accès.
             </p>
             <Rattacher
-              key={choisi.id}
+              key={`${ouverture}:${choisi.id}`}
               id={choisi.id}
               cibles={cibles}
               propositions={choisi.propositions}

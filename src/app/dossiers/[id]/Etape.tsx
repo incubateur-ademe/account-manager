@@ -161,7 +161,7 @@ export function Etape({
       {validation === "AWAITING" ? (
         <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
           Cette déclaration attend le regard {controleur ?? "de quelqu'un d'autre"}. Tant qu'il n'a
-          pas eu lieu, l'étape reste à solder et le dossier ne se clôt pas.
+          pas eu lieu, l'étape n'est pas terminée et le dossier ne se clôt pas.
         </p>
       ) : null}
       {pointable ? (

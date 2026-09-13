@@ -5,6 +5,7 @@ import { Button } from "@codegouvfr/react-dsfr/Button";
 import { createModal } from "@codegouvfr/react-dsfr/Modal";
 import style from "@/ui/Actions.module.css";
 import { Aide } from "@/ui/Aide";
+import { useCleDOuverture } from "@/ui/modale";
 import type { ChoixDeProfils } from "@/ui/profils";
 
 import { Appartenance, type SurchargePosee } from "./Appartenance";
@@ -38,6 +39,8 @@ export function ActionsDePage({
   /** Les profils qu'une arrivée peut appliquer, lus par le serveur : un composant client n'atteint pas la politique. */
   profils: ChoixDeProfils;
 }) {
+  const ouverture = useCleDOuverture(modaleAppartenance);
+
   return (
     <>
       <div className={fr.cx("fr-grid-row", "fr-grid-row--right", "fr-grid-row--middle")}>
@@ -96,6 +99,7 @@ export function ActionsDePage({
           départ reste à instruire par un dossier.
         </p>
         <Appartenance
+          key={ouverture}
           username={username}
           surcharge={surcharge}
           onSucces={modaleAppartenance.close}

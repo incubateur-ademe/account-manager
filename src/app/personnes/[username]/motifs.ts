@@ -157,7 +157,7 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
       cle: "depart-en-cours",
       severite: "info",
       titre: "Un départ est en cours",
-      description: "Ses étapes et leur pointage vivent dans le dossier.",
+      description: "Ses étapes, et ce qui y a été déclaré, vivent dans le dossier.",
       lien: { href: `/dossiers/${etat.departVivant}`, libelle: "Ouvrir le dossier" },
     });
   }
@@ -170,7 +170,7 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
       cle: "arrivee-en-cours",
       severite: "info",
       titre: "Une arrivée est en cours",
-      description: "Ce qu'il faut lui donner, et son pointage, vivent dans le dossier.",
+      description: "Ce qu'il faut lui donner, et ce qui y a été déclaré, vivent dans le dossier.",
       lien: { href: `/dossiers/${etat.arriveeVivante}`, libelle: "Ouvrir le dossier" },
     });
   }
@@ -223,8 +223,8 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
     motifs.push({
       cle: "releve-fige",
       severite: "warning",
-      titre: "Aucune sortie du référentiel n'est constatée en ce moment",
-      description: `Les passages de collecte tournent, et ce qu'affiche cette fiche vient bien du dernier, mais aucun ne s'est dit complet depuis ${etat.ageDuReleve} passages. Tant que c'est le cas, l'outil ne date aucune disparition, pour personne : que rien ici ne signale un départ ne dit donc rien du sien. Ce qui se lit plus bas, s'il y a quelque chose, a été constaté par le dernier passage qui s'est dit complet et non par celui de cette nuit. Ce qui bloque est nommé dans la trace du dernier passage, sur l'écran des collectes.`,
+      titre: "Aucune sortie du référentiel des personnes n'est constatée en ce moment",
+      description: `Les collectes tournent, et ce qu'affiche cette fiche vient bien de la dernière, mais aucune ne s'est dite complète depuis ${etat.ageDuReleve} collectes. Tant que c'est le cas, l'outil ne date aucune disparition, pour personne : que rien ici ne signale un départ ne dit donc rien du sien. Ce qui se lit plus bas, s'il y a quelque chose, a été constaté par la dernière collecte qui s'est dite complète et non par celle de cette nuit. Ce qui bloque est nommé sur l'écran des collectes.`,
     });
   }
 
@@ -242,17 +242,17 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
     motifs.push({
       cle: "sans-reponse",
       severite: "warning",
-      titre: "Le dernier passage complet n'a pas obtenu sa fiche",
+      titre: "La dernière collecte complète n'a pas obtenu sa fiche",
       description:
-        "La source ne l'a ni rendue ni dite inconnue : la lecture de sa fiche a échoué, et une lecture qui n'aboutit pas ne dit rien de sa présence. L'outil n'en conclut donc rien et ne datera aucune sortie du référentiel tant qu'elle échouera. Ce qu'affiche cette fiche date de sa dernière observation, et ce qui débloquera la situation est en amont, dans l'espace-membre.",
+        "La source ne l'a ni rendue ni dite inconnue : la lecture de sa fiche a échoué, et une lecture qui n'aboutit pas ne dit rien de sa présence. L'outil n'en conclut donc rien et ne datera aucune sortie du référentiel des personnes tant qu'elle échouera. Ce qu'affiche cette fiche date de sa dernière observation, et ce qui débloquera la situation est en amont, dans l'espace-membre.",
     });
   } else if (etat.nonRendue) {
     motifs.push({
       cle: "non-rendue",
       severite: "warning",
-      titre: "Le dernier passage complet ne l'a pas rendue",
+      titre: "La dernière collecte complète ne l'a pas rendue",
       description:
-        "La source ne l'a pas donnée, et l'outil n'en a rien conclu : une absence d'un seul passage ne vaut pas départ. Si elle manque encore au prochain passage complet, sa sortie du référentiel sera constatée. En attendant, ce qu'affiche cette fiche date de sa dernière observation.",
+        "La source ne l'a pas donnée, et l'outil n'en a rien conclu : une absence d'une seule collecte ne vaut pas départ. Si elle manque encore à la prochaine collecte complète, sa sortie du référentiel des personnes sera constatée. En attendant, ce qu'affiche cette fiche date de sa dernière observation.",
     });
   }
 
@@ -301,7 +301,7 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
       severite: "warning",
       titre: "Deux autorités se contredisent",
       description:
-        "Elle relève pourtant d'une équipe de l'incubateur, et la collecte le réécrira à chaque passage. Pour que la sortie soit portée des deux côtés, il reste à la retirer de scope.transverse dans la politique.",
+        "Elle relève pourtant d'une équipe de l'incubateur, et la collecte le réécrira chaque nuit. Pour que la sortie soit portée des deux côtés, il reste à la retirer de scope.transverse dans la politique.",
     });
   }
 

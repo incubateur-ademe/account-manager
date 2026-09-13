@@ -85,7 +85,7 @@ export function statutDePersonne(
 }
 
 export const LIBELLE_STATUT: Record<Statut, string> = {
-  SORTI: "Sorti du référentiel",
+  SORTI: "Sorti du référentiel des personnes",
   ANCIEN: "Ancien",
   SANS_ECHEANCE: "Sans échéance",
   ACTIF: "Échéance lointaine",

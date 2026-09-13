@@ -1,6 +1,25 @@
 "use client";
 
+import { useIsModalOpen } from "@codegouvfr/react-dsfr/Modal/useIsModalOpen";
 import { useEffect, useRef } from "react";
+
+/**
+ * La clé qui remonte le contenu d'une modale à chaque ouverture.
+ *
+ * Une modale du système de design ne meurt jamais : enregistrée une fois pour toutes,
+ * elle reste montée, et son contenu avec elle. `useActionState` et `useState` gardent
+ * donc leur valeur d'une ouverture à l'autre, si bien qu'un geste rouvert rejoue
+ * l'issue du précédent. Un refus périmé n'est qu'un bruit, mais une phrase de succès
+ * au-dessus de champs vides est une affirmation fausse, et elle peut porter sur une
+ * autre cible que celle qu'on vient de choisir.
+ *
+ * Elle vaut pour toute modale, y compris celles dont l'état du moment est inoffensif :
+ * ce qui n'est qu'un refus périmé aujourd'hui devient une autre phrase demain, et une
+ * hygiène qu'on applique au cas par cas est une hygiène qu'on oublie.
+ */
+export function useCleDOuverture(modale: { id: string; isOpenedByDefault: boolean }): string {
+  return String(useIsModalOpen(modale));
+}
 
 /**
  * Ferme la modale quand l'action serveur vient d'aboutir sans rien laisser à lire.

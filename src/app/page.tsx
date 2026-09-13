@@ -5,6 +5,7 @@ import { Tile } from "@codegouvfr/react-dsfr/Tile";
 import { CONNECTEURS } from "@/connectors";
 import { FOURNISSEUR_PERIMETRE, fraicheurDe, refusDArrivees, systemesMuets } from "@/core/collecte";
 import type { LigneDInventaire } from "@/core/inventaire";
+import { LIBELLE_ETAT_COLLECTE } from "@/core/lexique";
 import { echeanceEffective, startupsEffectives } from "@/core/rattachement-startup";
 import { statutDePersonne } from "@/core/statut";
 import { prisma } from "@/lib/db";
@@ -27,7 +28,7 @@ function observation(ligne: LigneDInventaire): string {
     return "Lu dans les délais";
   }
   if (ligne.observation.etat === "partiel") {
-    return "Lu partiellement : des erreurs ont été avalées, aucune disparition datée";
+    return "Lu partiellement, sur des erreurs : ce qui reste peut contenir des comptes déjà partis";
   }
 
   const { raison, heures } = ligne.observation;
@@ -35,7 +36,7 @@ function observation(ligne: LigneDInventaire): string {
     return "En échec à la dernière collecte";
   }
   if (raison === "non-lu") {
-    return "Jamais lu, ou lu sans credential";
+    return "Jamais lu : aucune collecte, ou aucun accès configuré pour ce système";
   }
   return `Plus lu depuis ${heures} heure${heures !== null && heures > 1 ? "s" : ""}`;
 }
@@ -119,7 +120,7 @@ export default async function AccueilPage() {
       ? ", aucune collecte n'ayant encore eu lieu."
       : dernierRun.status === "OK" && !refusDArrivees(dernierRun.error)
         ? "."
-        : `, non revue${arrivees > 1 ? "s" : ""} au dernier passage.`;
+        : `, non revue${arrivees > 1 ? "s" : ""} à la dernière collecte.`;
 
   const attendus = CONNECTEURS.map((connecteur) => connecteur.contract.key);
   const muets = systemesMuets(relevesSystemes, attendus, today, thresholds.collectStaleHours);
@@ -161,8 +162,8 @@ export default async function AccueilPage() {
           className={fr.cx("fr-mb-3w")}
           title={
             muets.length === 1
-              ? "Un système cible n'est pas observé"
-              : `${muets.length} systèmes cibles ne sont pas observés`
+              ? "Un système couvert n'est pas observé"
+              : `${muets.length} systèmes couverts ne sont pas observés`
           }
           description={
             <>
@@ -177,7 +178,7 @@ export default async function AccueilPage() {
                     {muet.raison === "echec"
                       ? "a échoué à la dernière collecte"
                       : muet.raison === "non-lu"
-                        ? "n'a jamais été lu, ou l'a été sans credential"
+                        ? "n'a jamais été lu : aucune collecte, ou aucun accès configuré pour lui"
                         : `n'a pas été lu depuis ${muet.heures} heures`}
                   </li>
                 ))}
@@ -189,12 +190,13 @@ export default async function AccueilPage() {
 
       {dernierRun ? (
         <p className={fr.cx("fr-text--sm")}>
-          Dernière collecte du référentiel le {dateFr.format(dernierRun.startedAt)},{" "}
-          {dernierRun.itemsSeen} personnes, état {dernierRun.status}.
+          Dernière collecte du référentiel des personnes le {dateFr.format(dernierRun.startedAt)},{" "}
+          {dernierRun.itemsSeen} personnes lues.{" "}
+          {LIBELLE_ETAT_COLLECTE[dernierRun.status].explication}
         </p>
       ) : (
         <p className={fr.cx("fr-text--sm")}>
-          Aucune collecte n'a encore été faite : les écrans se rempliront au premier passage du
+          Aucune collecte n'a encore été faite : les écrans se rempliront à la première collecte du
           traitement quotidien.
         </p>
       )}
@@ -204,7 +206,7 @@ export default async function AccueilPage() {
           <Tile
             title={`${constatsOuverts} constat${constatsOuverts > 1 ? "s" : ""}`}
             desc={
-              `Dont ${sorties} sortie${sorties > 1 ? "s" : ""} du référentiel ` +
+              `Dont ${sorties} sortie${sorties > 1 ? "s" : ""} du référentiel des personnes ` +
               `et ${arrivees} arrivée${arrivees > 1 ? "s" : ""} à acter` +
               reserveSurLesArrivees
             }
@@ -235,8 +237,8 @@ export default async function AccueilPage() {
         <p className={fr.cx("fr-text--sm")}>
           Le tableau et les chiffres qui suivent sortent de la base, donc de la dernière collecte :
           ils disent le dernier état constaté, jamais l'état du jour, et aucun n'est demandé à un
-          système au moment où vous lisez cette page. Les tuiles du bas, elles, appartiennent aux
-          connecteurs et disent chacune d'où elles tiennent leur chiffre.
+          système au moment où vous lisez cette page. Les tuiles du bas, elles, disent chacune d'où
+          elles tiennent leur chiffre.
         </p>
 
         <p className={fr.cx("fr-text--sm")}>
@@ -306,7 +308,7 @@ export default async function AccueilPage() {
           <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
             <Tile
               title={`${inventaire.operationsTracees} opération${inventaire.operationsTracees > 1 ? "s" : ""} tracée${inventaire.operationsTracees > 1 ? "s" : ""}`}
-              desc={`Sur ${FENETRE_JOURNAL_JOURS} jours. Compteur approximatif : le journal s'écrit sans attendre, donc une panne d'écriture ne se voit pas. C'est une preuve d'activité, pas une mesure de couverture. L'écran, lui, montre tout l'historique.`}
+              desc={`Sur ${FENETRE_JOURNAL_JOURS} jours. Compteur approximatif : c'est une preuve d'activité, pas une mesure de couverture. L'écran du journal, lui, montre tout l'historique.`}
               linkProps={{ href: "/journal" }}
               orientation="horizontal"
             />

@@ -6,13 +6,12 @@ import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import { Button } from "@codegouvfr/react-dsfr/Button";
 import { Input } from "@codegouvfr/react-dsfr/Input";
 import { createModal } from "@codegouvfr/react-dsfr/Modal";
-import { useIsModalOpen } from "@codegouvfr/react-dsfr/Modal/useIsModalOpen";
 import { useActionState } from "react";
 
 import type { SensDossier } from "@/core/dossier";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 import { DUREE_DEFAUT_JOURS, DUREE_MAX_JOURS } from "@/core/participation";
-import { useFermetureApresSucces } from "@/ui/modale";
+import { useCleDOuverture, useFermetureApresSucces } from "@/ui/modale";
 import { messageObligatoire } from "@/ui/validation";
 
 import {
@@ -232,7 +231,7 @@ function Octroi({
   dossierId: string;
   domainesMenaces: readonly string[];
 }) {
-  const ouverte = useIsModalOpen(modaleOctroi);
+  const ouverture = useCleDOuverture(modaleOctroi);
 
   return (
     <>
@@ -248,11 +247,7 @@ function Octroi({
       </Button>
 
       <modaleOctroi.Component title={LIBELLE_OCTROI.titre}>
-        <FormulaireOctroi
-          key={String(ouverte)}
-          dossierId={dossierId}
-          domainesMenaces={domainesMenaces}
-        />
+        <FormulaireOctroi key={ouverture} dossierId={dossierId} domainesMenaces={domainesMenaces} />
       </modaleOctroi.Component>
     </>
   );

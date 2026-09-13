@@ -47,8 +47,8 @@ export const LIBELLE_DROITS = {
       identifiantFabrique
         ? "Son identifiant n'existe que dans cet outil : redonnez ce droit en déclarant une adresse."
         : "Redonnez ce droit en déclarant une adresse, ou dites-lui de se connecter avec son identifiant beta.gouv.",
-    menace: "Cette boîte se ferme au départ de son titulaire.",
-    menaceEffet: "Le lien cessera d'y arriver, sans doute avant le terme du droit.",
+    menace: "Ce départ ferme cette boîte.",
+    menaceEffet: "Le lien cessera d'y arriver.",
     declare: (adresse: string) =>
       `Le lien de connexion part sur ${adresse}, déclarée avec ce droit.`,
     deduit: (adresse: string) =>
@@ -109,7 +109,7 @@ export const LIBELLE_OCTROI = {
    * lirait un refus.
    */
   canalMenace:
-    "Le droit est accordé. Le lien part sur une boîte que l'incubateur ferme au départ de son titulaire : elle cessera de répondre, sans doute avant le terme du droit. Redonnez ce droit avec une autre adresse dès qu'elle est connue.",
+    "Le droit est accordé. Le lien part sur la boîte que ce départ ferme : elle cessera de répondre. Redonnez ce droit avec une autre adresse dès qu'elle est connue.",
   /**
    * Le droit qui n'atteint personne, qui est un succès dont il ne se dit rien : ni
    * adresse déclarée, ni adresse servable sur la fiche, et un identifiant qu'aucune

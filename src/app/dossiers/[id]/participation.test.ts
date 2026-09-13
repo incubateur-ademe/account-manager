@@ -16,6 +16,8 @@ interface FicheEnBase {
 interface DossierEnBase {
   id: string;
   state: "WATCH" | "CANDIDATE" | "CONFIRMED" | "CANCELLED" | "DONE";
+  kind: "ONBOARDING" | "OFFBOARDING";
+  personId: string;
 }
 
 interface DroitEnBase {
@@ -259,7 +261,12 @@ beforeEach(() => {
   base.pendantLaTrace = null;
 
   base.operateurs.push("operatrice.exemple");
-  base.dossiers.push({ id: "dossier-1", state: "CONFIRMED" });
+  base.dossiers.push({
+    id: "dossier-1",
+    state: "CONFIRMED",
+    kind: "OFFBOARDING",
+    personId: "personne-lead",
+  });
   base.fiches.push({
     id: "personne-lead",
     username: "lead.exemple",
@@ -466,7 +473,8 @@ describe("octroyer puis retirer un droit de participer", () => {
     // Then un canal qui n'est pas une adresse est écarté avant tout le reste : sans ce
     // refus il s'écrirait en `channelEmail`, aucun lien ne pourrait partir là, et la
     // connexion refuserait en `INCONNUE` bien après que l'opérateur ait pu corriger
-    const PAS_UNE_ADRESSE = "Le canal est une adresse de courriel, ou rien du tout.";
+    const PAS_UNE_ADRESSE =
+      "L'adresse pour se connecter est une adresse de courriel, ou reste vide.";
     expect(await octroyerParticipation(null, octroi({ canal: "lead.exemple" }))).toEqual({
       erreur: PAS_UNE_ADRESSE,
     });
@@ -514,7 +522,7 @@ describe("octroyer puis retirer un droit de participer", () => {
     expect(base.droits).toHaveLength(1);
   });
 
-  it("dit au moment du geste ce que devient le lien, et se tait quand il n'y a rien à dire", async () => {
+  it("dit au moment du geste ce que ce départ fait au lien, et se tait quand il n'y a rien à dire", async () => {
     // Given une politique qui déclare les domaines qu'un départ coupe
     base.domainesMenaces.push("beta.gouv.fr", "ademe.fr");
     const fiche = seul(base.fiches, "fiche");
@@ -527,6 +535,26 @@ describe("octroyer puis retirer un droit de participer", () => {
     expect(menace.erreur).toBeUndefined();
     expect(menace.avertissement).toBe(LIBELLE_OCTROI.canalMenace);
     expect(base.droits).toHaveLength(1);
+
+    // When le même canal menacé se déclare sur un dossier d'arrivée
+    base.droits.length = 0;
+    const dossier = seul(base.dossiers, "dossier");
+    dossier.kind = "ONBOARDING";
+    const arrivee = await octroyerParticipation(null, octroi({ canal: "lead@beta.gouv.fr" }));
+
+    // Then le geste se tait : personne ne part, et la phrase affirme un départ
+    expect(arrivee).toEqual({});
+
+    // When c'est bien un départ, mais que le droit va à quelqu'un d'autre que la
+    // personne concernée
+    base.droits.length = 0;
+    dossier.kind = "OFFBOARDING";
+    dossier.personId = "personne-camille";
+
+    // Then le geste se tait aussi : ce dossier ne dit rien du départ de ce tiers, et sa
+    // boîte reste ouverte
+    expect(await octroyerParticipation(null, octroi({ canal: "lead@beta.gouv.fr" }))).toEqual({});
+    dossier.personId = "personne-lead";
 
     // When le canal est ailleurs, ou qu'il n'y en a pas et que la fiche porte une
     // adresse hors des domaines menacés

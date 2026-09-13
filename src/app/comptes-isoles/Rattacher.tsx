@@ -111,7 +111,7 @@ export function Rattacher({
         <ChampAvecListe
           nom="cible"
           label="Rattacher à"
-          hintText="Username beta.gouv, même hors incubateur, ou clé d'un compte de service."
+          hintText="Identifiant beta.gouv, même hors incubateur, ou clé d'un compte de service."
           suggestions={cibles}
           requis
           erreur={etat?.erreur}

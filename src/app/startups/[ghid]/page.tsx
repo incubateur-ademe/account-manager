@@ -305,9 +305,10 @@ export default async function FicheStartupPage({ params }: Props) {
           le trou se voit. */}
       <p className={fr.cx("fr-text--sm", "fr-mt-3w")}>
         Sa phase a été constatée le {dateFr.format(startup.lastSeenAt)}, la dernière fois que la
-        liste de l'incubateur a rendu cette startup. Le référentiel des startups peut cesser d'être
-        collecté sans faire échouer le reste de la collecte : quand cette date n'avance plus alors
-        que le reste de l'écran paraît frais, c'est ici que ça se voit.
+        liste de l'incubateur a rendu cette startup. Si cette date n'avance plus alors que le reste
+        de l'écran paraît frais, deux causes : ou bien la liste ne rend plus cette startup, ou bien
+        elle n'est plus lue du tout. La première se voit en comparant cette date à celle des autres
+        startups.
       </p>
 
       {startup.vanishedAt ? (
@@ -319,7 +320,7 @@ export default async function FicheStartupPage({ params }: Props) {
           // plus la startup, et une collecte partielle interdit de la dater, si bien que
           // le constat peut tomber des mois après le fait. Les confondre ferait croire
           // que les accès ne survivent que depuis le jour du constat.
-          description={`La liste de l'incubateur l'a rendue pour la dernière fois le ${dateFr.format(startup.lastSeenAt)}, et la collecte a constaté sa disparition le ${dateFr.format(startup.vanishedAt)}. La phase affichée est la dernière connue, pas un fait d'aujourd'hui : une co-incubation retirée, un ghid renommé et un abandon donnent ici le même symptôme.${lignes.length > 0 ? " Les personnes ci-dessous, elles, gardent leurs accès." : ""}`}
+          description={`La liste de l'incubateur l'a rendue pour la dernière fois le ${dateFr.format(startup.lastSeenAt)}, et la collecte a constaté sa disparition le ${dateFr.format(startup.vanishedAt)}. La phase affichée est la dernière connue, pas un fait d'aujourd'hui : une co-incubation retirée, un identifiant renommé et un abandon donnent ici le même symptôme.${lignes.length > 0 ? " Les personnes ci-dessous, elles, gardent leurs accès." : ""}`}
         />
       ) : null}
 

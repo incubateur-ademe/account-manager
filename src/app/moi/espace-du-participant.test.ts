@@ -518,7 +518,7 @@ describe("ce qu'un droit vivant ouvre, et ce qu'il n'ouvre plus", () => {
     // montré : ses deux listes portent une étape, et cette phrase-là parle du dossier
     // entier
     const texteNominal = texteRendu(await rendre("dossier-1"));
-    expect(texteNominal).not.toContain("rien ne s'y pointe");
+    expect(texteNominal).not.toContain("rien ne s'y coche");
     expect(texteNominal).not.toContain("ne vous est pas montré");
     expect(texteNominal).toContain("Cocher une étape n'exécute rien");
 
@@ -554,7 +554,7 @@ describe("ce qu'un droit vivant ouvre, et ce qu'il n'ouvre plus", () => {
     // titre qui réclame un regard au-dessus de zéro commande
     const texteDuPlanClos = texteRendu(await rendre("dossier-1"));
     expect(texteDuPlanClos).toContain(
-      "Ces étapes vous reviennent, mais rien ne s'y pointe. Ce plan est clos.",
+      "Ces étapes vous reviennent, mais rien ne s'y coche. Ce plan est clos.",
     );
     expect(texteDuPlanClos).toContain("Rien ne s'y signe pour autant. Ce plan est clos.");
 
@@ -566,7 +566,7 @@ describe("ce qu'un droit vivant ouvre, et ce qu'il n'ouvre plus", () => {
     // ferait dire « approuvé » à un plan qui est fini
     const texteDuBrouillon = texteRendu(await rendre("dossier-1"));
     expect(texteDuBrouillon).toContain(
-      "Ces étapes vous reviennent, mais rien ne s'y pointe. Ce plan doit d'abord être confirmé.",
+      "Ces étapes vous reviennent, mais rien ne s'y coche. Ce plan doit d'abord être confirmé.",
     );
     expect(texteDuBrouillon).toContain(
       "Rien ne s'y signe pour autant. Ce plan doit d'abord être confirmé.",

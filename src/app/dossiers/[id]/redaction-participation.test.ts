@@ -138,21 +138,26 @@ describe("ce que l'écran des droits dit à qui saisit", () => {
     );
     expect(LIBELLE_DROITS.canal.absentIssue(true)).not.toContain("identifiant beta.gouv");
 
-    // Then la boîte qu'un départ ferme se dit aussi dans la liste, et pas seulement au
-    // moment du geste : la modale se referme, la page reste
+    // Then la boîte que ce départ ferme se dit aussi dans la liste, et pas seulement au
+    // moment du geste : la modale se referme, la page reste. La phrase affirme, le
+    // contrôle ne la levant plus que sur un départ dont le bénéficiaire est celui qui
+    // part.
     expect(`${LIBELLE_DROITS.canal.menace} ${LIBELLE_DROITS.canal.menaceEffet}`).toBe(
-      "Cette boîte se ferme au départ de son titulaire. Le lien cessera d'y arriver, sans doute avant le terme du droit.",
+      "Ce départ ferme cette boîte. Le lien cessera d'y arriver.",
     );
+    for (const phrase of [LIBELLE_DROITS.canal.menace, LIBELLE_DROITS.canal.menaceEffet]) {
+      expect(phrase).not.toMatch(/sans doute|devrait|sans doute avant/u);
+    }
 
     // Given un dossier qui ne s'ouvre plus à personne, dans chacun des deux sens
     // Then le refus nomme ce qu'il refuse, et s'accorde avec lui : le composant ignorait
     // le sens du dossier, si bien qu'une arrivée close lisait qu'un droit ne se donne
     // que sur un départ
     expect(LIBELLE_DROITS.ferme(LIBELLE_DOSSIER.OFFBOARDING.droitPossibleSur)).toBe(
-      "Ce dossier ne s'ouvre plus à personne : un droit ne se donne que sur un départ décidé et pas encore soldé.",
+      "Ce dossier ne s'ouvre plus à personne : un droit ne se donne que sur un départ décidé et pas encore clos.",
     );
     expect(LIBELLE_DROITS.ferme(LIBELLE_DOSSIER.ONBOARDING.droitPossibleSur)).toBe(
-      "Ce dossier ne s'ouvre plus à personne : un droit ne se donne que sur une arrivée décidée et pas encore soldée.",
+      "Ce dossier ne s'ouvre plus à personne : un droit ne se donne que sur une arrivée décidée et pas encore close.",
     );
   });
 
@@ -172,8 +177,9 @@ describe("ce que l'écran des droits dit à qui saisit", () => {
       expect(phrase).toMatch(/^Le droit est accordé/u);
     }
     expect(LIBELLE_OCTROI.canalMenace).toBe(
-      "Le droit est accordé. Le lien part sur une boîte que l'incubateur ferme au départ de son titulaire : elle cessera de répondre, sans doute avant le terme du droit. Redonnez ce droit avec une autre adresse dès qu'elle est connue.",
+      "Le droit est accordé. Le lien part sur la boîte que ce départ ferme : elle cessera de répondre. Redonnez ce droit avec une autre adresse dès qu'elle est connue.",
     );
+    expect(LIBELLE_OCTROI.canalMenace).not.toMatch(/sans doute/u);
 
     // Then le droit que rien n'atteint se dit aussi, et c'est le seul cas où l'absence
     // d'adresse est une anomalie : un identifiant beta.gouv réel est une porte, un

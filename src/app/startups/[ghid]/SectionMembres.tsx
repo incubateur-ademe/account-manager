@@ -64,7 +64,7 @@ export function SectionMembres({
             className={fr.cx("fr-mt-2w")}
             severity="info"
             small
-            description="Aucune collecte du référentiel n'a jamais eu lieu : cette liste est vide faute d'observation, ce qui ne dit rien des personnes réellement rattachées à cette startup."
+            description="Aucune collecte du référentiel des personnes n'a jamais eu lieu : cette liste est vide faute d'observation, ce qui ne dit rien des personnes réellement rattachées à cette startup."
           />
         ) : sortieLe ? (
           // Le vide d'une startup sortie ne prouve rien, et c'est arithmétique : la
@@ -77,7 +77,7 @@ export function SectionMembres({
             className={fr.cx("fr-mt-2w")}
             severity="warning"
             small
-            description="Cette startup a quitté l'incubateur, et la collecte a du même coup cessé de rattacher qui que ce soit à elle. Cette liste ne peut donc plus contenir que les personnes elles-mêmes sorties du référentiel et celles rattachées à la main : son silence ne dit rien des accès qui survivent sur ce produit. Passez par la file des constats ou par les fiches des personnes concernées."
+            description="Cette startup a quitté l'incubateur, et la collecte a du même coup cessé de rattacher qui que ce soit à elle. Cette liste ne peut donc plus contenir que les personnes elles-mêmes sorties du référentiel des personnes et celles rattachées à la main : son silence ne dit rien des accès qui survivent sur ce produit. Passez par la file des constats ou par les fiches des personnes concernées."
           />
         ) : (
           <p className={fr.cx("fr-mt-2w")}>Aucune personne n'est rattachée à cette startup.</p>
@@ -191,12 +191,14 @@ export function SectionMembres({
           />
 
           <p className={fr.cx("fr-text--sm", "fr-mt-2w")}>
-            Les comptes sont ceux qui n'ont pas disparu du dernier relevé de chaque système, repliés
-            par système : la fiche de la personne les détaille un par un. Systèmes collectés à ce
-            jour : {systemesCollectes.length === 0 ? "aucun" : systemesCollectes.join(", ")}. Tout
-            système absent de cette liste n'a jamais été lu : une colonne vide s'y lit comme une
-            absence de compte alors qu'elle est une absence de lecture. Un rattachement heuristique
-            ou absent ne peut jamais produire de révocation.
+            Les comptes sont ceux qu'aucune collecte n'a encore datés disparus, repliés par système
+            : la fiche de la personne les détaille un par un. Une collecte incomplète ne date rien
+            de ce qu'elle n'a pas pu lire, si bien qu'un compte déjà fermé peut figurer ici.
+            Systèmes couverts lus à ce jour :{" "}
+            {systemesCollectes.length === 0 ? "aucun" : systemesCollectes.join(", ")}. Un système
+            absent de cette liste n'a jamais été lu : une colonne vide n'y dit pas qu'il n'y a pas
+            de compte, elle dit qu'on n'a pas regardé. Un compte rattaché sur une ressemblance de
+            nom, ou sans preuve, ne fera jamais couper d'accès.
           </p>
         </>
       )}

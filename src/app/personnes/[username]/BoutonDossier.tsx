@@ -8,6 +8,7 @@ import type { SensDossier } from "@/core/dossier";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 import style from "@/ui/Actions.module.css";
 import { Aide } from "@/ui/Aide";
+import { useCleDOuverture } from "@/ui/modale";
 import type { ChoixDeProfils } from "@/ui/profils";
 
 /**
@@ -39,6 +40,7 @@ export function BoutonDossier(
   const { username, sens, priorite = "primary" } = proprietes;
   const mots = LIBELLE_DOSSIER[sens];
   const modale = MODALES_DE_DOSSIER[sens];
+  const ouverture = useCleDOuverture(modale);
 
   return (
     <>
@@ -56,9 +58,14 @@ export function BoutonDossier(
 
       <modale.Component title={mots.ouvrir}>
         {proprietes.sens === "ONBOARDING" ? (
-          <FormulaireOuverture username={username} sens="ONBOARDING" profils={proprietes.profils} />
+          <FormulaireOuverture
+            key={ouverture}
+            username={username}
+            sens="ONBOARDING"
+            profils={proprietes.profils}
+          />
         ) : (
-          <FormulaireOuverture username={username} sens="OFFBOARDING" />
+          <FormulaireOuverture key={ouverture} username={username} sens="OFFBOARDING" />
         )}
       </modale.Component>
     </>

@@ -11,7 +11,7 @@ import { rendreTuile } from "./rendre-tuile";
 
 const PROVENANCE = {
   base: "Lu en base : ce chiffre date de la dernière collecte.",
-  systeme: "Interrogé à l'instant, sans laisser de trace.",
+  systeme: "Demandé au système à l'instant, et pas lu en base.",
 } as const;
 
 function Cadre({

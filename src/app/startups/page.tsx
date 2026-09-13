@@ -104,14 +104,16 @@ export default async function StartupsPage(props: {
         className={fr.cx("fr-mt-4w")}
         title={
           ghidsInconnus.length === 1
-            ? "Un identifiant de startup est inconnu du référentiel"
-            : `${ghidsInconnus.length} identifiants de startups sont inconnus du référentiel`
+            ? "Un identifiant de startup ne correspond à aucune startup connue"
+            : `${ghidsInconnus.length} identifiants de startups ne correspondent à aucune startup connue`
         }
         description={
           <>
             <p className={fr.cx("fr-mb-1w")}>
-              Des personnes portent ces identifiants, mais aucune startup observée ne les porte :
-              ils n'ont aucune ligne où se dire, et sans cette liste ils seraient invisibles.
+              Des personnes portent ces identifiants, mais aucune startup observée ne les porte : un
+              renommage amont, une sortie de l'incubateur ou une faute de frappe donnent ici le même
+              symptôme. Ailleurs, ils n'apparaissent que sur la fiche des personnes qui les portent,
+              et sans lien puisqu'aucune fiche de startup n'existe pour eux.
             </p>
             <ul className={fr.cx("fr-mb-0")}>
               {ghidsInconnus.map((inconnu) => (
@@ -138,7 +140,7 @@ export default async function StartupsPage(props: {
           description={
             fraicheur.heures === null
               ? "Aucune collecte n'a jamais eu lieu : le référentiel des startups est vide faute d'observation, ce qui ne dit rien des startups réellement en cours."
-              : `La dernière collecte remonte à ${fraicheur.heures} heures, au-delà des ${thresholds.collectStaleHours} heures admises. Le référentiel des startups est gelé en même temps que le périmètre : une phase a pu changer, une startup sortir de l'incubateur, sans que rien ici ne le signale.`
+              : `La dernière collecte remonte à ${fraicheur.heures} heures, au-delà des ${thresholds.collectStaleHours} heures admises. Le référentiel des startups est gelé en même temps que celui des personnes : une phase a pu changer, une startup sortir de l'incubateur, sans que rien ici ne le signale.`
           }
         />
       ) : null}
@@ -163,7 +165,7 @@ export default async function StartupsPage(props: {
         <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
           <Tile
             title={`${sortiesPeuplees} sortie${sortiesPeuplees > 1 ? "s" : ""}`}
-            desc="Plus rendues par l'incubateur, et portant encore quelqu'un. La collecte ayant cessé de leur rattacher personne, il ne peut s'agir que de personnes elles-mêmes sorties du référentiel ou rattachées à la main."
+            desc="Plus rendues par l'incubateur, et portant encore quelqu'un : des personnes elles-mêmes sorties du référentiel des personnes, ou rattachées à cette startup à la main."
             linkProps={{ href: "/startups?vue=sorties" }}
             orientation="horizontal"
           />
@@ -250,7 +252,7 @@ export default async function StartupsPage(props: {
                             <br />
                             <span className={fr.cx("fr-text--sm")}>
                               dont {ligne.membresSortis} sortie{ligne.membresSortis > 1 ? "s" : ""}{" "}
-                              du référentiel
+                              du référentiel des personnes
                             </span>
                           </>
                         ) : null}

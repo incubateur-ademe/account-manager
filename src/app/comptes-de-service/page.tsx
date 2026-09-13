@@ -63,15 +63,15 @@ export default async function ComptesDeServicePage() {
       <h1>Comptes de service</h1>
 
       <p className={fr.cx("fr-text--lead")}>
-        Bots, jetons d'intégration continue et clés d'API. Ils n'ont pas de fin de mission : la
-        revue périodique est le seul signal qu'ils puissent émettre, et une revue en retard est un
-        constat au même titre qu'un accès expiré.
+        Bots, jetons d'intégration continue et clés d'API. Ils n'ont pas de fin de mission : c'est
+        la revue périodique qui les remet en question, et une revue en retard est un constat au même
+        titre qu'un accès expiré.
       </p>
 
       {avecRevue.length === 0 ? (
         <p>
           Aucun compte de service. Ces comptes sont déclarés dans <code>config/accounts.yaml</code>{" "}
-          et la synchronisation les reporte ici : ils ne se découvrent pas.
+          et la collecte les reporte ici : ils ne se découvrent pas.
         </p>
       ) : (
         <>
@@ -130,11 +130,10 @@ export default async function ComptesDeServicePage() {
               <p>
                 {retires} compte{retires > 1 ? "s" : ""} ne figure{retires > 1 ? "nt" : ""} plus
                 dans <code>config/accounts.yaml</code> mais reste{retires > 1 ? "nt" : ""} en base.
-                La synchronisation ne supprime rien : les accès du compte existent toujours sur les
-                systèmes cibles, et effacer la ligne ferait perdre son propriétaire et le
-                rattachement de ses identités, qui reviendraient dès la collecte suivante comme
-                comptes isolés. Le retrait se traite en coupant les accès, puis en supprimant la
-                ligne à la main.
+                La collecte ne supprime rien : les accès du compte existent toujours sur les
+                systèmes couverts. Coupez-les d'abord, puis supprimez la ligne à la main : l'effacer
+                avant ferait perdre son propriétaire et le rattachement de ses comptes, qui
+                reviendraient comme comptes isolés à la collecte suivante.
               </p>
             </section>
           ) : null}

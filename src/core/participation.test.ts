@@ -14,6 +14,7 @@ import {
   adresseRecevable,
   type CandidatAdresse,
   canalDuDroit,
+  type DepartEnCause,
   DUREE_DEFAUT_JOURS,
   DUREE_MAX_JOURS,
   echeanceDOctroi,
@@ -342,17 +343,31 @@ describe("l'identifiant fabriqué et la ligne d'utilisateur", () => {
 });
 
 describe("la boîte qui va être coupée", () => {
-  it("se juge sur le domaine de l'adresse qui sert, et sur elle seule", () => {
+  it("se juge sur le domaine de l'adresse qui sert, et seulement quand ce départ la ferme", () => {
     const surLaFiche = (adresse: string | null, source: FicheManuelle["source"] = "LOCAL") => ({
       ...fiche({ source, usernameFabricated: source === "LOCAL" }),
       communicationEmail: adresse,
     });
 
+    // Given le seul cas où une boîte se ferme : un départ, et son bénéficiaire est la
+    // personne qui part.
+    const CE_DEPART: DepartEnCause = {
+      sens: "OFFBOARDING",
+      concerne: "personne-lead",
+      beneficiaire: "personne-lead",
+    };
+
     // Given une fiche modifiable qui ne porte qu'une adresse, hors des domaines qu'un
     // départ coupe. Then le lien part dessus et rien ne s'annonce : l'égalité des deux
     // colonnes de la fiche aurait crié au loup ici, sans qu'aucune boîte ne soit menacée.
     expect(
-      etatDuCanal(surLaFiche("lead.exemple@exemple.org"), null, DECLARES_LOCAUX, DOMAINES_MENACES),
+      etatDuCanal(
+        surLaFiche("lead.exemple@exemple.org"),
+        null,
+        DECLARES_LOCAUX,
+        DOMAINES_MENACES,
+        CE_DEPART,
+      ),
     ).toEqual({
       vivant: true,
       adresse: "lead.exemple@exemple.org",
@@ -365,7 +380,13 @@ describe("la boîte qui va être coupée", () => {
     // des colonnes ratait, une secondaire fournie par l'employeur étant coupée tout
     // autant que la principale. La casse et les blancs ne sauvent rien.
     expect(
-      etatDuCanal(surLaFiche("dominique.blin@ademe.fr"), null, DECLARES_LOCAUX, DOMAINES_MENACES),
+      etatDuCanal(
+        surLaFiche("dominique.blin@ademe.fr"),
+        null,
+        DECLARES_LOCAUX,
+        DOMAINES_MENACES,
+        CE_DEPART,
+      ),
     ).toMatchObject({ vivant: true, menace: true });
     expect(
       etatDuCanal(
@@ -373,8 +394,28 @@ describe("la boîte qui va être coupée", () => {
         null,
         DECLARES_LOCAUX,
         DOMAINES_MENACES,
+        CE_DEPART,
       ),
     ).toMatchObject({ vivant: true, menace: true });
+
+    // When la même adresse menacée se lit sur un dossier d'arrivée, Then rien ne
+    // s'annonce : personne ne part, et la phrase de l'écran affirme un départ.
+    expect(
+      etatDuCanal(surLaFiche("dominique.blin@ademe.fr"), null, DECLARES_LOCAUX, DOMAINES_MENACES, {
+        ...CE_DEPART,
+        sens: "ONBOARDING",
+      }),
+    ).toMatchObject({ vivant: true, adresse: "dominique.blin@ademe.fr", menace: false });
+
+    // When c'est bien un départ, mais que le droit va à un tiers, Then rien ne
+    // s'annonce non plus : ce dossier ne dit rien du départ de ce tiers, et sa boîte
+    // reste ouverte. Le canal vif, lui, ne bouge pas.
+    expect(
+      etatDuCanal(surLaFiche("dominique.blin@ademe.fr"), null, DECLARES_LOCAUX, DOMAINES_MENACES, {
+        ...CE_DEPART,
+        beneficiaire: "personne-camille",
+      }),
+    ).toMatchObject({ vivant: true, adresse: "dominique.blin@ademe.fr", menace: false });
 
     // When l'octroi déclare un canal, Then c'est lui qui décide, dans les deux sens :
     // un canal personnel sauve une fiche menacée, un canal menacé s'annonce même sur
@@ -385,6 +426,7 @@ describe("la boîte qui va être coupée", () => {
         "dominique.perso@ailleurs.org",
         DECLARES_LOCAUX,
         DOMAINES_MENACES,
+        CE_DEPART,
       ),
     ).toEqual({
       vivant: true,
@@ -398,17 +440,20 @@ describe("la boîte qui va être coupée", () => {
         "lead.exemple@beta.gouv.fr",
         DECLARES_LOCAUX,
         DOMAINES_MENACES,
+        CE_DEPART,
       ),
     ).toMatchObject({ vivant: true, origine: "OCTROI", menace: true });
 
     // Then une fiche sans adresse et sans canal n'annonce rien, et une politique qui
     // ne déclare aucun domaine n'annonce rien non plus : la liste est une déclaration
     // et pas une propriété du code.
-    expect(etatDuCanal(surLaFiche(null), null, DECLARES_LOCAUX, DOMAINES_MENACES)).toEqual({
+    expect(
+      etatDuCanal(surLaFiche(null), null, DECLARES_LOCAUX, DOMAINES_MENACES, CE_DEPART),
+    ).toEqual({
       vivant: false,
     });
     expect(
-      etatDuCanal(surLaFiche("dominique.blin@ademe.fr"), null, DECLARES_LOCAUX, []),
+      etatDuCanal(surLaFiche("dominique.blin@ademe.fr"), null, DECLARES_LOCAUX, [], CE_DEPART),
     ).toMatchObject({ vivant: true, menace: false });
 
     // Given une fiche que la collecte entretient, portant elle aussi une adresse sur un
@@ -422,6 +467,7 @@ describe("la boîte qui va être coupée", () => {
         null,
         DECLARES_LOCAUX,
         DOMAINES_MENACES,
+        CE_DEPART,
       ),
     ).toEqual({ vivant: false });
 
@@ -433,6 +479,7 @@ describe("la boîte qui va être coupée", () => {
         "dominique.perso@ailleurs.org",
         DECLARES_LOCAUX,
         DOMAINES_MENACES,
+        CE_DEPART,
       ),
     ).toMatchObject({ vivant: true, menace: false });
     expect(
@@ -441,6 +488,7 @@ describe("la boîte qui va être coupée", () => {
         "dominique.blin@beta.gouv.fr",
         DECLARES_LOCAUX,
         DOMAINES_MENACES,
+        CE_DEPART,
       ),
     ).toMatchObject({ vivant: true, menace: true });
 
@@ -452,6 +500,7 @@ describe("la boîte qui va être coupée", () => {
         null,
         DECLARES_LOCAUX,
         DOMAINES_MENACES,
+        CE_DEPART,
       ),
     ).toEqual({ vivant: false });
   });

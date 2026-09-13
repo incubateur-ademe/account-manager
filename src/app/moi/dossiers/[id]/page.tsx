@@ -231,7 +231,7 @@ export default async function DossierDuParticipantPage({
       ) : (
         <>
           {raisonDuPlan === null ? null : (
-            <p>Ces étapes vous reviennent, mais rien ne s'y pointe. {raisonDuPlan}</p>
+            <p>Ces étapes vous reviennent, mais rien ne s'y coche. {raisonDuPlan}</p>
           )}
           <ol>
             {siennes.map((etape) => (
@@ -254,8 +254,8 @@ export default async function DossierDuParticipantPage({
         <>
           <h2 className={fr.cx("fr-h4")}>Ce qui attend votre regard</h2>
           <p>
-            Quelqu'un d'autre a déclaré ces étapes, et le plan vous en confie le contrôle : vous
-            dites ce que cette déclaration vaut, vous ne la refaites pas.
+            Quelqu'un d'autre a déclaré ces étapes, et c'est à vous d'en juger : vous dites ce que
+            cette déclaration vaut, vous ne la refaites pas.
           </p>
           {raisonDuPlan === null ? null : <p>Rien ne s'y signe pour autant. {raisonDuPlan}</p>}
           <ol>

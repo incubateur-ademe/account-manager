@@ -7,6 +7,7 @@ import { Button } from "@codegouvfr/react-dsfr/Button";
 import Link from "next/link";
 import { useActionState, useId, useState } from "react";
 
+import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
 import { type CandidatDeLot, LIBELLE_ECARTE, type ResumeDeLot } from "@/core/startups";
 import { LIBELLE_STATUT } from "@/core/statut";
 import { SEVERITE_STATUT } from "@/ui/severites";
@@ -18,6 +19,7 @@ import {
   type EtatLot,
   ouvrirDepartsEnLot,
 } from "./actions";
+import { LOT } from "./redaction-lot";
 
 type Geste = "sortie" | "depart" | "cloture";
 
@@ -54,7 +56,7 @@ function Recapitulatif({ titre, resume }: { titre: string; resume: ResumeDeLot }
             </ul>
           ) : null}
           <p className={fr.cx("fr-mb-0")}>
-            Chaque personne a sa propre trace au journal, sous le même identifiant de lot.{" "}
+            {LOT.traces}{" "}
             <Link className={fr.cx("fr-link")} href="/journal">
               Voir le journal
             </Link>
@@ -136,14 +138,9 @@ export function TraitementDuLot({
 
   return (
     <section className={fr.cx("fr-mt-4w")}>
-      <h2 className={fr.cx("fr-h5")}>Traiter ses membres en une fois</h2>
+      <h2 className={fr.cx("fr-h5")}>{LOT.titre}</h2>
 
-      <p>
-        {nomStartup} s'arrête, et ses membres se traitent le même jour pour la même raison. Rien
-        n'est décidé ici par l'outil : une phase terminale ne sort personne, c'est ce qui sépare le
-        constat de la décision. Les lignes cochées d'avance sont celles pour qui la question se pose
-        vraiment, les autres restent cochables une par une, avec la raison qui les en écarte.
-      </p>
+      <p>{LOT.intro(nomStartup)}</p>
 
       <form>
         <input type="hidden" name="startup" value={ghid} />
@@ -154,7 +151,7 @@ export function TraitementDuLot({
             { children: "" },
             { children: "Personne" },
             { children: "Statut" },
-            { children: "Ce qui la retient" },
+            { children: LOT.colonneRetient },
             { children: "Constat ouvert" },
           ]}
           body={candidats.map((candidat) => ({
@@ -218,7 +215,7 @@ export function TraitementDuLot({
                   candidat.constatOuvert === null ? (
                     <span className={fr.cx("fr-hint-text")}>aucun</span>
                   ) : (
-                    "Startups terminées"
+                    LIBELLE_CONSTAT.INACTIVE_STARTUP.titre
                   ),
               },
             ],
@@ -227,11 +224,8 @@ export function TraitementDuLot({
 
         <div className={fr.cx("fr-input-group", "fr-mt-2w")}>
           <label className={fr.cx("fr-label")} htmlFor={idRaison}>
-            Raison, recopiée sur la trace de chaque personne
-            <span className={fr.cx("fr-hint-text")}>
-              Une décision sans motif ne se réexamine pas. Elle est saisie une fois et vaut pour
-              toutes les personnes cochées.
-            </span>
+            {LOT.raison.label}
+            <span className={fr.cx("fr-hint-text")}>{LOT.raison.aide}</span>
           </label>
           <input className={fr.cx("fr-input")} id={idRaison} name="raison" type="text" required />
         </div>
@@ -262,7 +256,7 @@ export function TraitementDuLot({
                 },
               }}
             >
-              Les déclarer hors incubateur
+              {LOT.sortie.bouton}
             </Button>
           </li>
           <li>
@@ -277,7 +271,7 @@ export function TraitementDuLot({
                 },
               }}
             >
-              Ouvrir leurs dossiers de départ
+              {LOT.depart.bouton}
             </Button>
           </li>
           <li>
@@ -292,26 +286,22 @@ export function TraitementDuLot({
                 },
               }}
             >
-              Clore leurs constats de startups terminées ({avecConstat})
+              {LOT.cloture.bouton(avecConstat)}
             </Button>
           </li>
         </ul>
       </form>
 
-      <p className={fr.cx("fr-text--sm")}>
-        Déclarer quelqu'un hors incubateur ne coupe aucun accès et ne ferme aucun constat : le
-        moteur ne lit pas cette décision, et la collecte de la nuit reconstatera. C'est le troisième
-        bouton qui vide la file, et il se signe à part.
-      </p>
+      <p className={fr.cx("fr-text--sm")}>{LOT.ceQueLaSortieNeFaitPas}</p>
 
       {etatSortie !== null && "resume" in etatSortie ? (
-        <Recapitulatif titre="Déclarées hors incubateur" resume={etatSortie.resume} />
+        <Recapitulatif titre={LOT.sortie.recapitulatif} resume={etatSortie.resume} />
       ) : null}
       {etatDepart !== null && "resume" in etatDepart ? (
-        <Recapitulatif titre="Dossiers de départ" resume={etatDepart.resume} />
+        <Recapitulatif titre={LOT.depart.recapitulatif} resume={etatDepart.resume} />
       ) : null}
       {etatCloture !== null && "resume" in etatCloture ? (
-        <Recapitulatif titre="Constats clos" resume={etatCloture.resume} />
+        <Recapitulatif titre={LOT.cloture.recapitulatif} resume={etatCloture.resume} />
       ) : null}
     </section>
   );

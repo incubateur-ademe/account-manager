@@ -8,6 +8,7 @@ import { requireOperateur } from "@/lib/session";
 
 import { BasculeAutorisation, Editeur } from "../Editeur";
 import { etapesNeutralisees, MOMENTS, modelesDuProprietaire } from "../lecture";
+import { MODELE } from "../redaction";
 
 export const metadata: Metadata = { title: "Modèle de l'incubateur" };
 
@@ -42,11 +43,7 @@ export default async function ModeleDeLIncubateurPage() {
         startups, et un geste qu'il demande déjà ne se demande pas une seconde fois.
       </p>
 
-      <p className={fr.cx("fr-text--sm")}>
-        Modifier ce modèle ne change aucun plan déjà calculé : les étapes sont figées à la création
-        du plan. Un brouillon en cours se découvrira obsolète et se réparera par un recalcul, un
-        plan confirmé gardera les siennes et dira ce qui n'y figure pas.
-      </p>
+      <p className={fr.cx("fr-text--sm")}>{MODELE.effetSurLesPlans}</p>
 
       {MOMENTS.map(({ moment, titre, quoi }) => {
         const modele = modeles.find((candidat) => candidat.moment === moment);

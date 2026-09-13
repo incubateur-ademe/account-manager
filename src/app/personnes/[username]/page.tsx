@@ -469,7 +469,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
                     reste ici que ce qu'elle seule sait, qui l'a prise et quand, plus
                     l'invitation à la retirer le jour où elle ne sert plus. */}
                 {surchargeSuperflue(appartenance)
-                  ? "Ses rattachements en cours disent désormais la même chose : cette décision est devenue superflue et peut être retirée. Elle ne se retire pas d'elle-même, une décision nominative ne s'annule pas par une collecte anonyme."
+                  ? "Ses rattachements en cours disent désormais la même chose : cette décision est devenue superflue et peut être retirée. Aucune collecte ne la retirera à votre place."
                   : null}
               </>
             }
@@ -528,7 +528,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
       <p className={fr.cx("fr-text--sm", "fr-mt-4w")}>
         Observée du {dateFr.format(personne.firstSeenAt)} au {dateFr.format(personne.lastSeenAt)},{" "}
         {personne.vanishedAt
-          ? `sortie du référentiel le ${dateFr.format(personne.vanishedAt)}`
+          ? `sortie du référentiel des personnes le ${dateFr.format(personne.vanishedAt)}`
           : "toujours présente"}
         .
       </p>
