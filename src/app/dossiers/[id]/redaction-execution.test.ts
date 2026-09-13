@@ -70,6 +70,14 @@ describe("ce que le bloc de lancement dit à qui s'apprête à cliquer", () => {
     );
     expect(LIBELLE_LANCEMENT.simulation.description).toContain("ce qui aurait été appelé");
 
+    // Then elle dit aussi ce qui part quand même, et que ça ne fait que lire. C'est la
+    // seule chose vraie qu'un bandeau « rien ne partira » doive concéder : des appels
+    // sortent bel et bien vers les systèmes couverts, et taire cette nuance ferait
+    // passer une relecture réelle pour une promesse rompue le jour où elle échoue.
+    expect(LIBELLE_LANCEMENT.simulation.description).toContain(
+      "Seules partent les relectures d'état, et elles ne font que lire",
+    );
+
     // Then le bouton dit la même chose que le bandeau qu'il suit : un bouton qui
     // annoncerait une exécution sous un bandeau qui promet le contraire est le seul
     // mot que l'opérateur lit vraiment avant de cliquer
@@ -102,6 +110,11 @@ describe("ce que le bloc de lancement dit à qui s'apprête à cliquer", () => {
       "2 étapes terminées par la vérification, sans aucun appel d'écriture",
     );
     expect(simulee).toContain("Les étapes prêtes restent à faire");
+
+    // Then et il dit où lire ce qui aurait été appelé. Sans cette queue de phrase, un
+    // lancement en simulation passe pour un clic sans effet, alors que le journal porte
+    // le détail étape par étape.
+    expect(simulee).toContain("le journal dit étape par étape ce qui aurait été appelé");
 
     // Given un lancement réel où trois appels sont partis et cinq étapes se sont
     // terminées : le décompte réunit celles que la vérification a soldées et celles

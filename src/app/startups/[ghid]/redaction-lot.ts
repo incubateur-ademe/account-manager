@@ -1,3 +1,5 @@
+import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
+
 /**
  * Ce que promet l'écran qui traite les membres d'une startup en une fois.
  *
@@ -34,8 +36,13 @@ export const LOT = {
     recapitulatif: "Dossiers de départ",
   },
   cloture: {
+    /**
+     * Le titre vient de la table des constats et ne se recopie pas : le bouton, la
+     * colonne qu'il vide et la file `/constats` nomment le même constat, et trois
+     * chaînes écrites à la main finissent par en nommer trois.
+     */
     bouton: (nombre: number): string =>
-      `Clore leurs constats « Startups toutes terminées » (${nombre})`,
+      `Clore leurs constats « ${LIBELLE_CONSTAT.INACTIVE_STARTUP.titre} » (${nombre})`,
     recapitulatif: "Constats clos",
   },
 

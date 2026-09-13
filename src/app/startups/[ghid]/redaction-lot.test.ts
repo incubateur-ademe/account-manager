@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
+
 import { LOT } from "./redaction-lot";
 
 /** Les mots que le modèle porte et qu'aucun écran ne sert tels quels. */
@@ -41,6 +43,12 @@ describe("ce que promet l'écran qui traite les membres d'une startup en une foi
     expect(LOT.sortie.bouton).toMatch(/hors incubateur/u);
     expect(LOT.depart.bouton).toMatch(/dossiers de départ/u);
     expect(LOT.cloture.bouton(4)).toMatch(/constats/u);
+
+    // Then le bouton nomme le constat qu'il ferme avec les mots de la table, et non
+    // avec une copie. Le bouton, la colonne qu'il vide et la file des constats désignent
+    // le même objet : trois chaînes écrites à la main finissent par en nommer trois, et
+    // celle du bouton est la seule que personne ne relit en passant.
+    expect(LOT.cloture.bouton(4)).toContain(LIBELLE_CONSTAT.INACTIVE_STARTUP.titre);
 
     // Then le troisième annonce combien de constats il fermera : un bouton qui vide une
     // file sans dire de combien de lignes se clique sans savoir ce qu'on signe.
