@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import ResteDeLEspacePage from "@/app/moi/[...reste]/page";
 import DossierDuParticipantPage, { EtapeDuParticipant } from "@/app/moi/dossiers/[id]/page";
 import PageNonTrouveeDuParticipant from "@/app/moi/not-found";
+import MonEspacePage from "@/app/moi/page";
 import type { Acteur, Verdict } from "@/core/dossier";
 import { dossiersOuvertsPour } from "@/lib/participation";
 
@@ -230,7 +231,12 @@ function textesRendus(noeud: unknown): string[] {
 const texteRendu = (noeud: unknown): string =>
   textesRendus(noeud).join(" ").replace(/\s+/gu, " ").trim();
 
-/** Où la page propose d'aller, boutons compris : une destination vit sous `linkProps`. */
+/**
+ * Où la page propose d'aller, sous les deux formes qu'elle emploie : un `linkProps` du
+ * système de design, qui est un objet nu portant `href`, et un `<Link href>`, qui est
+ * un élément React le portant dans ses `props`. Ne regarder que la première laisse la
+ * seconde invisible, ce qui rend un test vert sur une page sans aucun lien.
+ */
 function liensRendus(noeud: unknown): string[] {
   if (Array.isArray(noeud)) {
     return noeud.flatMap(liensRendus);
@@ -239,8 +245,10 @@ function liensRendus(noeud: unknown): string[] {
     return [];
   }
   const objet = noeud as { props?: Record<string, unknown>; href?: unknown };
+  const dansLesProps = objet.props?.["href"];
   return [
     ...(typeof objet.href === "string" ? [objet.href] : []),
+    ...(typeof dansLesProps === "string" ? [dansLesProps] : []),
     ...Object.values(objet.props ?? objet).flatMap(liensRendus),
   ];
 }
@@ -294,6 +302,43 @@ beforeEach(() => {
 });
 
 describe("ce qu'un droit vivant ouvre, et ce qu'il n'ouvre plus", () => {
+  it("rend l'espace lui-même, avec ce qu'il nomme et ce qu'il dit quand il n'y a rien", async () => {
+    // Given quelqu'un qui n'a aucun droit. C'est l'état de départ de toute personne
+    // que l'outil ne concerne pas encore, et c'est le seul écran qu'elle verra.
+    base.utilisateur.nom = "Léa Exemple";
+
+    // When son espace se rend
+    const vide = await MonEspacePage();
+
+    // Then il la nomme, et il dit ce qui manque plutôt que de montrer un tableau vide :
+    // un accès se demande, il porte sur un dossier, et il a une date de fin. Sans cette
+    // phrase, l'écran laisse croire à une panne.
+    expect(texteRendu(vide)).toContain("Léa Exemple");
+    expect(texteRendu(vide)).toContain("Aucun dossier ne vous est ouvert");
+    expect(texteRendu(vide)).toContain("date de fin");
+
+    // Given un droit vivant sur le départ de quelqu'un d'autre
+    base.droits.push({
+      accessCaseId: "dossier-1",
+      personId: "personne-lead",
+      expiresAt: dans(7),
+      revokedAt: null,
+    });
+
+    // When l'espace se rend de nouveau
+    const rempli = await MonEspacePage();
+
+    // Then la ligne nomme la personne concernée, et non le dossier : c'est le seul
+    // repère de qui arrive là, l'identifiant ne lui disant rien.
+    expect(texteRendu(rempli)).toContain("Camille Exemple");
+    expect(texteRendu(rempli)).not.toContain("Aucun dossier");
+
+    // Then et elle mène à la route du participant, pas à celle de l'opérateur, qui le
+    // renverrait ici : ce ne sont pas deux vues du même écran.
+    expect(liensRendus(rempli)).toContain("/moi/dossiers/dossier-1");
+    expect(liensRendus(rempli)).not.toContain("/dossiers/dossier-1");
+  });
+
   it("ne liste que les dossiers qu'un droit vivant couvre, jamais ceux qu'il a couverts", async () => {
     // Given cinq droits sur cinq dossiers : un vivant, un révoqué, un périmé, un sur
     // un dossier soldé et un sur un dossier annulé

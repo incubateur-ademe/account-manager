@@ -46,7 +46,11 @@ Zod 4 pour la validation.
 | `pnpm lint:fix` | `biome check --write .` |
 | `pnpm format` | `biome format --write .` |
 | `pnpm typecheck` | `next typegen && tsc --noEmit` |
-| `pnpm test` | `vitest run` |
+| `pnpm test` | étage unitaire (`vitest run --project unite`) |
+| `pnpm db:deploy:test` | applique les migrations sur `account_manager_test` |
+| `pnpm test:integration` | étage d'intégration, sur cette base dédiée |
+| `pnpm test:contrat` | étage de contrat, contre les vraies API distantes |
+| `pnpm test:e2e` | étage de bout en bout, à la main avant une livraison |
 | `pnpm verify` | lint + typecheck + test |
 | `pnpm sync` | collecte sur les systèmes cibles |
 | `pnpm db:generate` / `db:migrate` / `db:deploy` / `db:studio` | Prisma |
@@ -81,6 +85,47 @@ Vise cinq à dix scénarios costauds par feature, pas cinquante micro-cas.
 On teste ce qui coûte cher quand ça casse : résolution du tier, runs de collecte y compris tronqués,
 calcul de plan et empreinte, rapprochement d'identité, machines à états, audit, mode simulation.
 Emplacement : `src/**/<nom>.test.ts`, à côté du code. Voir le skill `/add-tests`.
+
+**Chaque garantie se tient au plus bas niveau qui sait la tenir.** Avant d'écrire un test, demande-toi
+s'il ne descend pas d'un étage : une phrase d'écran sortie dans une table de rédaction s'épingle sans
+base ni navigateur, et la vérifier plus haut coûte mille fois plus pour la même garantie.
+
+`src/**/<nom>.test.ts` est l'étage **unitaire** : ni base, ni réseau, ni navigateur. `vitest.config.ts`
+lui pose un environnement qui ne mène nulle part, si bien qu'un double oublié échoue au lieu
+d'atteindre pour de vrai ce qu'il croyait doubler. `src/etages-de-test.test.ts` tient cette seule
+propriété, parce qu'elle est la seule qui pourrisse en silence.
+
+`src/**/<nom>.integration.test.ts` est l'étage d'**intégration** : une vraie base, dédiée, dont le nom
+doit finir par `_test`. Il existe pour ce qu'un double écrit à la main ne peut pas honorer sans
+réécrire un moteur, à commencer par un compte à travers une relation. La remise à zéro est posée par
+le passage de mise en place : un scénario n'a rien à appeler, il sème.
+
+`src/**/<nom>.contrat.test.ts` est l'étage de **contrat** : il interroge une vraie API distante, par
+conception. Il existe pour voir une réponse changer de forme sans annonce, ce qu'un enregistrement
+figé ne montrerait jamais, et lui donner une adresse morte le viderait de son sens. Il est donc hors
+de `pnpm test`, et il s'ignore proprement sans jeton.
+
+`e2e/*.spec.ts` est l'étage de **bout en bout**, hors de `src/`, lancé à la main avant une livraison
+et **jamais dans la vérification continue**. Trois choses seulement s'y tiennent : qu'un cookie signé
+franchisse la barrière de `src/proxy.ts` et soit décodé, que le même serveur traite deux identités
+différemment quand seul le nom change, et qu'un écran s'hydrate au lieu de seulement se rendre. Un
+scénario instable s'y supprime, il ne se rejoue pas : `retries` vaut zéro. Le cookie s'y forge plutôt
+que de passer par le lien de connexion, si bien qu'une connexion à la main avant une livraison reste
+nécessaire.
+
+**Les deux étages du bas ne partent pas d'un clone.** Une fois pour toutes :
+
+```bash
+docker compose up -d
+docker compose exec postgres createdb -U account_manager account_manager_test
+pnpm db:deploy:test
+pnpm exec playwright install chromium   # seulement pour le bout en bout
+```
+
+Ensuite `pnpm test:integration` et `pnpm test:e2e`. Les deux suivent `POSTGRES_PORT` comme
+`docker-compose.yml`, et rien ici ne lit de fichier d'environnement : sur un poste où PostgreSQL
+n'écoute pas sur 5432, c'est `POSTGRES_PORT=5433 pnpm test:integration`. Une `DATABASE_URL` déjà
+posée l'emporte, et le refus du nom non dédié s'applique quand même.
 
 ## Invariants non négociables
 

@@ -61,9 +61,19 @@ gitignore). C'est normal qu'il n'apparaisse pas dans le diff.
 pnpm test
 ```
 
-Vitest 4, `environment: "node"`, pattern `src/**/*.test.ts`, `passWithNoTests: true`. Ce dernier point
-compte : **un run vert ne prouve pas qu'il existe des tests**. Si le perimetre touche de la logique
-metier et qu'aucun test ne s'execute, dis-le dans le rapport au lieu de rapporter PASS sec.
+C'est l'etage **unitaire** seul, et il ne touche ni base, ni reseau, ni navigateur.
+
+```bash
+POSTGRES_PORT=5433 pnpm test:integration
+```
+
+L'etage d'**integration**, et il se lance des que le perimetre touche une requete, une migration ou
+une contrainte de base. La verification continue le joue sur chaque proposition : le sauter ici
+revient a decouvrir le rouge sur GitHub. Il exige une base dediee, voir `CLAUDE.md` pour la creer.
+S'il n'a pas ete lance, dis-le dans le rapport, comme pour le build.
+
+L'etage de **bout en bout** (`pnpm test:e2e`) ne fait pas partie de cette passe : il demarre un
+serveur et un navigateur, et se lance a la main avant une livraison.
 
 Si un test echoue, determine si le bug est dans le test ou dans l'implementation. Ne supprime pas un
 test et ne le passe pas en `skip` pour obtenir du vert.
@@ -84,8 +94,9 @@ sautee et pourquoi. Ne la fais jamais passer pour un PASS.
 
 ### Raccourci
 
-`pnpm verify` enchaine `lint`, `typecheck` et `test` (pas le build). Utile pour une boucle rapide,
-mais le rapport doit distinguer les trois etapes.
+`pnpm verify` enchaine `lint`, `typecheck` et `test` : l'etage unitaire seul, ni le build ni
+l'integration. Utile pour une boucle rapide, mais le rapport doit distinguer les etapes, et dire
+lesquelles n'ont pas ete jouees.
 
 ## 5. Revue post-implementation
 
@@ -143,5 +154,5 @@ Statut global : PASS | FAIL
 - **Ne desactive pas une regle Biome** pour faire passer le lint. Corrige le code.
 - **Ne supprime ni ne skip un test** pour faire passer le runner.
 - **Ne lance pas `--no-verify`** sur un commit. Si un hook bloque, c'est qu'il y a un vrai probleme.
-- **`passWithNoTests` n'est pas un PASS.** Zero test execute sur un changement de logique metier se
-  signale.
+- **`pnpm verify` n'est pas la verification complete.** Il ne joue ni le build, ni l'etage
+  d'integration que la verification continue joue, elle, sur chaque proposition.

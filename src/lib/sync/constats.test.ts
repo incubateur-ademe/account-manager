@@ -5,9 +5,6 @@ import { MISE_EN_SERVICE_DES_ARRIVEES } from "@/core/constat";
 import type { IncubatorStartup } from "@/lib/espace-membre";
 import { type PersonneAvantArrivee, syncConstats } from "@/lib/sync/constats";
 
-process.env["DATABASE_URL"] ??= "postgresql://localhost:5432/inutilise";
-process.env["ESPACE_MEMBRE_API_KEY"] ??= "inutilisee";
-
 interface ConstatEnBase {
   id: string;
   kind: string;

@@ -28,3 +28,7 @@ config/*.yaml
 .claude/.worktree-monitor-root
 .claude/.worktree-monitor-permissions
 .claude/launch.json
+
+# Traces et rapports des scenarios de bout en bout, produits a chaque execution.
+/playwright-report/
+/test-results/
