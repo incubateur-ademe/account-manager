@@ -65,7 +65,7 @@ export function FileDesComptesIsoles({
             { children: ligne.provider },
             {
               children: (
-                <span>
+                <div>
                   <strong>{ligne.handle}</strong>
                   {ligne.ressemblance ? (
                     <>
@@ -75,7 +75,7 @@ export function FileDesComptesIsoles({
                       </Badge>
                     </>
                   ) : null}
-                </span>
+                </div>
               ),
             },
             {
@@ -123,7 +123,11 @@ export function FileDesComptesIsoles({
       <modale.Component title="À qui appartient ce compte" size="large">
         {choisi === null ? null : (
           <>
-            <p className={fr.cx("fr-mb-1w")}>
+            {/* Un `div` et non un `p` : le badge du système de design rend lui-même un
+                `p`, et l'imbriquer dans un autre est du HTML invalide que React refuse
+                d'hydrater. L'écran se rend côté serveur puis meurt au réveil, ce qui ne
+                se voit pas en lisant le composant. */}
+            <div className={fr.cx("fr-mb-1w")}>
               <strong>
                 {choisi.provider} : {choisi.handle}
               </strong>
@@ -135,7 +139,7 @@ export function FileDesComptesIsoles({
                   </Badge>
                 </>
               ) : null}
-            </p>
+            </div>
             <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
               Observé depuis le {choisi.vuDepuis}, encore le {choisi.vuEncore}.
             </p>

@@ -81,6 +81,7 @@ export default defineConfig({
             ...ADRESSES_MORTES,
             DATABASE_URL: `postgresql://interdit:interdit@${MORT}/aucune-base-en-unitaire`,
           },
+          setupFiles: ["./vitest.setup.unite.ts"],
         },
       },
       {

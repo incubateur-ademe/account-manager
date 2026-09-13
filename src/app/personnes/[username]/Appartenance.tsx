@@ -52,12 +52,17 @@ export function Appartenance({
           state={pose ? "error" : "default"}
           stateRelatedMessage={pose?.erreur}
         />
+        {/* `value` en propriété du composant et non dans `nativeButtonProps` : le
+            système de design étale ces derniers puis réapplique sa propre `value`,
+            qui vaut alors `undefined` et efface celle qu'on croyait poser. Les deux
+            boutons partaient ainsi avec un sens vide, que l'action refuse. */}
         <Button
           type="submit"
           priority="secondary"
           size="small"
           disabled={enPose}
-          nativeButtonProps={{ name: "sens", value: "INCLUDE" }}
+          value="INCLUDE"
+          nativeButtonProps={{ name: "sens" }}
         >
           Forcer dans l'incubateur
         </Button>{" "}
@@ -66,7 +71,8 @@ export function Appartenance({
           priority="secondary"
           size="small"
           disabled={enPose}
-          nativeButtonProps={{ name: "sens", value: "EXCLUDE" }}
+          value="EXCLUDE"
+          nativeButtonProps={{ name: "sens" }}
         >
           Déclarer hors incubateur
         </Button>
