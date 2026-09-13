@@ -139,6 +139,18 @@ describe("L'éditeur d'un modèle de plan", () => {
     // que ce que React vient d'y réécrire.
     expect(caseSansCetteValeur()).not.toBeNull();
 
+    // Then les listes déroulantes tiennent aussi, et elles se lisent ici dans le DOM
+    // plutôt que dans l'état. React remet un formulaire à zéro quand son action rend la
+    // main, et c'est son comportement documenté : les champs contrôlés s'en relèvent au
+    // commit suivant, mais rien ne le garantit par écrit pour une liste. Or un
+    // `FormData` se lit dans le DOM : si une liste y retombait sur sa première option,
+    // corriger sa saisie après ce refus et renvoyer expédierait un rôle que personne
+    // n'a choisi, sans que rien ne le dise.
+    const apresRefus = Object.fromEntries(
+      new FormData(champs.titre.closest("form") as HTMLFormElement),
+    );
+    expect(apresRefus).toMatchObject({ acteur: "SUBJECT", controleur: "DELEGATE" });
+
     // When la même déclaration est acceptée.
     doubles.ajouter.mockResolvedValueOnce({});
     await utilisateur.click(champs.ajouter);

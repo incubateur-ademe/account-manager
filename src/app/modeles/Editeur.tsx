@@ -13,6 +13,7 @@ import { useActionState, useCallback, useState } from "react";
 import { type Acteur, combinaisonValide } from "@/core/dossier";
 import { LIBELLE_ACTEUR } from "@/core/libelle-dossier";
 import type { RiskLevel, TemplateKind } from "@/generated/prisma/enums";
+import { useListesApresEnvoi } from "@/ui/formulaire";
 import { useFermetureApresSucces } from "@/ui/modale";
 import { messageObligatoire } from "@/ui/validation";
 
@@ -94,8 +95,9 @@ function valeursDe(defaut?: EtapeAffichee): Valeurs {
  * étape que l'incubateur n'admet pas est un chemin prévu, pas un accident, et il ferait
  * ici perdre tout ce qui vient d'être écrit.
  */
-function ChampsDeLEtape({ formulaire }: { formulaire: Formulaire }) {
+function ChampsDeLEtape({ formulaire, pending }: { formulaire: Formulaire; pending: boolean }) {
   const { valeurs, changer, choisirLActeur, choisirLeControleur, controleurRetire } = formulaire;
+  const envoi = useListesApresEnvoi(pending);
 
   return (
     <>
@@ -186,6 +188,7 @@ function ChampsDeLEtape({ formulaire }: { formulaire: Formulaire }) {
       <div className={fr.cx("fr-grid-row", "fr-grid-row--gutters")}>
         <div className={fr.cx("fr-col-12", "fr-col-md-6")}>
           <Select
+            key={`acteur-${envoi}`}
             label="Qui fait cette étape"
             hint={MODELE.champs.acteur}
             nativeSelectProps={{
@@ -205,6 +208,7 @@ function ChampsDeLEtape({ formulaire }: { formulaire: Formulaire }) {
         </div>
         <div className={fr.cx("fr-col-12", "fr-col-md-6")}>
           <Select
+            key={`controleur-${envoi}`}
             label="Qui contrôle ce qui y sera déclaré"
             hint={MODELE.champs.controleur(valeurs.controleur === valeurs.acteur)}
             state={controleurRetire === null ? "default" : "info"}
@@ -344,7 +348,7 @@ function FormulaireDAjout({
       <input type="hidden" name="proprietaire" value={proprietaire} />
       <input type="hidden" name="moment" value={moment} />
 
-      <ChampsDeLEtape formulaire={formulaire} />
+      <ChampsDeLEtape formulaire={formulaire} pending={pending} />
 
       <Button type="submit" priority="secondary" disabled={pending}>
         {pending ? "Ajout…" : "Ajouter cette étape"}
@@ -365,7 +369,7 @@ function FormulaireDeModification({ etape }: { etape: EtapeAffichee }) {
     <form action={formAction}>
       <input type="hidden" name="etapeId" value={etape.id} />
 
-      <ChampsDeLEtape formulaire={formulaire} />
+      <ChampsDeLEtape formulaire={formulaire} pending={pending} />
 
       <Button type="submit" priority="secondary" disabled={pending}>
         {pending ? "Enregistrement…" : "Enregistrer"}

@@ -8,8 +8,8 @@ import type { SensDossier } from "@/core/dossier";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 import type { SaisieAttendue } from "@/core/modele-plan";
 import type { Masse } from "@/core/plan";
+import { useListesApresEnvoi } from "@/ui/formulaire";
 import { useCleDOuverture } from "@/ui/modale";
-
 import { messageObligatoire } from "@/ui/validation";
 
 import { AnnulationDossier } from "./AnnulationDossier";
@@ -156,6 +156,7 @@ export function Pointage({
     pointerEtape,
     null,
   );
+  const envoi = useListesApresEnvoi(pending);
   const [choix, setChoix] = useState("fait");
   const justification = choix === "ignoree" || choix === "echec";
   const constat = LIBELLE_DOSSIER[sens].constat;
@@ -171,6 +172,7 @@ export function Pointage({
         <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
           <select
             className={fr.cx("fr-select")}
+            key={`pointage-${envoi}`}
             name="pointage"
             value={choix}
             disabled={!possible}
@@ -290,6 +292,7 @@ export function Validation({
     validerEtape,
     null,
   );
+  const envoi = useListesApresEnvoi(pending);
   const [choix, setChoix] = useState("accepter");
   const refus = choix === "refuser";
   const mots = ecart ? AVIS.ecart : AVIS.geste;
@@ -306,6 +309,7 @@ export function Validation({
         <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
           <select
             className={fr.cx("fr-select")}
+            key={`verdict-${envoi}`}
             name="verdict"
             value={choix}
             disabled={!possible}
