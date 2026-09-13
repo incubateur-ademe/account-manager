@@ -64,10 +64,19 @@ export default defineConfig({
         test: {
           name: "unite",
           environment: "node",
-          include: ["src/**/*.test.ts"],
+          // `.tsx` entre ici pour une seule raison : monter les composants clients, que
+          // rien ne voyait. Le rendu se demande fichier par fichier, par la directive
+          // `@vitest-environment jsdom` en tête, et jamais globalement : un DOM posé
+          // partout ferait payer son coût aux quatre cent quatre-vingts tests qui n'en
+          // ont pas besoin, et masquerait le jour où un test serveur en dépendrait.
+          include: ["src/**/*.test.{ts,tsx}"],
           // Sans cette exclusion, l'étage qui exige une base serait joué par celui qui
           // s'interdit d'en avoir une : les deux suffixes finissent par `.test.ts`.
-          exclude: [...defaultExclude, "src/**/*.integration.test.ts", "src/**/*.contrat.test.ts"],
+          exclude: [
+            ...defaultExclude,
+            "src/**/*.integration.test.{ts,tsx}",
+            "src/**/*.contrat.test.{ts,tsx}",
+          ],
           env: {
             ...ADRESSES_MORTES,
             DATABASE_URL: `postgresql://interdit:interdit@${MORT}/aucune-base-en-unitaire`,
@@ -84,7 +93,7 @@ export default defineConfig({
           // `pnpm test` : ils dépendent d'un jeton et du réseau.
           name: "contrat",
           environment: "node",
-          include: ["src/**/*.contrat.test.ts"],
+          include: ["src/**/*.contrat.test.{ts,tsx}"],
         },
       },
       {
@@ -92,7 +101,7 @@ export default defineConfig({
         test: {
           name: "integration",
           environment: "node",
-          include: ["src/**/*.integration.test.ts"],
+          include: ["src/**/*.integration.test.{ts,tsx}"],
           // La base, elle, vient de l'appelant : la poser ici la rendrait implicite, et
           // le refus du nom non dédié perdrait son sens.
           env: ADRESSES_MORTES,
