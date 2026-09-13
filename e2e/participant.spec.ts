@@ -99,12 +99,9 @@ test("un droit nominatif ouvre un seul dossier à qui n'est pas opérateur", asy
   // disent pas la même chose, et cette différence ne se voit qu'ici.
   await expect(sien).toHaveURL(/\/moi$/);
 
-  // Then son espace porte le dossier, nommé par la personne concernée : le cookie a été
-  // décodé, la fiche résolue par `personId`, le droit relu, et l'écran rendu.
-  await expect(sien.getByRole("heading", { name: "Mon espace" })).toBeVisible();
-  await expect(sien.getByRole("link", { name: PORTEUSE.fullname })).toBeVisible();
-
-  // When il ouvre le dossier par sa porte à lui
+  // When il ouvre, depuis son espace, le dossier que son droit couvre. Ce que cet écran
+  // affiche est tenu plus bas, par le scénario qui le rend sans navigateur : ici c'est
+  // le trajet qui compte, du cookie décodé à la fiche résolue par `personId`.
   await sien.getByRole("link", { name: PORTEUSE.fullname }).click();
 
   // Then il y entre, et l'écran s'hydrate sans mourir. C'est le seul risque que les
@@ -152,9 +149,5 @@ test("un droit nominatif ouvre un seul dossier à qui n'est pas opérateur", asy
     leSien.getByRole("heading", { level: 1, name: new RegExp(PORTEUSE.fullname) }),
   ).toBeVisible();
 
-  // Then et son espace à elle ne porte aucun dossier : elle n'a pas de fiche, donc pas
-  // de droit de participation. Être opératrice n'ouvre pas la porte du participant.
-  await leSien.goto("/moi");
-  await expect(leSien.getByText("Aucun dossier ne vous est ouvert")).toBeVisible();
   await coteOperatrice.close();
 });

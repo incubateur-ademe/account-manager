@@ -34,6 +34,16 @@ copyFileSync(
 process.env["POLICY_DIR"] = REPERTOIRE;
 
 const PROVIDER = "atelier";
+/**
+ * Un second système, que cette collecte ne lit pas et qu'elle ne doit pas toucher.
+ *
+ * Sans lui, retirer `provider` de n'importe laquelle des clauses de `collecte.ts`
+ * laisse ce fichier entièrement vert : un semis à un seul système ne peut pas voir
+ * une requête qui déborde. C'est pourtant la faute la plus chère que cet étage
+ * puisse attraper, dix-neuf systèmes en production et une nuit qui daterait tout le
+ * monde partout.
+ */
+const VOISIN = "atelier-voisin";
 /** Les départs d'un autre âge, que rien de ce qui suit ne doit redater. */
 const MARS = new Date("2026-03-01T02:00:00Z");
 const NUIT_1 = new Date("2026-08-24T02:00:00Z");
@@ -118,6 +128,33 @@ async function semer(): Promise<void> {
       },
     },
   });
+
+  // Le voisin : cinq comptes vivants et deux équipes qu'un accès porte encore. Les
+  // nombres sont choisis pour que leur intrusion se voie. Sur la référence des comptes,
+  // quatre deviendrait neuf ; sur celle des équipes, trois deviendrait cinq ; et la
+  // datation du soir emporterait cinq comptes de plus, aucun d'eux n'étant dans ce que
+  // la collecte a vu.
+  for (const rang of [1, 2, 3, 4, 5]) {
+    await prisma.externalIdentity.create({
+      data: { provider: VOISIN, externalId: `voisin-${rang}`, handle: `voisin-${rang}` },
+    });
+  }
+  for (const rang of [1, 2]) {
+    await prisma.resource.create({
+      data: { provider: VOISIN, externalId: `atelier-${rang}`, label: `Atelier ${rang}` },
+    });
+    await prisma.accessGrant.create({
+      data: {
+        role: "membre",
+        externalIdentity: {
+          connect: { provider_externalId: { provider: VOISIN, externalId: `voisin-${rang}` } },
+        },
+        resource: {
+          connect: { provider_externalId: { provider: VOISIN, externalId: `atelier-${rang}` } },
+        },
+      },
+    });
+  }
 }
 
 const dateDe = async (externalId: string): Promise<Date | null> =>
@@ -128,7 +165,11 @@ const dateDe = async (externalId: string): Promise<Date | null> =>
     })
   ).vanishedAt;
 
-const accesVivants = () => prisma.accessGrant.count({ where: { vanishedAt: null } });
+/** Bornés au système collecté : le voisin a les siens, et ils se comptent à part. */
+const accesVivants = () =>
+  prisma.accessGrant.count({
+    where: { vanishedAt: null, externalIdentity: { provider: PROVIDER } },
+  });
 
 describe("le garde-fou de chute, contre une vraie base", () => {
   beforeEach(semer);
@@ -137,7 +178,9 @@ describe("le garde-fou de chute, contre une vraie base", () => {
     // Given un système qui tient quatre comptes vivants et trois équipes encore
     // portées par un accès, plus six départs de mars et une équipe éteinte que
     // personne ne doit ressusciter.
-    expect(await prisma.externalIdentity.count({ where: { vanishedAt: null } })).toBe(4);
+    expect(
+      await prisma.externalIdentity.count({ where: { provider: PROVIDER, vanishedAt: null } }),
+    ).toBe(4);
     expect(await accesVivants()).toBe(3);
 
     // When une première nuit ne rend que deux des quatre comptes vivants. Le seuil de
@@ -241,5 +284,17 @@ describe("le garde-fou de chute, contre une vraie base", () => {
       },
     });
     expect(redates).toBe(0);
+
+    // Then le système voisin ressort intact, alors que rien de ce que la collecte a lu
+    // ne le nomme : ses cinq comptes vivent toujours, et ses deux accès aussi. C'est la
+    // seule assertion qui tienne la borne des requêtes au système collecté.
+    const voisinsVivants = await prisma.externalIdentity.count({
+      where: { provider: VOISIN, vanishedAt: null },
+    });
+    expect(voisinsVivants).toBe(5);
+    const accesDuVoisin = await prisma.accessGrant.count({
+      where: { vanishedAt: null, externalIdentity: { provider: VOISIN } },
+    });
+    expect(accesDuVoisin).toBe(2);
   });
 });
