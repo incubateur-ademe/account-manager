@@ -19,7 +19,7 @@ ne se modifie pas sans validation explicite de l'utilisateur.
 
 ## Stack
 
-Next 16.3.0 (App Router, `output: "standalone"`), React 19.2.8, TypeScript 7.0.2, Node 24 (`.nvmrc`),
+Next 16.3.5 (App Router, `output: "standalone"`), React 19.2.8, TypeScript 7.0.2, Node 24 (`.nvmrc`),
 pnpm 11.22.0. Le `tsconfig.json` étend `@tsconfig/strictest` et `@tsconfig/next` ; seule
 `exactOptionalPropertyTypes` est désactivée en surcharge, Prisma et NextAuth ne la respectent pas dans
 leurs propres types.
@@ -69,9 +69,16 @@ voisin : `Value 'X' not found in enum 'Y'` alors que la base et le client géné
 cannot have a negative time stamp` apparaît en développement, sur n'importe quel écran, et ne
 vient pas de ce dépôt. C'est l'instrumentation de performance de React qui mesure un rendu serveur
 interrompu par une redirection, ici celle de la barrière de session, avec un compteur laissé à
-l'infini négatif. Défaut amont ouvert (`vercel/next.js#86060`), absent de la production, non
-corrigé en 16.3.1 ni 16.3.2, et le correctif appartient à React : le patch côté Next a été
-refusé pour cette raison. Elle ne signale rien de l'application, et rien d'ici ne la fera taire.
+l'infini négatif. Défaut amont ouvert (`vercel/next.js#86060`), absent de la production, et le
+correctif appartient à React : le patch côté Next a été refusé pour cette raison.
+
+Aucune version de la ligne 16.3 n'y change rien, et la raison est mécanique : de 16.3.0 à 16.3.5,
+toutes embarquent le même client React (`19.3.0-canary-cbb046ab-20260731`), dont les branches
+d'abandon et d'erreur appellent `performance.measure` sans le garde-fou que porte la branche de
+rendu normal. Monter `react` n'y ferait rien non plus, le code fautif étant celui que Next embarque
+et non celui du `package.json`. Côté React, le défaut est déposé (`react/react#37561`) et deux
+correctifs attendent leur revue. Elle ne signale rien de l'application, et rien d'ici ne la fera
+taire.
 
 ## Tests
 

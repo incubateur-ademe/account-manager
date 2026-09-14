@@ -138,7 +138,7 @@ RUN pnpm build
 # Arbre de production pour le CLI et les migrations.
 #
 # La sortie standalone de Next ne contient que ce que le serveur web trace
-# (verifie : @next, next, react, react-dom, pg, @prisma/client). Tout le reste
+# (verifie : @next, next, react, react-dom, sharp, pg, @prisma/client). Tout le reste
 # est bundle dans les chunks. Le CLI "pnpm sync" et "prisma migrate deploy" ont
 # donc besoin de leur propre arbre.
 #
