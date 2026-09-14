@@ -106,21 +106,22 @@ vi.mock("@/connectors", () => ({ CONNECTEURS: base.connecteurs }));
 vi.mock("@/lib/db", () => ({
   prisma: {
     externalIdentity: {
-      findMany: ({ where }: { where: { personId: string } }) => {
+      findMany: ({ where }: { where: { personId: string; vanishedAt: null } }) => {
         base.lecturesDIdentites += 1;
         return Promise.resolve(
           base.identites.filter(
-            (identite) => identite.personId === where.personId && identite.vanishedAt === null,
+            (identite) =>
+              identite.personId === where.personId && identite.vanishedAt === where.vanishedAt,
           ),
         );
       },
     },
     person: {
-      findUnique: () =>
+      findUnique: ({ select }: { select: { startupAssignments: { where: { endedAt: null } } } }) =>
         Promise.resolve({
           startups: base.startupsCollectees,
           startupAssignments: base.rattachements.filter(
-            (rattachement) => rattachement.endedAt === null,
+            (rattachement) => rattachement.endedAt === select.startupAssignments.where.endedAt,
           ),
         }),
     },
