@@ -66,8 +66,8 @@ const SOURCE = {
   missionEnd: null,
 };
 
-vi.mock("@/lib/db", () => ({
-  prisma: {
+vi.mock("@/lib/db", async () =>
+  (await import("@/test/doubles/db")).doublerBase({
     person: {
       findUnique: ({ where }: { where: { username: string } }) => {
         base.lectures.push(`person:${where.username}`);
@@ -90,8 +90,8 @@ vi.mock("@/lib/db", () => ({
         return Promise.resolve([]);
       },
     },
-  },
-}));
+  }),
+);
 
 function champs(valeurs: Record<string, string>): FormData {
   const formData = new FormData();

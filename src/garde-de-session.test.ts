@@ -21,19 +21,12 @@ vi.mock("@/lib/session", async () =>
   }),
 );
 
-vi.mock("@/lib/db", () => ({
-  prisma: new Proxy(
-    {},
-    {
-      get(_cible, propriete) {
-        const nom = String(propriete);
-        barriere.acces.push(`prisma.${nom}`);
-        throw new Error(`accès en base interdit sans session : prisma.${nom}`);
-      },
-    },
-  ),
-  deconnecter: () => Promise.resolve(),
-}));
+vi.mock("@/lib/db", async () =>
+  (await import("@/test/doubles/db")).barriereDeBase({
+    raison: "accès en base interdit sans session",
+    relever: (acces) => barriere.acces.push(acces),
+  }),
+);
 
 vi.mock("@/lib/auth", () => ({
   auth: () => Promise.resolve(null),

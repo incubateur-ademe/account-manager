@@ -206,10 +206,11 @@ function planComplet(plan: PlanEnBase) {
 vi.mock("@/lib/db", () => ({
   prisma: {
     externalIdentity: {
-      findMany: ({ where }: { where: { personId: string } }) =>
+      findMany: ({ where }: { where: { personId: string; vanishedAt: null } }) =>
         Promise.resolve(
           base.identites.filter(
-            (identite) => identite.personId === where.personId && identite.vanishedAt === null,
+            (identite) =>
+              identite.personId === where.personId && identite.vanishedAt === where.vanishedAt,
           ),
         ),
     },

@@ -65,13 +65,16 @@ vi.mock("@/lib/audit", () => ({
 
 // Le passage tracé est joué ailleurs : ici il n'est qu'un appelant, et le doubler
 // donne la main sur l'utilisateur que `ecrire` reçoit, dont la voie part au journal.
-vi.mock("@/lib/actions", () => ({
-  actionTracee: async (params: {
-    ecrire: (utilisateur: unknown) => Promise<unknown>;
-  }): Promise<void> => {
-    await params.ecrire(operatrice());
-  },
-}));
+vi.mock("@/lib/actions", async () => {
+  const { operatrice } = await import("@/test/doubles/session");
+  return {
+    actionTracee: async (params: {
+      ecrire: (utilisateur: unknown) => Promise<unknown>;
+    }): Promise<void> => {
+      await params.ecrire(operatrice());
+    },
+  };
+});
 
 vi.mock("next/navigation", () => ({
   redirect: (chemin: string) => {
@@ -81,17 +84,6 @@ vi.mock("next/navigation", () => ({
     throw erreur;
   },
 }));
-
-function operatrice() {
-  return {
-    username: "operatrice.exemple",
-    email: null,
-    nom: null,
-    personId: null,
-    voie: "ESPACE_MEMBRE" as const,
-    operateur: true,
-  };
-}
 
 /** Ce que la transaction relève : le nom de la requête et les identifiants qu'elle vise. */
 function noter(requete: string, ids: readonly string[]): void {

@@ -34,7 +34,7 @@ const base = vi.hoisted(() => ({
   bocalCasse: false,
 }));
 
-vi.mock("@/lib/db", () => ({ prisma: {} }));
+vi.mock("@/lib/db", async () => (await import("@/test/doubles/db")).barriereDeBase());
 
 vi.mock("next/headers", () => ({
   cookies: () => {
