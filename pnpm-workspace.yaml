@@ -37,3 +37,20 @@ allowBuilds:
 overrides:
   deepmerge-ts: ^8.0.0
   mysql2: ^3.23.1
+
+# `@auth/core` et `next-auth` declarent nodemailer en peer optionnelle sur `^7.0.7 ||
+# ^8.0.5`, et la ligne 8 s'arrete a la 8.0.11 sans backport : les cinq avis publies sur
+# ce paquet ne s'y fermeront jamais, la montee en 9 sort donc de leur plage par
+# necessite. La plage est en retard, pas juste : tout ce que le fournisseur tire du
+# paquet est `createTransport(server)`, `sendMail({to, from, subject, text, html})` et la
+# lecture de `rejected` et `pending`, identiques en 8 et en 9, et les deux portes de
+# connexion ont ete constatees remettant leur message sur la 9.1.1. Aucune version amont
+# n'est a attendre, `@auth/core@latest` etant la 0.41.3 elle-meme.
+#
+# La regle nomme la ligne 9 et non un intervalle ouvert : une montee en 10 ferait
+# reapparaitre l'avertissement, et c'est voulu. Elle devient inutile le jour ou l'un des
+# deux paquets elargit sa propre plage, ce qui se lit dans le lock.
+peerDependencyRules:
+  allowedVersions:
+    '@auth/core>nodemailer': '9'
+    'next-auth>nodemailer': '9'
