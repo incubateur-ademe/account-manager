@@ -343,9 +343,11 @@ export const REGARD_D_UN_OPERATEUR = "Cette étape attend le regard d'un opérat
  * peut en porter deux, son identifiant d'allowlist et celui d'une fiche fabriquée en
  * doublon : opérateur, il pointe en substitution sous le premier ; entré par l'adresse
  * de la seconde, il devient délégué et signe ce qu'il a lui-même déclaré, sans que rien
- * ici ne puisse le voir. Le cas demande le doublon que la fusion des fiches existe pour
- * réparer, et c'est là qu'il se répare : aucune comparaison de noms ne rapproche deux
- * identifiants que rien ne relie.
+ * ici ne puisse le voir. Ce doublon-là ne se fusionne pas : une fusion passe par le
+ * renommage de la fiche fabriquée, et `identifiantReserve` y refuse tout identifiant
+ * d'opérateur comme destination, comme il le refuse déjà à la création. La sortie est de
+ * retirer à cette fiche son droit de participation, ou de ne jamais le lui octroyer :
+ * aucune comparaison de noms ne rapproche deux identifiants que rien ne relie.
  *
  * Un opérateur valide ce qu'un délégué aurait dû valider, l'inverse n'étant pas vrai :
  * le contraire coincerait un dossier dès que le délégué s'évapore, au moment précis où

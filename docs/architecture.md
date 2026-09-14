@@ -989,6 +989,17 @@ besoin : la liste de secours et celle des opérateurs se fondent en une seule au
 décider qui agit, si bien qu'un nom ajouté à la première est un opérateur de plein droit
 devant un dossier et peut porter le second regard.
 
+**Comparer des noms a un bord, et il reste ouvert.** Un même humain peut porter deux
+identifiants, celui de l'allowlist et celui d'une fiche fabriquée en doublon : opérateur, il
+pointe en substitution sous le premier ; entré par l'adresse de la seconde, il devient
+délégué et signe ce qu'il a lui-même déclaré. Rien dans la garde ne peut le voir. L'ancrer
+sur la fiche plutôt que sur le nom n'est pas la sortie : la qualité d'opérateur ne se calcule
+que sur la voie espace-membre, et une session d'opérateur ne porte pas de fiche. Le doublon
+ne se fusionne pas non plus : une fusion passe par un renommage, et l'identifiant d'un
+opérateur y est refusé comme destination, comme il l'est déjà à la création d'une fiche. La
+sortie est de retirer à la fiche fabriquée son droit de participation, ou de ne jamais le lui
+octroyer.
+
 Pas d'approbateurs multiples, pas de fenêtre de rétractation, pas de quorum. Ce qui
 protège contre le fait qu'une personne décide seule pour une autre est le second
 regard, posé étape par étape là où il vaut la peine, plutôt qu'un rite appliqué à tout.
