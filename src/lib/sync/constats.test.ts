@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FOURNISSEUR_PERIMETRE } from "@/core/collecte";
 import { MISE_EN_SERVICE_DES_ARRIVEES } from "@/core/constat";
+import type { Derogation } from "@/core/derogation";
 import type { IncubatorStartup } from "@/lib/espace-membre";
 import { type PersonneAvantArrivee, syncConstats } from "@/lib/sync/constats";
 
@@ -273,11 +274,24 @@ const lancer = (
   personnes: readonly PersonneAvantArrivee[],
   perimetreComplet: boolean,
   now: Date = AUJOURDHUI,
+  derogations: readonly Derogation[] = [],
 ) =>
   syncConstats(personnes, STARTUPS, [], TERMINALES, now, "correlation-1", {
     perimetreComplet,
     maxNewPersonShare: PART,
+    derogations,
   });
+
+const toleree = (cible: Derogation["cible"]): Derogation => ({
+  id: "der-1",
+  cible,
+  raison: "compte de démonstration conservé le temps de la campagne",
+  responsable: "operatrice.exemple",
+  provenance: "base",
+  poseeLe: new Date("2026-08-01T00:00:00Z"),
+  echeance: new Date("2026-12-31T00:00:00Z"),
+  leveeLe: null,
+});
 
 /** Le périmètre relu à chaque passage sur les fiches en base, jamais recopié à côté. */
 const perimetre = (): PersonneAvantArrivee[] =>
@@ -612,6 +626,70 @@ describe("le verrou d'une clôture manuelle tient d'une collecte à l'autre", ()
     expect(base.constats).toHaveLength(1);
     expect(cle("SCOPE_ENTRY:camille.rivet")?.closedBy).toBe("operateur.exemple");
     expect(base.journal.filter((ligne) => ligne.targetId?.startsWith("SCOPE_ENTRY"))).toEqual([]);
+  });
+});
+
+describe("une dérogation fait cesser le signalement, pas la situation", () => {
+  it("tait l'écart qu'elle couvre, laisse remonter les autres, et ne touche à aucun verrou", async () => {
+    // Given deux personnes arrivées sans que personne ne les accueille, dont une seule
+    // est tolérée,
+    const arrivantes = [
+      personne({ firstSeenAt: APRES_AMORCAGE }),
+      personne({
+        username: "alex.dupuis",
+        fullname: "Alex Dupuis",
+        firstSeenAt: APRES_AMORCAGE,
+      }),
+    ];
+
+    // When la collecte passe avec cette tolérance,
+    const passage = await lancer(arrivantes, true, AUJOURDHUI, [
+      toleree({ type: "personne", username: "camille.rivet" }),
+    ]);
+
+    // Then l'écart toléré ne s'ouvre pas et ne laisse aucune trace d'ouverture, tandis
+    // que l'autre remonte comme si de rien n'était : c'est toute la valve,
+    expect(passage.ouverts).toBe(1);
+    expect(passage.couverts).toBe(1);
+    expect(cle("SCOPE_ENTRY:camille.rivet")).toBeUndefined();
+    expect(cle("SCOPE_ENTRY:alex.dupuis")).toMatchObject({ kind: "SCOPE_ENTRY", closedAt: null });
+    expect(base.journal).not.toContainEqual({
+      action: "finding.open",
+      targetId: "SCOPE_ENTRY:camille.rivet",
+    });
+
+    // Then le compte rendu distingue ce qui se tait de ce qui est actif, sans quoi la
+    // tolérance rendrait la file plus courte sans que personne ne sache pourquoi.
+    expect(passage.actifs).toBe(1);
+  });
+
+  it("laisse intact le verrou qu'un opérateur avait posé sur la situation qu'elle couvre", async () => {
+    // Given un constat qu'un opérateur avait clos lui-même, sur la personne qu'une
+    // tolérance vient couvrir,
+    base.constats.push({
+      id: "f-1",
+      kind: "SCOPE_ENTRY",
+      dedupKey: "SCOPE_ENTRY:camille.rivet",
+      openedAt: APRES_AMORCAGE,
+      closedAt: APRES_AMORCAGE,
+      closeReason: "accès posés à la main avant l'outil",
+      closedBy: "operateur.exemple",
+    });
+    const arrivantes = [personne({ firstSeenAt: APRES_AMORCAGE })];
+
+    // When la collecte passe avec la tolérance,
+    await lancer(arrivantes, true, AUJOURDHUI, [
+      toleree({ type: "personne", username: "camille.rivet" }),
+    ]);
+
+    // Then le verrou tient, et c'est la garantie que rien ne montrerait : le
+    // réarmement se juge sur tout ce que la collecte a constaté et non sur ce qu'elle
+    // a retenu, sans quoi une tolérance effacerait la marque d'une clôture décidée par
+    // quelqu'un, en silence.
+    expect(cle("SCOPE_ENTRY:camille.rivet")).toMatchObject({
+      closedBy: "operateur.exemple",
+      closeReason: "accès posés à la main avant l'outil",
+    });
   });
 });
 
