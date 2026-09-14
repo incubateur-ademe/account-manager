@@ -3,6 +3,7 @@ import { resolveCapability } from "@/core/connector";
 import { autoriseUneRevocation } from "@/core/rapprochement";
 import { verifierConfigurations } from "@/lib/configuration-connecteur";
 import { prisma } from "@/lib/db";
+import { derogationsApplicables } from "@/lib/derogation";
 import { env } from "@/lib/env";
 import { policy } from "@/lib/policy";
 import { executerCollecte, noterSystemeNonLu } from "@/lib/sync/collecte";
@@ -181,6 +182,7 @@ export async function executerSync(
           id: true,
           provider: true,
           handle: true,
+          externalId: true,
           matchMethod: true,
           serviceAccountId: true,
           person: { select: { username: true, vanishedAt: true } },
@@ -193,6 +195,11 @@ export async function executerSync(
       rattachementsManuels: startupAssignments,
     }));
 
+    const tolerances = await derogationsApplicables(now);
+    for (const illisible of tolerances.illisibles) {
+      journal(`[sync] dérogation ignorée, cible illisible : ${illisible}`);
+    }
+
     const constats = await syncConstats(
       personnes,
       perimetre.startups,
@@ -200,6 +207,7 @@ export async function executerSync(
         id: identite.id,
         provider: identite.provider,
         handle: identite.handle,
+        externalId: identite.externalId,
         rattachementSur: autoriseUneRevocation(identite.matchMethod),
         personneUsername: identite.person?.username ?? null,
         personneSortie: identite.person?.vanishedAt != null,
@@ -213,10 +221,11 @@ export async function executerSync(
         // ni levée, ni fermeture, ni verrou réarmé.
         perimetreComplet: perimetre.status === "OK",
         maxNewPersonShare: policy().thresholds.maxNewPersonShare,
+        derogations: tolerances.applicables,
       },
     );
     journal(
-      `[sync] constats : ${constats.actifs} actifs, ${constats.ouverts} ouverts, ${constats.fermes} fermés`,
+      `[sync] constats : ${constats.actifs} actifs, ${constats.ouverts} ouverts, ${constats.fermes} fermés, ${constats.couverts} tolérés`,
     );
     journal(
       `[sync] arrivées : ${

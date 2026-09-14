@@ -824,6 +824,12 @@ model Derogation {
   createdAt DateTime @default(now())
   expiresAt DateTime
 
+  // Lever n'est ni supprimer ni avancer l'échéance. Supprimer perdrait qui a décidé
+  // d'arrêter de tolérer, et avancer l'échéance rendrait un geste signé indiscernable
+  // d'un écoulement du temps.
+  revokedAt DateTime?
+  revokedBy String?
+
   @@index([targetType, targetId])
   @@index([expiresAt])
 }

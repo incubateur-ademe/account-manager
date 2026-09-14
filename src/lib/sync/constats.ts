@@ -18,6 +18,7 @@ import {
   typesReconcilies,
   verrousDeCloture,
 } from "@/core/constat";
+import { couvertureDesConstats, type Derogation, RAISON_COUVERT } from "@/core/derogation";
 import { dossierVivant, type SensDossier, sensOppose } from "@/core/dossier";
 import type { FindingKind } from "@/generated/prisma/enums";
 import { audit } from "@/lib/audit";
@@ -45,6 +46,8 @@ export type ArriveesDuPassage =
 export interface ConstatsResult {
   ouverts: number;
   fermes: number;
+  /** Ce qu'une dérogation a tu : compté à part des actifs, sans quoi il disparaîtrait. */
+  couverts: number;
   actifs: number;
   arrivees: ArriveesDuPassage;
 }
@@ -120,7 +123,15 @@ export async function syncConstats(
   phasesTerminales: readonly string[],
   now: Date,
   correlationId: string,
-  options: { perimetreComplet: boolean; maxNewPersonShare: number },
+  options: {
+    perimetreComplet: boolean;
+    maxNewPersonShare: number;
+    /**
+     * Reçues plutôt que lues ici : l'instant auquel elles se jugent n'appartient pas à
+     * ce passage, un plan confirmé les rejouant à l'instant de sa confirmation.
+     */
+    derogations: readonly Derogation[];
+  },
 ): Promise<ConstatsResult> {
   const phaseParStartup = new Map(startups.map((s) => [s.ghid, s.currentPhase]));
 
@@ -186,7 +197,11 @@ export async function syncConstats(
     ...constatsDIdentites(identites),
     ...constatsDActionsDeclarees(await actionsDeclarees(traitees)),
   ];
-  const parCle = new Map<string, Constat>(constats.map((c) => [c.dedupKey, c]));
+  // Le partage vient après le second calcul sans règle d'arrivée, et avant tout le
+  // reste : ce qui est couvert ne s'ouvre pas, et se ferme en le disant.
+  const { retenus, couverts } = couvertureDesConstats(constats, options.derogations);
+  const cleCouverte = new Set(couverts.map(({ constat }) => constat.dedupKey));
+  const parCle = new Map<string, Constat>(retenus.map((c) => [c.dedupKey, c]));
 
   const existants = await prisma.finding.findMany({
     where: { closedAt: null, kind: { in: reconcilies } },
@@ -206,7 +221,14 @@ export async function syncConstats(
     select: { id: true, dedupKey: true },
   });
 
-  const { verrouilles, aRearmer } = verrousDeCloture(clos, new Set(parCle.keys()));
+  // Sur la liste entière et non sur les retenus : une dérogation fait cesser le
+  // signalement, pas la situation. Nourri par les seuls retenus, ce calcul verserait
+  // dans `aRearmer` des constats qu'un opérateur a jugés traités, et leur retirerait
+  // la marque de sa clôture sans que rien ne le dise.
+  const { verrouilles, aRearmer } = verrousDeCloture(
+    clos,
+    new Set(constats.map((c) => c.dedupKey)),
+  );
 
   if (aRearmer.length > 0) {
     await prisma.finding.updateMany({
@@ -216,7 +238,7 @@ export async function syncConstats(
   }
 
   let ouverts = 0;
-  for (const constat of constats) {
+  for (const constat of retenus) {
     if (clesExistantes.has(constat.dedupKey) || verrouilles.has(constat.dedupKey)) {
       continue;
     }
@@ -269,7 +291,12 @@ export async function syncConstats(
   for (const finding of aFermer) {
     await prisma.finding.update({
       where: { id: finding.id },
-      data: { closedAt: now, closeReason: "ne se vérifie plus à la collecte" },
+      data: {
+        closedAt: now,
+        closeReason: cleCouverte.has(finding.dedupKey)
+          ? RAISON_COUVERT
+          : "ne se vérifie plus à la collecte",
+      },
     });
     audit({
       actorKind: "SYSTEM",
@@ -284,7 +311,8 @@ export async function syncConstats(
   return {
     ouverts,
     fermes: aFermer.length,
-    actifs: constats.length,
+    couverts: couverts.length,
+    actifs: retenus.length,
     arrivees: compteRenduDesArrivees({
       perimetreComplet: options.perimetreComplet,
       amorcage,

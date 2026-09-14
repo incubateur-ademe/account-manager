@@ -96,19 +96,18 @@ const serviceAccountSchema = z
 
 const derogationSchema = z
   .strictObject({
-    targetType: z
-      .string()
-      .min(1)
-      .meta({
-        description: "Nature de ce qui est toléré.",
-        examples: ["identite"],
-      }),
+    targetType: z.enum(["identite", "personne"]).meta({
+      description:
+        "Nature de ce qui est toléré : un compte observé sur un système cible, ou quelqu'un du périmètre.",
+      examples: ["identite"],
+    }),
     targetId: z
       .string()
       .min(1)
       .meta({
-        description: "Ce que la dérogation vise, désigné comme la collecte le nomme.",
-        examples: ["github:compte-partage"],
+        description:
+          "Ce que la dérogation vise. Pour un compte, « <système>:<identifiant du fournisseur> », et jamais le nom d'usage du compte : celui-ci se renomme, et un nom abandonné est rendu à quelqu'un d'autre. Cet identifiant ne se devine pas, il se relève à la première collecte. Pour quelqu'un, son identifiant beta.gouv.",
+        examples: ["github:MDQ6VXNlcjEwNDI="],
       }),
     reason: z
       .string()
@@ -484,12 +483,12 @@ export const configSchema = z
       .default([])
       .meta({
         description:
-          "Réservé : écarts admis pour de bon, qu'aucune collecte ne doit plus signaler. Aucun code ne le lit encore.",
+          "Écarts admis pour de bon, qu'aucune collecte ne signale plus. Une entrée dont la cible est illisible est écartée et signalée au démarrage : elle ne couvre rien plutôt que n'importe quoi.",
         examples: [
           [
             {
               targetType: "identite",
-              targetId: "github:compte-partage",
+              targetId: "github:MDQ6VXNlcjEwNDI=",
               reason: "Compte de démonstration conservé à la demande de la direction",
               owner: "claire.durand",
             },
