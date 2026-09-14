@@ -22,12 +22,14 @@ _ajoutés par Claude, objectif seulement : ni l'un ni l'autre n'a de plan d'impl
 étudié à ce stade_
 
 ### Brancher les dérogations et les références
-`Derogation` et `Reference` existent en base et dans `docs/architecture.md`, aucun code ne les
-lit. Une dérogation dit qu'un écart est admis et cesse de le faire remonter à chaque collecte,
-avec une raison et un responsable obligatoires. Une référence est un objet possédé, ni accès ni
-révocable (une page, un dépôt), qui appelle `ARCHIVE`, `TRANSFER` ou `KEEP` au départ de son
-auteur, et non une suppression. Sans elles, les écarts tolérés font du bruit indéfiniment et les
-plans de départ proposent des gestes absurdes sur ce qui n'est pas un accès.
+Suivis dans #15 et #16, et cette entrée ne dit plus que ce qu'elles n'ont pas encore livré. La
+collecte lit désormais les dérogations et tait les écarts couverts, mais rien ne permet encore
+d'en poser une depuis l'interface, ni n'écarte du plan un système entièrement toléré. `Reference`
+est lue par la fusion de fiches, qui la déplace et la supprime, et par personne d'autre : une
+référence est un objet possédé, ni accès ni révocable (une page, un dépôt), qui appelle
+`ARCHIVE`, `TRANSFER` ou `KEEP` au départ de son auteur, et non une suppression, et rien ne sait
+encore le faire. Sans elles, les plans de départ proposent des gestes absurdes sur ce qui n'est
+pas un accès.
 
 ### Étendre la couverture au-delà de GitHub
 La valeur de l'outil est proportionnelle au nombre de systèmes couverts, pas à la finesse avec
