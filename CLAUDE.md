@@ -175,6 +175,18 @@ Tout en **français** : code, commentaires, messages d'erreur, noms de tests, do
 une rupture. Le titre de la PR compte double, c'est lui qui devient le message du squash sur `main`.
 La description suit `.github/pull_request_template.md`, qui demande le pourquoi avant le quoi.
 
+**Un titre dit ce que fait le changement : un verbe à l'infinitif et son objet.** Ainsi
+`monter Next en 16.3.5`, ou `uniformiser le vocabulaire des écrans`. Une cinquantaine de
+caractères, 72 au plafond. Ni personnification (« l'écran cesse de mentir »), ni seconde
+proposition après une virgule, ni chiffre qui ne fait que résumer le diff. Il se lira seul dans
+une liste, des mois plus tard, par quelqu'un qui cherche quand une chose a changé.
+
+**Le corps et la description portent le pourquoi, en restant lisibles jusqu'au bout.** Une liste de
+défauts ou de décisions s'écrit en puces, pas en paragraphes. Le cheminement ne s'écrit nulle part :
+ce qui a été essayé puis abandonné n'apprend rien à qui relit, seul le résultat compte. Une
+description qu'on ne lit pas en entier ne protège de rien. Les deux endroits qui méritent d'être
+longs sont ce qui n'a pas été vérifié, et ce qui reste ouvert.
+
 **Jamais de tiret cadratin (U+2014) ni de tiret demi-cadratin (U+2013)**, nulle part : ni prose, ni
 commentaire, ni code, ni message de commit. Virgule, deux-points, parenthèses ou point à la place. Le
 tiret simple `-` reste normal pour les listes et le kebab-case.
