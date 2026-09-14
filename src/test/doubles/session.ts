@@ -53,26 +53,34 @@ const PAR_DEFAUT: Utilisateur = {
   operateur: true,
 };
 
-/** Quelqu'un de l'équipe transverse, entré par l'espace-membre. */
+/**
+ * Quelqu'un de l'équipe transverse, entré par l'espace-membre.
+ *
+ * Ce que la fabrique est se pose **après** la surcharge, et pas avant : le vrai module
+ * n'accorde la qualité d'opérateur qu'à un identifiant venu de l'espace-membre, si bien
+ * qu'une session qui la porterait sur l'autre voie n'existe pas. Laisser la surcharge
+ * écraser ce couple en fabriquerait une, et un scénario bâti dessus prouverait quelque
+ * chose du produit qui n'est pas vrai.
+ */
 export function operatrice(surcharge: Partial<Utilisateur> = {}): Utilisateur {
-  return { ...PAR_DEFAUT, ...surcharge };
+  return { ...PAR_DEFAUT, ...surcharge, voie: "ESPACE_MEMBRE", operateur: true };
 }
 
 /**
  * Quelqu'un qui détient un droit sur un dossier, et rien de plus.
  *
- * La qualité d'opérateur vaut faux par construction sur la voie de l'adresse, et ce
- * couple-là n'est pas un réglage : le vrai module ne l'accorde qu'à un identifiant venu
- * de l'espace-membre. Une fabrique qui laisserait poser `operateur: true` sur cette voie
- * fabriquerait une session que la production ne peut pas produire.
+ * La voie reste réglable, un membre beta.gouv hors allowlist entrant par l'espace-membre
+ * sans rien administrer pour autant. La qualité d'opérateur, elle, ne l'est pas : c'est
+ * ce que cette fabrique nomme, et la poser vraie ferait d'un participant autre chose
+ * qu'un participant.
  */
 export function participant(surcharge: Partial<Utilisateur> = {}): Utilisateur {
   return {
     ...PAR_DEFAUT,
     username: "participante.exemple",
     voie: "ADRESSE",
-    operateur: false,
     ...surcharge,
+    operateur: false,
   };
 }
 
