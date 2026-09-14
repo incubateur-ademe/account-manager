@@ -5,6 +5,7 @@ import {
   constatsDe,
   constatsDIdentites,
   type PersonneConstatable,
+  SORTE_DE_CIBLE,
   verrousDeCloture,
 } from "./constat";
 
@@ -433,5 +434,17 @@ describe("chaque constat dit ce qu'une tolérance devrait viser", () => {
     // taire une parole démentie en tolérant ce sur quoi elle portait.
     expect(dementi?.kind).toBe("OVERDUE_MANUAL_ACTION");
     expect(dementi?.cible).toBeNull();
+
+    // Then la table qui sert le chemin inverse, depuis un constat relu en base, dit la
+    // même chose que les constructeurs. Deux endroits qui énoncent la même règle se
+    // contredisent un jour, et une tolérance posée sur la mauvaise sorte de cible ne
+    // couvrirait rien sans que personne ne comprenne pourquoi.
+    for (const leve of [
+      ...constatsDePerimetre,
+      ...constatsDeComptes,
+      ...(dementi ? [dementi] : []),
+    ]) {
+      expect([leve.kind, leve.cible?.type ?? null]).toEqual([leve.kind, SORTE_DE_CIBLE[leve.kind]]);
+    }
   });
 });

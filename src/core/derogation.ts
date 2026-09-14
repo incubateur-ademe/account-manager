@@ -1,3 +1,4 @@
+import type { Verdict } from "@/core/dossier";
 import { jourUTC } from "@/core/statut";
 
 /**
@@ -158,4 +159,79 @@ export function couvertureDesConstats<T extends { cible: Cible | null }>(
     }
   }
   return { retenus, couverts };
+}
+
+/**
+ * Le temps maximal qu'une tolérance peut couvrir d'un seul geste.
+ *
+ * Une échéance est ce qui distingue une tolérance d'un oubli, et une échéance trop lointaine
+ * ne la distingue plus de rien : personne ne se souvient d'un écart admis pour cinq ans. Il
+ * reste possible d'en poser une autre à l'expiration, ce qui demande de redire pourquoi,
+ * et c'est exactement le but.
+ */
+export const TOLERANCE_MAX_JOURS = 180;
+
+const JOUR = 24 * 60 * 60 * 1000;
+
+/**
+ * Ce qu'une pose exige, et les cinq façons de la refuser.
+ *
+ * Les refus se nomment un par un plutôt que de rendre un booléen : c'est ce que l'écran
+ * affiche, et une phrase générique ferait recommencer le geste à l'aveugle.
+ */
+export function poseAdmissible(
+  demande: { cible: Cible | null; raison: string; echeance: Date },
+  dejaCouvertes: ReadonlySet<string>,
+  maintenant: Date,
+): Verdict {
+  if (demande.cible === null) {
+    return {
+      possible: false,
+      raison: "Cet écart ne se tolère pas : il porte sur ce qui a été déclaré, pas sur un accès.",
+    };
+  }
+  if (demande.raison.trim().length < 3) {
+    return { possible: false, raison: "Dites pourquoi cet écart est admis." };
+  }
+
+  const jour = jourUTC(maintenant);
+  const echeance = jourUTC(demande.echeance);
+  if (Number.isNaN(echeance)) {
+    return { possible: false, raison: "Cette échéance n'est pas une date." };
+  }
+  if (echeance < jour) {
+    return { possible: false, raison: "Cette échéance est déjà passée." };
+  }
+  if (echeance > jour + TOLERANCE_MAX_JOURS * JOUR) {
+    return {
+      possible: false,
+      raison: `Une tolérance ne couvre pas plus de ${TOLERANCE_MAX_JOURS} jours : au-delà, elle ne se distingue plus d'un oubli.`,
+    };
+  }
+  if (dejaCouvertes.has(cleDeCible(demande.cible))) {
+    return { possible: false, raison: "Cet écart est déjà toléré." };
+  }
+  return { possible: true };
+}
+
+/**
+ * Ce qu'une levée exige.
+ *
+ * Une tolérance éteinte ne se lève pas : le geste n'aurait rien à couper, et il laisserait
+ * au journal la trace d'une décision que personne n'a eu à prendre.
+ */
+export function leveeAdmissible(derogation: Derogation, maintenant: Date): Verdict {
+  if (derogation.provenance === "politique") {
+    return {
+      possible: false,
+      raison: "Cette tolérance est déclarée dans la politique : elle se retire de son fichier.",
+    };
+  }
+  if (derogation.leveeLe !== null) {
+    return { possible: false, raison: "Cette tolérance est déjà levée." };
+  }
+  if (derogationsEnCours([derogation], maintenant).length === 0) {
+    return { possible: false, raison: "Cette tolérance est déjà éteinte." };
+  }
+  return { possible: true };
 }
