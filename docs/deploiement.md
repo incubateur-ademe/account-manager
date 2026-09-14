@@ -662,7 +662,7 @@ Dans les logs du conteneur, la séquence attendue est :
 [demarrage] application des migrations Prisma
 ... Applying migration `<timestamp>_init`
 [demarrage] migrations a jour
-   ▲ Next.js 16.3.0
+   ▲ Next.js 16.3.5
    - Local: http://0.0.0.0:3000
 ```
 

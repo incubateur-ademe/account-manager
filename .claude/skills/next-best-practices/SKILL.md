@@ -10,7 +10,7 @@ Reference a appliquer quand on ecrit ou qu'on relit du code Next.js dans ce proj
 
 ## Contexte du projet
 
-- Next 16.3.0, React 19.2.8, TypeScript 7, App Router uniquement.
+- Next 16.3.5, React 19.2.8, TypeScript 7, App Router uniquement.
 - `output: "standalone"` et `reactStrictMode: true` (voir `next.config.ts`). Le projet est autoheberge, pas sur Vercel.
 - `cacheComponents` n'est **pas** active. Le skill `next-cache-components` decrit ce qu'il faudrait faire si on l'activait, ce n'est pas l'etat courant.
 - L'UI passe par `react-dsfr`. La separation client/serveur du DSFR vit dans `src/ui/dsfr/`, ne la contourne pas.
