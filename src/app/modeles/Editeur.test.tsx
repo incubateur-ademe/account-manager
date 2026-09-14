@@ -146,10 +146,17 @@ describe("L'éditeur d'un modèle de plan", () => {
     // `FormData` se lit dans le DOM : si une liste y retombait sur sa première option,
     // corriger sa saisie après ce refus et renvoyer expédierait un rôle que personne
     // n'a choisi, sans que rien ne le dise.
-    const apresRefus = Object.fromEntries(
-      new FormData(champs.titre.closest("form") as HTMLFormElement),
-    );
-    expect(apresRefus).toMatchObject({ acteur: "SUBJECT", controleur: "DELEGATE" });
+    // Attendue et non lue au vol : ce qui rétablit les listes après la remise à zéro
+    // passe par un effet, donc par un commit plus tardif que celui où le refus paraît.
+    // Lire tout de suite épinglait la fenêtre qui sépare les deux, où la sélection est
+    // défaite et l'état encore juste, et faisait tomber ce scénario environ une fois sur
+    // douze, d'autant plus volontiers que les autres fichiers chargeaient la machine.
+    await vi.waitFor(() => {
+      const apresRefus = Object.fromEntries(
+        new FormData(champs.titre.closest("form") as HTMLFormElement),
+      );
+      expect(apresRefus).toMatchObject({ acteur: "SUBJECT", controleur: "DELEGATE" });
+    });
 
     // When la même déclaration est acceptée.
     doubles.ajouter.mockResolvedValueOnce({});
@@ -259,7 +266,21 @@ describe("L'éditeur d'un modèle de plan", () => {
 
     // Then et l'identifiant que l'action lit pour savoir quelle étape réécrire : sans
     // lui, l'enregistrement suivant répondrait « Étape inconnue ».
-    const porte = Object.fromEntries(new FormData(titre.closest("form") as HTMLFormElement));
-    expect(porte).toMatchObject({ etapeId: "etp-1", titre: "Signer la charte" });
+    //
+    // Le rôle et le contrôle sont demandés ici aussi, et attendus comme à l'ajout : ce
+    // sont les seules clés que la remise à zéro défait, si bien que les réclamer sans
+    // attendre faisait tomber ce scénario deux fois sur quatorze. Ne demander que les
+    // deux autres le rendait vert à coup sûr, mais pour la mauvaise raison, React tenant
+    // un champ texte ou caché synchronisé tout du long : le scénario promet que rien
+    // n'est perdu, et se contentait de regarder ce qui ne pouvait pas l'être.
+    await vi.waitFor(() => {
+      const porte = Object.fromEntries(new FormData(titre.closest("form") as HTMLFormElement));
+      expect(porte).toMatchObject({
+        etapeId: "etp-1",
+        titre: "Signer la charte",
+        acteur: "SUBJECT",
+        controleur: "OPERATOR",
+      });
+    });
   });
 });

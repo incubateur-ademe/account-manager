@@ -58,6 +58,23 @@ export default defineConfig({
     // vérification verte en ne jouant rien, ce qui est le seul échec qu'une suite de
     // tests ne sait pas signaler d'elle-même.
     passWithNoTests: false,
+    /**
+     * Quatre fois le défaut, parce que cinq secondes ne sont pas une durée mais une
+     * marge, et que celle-ci était déjà consommée.
+     *
+     * Le scénario le plus lourd du dépôt pilote un vrai DOM sur une trentaine de gestes :
+     * une seconde et demie joué seul, quatre au milieu des soixante-seize autres fichiers,
+     * pour un plafond à cinq. Il ne débordait donc pas parce qu'il allait mal, mais parce
+     * qu'il travaillait pendant que la machine faisait autre chose, et il tombait environ
+     * une fois sur trois sur un poste chargé. Un échec dont la cause est le nombre de
+     * cœurs libres n'apprend rien et finit par se relancer sans se lire.
+     *
+     * Ce que ce plafond ne masque pas : il reste un garde-fou contre l'attente qui ne
+     * finit jamais, et un scénario bloqué échoue toujours, seulement plus tard. Il ne
+     * rattrape aucune assertion fausse, un test qui se trompe se trompant aussi vite
+     * qu'avant.
+     */
+    testTimeout: 20_000,
     projects: [
       {
         extends: true,
