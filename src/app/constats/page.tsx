@@ -2,17 +2,32 @@ import { fr } from "@codegouvfr/react-dsfr";
 import type { Metadata } from "next";
 
 import type { ConstatKind } from "@/core/constat";
+import { TOLERANCE_MAX_JOURS } from "@/core/derogation";
 import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
 import { profilsOfferts } from "@/lib/arrivee";
 import { prisma } from "@/lib/db";
+import { derogationsApplicables } from "@/lib/derogation";
 import { requireOperateur } from "@/lib/session";
 import { dateFr } from "@/ui/dates";
 
+import { EcartsToleres, type LigneTolerance } from "./EcartsToleres";
 import { FileDesConstats, type LigneConstat } from "./FileDesConstats";
 
 export const metadata: Metadata = { title: "Constats" };
 
 export const dynamic = "force-dynamic";
+
+/**
+ * L'échéance la plus lointaine qu'une pose accepte, calculée par le serveur.
+ *
+ * Le champ de saisie la porte en `max`, et la calculer au rendu client ferait diverger le
+ * HTML servi de celui qu'hydrate le navigateur dès que les deux horloges ne tombent pas
+ * sur le même jour.
+ */
+function dernierJour(maintenant: Date): string {
+  const borne = new Date(maintenant.getTime() + TOLERANCE_MAX_JOURS * 24 * 60 * 60 * 1000);
+  return borne.toISOString().slice(0, 10);
+}
 
 export default async function ConstatsPage({
   searchParams,
@@ -34,6 +49,49 @@ export default async function ConstatsPage({
       person: { select: { username: true, fullname: true } },
       externalIdentity: { select: { provider: true, handle: true } },
     },
+  });
+
+  // Les tolérances en cours, et de quoi les lire : une cible porte l'identifiant du
+  // fournisseur, qui ne se lit pas. Le nom d'usage se retrouve par la collecte, et son
+  // absence est une information à part entière, la tolérance ne couvrant alors plus rien.
+  const maintenant = new Date();
+  const { applicables } = await derogationsApplicables(maintenant);
+  const comptes = applicables.filter((tolerance) => tolerance.cible.type === "identite");
+  const observes =
+    comptes.length === 0
+      ? []
+      : await prisma.externalIdentity.findMany({
+          where: {
+            OR: comptes.map((tolerance) =>
+              tolerance.cible.type === "identite"
+                ? { provider: tolerance.cible.provider, externalId: tolerance.cible.externalId }
+                : {},
+            ),
+          },
+          select: { provider: true, externalId: true, handle: true },
+        });
+  const handles = new Map(
+    observes.map((identite) => [`${identite.provider}:${identite.externalId}`, identite.handle]),
+  );
+
+  const tolerances: LigneTolerance[] = applicables.map((tolerance) => {
+    const cle =
+      tolerance.cible.type === "identite"
+        ? `${tolerance.cible.provider}:${tolerance.cible.externalId}`
+        : tolerance.cible.username;
+    const handle = tolerance.cible.type === "identite" ? handles.get(cle) : cle;
+    return {
+      id: tolerance.id,
+      cible:
+        tolerance.cible.type === "identite"
+          ? `${tolerance.cible.provider} : ${handle ?? tolerance.cible.externalId}`
+          : cle,
+      introuvable: tolerance.cible.type === "identite" && handle === undefined,
+      raison: tolerance.raison,
+      responsable: tolerance.responsable,
+      permanente: tolerance.provenance === "politique",
+      jusquAu: tolerance.echeance === null ? null : dateFr.format(tolerance.echeance),
+    };
   });
 
   const ordre = { HIGH: 0, MEDIUM: 1, LOW: 2 } as const;
@@ -86,6 +144,7 @@ export default async function ConstatsPage({
           <FileDesConstats
             lignes={lignes}
             profils={profilsOfferts()}
+            dernierJourTolere={dernierJour(maintenant)}
             {...(typeof designe === "string" ? { designe } : {})}
           />
 
@@ -114,6 +173,8 @@ export default async function ConstatsPage({
           })}
         </>
       )}
+
+      <EcartsToleres lignes={tolerances} />
     </main>
   );
 }

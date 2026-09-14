@@ -7,7 +7,7 @@ import { createModal } from "@codegouvfr/react-dsfr/Modal";
 import Link from "next/link";
 import { useState } from "react";
 import { FormulaireOuverture } from "@/app/dossiers/FormulaireOuverture";
-import type { ConstatKind } from "@/core/constat";
+import { type ConstatKind, SORTE_DE_CIBLE } from "@/core/constat";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 import type { RiskLevel } from "@/generated/prisma/enums";
 import styleActions from "@/ui/Actions.module.css";
@@ -19,6 +19,7 @@ import { TableCustom } from "@/ui/TableCustom";
 import style from "@/ui/TableCustom.module.css";
 
 import { ClotureConstat } from "./ClotureConstat";
+import { ToleranceConstat } from "./ToleranceConstat";
 
 export interface LigneConstat {
   id: string;
@@ -42,6 +43,10 @@ const modale = createModal({ id: "clore-constat", isOpenedByDefault: false });
 // de la fiche, montée par le même formulaire.
 const modaleArrivee = createModal({ id: "preparer-arrivee-constat", isOpenedByDefault: false });
 
+// Le geste jumeau de la clôture, et son contraire exact : celle-ci dit que la situation
+// est traitée, celle-là qu'elle dure et qu'on l'admet jusqu'à une date.
+const modaleTolerance = createModal({ id: "tolerer-constat", isOpenedByDefault: false });
+
 /**
  * Le formulaire de clôture vit dans une modale, et non dans chaque ligne.
  *
@@ -54,16 +59,21 @@ export function FileDesConstats({
   lignes,
   designe,
   profils,
+  dernierJourTolere,
 }: {
   lignes: readonly LigneConstat[];
   /** Clé du constat sur lequel une fiche vient de renvoyer. */
   designe?: string;
   /** Les profils qu'une arrivée peut appliquer, lus par le serveur qui monte cette file. */
   profils: ChoixDeProfils;
+  /** L'échéance la plus lointaine qu'une tolérance accepte, calculée par le serveur. */
+  dernierJourTolere: string;
 }) {
   const [choisi, setChoisi] = useState<LigneConstat | null>(null);
+  const [tolere, setTolere] = useState<LigneConstat | null>(null);
   const [arrivee, setArrivee] = useState<{ username: string; fullname: string } | null>(null);
   const ouvertureCloture = useCleDOuverture(modale);
+  const ouvertureTolerance = useCleDOuverture(modaleTolerance);
   const ouvertureArrivee = useCleDOuverture(modaleArrivee);
 
   return (
@@ -153,6 +163,21 @@ export function FileDesConstats({
                       {LIBELLE_DOSSIER.ONBOARDING.ouvrir}
                     </Button>
                   ) : null}
+                  {SORTE_DE_CIBLE[ligne.kind] === null ? null : (
+                    <Button
+                      priority="tertiary"
+                      size="small"
+                      nativeButtonProps={{
+                        ...modaleTolerance.buttonProps,
+                        id: `tolerer-${ligne.dedupKey}`,
+                        onClick: () => {
+                          setTolere(ligne);
+                        },
+                      }}
+                    >
+                      Tolérer
+                    </Button>
+                  )}
                   <Button
                     priority="secondary"
                     size="small"
@@ -207,6 +232,37 @@ export function FileDesConstats({
           </>
         )}
       </modale.Component>
+
+      <modaleTolerance.Component title="Tolérer cet écart">
+        {tolere === null ? null : (
+          <>
+            <p className={fr.cx("fr-text--lead", "fr-mb-1v")}>
+              {tolere.personne?.fullname ?? tolere.compte?.handle ?? "Cible inconnue"}
+            </p>
+            <p className={fr.cx("fr-text--sm", "fr-mb-2w")}>
+              {tolere.personne ? tolere.personne.username : null}
+              {tolere.personne && tolere.compte ? " · " : null}
+              {tolere.compte ? `${tolere.compte.provider} : ${tolere.compte.handle}` : null}
+            </p>
+
+            <p className={fr.cx("fr-mb-1w")}>
+              <strong>{tolere.titre}</strong>
+            </p>
+            <p className={fr.cx("fr-text--sm")}>{tolere.explication}</p>
+            <p className={fr.cx("fr-text--sm")}>
+              Tolérer ne dit pas que la situation est traitée, mais qu'elle est admise jusqu'à une
+              date. L'écart quitte la file et y revient de lui-même le lendemain du dernier jour
+              couvert, sans que personne ait à s'en souvenir.
+            </p>
+            <ToleranceConstat
+              key={`${ouvertureTolerance}:${tolere.id}`}
+              dedupKey={tolere.dedupKey}
+              dernierJour={dernierJourTolere}
+              onSucces={modaleTolerance.close}
+            />
+          </>
+        )}
+      </modaleTolerance.Component>
 
       <modaleArrivee.Component title={LIBELLE_DOSSIER.ONBOARDING.ouvrir}>
         {arrivee === null ? null : (
