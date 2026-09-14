@@ -332,6 +332,12 @@ départ-là demande de l'ajouter le moment venu. La seconde suffit tant que cet 
 possible sans la personne qui part, ce qui cesse d'être vrai si elle est seule à tenir
 l'hébergeur.
 
+**La branche retenue est la seconde** : aucun second nom n'est gardé en permanence, et ce
+départ-là demandera d'en ajouter un le moment venu. Elle ne tient qu'à une condition, et
+c'est elle qu'il faut surveiller : que l'ajout reste possible sans la personne qui part. Le
+jour où une seule personne tient l'accès à l'hébergeur, cette branche cesse d'être
+praticable, et il faut basculer sur l'autre avant ce jour-là plutôt qu'après.
+
 ### Avant la mise en service de l'acteur attendu et du valideur
 
 **Consigne à usage unique**, pour la release qui introduit `expectedActor` et
@@ -860,9 +866,9 @@ base.
 
 ## Ce qui reste incertain
 
-Rien de ce qui suit n'a pu être vérifié en conditions réelles : il n'existe aucune
-application maison déployée sur ce Coolify, et rien de ce document n'a encore tourné
-sur l'instance. Ce sont les points à surveiller au premier déploiement.
+L'application est déployée sur cette instance. Ce qui suit a été écrit avant sa mise en
+service, quand rien de ce document n'avait encore tourné, et n'a pas été rejugé depuis :
+chacun de ces points est à confirmer sur le déploiement en place plutôt qu'à découvrir.
 
 **L'image a été construite et exécutée en local**, contre la base de développement.
 Ce qui suit a été vérifié : les quatre étapes passent, le point d'entrée applique les
