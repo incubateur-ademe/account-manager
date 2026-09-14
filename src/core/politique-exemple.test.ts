@@ -27,12 +27,13 @@ describe("le fichier de politique d'exemple", () => {
     expect(verdict.error?.issues ?? []).toEqual([]);
     expect(verdict.success).toBe(true);
 
-    // Then la dérogation qu'il montre porte une cible de la forme que la réconciliation
-    // sait apparier : un exemple qui montrerait un nom d'usage apprendrait à tout le
-    // monde le geste qui se casse au premier renommage.
+    // Then la dérogation qu'il montre porte la cible exacte que la réconciliation sait
+    // apparier, et la valeur entière est épinglée plutôt que sa forme : un exemple qui
+    // montrerait un nom d'usage apprendrait à tout le monde le geste qui se casse au
+    // premier renommage, et « quelque chose avant un deux-points » ne l'empêcherait pas.
     const [derogation] = verdict.data?.permanentDerogations ?? [];
     expect(derogation?.targetType).toBe("identite");
-    expect(derogation?.targetId).toMatch(/^[a-z0-9-]+:.+$/);
+    expect(derogation?.targetId).toBe("github:MDQ6VXNlcjEwNDI=");
     expect(derogation?.reason).not.toBe("");
     expect(derogation?.owner).not.toBe("");
   });
