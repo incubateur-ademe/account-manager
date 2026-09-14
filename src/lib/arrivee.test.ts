@@ -60,8 +60,8 @@ vi.mock("@/lib/policy", () => ({
 
 vi.mock("@/lib/audit", () => ({ audit: () => {} }));
 
-vi.mock("@/lib/db", () => ({
-  prisma: {
+vi.mock("@/lib/db", async () =>
+  (await import("@/test/doubles/db")).doublerBase({
     person: {
       findUnique: () =>
         Promise.resolve({ githubLogin: base.githubLogin, startups: [], startupAssignments: [] }),
@@ -84,8 +84,8 @@ vi.mock("@/lib/db", () => ({
         return Promise.resolve({ id: data.id });
       },
     },
-  },
-}));
+  }),
+);
 
 const ORGANISATION = "incubateur-ademe";
 const USERNAME = "camille.rivet";

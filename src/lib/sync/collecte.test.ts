@@ -138,23 +138,24 @@ vi.mock("@/lib/db", () => ({
         base.identites.push(identite);
         return Promise.resolve(identite);
       },
-      count: ({ where }: { where: { provider: string } }) =>
+      count: ({ where }: { where: { provider: string; vanishedAt: null } }) =>
         Promise.resolve(
           base.identites.filter(
-            (identite) => identite.provider === where.provider && identite.vanishedAt === null,
+            (identite) =>
+              identite.provider === where.provider && identite.vanishedAt === where.vanishedAt,
           ).length,
         ),
       updateMany: ({
         where,
         data,
       }: {
-        where: { provider: string; externalId: { notIn: readonly string[] } };
+        where: { provider: string; externalId: { notIn: readonly string[] }; vanishedAt: null };
         data: { vanishedAt: Date };
       }) => {
         const parties = base.identites.filter(
           (identite) =>
             identite.provider === where.provider &&
-            identite.vanishedAt === null &&
+            identite.vanishedAt === where.vanishedAt &&
             !where.externalId.notIn.includes(identite.externalId),
         );
         for (const identite of parties) {

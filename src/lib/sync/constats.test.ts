@@ -25,13 +25,6 @@ interface PlanEnBase {
   steps: { executedAt: Date | null }[];
 }
 
-interface DossierEnBase {
-  kind: string;
-  state: string;
-  closedAt: Date | null;
-  username: string;
-}
-
 /** Une fiche telle que la base la porte : les deux chemins de lecture y puisent. */
 interface FicheEnBase {
   username: string;
@@ -68,7 +61,6 @@ interface FiltreConstats {
 const base = vi.hoisted(() => ({
   constats: [] as ConstatEnBase[],
   plans: [] as PlanEnBase[],
-  dossiers: [] as DossierEnBase[],
   fiches: [] as FicheEnBase[],
   etapes: [] as EtapeEnBase[],
   relectures: [] as { provider: string; startedAt: Date }[],
@@ -76,7 +68,7 @@ const base = vi.hoisted(() => ({
   journal: [] as { action: string; targetId: string | null }[],
 }));
 
-vi.mock("@/lib/db", () => {
+vi.mock("@/lib/db", async () => {
   const correspond = (constat: ConstatEnBase, where: FiltreConstats): boolean => {
     if (!where.kind.in.includes(constat.kind)) {
       return false;
@@ -93,153 +85,146 @@ vi.mock("@/lib/db", () => {
     return true;
   };
 
-  return {
-    prisma: {
-      finding: {
-        findMany: ({ where }: { where: FiltreConstats }) =>
-          Promise.resolve(base.constats.filter((constat) => correspond(constat, where))),
-        updateMany: ({ where }: { where: { id: { in: string[] } } }) => {
-          for (const constat of base.constats) {
-            if (where.id.in.includes(constat.id)) {
-              constat.closedBy = null;
-            }
+  // `accessCase` n'est pas doublé, et c'est la garantie plutôt que l'oubli : une
+  // clôture ne décide pas d'une arrivée, sans quoi un départ soldé ferait souhaiter
+  // la bienvenue à la personne qu'on vient d'offboarder. La barrière lève en nommant
+  // le modèle le jour où une lecture s'y risquerait.
+  const { doublerBase } = await import("@/test/doubles/db");
+  return doublerBase({
+    finding: {
+      findMany: ({ where }: { where: FiltreConstats }) =>
+        Promise.resolve(base.constats.filter((constat) => correspond(constat, where))),
+      updateMany: ({ where }: { where: { id: { in: string[] } } }) => {
+        for (const constat of base.constats) {
+          if (where.id.in.includes(constat.id)) {
+            constat.closedBy = null;
           }
-          return Promise.resolve({ count: where.id.in.length });
-        },
-        upsert: ({
-          where,
-          create,
-        }: {
-          where: { dedupKey: string };
-          create: { kind: string; severity: string; openedAt: Date };
-        }) => {
-          const existant = base.constats.find((constat) => constat.dedupKey === where.dedupKey);
-          if (existant) {
-            existant.kind = create.kind;
-            existant.openedAt = create.openedAt;
-            existant.closedAt = null;
-            existant.closeReason = null;
-            return Promise.resolve(existant);
-          }
-          const constat: ConstatEnBase = {
-            id: `f-${base.constats.length + 1}`,
-            kind: create.kind,
-            dedupKey: where.dedupKey,
-            openedAt: create.openedAt,
-            closedAt: null,
-            closeReason: null,
-            closedBy: null,
-          };
-          base.constats.push(constat);
-          return Promise.resolve(constat);
-        },
-        update: ({
-          where,
-          data,
-        }: {
-          where: { id: string };
-          data: { closedAt: Date; closeReason: string };
-        }) => {
-          const constat = base.constats.find((candidat) => candidat.id === where.id);
-          if (constat) {
-            constat.closedAt = data.closedAt;
-            constat.closeReason = data.closeReason;
-          }
-          return Promise.resolve(constat);
-        },
+        }
+        return Promise.resolve({ count: where.id.in.length });
       },
-      person: {
-        findUnique: ({ where }: { where: { username: string } }) =>
-          Promise.resolve({ id: `p-${where.username}` }),
+      upsert: ({
+        where,
+        create,
+      }: {
+        where: { dedupKey: string };
+        create: { kind: string; severity: string; openedAt: Date };
+      }) => {
+        const existant = base.constats.find((constat) => constat.dedupKey === where.dedupKey);
+        if (existant) {
+          existant.kind = create.kind;
+          existant.openedAt = create.openedAt;
+          existant.closedAt = null;
+          existant.closeReason = null;
+          return Promise.resolve(existant);
+        }
+        const constat: ConstatEnBase = {
+          id: `f-${base.constats.length + 1}`,
+          kind: create.kind,
+          dedupKey: where.dedupKey,
+          openedAt: create.openedAt,
+          closedAt: null,
+          closeReason: null,
+          closedBy: null,
+        };
+        base.constats.push(constat);
+        return Promise.resolve(constat);
       },
-      plan: {
-        findMany: ({ where }: { where: { kind: string; state: string } }) =>
-          Promise.resolve(
-            base.plans
-              .filter(
-                (plan) =>
-                  plan.kind === where.kind &&
-                  plan.state === where.state &&
-                  plan.caseKind === where.kind,
-              )
-              .map((plan) => ({
-                confirmedAt: plan.confirmedAt,
-                steps: plan.steps,
-                accessCase: { person: { username: plan.username } },
-              })),
-          ),
-      },
-      accessCase: {
-        findMany: ({ where }: { where: { kind: string; state: string } }) =>
-          Promise.resolve(
-            base.dossiers
-              .filter(
-                (dossier) =>
-                  dossier.kind === where.kind &&
-                  dossier.state === where.state &&
-                  dossier.closedAt !== null,
-              )
-              .map((dossier) => ({
-                closedAt: dossier.closedAt,
-                person: { username: dossier.username },
-              })),
-          ),
-      },
-      planStep: {
-        findMany: ({ where }: { where: { state: string; validation: { notIn: string[] } } }) =>
-          Promise.resolve(
-            base.etapes
-              .filter(
-                (etape) =>
-                  etape.state === where.state &&
-                  etape.executedAt !== null &&
-                  !where.validation.notIn.includes(etape.validation),
-              )
-              .map((etape) => {
-                const fiche = base.fiches.find(
-                  (candidate) => candidate.username === etape.username,
-                );
-                return {
-                  label: etape.label,
-                  systemKey: etape.systemKey,
-                  executedAt: etape.executedAt,
-                  plan: {
-                    accessCase: {
-                      kind: etape.caseKind,
-                      state: etape.caseState,
-                      person: fiche
-                        ? {
-                            username: fiche.username,
-                            returnedAt: fiche.returnedAt,
-                            identities: fiche.comptes.map((provider) => ({
-                              provider,
-                              vanishedAt: null,
-                            })),
-                          }
-                        : null,
-                    },
-                  },
-                };
-              }),
-          ),
-      },
-      syncRun: {
-        findFirst: ({ where }: { where: { provider: string; itemsSeen: { gt: number } } }) => {
-          const candidats = base.runs
-            .filter((run) => run.provider === where.provider && run.itemsSeen > where.itemsSeen.gt)
-            .sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime());
-          return Promise.resolve(candidats[0] ?? null);
-        },
-        findMany: () => Promise.resolve(base.relectures),
-      },
-      auditEvent: {
-        create: ({ data }: { data: { action: string; targetId: string | null } }) => {
-          base.journal.push({ action: data.action, targetId: data.targetId });
-          return Promise.resolve(data);
-        },
+      update: ({
+        where,
+        data,
+      }: {
+        where: { id: string };
+        data: { closedAt: Date; closeReason: string };
+      }) => {
+        const constat = base.constats.find((candidat) => candidat.id === where.id);
+        if (constat) {
+          constat.closedAt = data.closedAt;
+          constat.closeReason = data.closeReason;
+        }
+        return Promise.resolve(constat);
       },
     },
-  };
+    person: {
+      findUnique: ({ where }: { where: { username: string } }) =>
+        Promise.resolve({ id: `p-${where.username}` }),
+    },
+    plan: {
+      findMany: ({ where }: { where: { kind: string; state: string } }) =>
+        Promise.resolve(
+          base.plans
+            .filter(
+              (plan) =>
+                plan.kind === where.kind &&
+                plan.state === where.state &&
+                plan.caseKind === where.kind,
+            )
+            .map((plan) => ({
+              confirmedAt: plan.confirmedAt,
+              steps: plan.steps,
+              accessCase: { person: { username: plan.username } },
+            })),
+        ),
+    },
+    planStep: {
+      findMany: ({
+        where,
+      }: {
+        where: {
+          state: string;
+          executedAt: { not: null };
+          validation: { notIn: string[] };
+        };
+      }) =>
+        Promise.resolve(
+          base.etapes
+            .filter(
+              (etape) =>
+                etape.state === where.state &&
+                etape.executedAt !== where.executedAt.not &&
+                !where.validation.notIn.includes(etape.validation),
+            )
+            .map((etape) => {
+              const fiche = base.fiches.find((candidate) => candidate.username === etape.username);
+              return {
+                label: etape.label,
+                systemKey: etape.systemKey,
+                executedAt: etape.executedAt,
+                plan: {
+                  accessCase: {
+                    kind: etape.caseKind,
+                    state: etape.caseState,
+                    person: fiche
+                      ? {
+                          username: fiche.username,
+                          returnedAt: fiche.returnedAt,
+                          identities: fiche.comptes.map((provider) => ({
+                            provider,
+                            vanishedAt: null,
+                          })),
+                        }
+                      : null,
+                  },
+                },
+              };
+            }),
+        ),
+    },
+    syncRun: {
+      findFirst: ({ where }: { where: { provider: string; itemsSeen: { gt: number } } }) => {
+        const candidats = base.runs
+          .filter((run) => run.provider === where.provider && run.itemsSeen > where.itemsSeen.gt)
+          .sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime());
+        return Promise.resolve(candidats[0] ?? null);
+      },
+      findMany: () => Promise.resolve(base.relectures),
+    },
+    auditEvent: {
+      create: ({ data }: { data: { action: string; targetId: string | null } }) => {
+        base.journal.push({ action: data.action, targetId: data.targetId });
+        return Promise.resolve(data);
+      },
+    },
+  });
 });
 
 const TERMINALES = ["abandon", "transfere"];
@@ -308,7 +293,6 @@ const cle = (dedupKey: string) => base.constats.find((constat) => constat.dedupK
 beforeEach(() => {
   base.constats.length = 0;
   base.plans.length = 0;
-  base.dossiers.length = 0;
   base.fiches.length = 0;
   base.etapes.length = 0;
   base.relectures.length = 0;
@@ -525,18 +509,6 @@ describe("les deux dates qui décident d'une arrivée", () => {
     };
     base.plans.push(accueilDAlex);
 
-    // Camille est là depuis toujours, et son départ vient d'être soldé. Sa fiche est
-    // pourtant toujours au référentiel, dont la liste des membres rend aussi les
-    // missions terminées : aucune disparition n'est datée, et ce dossier clos est le
-    // chemin normal du produit. Rien ne le lit ici, et c'est tout l'objet de sa
-    // présence en base : le jour où une clôture reviendrait décider d'une arrivée,
-    // elle souhaiterait la bienvenue à la personne qu'on vient d'offboarder.
-    base.dossiers.push({
-      kind: "OFFBOARDING",
-      state: "DONE",
-      closedAt: APRES_AMORCAGE,
-      username: "camille.rivet",
-    });
     // Son onboarding d'il y a deux semaines appartient au séjour d'avant.
     base.plans.push({
       kind: "ONBOARDING",
