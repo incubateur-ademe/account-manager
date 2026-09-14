@@ -1,11 +1,11 @@
 import { createRequire } from "node:module";
-import { EspaceMembreProvider } from "@incubateur-ademe/next-auth-espace-membre-provider";
-import Nodemailer from "next-auth/providers/nodemailer";
 import { createTransport } from "nodemailer";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PROVIDER_ADRESSE } from "@/lib/connexion";
 import { webEnv } from "@/lib/env";
+
+const ADRESSE_DE_LA_FICHE = "camille.durand@beta.gouv.invalid";
 
 /**
  * Ce que le paquet rend en mode brut, décrit ici plutôt qu'importé : `@auth/core` n'est
@@ -19,11 +19,8 @@ interface BrutDuPaquet {
 const requireDuDepot = createRequire(import.meta.url);
 const requireDuPaquet = createRequire(requireDuDepot.resolve("next-auth"));
 
-/** Ce qu'un transport aurait remis à un serveur, sans qu'aucune socket ne s'ouvre. */
-interface Remise {
-  enveloppe: { from?: string | false; to?: string[] };
-  entetes: string;
-}
+/** L'enveloppe qu'un transport aurait remise, sans qu'aucune socket ne s'ouvre. */
+type Enveloppe = { from?: string | false; to?: string[] };
 
 /**
  * Un transport qui compose pour de vrai et ne poste rien.
@@ -34,25 +31,29 @@ interface Remise {
  * déjà passé par `mail-composer` et `addressparser`, et c'est cette enveloppe-là,
  * calculée par le paquet et non par le test, que les scénarios inspectent.
  */
-function transportQuiCapture(remises: Remise[]): Record<string, unknown> {
+function transportQuiCapture(remises: Enveloppe[]): Record<string, unknown> {
   return {
     name: "capture-de-test",
     version: "1.0.0",
     send(
-      mail: { message: { getEnvelope: () => Remise["enveloppe"]; messageId: () => string } },
+      mail: { message: { getEnvelope: () => Enveloppe; messageId: () => string } },
       callback: (erreur: Error | null, info: Record<string, unknown>) => void,
     ) {
       const enveloppe = mail.message.getEnvelope();
-      remises.push({ enveloppe, entetes: mail.message.messageId() });
+      remises.push(enveloppe);
       callback(null, { envelope: enveloppe, messageId: mail.message.messageId(), accepted: [] });
     },
   };
 }
 
 describe("le chemin d'envoi du lien de connexion", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("comprend l'URL du serveur de courrier telle qu'elle est écrite", () => {
-    // Given l'URL que la configuration pose, celle-là même que `src/lib/auth.ts` passe
-    // aux deux fournisseurs.
+    // Given l'URL que la configuration pose, celle-là même que `src/lib/fournisseurs.ts`
+    // passe aux deux portes.
     // When le paquet la lit.
     const transport = createTransport(webEnv.SMTP_URL) as unknown as {
       options: { host?: string; port?: number; secure?: boolean };
@@ -91,40 +92,32 @@ describe("le chemin d'envoi du lien de connexion", () => {
 
   it("remet un message par chacune des deux portes, avec le bon destinataire dans l'enveloppe", async () => {
     // Given le paquet joué exactement comme `signIn` le joue, en processus, en mode brut
-    // et sans jeton anti-rejeu, avec les deux fournisseurs que `src/lib/auth.ts` déclare :
-    // le nu, qui envoie à l'adresse saisie, et celui que le wrapper de l'espace-membre
-    // enveloppe, qui envoie à l'adresse que l'annuaire porte sur la fiche.
-    //
-    // Le fournisseur est construit ici et non importé de `auth.ts` : ce dernier appelle
-    // `NextAuth()` au chargement et n'expose rien de sa configuration. Ce que ce scénario
-    // tient est donc le comportement du paquet sous cette forme d'appel, pas le fait que
-    // `auth.ts` l'appelle ainsi.
+    // et sans jeton anti-rejeu, avec les fournisseurs que `src/lib/fournisseurs.ts` déclare
+    // vraiment : un expéditeur ou une durée de lien qui changerait là-bas change ici, et
+    // une porte qu'on retirerait fait tomber ce scénario au lieu de le laisser vert.
     const { Auth, raw, skipCSRFCheck } = (await import(requireDuPaquet.resolve("@auth/core"))) as {
       Auth: (requete: Request, config: Record<string, unknown>) => Promise<BrutDuPaquet>;
       raw: unknown;
       skipCSRFCheck: unknown;
     };
 
-    const remises: Remise[] = [];
-    const serveur = transportQuiCapture(remises);
+    const remises: Enveloppe[] = [];
 
-    const ADRESSE_DE_LA_FICHE = "camille.durand@beta.gouv.invalid";
-
-    // L'annuaire est doublé au seul endroit qui sort : le `fetch` que le fournisseur
-    // reçoit. Le reste du client reste le vrai, si bien que la forme de fiche qu'il
-    // attend est celle qu'il lira en production.
-    const espaceMembre = EspaceMembreProvider({
-      fetch: (() =>
-        Promise.resolve(
-          Response.json({
-            username: "camille.durand",
-            communication_email: "primary",
-            primary_email: ADRESSE_DE_LA_FICHE,
-            secondary_email: null,
-          }),
-        )) as unknown as typeof fetch,
-      espaceMembreApiKey: "aucune-cle-en-test",
-    });
+    // L'annuaire est doublé au seul endroit qui sort de la machine, le `fetch` global que
+    // `fournisseurs.ts` passe au client à son chargement. Il est donc posé avant l'import, et le
+    // reste du client demeure le vrai : la forme de fiche qu'il sait lire ici est celle
+    // qu'il lira en production.
+    vi.stubGlobal("fetch", () =>
+      Promise.resolve(
+        Response.json({
+          username: "camille.durand",
+          communication_email: "primary",
+          primary_email: ADRESSE_DE_LA_FICHE,
+          secondary_email: null,
+        }),
+      ),
+    );
+    const { fournisseursDuLien } = await import("@/lib/fournisseurs");
 
     const config: Record<string, unknown> = {
       secret: "un-secret-de-test-assez-long-pour-etre-accepte",
@@ -132,10 +125,7 @@ describe("le chemin d'envoi du lien de connexion", () => {
       trustHost: true,
       adapter: adaptateurMuet(),
       session: { strategy: "jwt" },
-      providers: [
-        espaceMembre.ProviderWrapper(Nodemailer({ server: serveur, from: webEnv.SMTP_EMAIL_FROM })),
-        Nodemailer({ server: serveur, from: webEnv.SMTP_EMAIL_FROM, maxAge: 30 * 60 }),
-      ],
+      providers: fournisseursDuLien(transportQuiCapture(remises)),
       callbacks: { signIn: () => true },
     };
 
@@ -166,13 +156,20 @@ describe("le chemin d'envoi du lien de connexion", () => {
     // `candidatsPourAdresse` tient pour acquise en comparant les adresses par égalité
     // exacte : le lien part donc à l'adresse que le contrôle de droit vient de juger, et
     // pas à une variante de casse dont personne n'aurait vérifié l'accès.
-    expect(remises[0]?.enveloppe.to).toEqual(["camille.durand+etiquette@ademe.fr"]);
-    expect(remises[0]?.enveloppe.from).toBe(webEnv.SMTP_EMAIL_FROM);
+    expect(remises[0]?.to).toEqual(["camille.durand+etiquette@ademe.fr"]);
+    expect(remises[0]?.from).toBe(webEnv.SMTP_EMAIL_FROM);
 
     // Then l'enveloppe de la seconde ne porte pas l'identifiant saisi mais l'adresse que
     // l'annuaire déclare sur la fiche : c'est tout l'objet du wrapper, et un identifiant
     // qui arriverait tel quel dans le champ `to` serait un lien envoyé nulle part.
-    expect(remises[1]?.enveloppe.to).toEqual([ADRESSE_DE_LA_FICHE]);
+    expect(remises[1]?.to).toEqual([ADRESSE_DE_LA_FICHE]);
+
+    // Then le lien vaut une demi-heure et non la journée que le paquet donne par défaut.
+    // Épinglé ici parce que rien d'autre ne le tient : c'est une borne de sécurité, un
+    // lien étant un porteur, et elle se perdrait en revenant au défaut sans qu'aucun
+    // écran ni aucune erreur ne le signale.
+    const portes = fournisseursDuLien() as { options?: { maxAge?: number } }[];
+    expect(portes[1]?.options?.maxAge).toBe(30 * 60);
   });
 });
 
