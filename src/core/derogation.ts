@@ -174,6 +174,24 @@ export const TOLERANCE_MAX_JOURS = 180;
 const JOUR = 24 * 60 * 60 * 1000;
 
 /**
+ * Le jour qu'une saisie désigne, ou rien quand elle n'en désigne aucun.
+ *
+ * `new Date` ne refuse pas un 31 février : il rend le 3 mars, si bien qu'une requête
+ * directe enregistrerait une échéance que personne n'a demandée. La relecture de ce que la
+ * date rend est la seule façon d'attraper ça sans réécrire un calendrier.
+ */
+export function jourSaisi(valeur: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(valeur)) {
+    return null;
+  }
+  const jour = new Date(`${valeur}T00:00:00Z`);
+  if (Number.isNaN(jour.getTime()) || jour.toISOString().slice(0, 10) !== valeur) {
+    return null;
+  }
+  return jour;
+}
+
+/**
  * Ce qu'une pose exige, et les cinq façons de la refuser.
  *
  * Les refus se nomment un par un plutôt que de rendre un booléen : c'est ce que l'écran

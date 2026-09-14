@@ -4,6 +4,7 @@ import { SORTE_DE_CIBLE } from "@/core/constat";
 import {
   type Cible,
   cleDeCible,
+  jourSaisi,
   leveeAdmissible,
   poseAdmissible,
   RAISON_COUVERT,
@@ -122,9 +123,14 @@ export async function tolererConstat(
         ? { type: "personne", username: constat.person.username }
         : null;
 
+  const echeance = jourSaisi(jusquAu);
+  if (echeance === null) {
+    return { erreur: "Cette échéance n'est pas une date." };
+  }
+
   const { applicables } = await derogationsApplicables(maintenant);
   const verdict = poseAdmissible(
-    { cible, raison, echeance: new Date(`${jusquAu}T00:00:00Z`) },
+    { cible, raison, echeance },
     new Set(applicables.map((derogation) => cleDeCible(derogation.cible))),
     maintenant,
   );
@@ -158,16 +164,19 @@ export async function tolererConstat(
               cible.type === "identite" ? `${cible.provider}:${cible.externalId}` : cible.username,
             reason: raison,
             createdBy: operateur.username,
-            expiresAt: new Date(`${jusquAu}T00:00:00Z`),
+            expiresAt: echeance,
           },
         });
         // Fermé tout de suite plutôt qu'à la collecte suivante : l'écart cesse de faire
         // du bruit au moment où quelqu'un décide de l'admettre, et sans nom, parce que
         // personne n'a jugé la situation traitée.
-        await tx.finding.update({
-          where: { id: constat.id },
+        const ferme = await tx.finding.updateMany({
+          where: { id: constat.id, closedAt: null },
           data: { closedAt: maintenant, closeReason: RAISON_COUVERT, closedBy: null },
         });
+        if (ferme.count === 0) {
+          throw new Error("Ce constat vient d'être clos par ailleurs.");
+        }
       }),
   });
 
@@ -210,11 +219,17 @@ export async function leverDerogation(
     targetId: cleDeCible(derogation.cible),
     before: { jusquAu: derogation.echeance?.toISOString() ?? null },
     revalider: ["/constats", "/"],
+    // Conditionnée sur l'absence de levée : de deux levées lancées ensemble, la seconde
+    // n'écrase ni le nom ni l'heure de la première, et sa trace reste au journal en échec
+    // plutôt que de compter pour une décision qui n'a rien décidé.
     ecrire: async (operateur) => {
-      await prisma.derogation.update({
-        where: { id },
+      const levee = await prisma.derogation.updateMany({
+        where: { id, revokedAt: null },
         data: { revokedAt: maintenant, revokedBy: operateur.username },
       });
+      if (levee.count === 0) {
+        throw new Error("Cette tolérance vient d'être levée par ailleurs.");
+      }
     },
   });
 

@@ -6,6 +6,7 @@ import {
   couvertureDesConstats,
   type Derogation,
   derogationsEnCours,
+  jourSaisi,
   leveeAdmissible,
   lireCible,
   poseAdmissible,
@@ -259,5 +260,26 @@ describe("ce qu'une pose exige, et ce qu'une levée exige", () => {
 
     // Then et celle qui court se lève.
     expect(leveeAdmissible(toleree(), dans(1))).toEqual({ possible: true });
+  });
+});
+
+describe("la date qu'une saisie désigne", () => {
+  it("refuse ce qui n'existe pas au calendrier plutôt que de le déplacer", () => {
+    // Then une date ordinaire revient telle quelle,
+    expect(jourSaisi("2026-01-31")?.toISOString()).toBe("2026-01-31T00:00:00.000Z");
+    expect(jourSaisi("2028-02-29")?.toISOString()).toBe("2028-02-29T00:00:00.000Z");
+
+    // Then un jour qui n'existe pas se refuse au lieu de glisser sur le suivant : sans
+    // cette relecture, un 31 février enregistrerait le 3 mars, donc une échéance que
+    // personne n'a demandée,
+    expect(jourSaisi("2026-02-31")).toBeNull();
+    expect(jourSaisi("2026-04-31")).toBeNull();
+    expect(jourSaisi("2027-02-29")).toBeNull();
+    expect(jourSaisi("2026-13-01")).toBeNull();
+
+    // Then et ce qui n'a pas la forme d'un jour non plus.
+    for (const saisie of ["", "2026-1-5", "31/01/2026", "2026-01-31T12:00:00Z", "demain"]) {
+      expect(jourSaisi(saisie)).toBeNull();
+    }
   });
 });

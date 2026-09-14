@@ -99,7 +99,10 @@ export function EcartsToleres({ lignes }: { lignes: readonly LigneTolerance[] })
                 ligne.jusquAu
               ),
             },
-            { children: ligne.permanente ? null : <Levee id={ligne.id} /> },
+            // Une cellule vide plutôt qu'aucune : `TableCustom` retire celles dont le
+            // contenu vaut `null`, et une ligne à quatre cellules sous cinq en-têtes
+            // désaligne les colonnes pour qui lit la table autrement qu'à l'œil.
+            { children: ligne.permanente ? "" : <Levee id={ligne.id} /> },
           ],
         }))}
       />
