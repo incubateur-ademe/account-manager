@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuditInput } from "@/core/audit";
-
+import { operatrice, participant } from "@/test/doubles/session";
 import { actionTracee } from "./actions";
+
 import type { Utilisateur } from "./session";
 
 /**
@@ -17,20 +18,12 @@ const base = vi.hoisted(() => ({
   journal: [] as { actorUsername?: string; result: string; after: unknown }[],
 }));
 
-function refus(): Promise<never> {
-  const digest = "NEXT_REDIRECT;replace;/login;307;";
-  const erreur = new Error(digest);
-  Object.assign(erreur, { digest });
-  return Promise.reject(erreur);
-}
-
-vi.mock("@/lib/session", () => ({
-  requireOperateur: () => {
-    base.gardes.push("requireOperateur");
-    const session = base.session as Utilisateur | null;
-    return session?.operateur === true ? Promise.resolve(session) : refus();
-  },
-}));
+vi.mock("@/lib/session", async () =>
+  (await import("@/test/doubles/session")).doublerSession({
+    lire: () => base.session as Utilisateur | null,
+    relever: (porte) => base.gardes.push(porte),
+  }),
+);
 
 vi.mock("@/lib/audit", () => ({
   audit: (entree: AuditInput) => {
@@ -52,26 +45,12 @@ vi.mock("next/cache", () => ({
 const DOSSIER = "dos_0000000000000000000000";
 const FICHE = "per_0000000000000000000000";
 
-function operatrice(): Utilisateur {
-  return {
-    username: "operatrice.exemple",
-    email: null,
-    nom: null,
-    personId: null,
-    voie: "ESPACE_MEMBRE",
-    operateur: true,
-  };
-}
-
 function participante(): Utilisateur {
-  return {
+  return participant({
     username: "camille.exemple",
     email: "camille@exemple.org",
-    nom: null,
     personId: FICHE,
-    voie: "ADRESSE",
-    operateur: false,
-  };
+  });
 }
 
 beforeEach(() => {

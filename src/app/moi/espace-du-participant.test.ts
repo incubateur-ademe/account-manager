@@ -6,6 +6,8 @@ import PageNonTrouveeDuParticipant from "@/app/moi/not-found";
 import MonEspacePage from "@/app/moi/page";
 import type { Acteur, Verdict } from "@/core/dossier";
 import { dossiersOuvertsPour } from "@/lib/participation";
+import type { Utilisateur } from "@/lib/session";
+import { participant } from "@/test/doubles/session";
 
 /**
  * Ce qu'un non-opérateur voit de l'outil, des deux côtés de la frontière : la liste de
@@ -46,14 +48,8 @@ interface DossierEnBase {
 }
 
 const base = vi.hoisted(() => ({
-  utilisateur: {
-    username: "lead.exemple",
-    email: null as string | null,
-    nom: null as string | null,
-    personId: "personne-lead" as string | null,
-    voie: "ADRESSE" as "ADRESSE" | "ESPACE_MEMBRE",
-    operateur: false,
-  },
+  /** Posée par la mise en place, la fabrique partagée ne survivant pas au hissage. */
+  utilisateur: undefined as unknown as Utilisateur,
   droits: [] as DroitEnBase[],
   dossiers: [] as DossierEnBase[],
   /** Ce que la page a lu, pour dire si la garde a bien parlé avant la requête. */
@@ -62,9 +58,9 @@ const base = vi.hoisted(() => ({
   colonnes: [] as string[],
 }));
 
-vi.mock("@/lib/session", () => ({
-  requireUtilisateur: () => Promise.resolve(base.utilisateur),
-}));
+vi.mock("@/lib/session", async () =>
+  (await import("@/test/doubles/session")).doublerSession({ lire: () => base.utilisateur }),
+);
 
 function dossierDe(id: string): DossierEnBase | undefined {
   return base.dossiers.find((dossier) => dossier.id === id);
@@ -273,14 +269,7 @@ function rendre(id: string): Promise<unknown> {
 }
 
 beforeEach(() => {
-  base.utilisateur = {
-    username: "lead.exemple",
-    email: null,
-    nom: null,
-    personId: "personne-lead",
-    voie: "ADRESSE",
-    operateur: false,
-  };
+  base.utilisateur = participant({ username: "lead.exemple", personId: "personne-lead" });
   base.droits.length = 0;
   base.dossiers.length = 0;
   base.lectures.length = 0;

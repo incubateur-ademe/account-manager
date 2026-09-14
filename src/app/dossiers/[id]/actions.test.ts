@@ -13,8 +13,8 @@ import type {
 } from "@/core/dossier";
 import { peutClore } from "@/core/dossier";
 import { calculerPlan, enregistrerPlan } from "@/lib/dossier";
-
 import type { ResultatDExecution } from "@/lib/execution";
+import { operatrice } from "@/test/doubles/session";
 
 import {
   cloreDossier,
@@ -163,27 +163,19 @@ vi.mock("@/lib/execution", () => ({
   },
 }));
 
-vi.mock("@/lib/session", () => {
-  const session = () =>
-    Promise.resolve({
-      username: base.operateur,
-      email: null,
-      nom: null,
-      personId: base.sessionPersonId,
-      voie: base.sessionOperateur ? "ESPACE_MEMBRE" : "ADRESSE",
-      operateur: base.sessionOperateur,
-    });
-
-  return {
-    requireUtilisateur: session,
-    // Elle redirige plutôt que de rendre une session sans qualité d'opérateur : une
-    // action réservée à l'équipe qu'un participant atteindrait doit casser ici, et
-    // non rendre un verdict que le test lirait comme une règle métier.
-    requireOperateur: () =>
+// Le refus vient du double partagé, qui transcrit la vraie garde : une action réservée
+// à l'équipe qu'un participant atteindrait casse ici plutôt que de rendre un verdict que
+// le scénario lirait comme une règle métier. Écrit sur place, ce refus portait une phrase
+// de son cru, que l'assertion d'en bas relisait : le scénario vérifiait alors le harnais
+// contre lui-même.
+vi.mock("@/lib/session", async () => {
+  const { doublerSession, operatrice, participant } = await import("@/test/doubles/session");
+  return doublerSession({
+    lire: () =>
       base.sessionOperateur
-        ? session()
-        : Promise.reject(new Error("redirection vers /moi : session sans qualité d'opérateur")),
-  };
+        ? operatrice({ username: base.operateur, personId: base.sessionPersonId })
+        : participant({ username: base.operateur, personId: base.sessionPersonId }),
+  });
 });
 
 function dossierDuPlan(plan: PlanEnBase) {
@@ -2459,14 +2451,7 @@ describe("lancer l'exécution d'un plan, et ce que l'opérateur emporte avec lui
     // deux valeurs prélevées dessus. C'est le seul endroit du geste où le couple se
     // compose : le passage tracé n'écrit sa voie que d'après ce qu'on lui remet, et
     // aucune signature ne dira jamais d'où viennent ces deux champs
-    expect(base.lancements[0]?.options["operateur"]).toEqual({
-      username: "operatrice.exemple",
-      email: null,
-      nom: null,
-      personId: null,
-      voie: "ESPACE_MEMBRE",
-      operateur: true,
-    });
+    expect(base.lancements[0]?.options["operateur"]).toEqual(operatrice());
 
     // Then rien n'est tracé ici : le passage journalise le plan puis chaque étape avant
     // de les appeler, et une trace de plus posée en amont dirait qu'un geste a eu lieu
@@ -2509,7 +2494,7 @@ describe("lancer l'exécution d'un plan, et ce que l'opérateur emporte avec lui
     // Then la garde casse avant la moindre lecture : un participant qui atteindrait
     // cette action doit être redirigé, pas recevoir un verdict
     await expect(lancerExecution(null, formulaire({ planId: plan.id }))).rejects.toThrow(
-      "redirection vers /moi",
+      "NEXT_REDIRECT;replace;/moi;307;",
     );
     expect(base.lancements).toEqual([]);
   });

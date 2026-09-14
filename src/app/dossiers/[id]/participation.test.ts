@@ -71,17 +71,12 @@ const base = vi.hoisted(() => ({
 
 vi.mock("next/cache", () => ({ revalidatePath: () => undefined }));
 
-vi.mock("@/lib/session", () => ({
-  requireOperateur: () =>
-    Promise.resolve({
-      username: base.operateur,
-      email: null,
-      nom: null,
-      personId: null,
-      voie: "ESPACE_MEMBRE",
-      operateur: true,
-    }),
-}));
+// Relue à chaque passage et non figée à la construction : le nom de l'opératrice est un
+// réglage de scénario, et le double d'origine le relisait aussi.
+vi.mock("@/lib/session", async () => {
+  const { doublerSession, operatrice } = await import("@/test/doubles/session");
+  return doublerSession({ lire: () => operatrice({ username: base.operateur }) });
+});
 
 vi.mock("@/lib/env", () => ({
   webEnv: {

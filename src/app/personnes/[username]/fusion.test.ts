@@ -55,9 +55,7 @@ vi.mock("@/lib/env", () => ({ webEnv: { OPERATORS: [], BREAK_GLASS_USERNAMES: []
 
 vi.mock("@/lib/policy", () => ({ policy: () => ({ scope: { local: [] } }) }));
 
-vi.mock("@/lib/session", () => ({
-  requireOperateur: () => Promise.resolve(operatrice()),
-}));
+vi.mock("@/lib/session", async () => (await import("@/test/doubles/session")).sessionDe());
 
 vi.mock("@/lib/audit", () => ({
   audit: (entree: AuditInput) => {
