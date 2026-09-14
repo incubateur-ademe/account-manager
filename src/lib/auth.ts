@@ -1,11 +1,10 @@
 import { PrismaAdapter } from "@auth/prisma-adapter";
-import { EspaceMembreProvider } from "@incubateur-ademe/next-auth-espace-membre-provider";
 import NextAuth from "next-auth";
-import Nodemailer from "next-auth/providers/nodemailer";
 
 import type { Voie } from "@/core/participation";
 import { prisma } from "@/lib/db";
 import { webEnv } from "@/lib/env";
+import { espaceMembreProvider, fournisseursDuLien } from "@/lib/fournisseurs";
 import { rappelsDeConnexion } from "@/lib/rappels-connexion";
 
 declare module "next-auth" {
@@ -30,25 +29,6 @@ declare module "next-auth" {
   }
 }
 
-/**
- * Les membres inactifs sont acceptés à dessein : quelqu'un dont la mission vient
- * d'expirer doit pouvoir ouvrir l'outil pour traiter son propre offboarding.
- * L'allowlist des opérateurs reste le seul filtre d'accès.
- */
-const espaceMembreProvider = EspaceMembreProvider({
-  fetch,
-  fetchOptions: { next: { revalidate: 300 } },
-  authOptions: { allowInactive: true },
-});
-
-/**
- * Trente minutes, contre vingt-quatre heures par défaut. Un lien de connexion est un
- * porteur : le transférer transfère l'accès, et celui-ci existe pour être suivi tout de
- * suite. Deux bornes à ne pas confondre, le lien vaut une demi-heure, la session qu'il
- * ouvre vaut la durée du jeton.
- */
-const LIEN_VALIDE_SECONDES = 30 * 60;
-
 // Config sous forme de fonction : l'environnement n'est lu qu'à la première
 // requête, pas pendant la collecte des routes au build.
 export const { handlers, auth, signIn, signOut } = NextAuth(() => ({
@@ -59,19 +39,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth(() => ({
   // ignore est une variable que personne ne valide.
   trustHost: webEnv.AUTH_TRUST_HOST,
   pages: { signIn: "/login" },
-  providers: [
-    espaceMembreProvider.ProviderWrapper(
-      Nodemailer({ server: webEnv.SMTP_URL, from: webEnv.SMTP_EMAIL_FROM }),
-    ),
-    // Nu, sans le wrapper de l'espace-membre : celui-ci résout un username auprès de
-    // l'annuaire beta.gouv, ce qu'une adresse ne sait pas faire. Il garde donc son
-    // identifiant d'origine, et c'est par cet identifiant que les deux portes se
-    // distinguent partout ailleurs.
-    Nodemailer({
-      server: webEnv.SMTP_URL,
-      from: webEnv.SMTP_EMAIL_FROM,
-      maxAge: LIEN_VALIDE_SECONDES,
-    }),
-  ],
+  providers: fournisseursDuLien(),
   callbacks: espaceMembreProvider.CallbacksWrapper(rappelsDeConnexion),
 }));
