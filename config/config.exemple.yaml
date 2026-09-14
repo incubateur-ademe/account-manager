@@ -136,11 +136,17 @@ connectors:
     organisations:
       - incubateur-ademe
 
-# Reserve : ecarts admis pour de bon, qu'aucune collecte ne doit plus signaler. Un
-# ecart tolere sans trace redevient un ecart oublie, d'ou la raison et le proprietaire
-# obligatoires. Aucun code ne le lit encore.
+# Ecarts admis pour de bon, qu'aucune collecte ne signale plus. Un ecart tolere sans
+# trace redevient un ecart oublie, d'ou la raison et le proprietaire obligatoires.
+#
+# La cible d'un compte porte l'identifiant du fournisseur et jamais son nom d'usage :
+# un nom se renomme, et pire, un nom abandonne est rendu a quelqu'un d'autre, si bien
+# qu'une tolerance posee dessus couvrirait un jour un compte que personne n'a admis.
+# Cet identifiant ne se devine pas, il se releve a la premiere collecte.
+#
+# Une entree dont la cible est illisible est ecartee et signalee : elle ne couvre rien.
 permanentDerogations:
   - targetType: identite
-    targetId: github:compte-partage
+    targetId: github:MDQ6VXNlcjEwNDI=
     reason: Compte de demonstration conserve a la demande de la direction
     owner: claire.durand
