@@ -15,8 +15,8 @@ const base = vi.hoisted(() => ({
   ecritures: [] as { id: string; champs: string[] }[],
 }));
 
-vi.mock("@/lib/db", () => ({
-  prisma: {
+vi.mock("@/lib/db", async () =>
+  (await import("@/test/doubles/db")).doublerBase({
     syncRun: {
       findUnique: ({ where }: { where: { id: string } }) =>
         Promise.resolve(base.runs.find((run) => run.id === where.id) ?? null),
@@ -29,8 +29,8 @@ vi.mock("@/lib/db", () => ({
         return Promise.resolve(run);
       },
     },
-  },
-}));
+  }),
+);
 
 const MAINTENANT = new Date("2026-08-19T02:00:00Z");
 
