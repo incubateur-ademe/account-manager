@@ -167,6 +167,7 @@ function ChampsDeLEtape({ formulaire, pending }: { formulaire: Formulaire; pendi
             }}
           />
           <Select
+            key={`risque-${envoi}`}
             label="Risque"
             nativeSelectProps={{
               name: "risque",

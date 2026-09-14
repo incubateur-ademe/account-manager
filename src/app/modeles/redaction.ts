@@ -35,7 +35,7 @@ export const MODELE = {
   },
 
   orphelins: {
-    plusieurs: `Aucun plan ne porte plus leurs étapes : leur identifiant n'est plus rendu par le référentiel des startups. ${CAUSE_ORPHELIN} Rien d'autre que cette liste ne mène plus à eux.`,
+    plusieurs: `Les plans déjà calculés gardent leurs étapes, aucun nouveau ne les reprendra : leur identifiant n'est plus rendu par le référentiel des startups. ${CAUSE_ORPHELIN} Rien d'autre que cette liste ne mène plus à eux.`,
     seul: `Aucun plan ne portera ses étapes : cet identifiant n'est plus rendu par le référentiel des startups. ${CAUSE_ORPHELIN} Redéclarez ces étapes sous le bon identifiant, puis retirez celles-ci.`,
   },
 

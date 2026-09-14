@@ -116,6 +116,14 @@ describe("ce que les écrans des modèles promettent", () => {
     expect(MODELE.orphelins.plusieurs).toMatch(/référentiel des startups/u);
     expect(MODELE.orphelins.seul).toMatch(/référentiel des startups/u);
     expect(MODELE.orphelins.seul).toMatch(/Redéclarez/u);
+
+    // Then celle de l'index concède que les plans déjà calculés gardent leurs étapes.
+    // Un modèle ne tient aucun plan confirmé : le nier ici contredirait la promesse
+    // servie deux paragraphes plus haut sur le même écran, et l'écran d'un dossier
+    // confirmé montre ces étapes-là. Le futur de l'autre phrase, lui, est juste : un
+    // identifiant que le référentiel ne rend plus n'alimente aucun plan neuf.
+    expect(MODELE.orphelins.plusieurs).toMatch(/déjà calculés gardent/u);
+    expect(MODELE.effetSurLesPlans).toMatch(/gardera/u);
     for (const dit of [MODELE.orphelins.plusieurs, MODELE.orphelins.seul]) {
       expect(dit).not.toMatch(MOTS_DU_MODELE);
     }

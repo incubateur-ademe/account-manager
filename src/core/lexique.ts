@@ -68,7 +68,10 @@ export const LIBELLE_TIER: Record<Tier, MotDEcran> = {
 };
 
 function estTier(valeur: string): valeur is Tier {
-  return valeur in LIBELLE_TIER;
+  // `Object.hasOwn` et non `in` : sans lui, un tier nommé « constructor » ou
+  // « toString » serait tenu pour connu et rendrait un membre du prototype, donc un
+  // badge vide là où le repli ci-dessous existe précisément pour afficher la valeur.
+  return Object.hasOwn(LIBELLE_TIER, valeur);
 }
 
 /**

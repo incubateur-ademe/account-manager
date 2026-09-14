@@ -119,15 +119,11 @@ describe("la fiche d'une personne et ses deux modales", () => {
     // Then l'écran n'a rien tranché de son côté : la raison courte est bien partie
     // telle quelle. La règle des trois caractères vit au serveur, et un verrou posé
     // ici la doublerait d'une seconde vérité, muette et destinée à diverger.
-    //
-    // Le `sens` que le bouton cliqué devrait porter n'est pas asserté, et c'est un
-    // constat, pas un oubli : `Button` du système de design déclare son propre prop
-    // `value` et le pose APRÈS avoir étalé `nativeButtonProps`, si bien que le
-    // `value: "INCLUDE"` du composant est écrasé par un `undefined`. Le bouton part
-    // sans attribut `value`, le serveur lit une chaîne vide et refuse par
-    // « Sens de la décision non reconnu. ». Le correctif tient dans le passage de
-    // `value` en prop de premier niveau du `Button`.
-    expect(envois[0]).toMatchObject({ username: "noemie.vaillant", raison: "ok" });
+    expect(envois[0]).toMatchObject({
+      username: "noemie.vaillant",
+      raison: "ok",
+      sens: "INCLUDE",
+    });
 
     // Then le refus se lit à sa place, c'est-à-dire décrit par le champ fautif et non
     // dans un coin du formulaire : un message que le champ ne désigne pas laisse

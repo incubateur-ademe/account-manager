@@ -6,7 +6,9 @@ import { LIBELLE_ETAT_COLLECTE } from "./lexique";
  * Deux écrans rendaient la conclusion d'une collecte par sa valeur brute, `OK` ou
  * `PARTIAL` dans un badge français. Ce que cette table promet à la place n'est pas une
  * traduction de confort : « complète » veut dire que les disparitions ont pu être
- * datées, « incomplète » qu'aucune ne l'a été, et c'est un invariant du dépôt.
+ * datées, « incomplète » qu'une partie a pu rester non datée, sans qu'aucune ne soit
+ * exclue, et c'est un invariant du dépôt. La négation absolue serait fausse : un
+ * passage se dégrade en « incomplète » après avoir daté ce qu'il tenait.
  */
 describe("ce que l'écran dit d'une collecte", () => {
   it("nomme chacune de ses quatre conclusions en français, et jamais par sa valeur brute", () => {
