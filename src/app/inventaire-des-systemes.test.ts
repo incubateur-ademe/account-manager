@@ -10,6 +10,7 @@ import type {
   CredentialProbe,
 } from "@/core/connector";
 import { LIBELLE_ETAT_COLLECTE, LIBELLE_TIER } from "@/core/lexique";
+import { OU_SANS_DETENTEUR } from "@/lib/comptes-isoles";
 import { dateFr } from "@/ui/dates";
 
 /**
@@ -44,6 +45,19 @@ interface AccesEnBase {
   resourceId: string;
 }
 
+interface PersonneEnBase {
+  missionEnd: Date | null;
+  vanishedAt: Date | null;
+  startups: string[];
+  startupAssignments: { startupGhid: string; until: Date; endedAt: Date | null }[];
+}
+
+interface CompteDeServiceEnBase {
+  reviewEveryDays: number;
+  lastReviewedAt: Date | null;
+  createdAt: Date;
+}
+
 const base = vi.hoisted(() => ({
   connecteurs: [] as Connector[],
   seuilHeures: 24,
@@ -57,6 +71,12 @@ const base = vi.hoisted(() => ({
   comptesParSysteme: [] as { provider: string; comptes: number }[],
   acces: [] as AccesEnBase[],
   ressources: [] as { id: string; provider: string }[],
+  personnes: [] as PersonneEnBase[],
+  constats: { ouverts: 0, sorties: 0, arrivees: 0 },
+  nonRevocables: { sansDetenteur: 0, ressemblance: 0 },
+  comptesDeService: [] as CompteDeServiceEnBase[],
+  startups: [] as { ghid: string; currentPhase: string | null }[],
+  operationsTracees: 0,
 }));
 
 vi.mock("@/lib/session", () => ({
@@ -86,8 +106,20 @@ const FOURNISSEUR_PERIMETRE = "espace-membre";
 
 vi.mock("@/lib/db", () => ({
   prisma: {
-    person: { findMany: () => Promise.resolve([]) },
-    finding: { count: () => Promise.resolve(0) },
+    person: { findMany: () => Promise.resolve(base.personnes) },
+    finding: {
+      // Les trois comptes de constats ne diffèrent que par leur `kind`, et la tuile en
+      // sert deux dans une même phrase : un double qui rendrait le même nombre aux
+      // trois laisserait leurs places s'échanger sans que rien ne bouge.
+      count: ({ where }: { where: { kind?: string } }) =>
+        Promise.resolve(
+          where.kind === undefined
+            ? base.constats.ouverts
+            : where.kind === "SCOPE_EXIT"
+              ? base.constats.sorties
+              : base.constats.arrivees,
+        ),
+    },
     syncRun: {
       findFirst: ({ where }: { where: { provider: string } }) =>
         Promise.resolve(
@@ -105,13 +137,20 @@ vi.mock("@/lib/db", () => ({
             _count: { _all: comptes },
           })),
         ),
-      count: () => Promise.resolve(0),
+      // Reconnue à la clause elle-même, et non à une condition réécrite ici : c'est
+      // la seule façon de dire de quelle file sort le nombre que la tuile affiche.
+      count: ({ where }: { where: unknown }) =>
+        Promise.resolve(
+          where === OU_SANS_DETENTEUR
+            ? base.nonRevocables.sansDetenteur
+            : base.nonRevocables.ressemblance,
+        ),
     },
     accessGrant: { findMany: () => Promise.resolve(base.acces) },
     resource: { findMany: () => Promise.resolve(base.ressources) },
-    serviceAccount: { findMany: () => Promise.resolve([]) },
-    startup: { findMany: () => Promise.resolve([]) },
-    auditEvent: { count: () => Promise.resolve(0) },
+    serviceAccount: { findMany: () => Promise.resolve(base.comptesDeService) },
+    startup: { findMany: () => Promise.resolve(base.startups) },
+    auditEvent: { count: () => Promise.resolve(base.operationsTracees) },
   },
 }));
 
@@ -198,6 +237,24 @@ const pucesRendues = (page: unknown): string[] =>
     .filter((candidat) => candidat.type === "li")
     .map((candidat) => texteRendu(candidat.noeud));
 
+/**
+ * Ce qu'une tuile promet et où elle mène, les trois ensemble.
+ *
+ * Son titre porte un chiffre, sa description le détaille, et son lien décide de
+ * l'écran où l'opérateur atterrit. Lus séparément, les trois passent toujours : un
+ * chiffre juste sous un libellé qui n'est pas le sien fait traiter la mauvaise file,
+ * et le nombre seul, lui, ne dit pas de quelle file il parle.
+ */
+function tuilesRendues(page: unknown): { titre: string; description: string; cible: unknown }[] {
+  return noeudsRendus(page)
+    .filter((candidat) => candidat.accessoires["linkProps"] !== undefined)
+    .map((candidat) => ({
+      titre: texteRendu(candidat.accessoires["title"]),
+      description: texteRendu(candidat.accessoires["desc"]),
+      cible: (candidat.accessoires["linkProps"] as { href?: unknown }).href,
+    }));
+}
+
 /** Ce qu'un badge dit et de quelle couleur, sous la forme même de la table du lexique. */
 function badgeDe(cellule: unknown): { libelle: string; severite: unknown } {
   const badge = noeudsRendus(cellule).find(
@@ -213,6 +270,16 @@ function badgeDe(cellule: unknown): { libelle: string; severite: unknown } {
 }
 
 const ilYA = (heures: number): Date => new Date(Date.now() - heures * HEURE);
+
+/** Un jalon en jours, négatif pour une échéance déjà passée. */
+const dansJours = (jours: number): Date => new Date(Date.now() + jours * 24 * HEURE);
+
+const personneDe = (missionEnd: Date | null, startups: string[] = []): PersonneEnBase => ({
+  missionEnd,
+  vanishedAt: null,
+  startups,
+  startupAssignments: [],
+});
 
 function contratDe(
   cle: string,
@@ -247,6 +314,12 @@ beforeEach(() => {
   base.comptesParSysteme.length = 0;
   base.acces.length = 0;
   base.ressources.length = 0;
+  base.personnes.length = 0;
+  base.comptesDeService.length = 0;
+  base.startups.length = 0;
+  base.constats = { ouverts: 0, sorties: 0, arrivees: 0 };
+  base.nonRevocables = { sansDetenteur: 0, ressemblance: 0 };
+  base.operationsTracees = 0;
   base.seuilHeures = 24;
   base.perimetre = null;
 });
@@ -523,5 +596,109 @@ describe("ce que l'inventaire dit d'un système, et ce qu'il refuse d'en dire", 
     for (const etat of ["OK", "PARTIAL", "FAILED", "SKIPPED"]) {
       expect(texte).not.toContain(etat);
     }
+  });
+  it("porte chaque chiffre sous son propre libellé, vers l'écran qui le détaille, et dit d'où il sort", async () => {
+    // Given un parc dont les chiffres de l'accueil sont tous distincts les uns des
+    // autres : deux nombres qui s'échangeraient dans une même phrase se liraient sinon
+    // pareil, et c'est exactement ce qu'aucune assertion ne verrait.
+    base.connecteurs.push(connecteurDe(contratDe("atelier", "Atelier", {})));
+    base.releves.push({ provider: "atelier", startedAt: ilYA(1), status: "OK", itemsSeen: 7 });
+    base.comptesParSysteme.push({ provider: "atelier", comptes: 7 });
+    base.perimetre = { startedAt: ilYA(2), status: "OK", itemsSeen: 95, error: null };
+    base.constats = { ouverts: 9, sorties: 4, arrivees: 2 };
+    base.nonRevocables = { sansDetenteur: 11, ressemblance: 8 };
+    base.operationsTracees = 21;
+    base.personnes.push(
+      personneDe(dansJours(-60)),
+      personneDe(dansJours(-60)),
+      personneDe(dansJours(-60)),
+      personneDe(dansJours(-3)),
+      personneDe(dansJours(-3)),
+      personneDe(dansJours(10), ["jardin-partage"]),
+      personneDe(dansJours(10)),
+      personneDe(dansJours(10)),
+      personneDe(null, ["cantine-mobile"]),
+      personneDe(null),
+      personneDe(null),
+      personneDe(null),
+      personneDe(null),
+      personneDe(null),
+      { missionEnd: null, vanishedAt: dansJours(-1), startups: [], startupAssignments: [] },
+    );
+    base.startups.push(
+      { ghid: "jardin-partage", currentPhase: "alumni" },
+      { ghid: "cantine-mobile", currentPhase: "alumni" },
+      // Terminale, mais plus personne dessus : elle n'appelle aucun geste, et la tuile
+      // qui la compterait quand même enverrait chercher un départ inexistant.
+      { ghid: "atelier-fantome", currentPhase: "alumni" },
+      { ghid: "releve-des-sols", currentPhase: "acceleration" },
+    );
+    base.comptesDeService.push(
+      ...Array.from({ length: 6 }, () => ({
+        reviewEveryDays: 90,
+        lastReviewedAt: dansJours(-5),
+        createdAt: dansJours(-400),
+      })),
+      { reviewEveryDays: 30, lastReviewedAt: null, createdAt: dansJours(-200) },
+    );
+
+    // When l'accueil se rend
+    const page = await AccueilPage();
+
+    // Then la section dit d'abord d'où sortent ses chiffres : sans cette phrase, un
+    // tableau de nombres se lit comme l'état du jour alors qu'il date de la dernière
+    // collecte, et c'est la première chose que cet écran a à dire.
+    expect(texteRendu(page)).toContain(
+      "Le tableau et les chiffres qui suivent sortent de la base, donc de la dernière collecte : ils disent le dernier état constaté, jamais l'état du jour, et aucun n'est demandé à un système au moment où vous lisez cette page. Les tuiles du bas, elles, disent chacune d'où elles tiennent leur chiffre.",
+    );
+
+    // Then chaque tuile porte son chiffre sous son propre libellé et mène à l'écran qui
+    // le détaille. Les trois se tiennent ensemble : une tuile dit à un opérateur combien
+    // de comptes attendent quoi, et deux nombres échangés dans sa description lui font
+    // traiter la mauvaise file sans que rien ne le détrompe.
+    expect(tuilesRendues(page)).toEqual([
+      {
+        titre: "9 constats",
+        description: "Dont 4 sorties du référentiel des personnes et 2 arrivées à acter.",
+        cible: "/constats",
+      },
+      {
+        titre: "3 à traiter",
+        description: "Échéance dépassée au-delà du délai de grâce.",
+        cible: "/personnes?vue=a-traiter",
+      },
+      {
+        titre: "5 à surveiller",
+        description: "Échéance dans les 30 jours, ou dépassée depuis peu.",
+        cible: "/personnes?vue=a-surveiller",
+      },
+      {
+        titre: "14 personnes suivies",
+        description: "Dont 6 sans échéance connue.",
+        cible: "/personnes",
+      },
+      {
+        titre: "19 comptes non révocables",
+        description: "11 sans détenteur, 8 rattachés par ressemblance à confirmer.",
+        cible: "/comptes-isoles",
+      },
+      {
+        titre: "7 comptes de service",
+        description: "Dont 1 en retard de revue.",
+        cible: "/comptes-de-service",
+      },
+      {
+        titre: "4 startups",
+        description:
+          "Dont 2 en phase terminale et portant encore quelqu'un, ce qui ne justifie plus aucun accès.",
+        cible: "/startups",
+      },
+      {
+        titre: "21 opérations tracées",
+        description:
+          "Sur 30 jours. Compteur approximatif : c'est une preuve d'activité, pas une mesure de couverture. L'écran du journal, lui, montre tout l'historique.",
+        cible: "/journal",
+      },
+    ]);
   });
 });

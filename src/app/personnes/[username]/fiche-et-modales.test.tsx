@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import type { MockedFunction } from "vitest";
@@ -25,11 +25,12 @@ vi.mock("./actions", () => ({
   rattacherAStartup: vi.fn(),
 }));
 
-const { forcerAppartenance, rattacherAStartup } = await import("./actions");
+const { detacherIdentite, forcerAppartenance, rattacherAStartup } = await import("./actions");
 const { Appartenance } = await import("./Appartenance");
 const { ModaleRattacherStartup, modaleRattacherStartup } = await import("./ModaleRattacherStartup");
 const { SectionComptesExternes } = await import("./SectionComptesExternes");
 
+const detacher = vi.mocked(detacherIdentite);
 const forcer = vi.mocked(forcerAppartenance);
 const rattacher = vi.mocked(rattacherAStartup);
 
@@ -330,6 +331,75 @@ describe("la fiche d'une personne et ses deux modales", () => {
     // Then la liste des systèmes lus est celle qu'on lui a donnée : ce qui en est
     // absent n'a jamais été observé, et ce n'est pas la même chose que rien à signaler
     expect(screen.getByText(/Systèmes couverts lus à ce jour : github, notion\./)).toBeDefined();
+  });
+
+  it("détache le compte de la ligne où l'on a cliqué, et non celui d'une voisine", async () => {
+    // Given une fiche portant deux comptes externes distincts, chacun avec son propre
+    // geste de détachement au bout de sa ligne
+    const utilisateur = userEvent.setup();
+    render(
+      <SectionComptesExternes
+        comptes={[
+          {
+            id: "identite-github",
+            provider: "github",
+            handle: "noemie-vaillant",
+            matchMethod: "DECLARED",
+            lastSeenAt: new Date("2026-09-01T00:00:00Z"),
+            vanishedAt: null,
+          },
+          {
+            id: "identite-notion",
+            provider: "notion",
+            handle: "n.vaillant@exemple.invalid",
+            matchMethod: "DECLARED",
+            lastSeenAt: new Date("2026-09-02T00:00:00Z"),
+            vanishedAt: null,
+          },
+        ]}
+        systemesCollectes={["github", "notion"]}
+      />,
+    );
+
+    const ligneDe = (compte: string) => {
+      const ligne = screen.getByText(compte).closest("tr");
+      expect(ligne).not.toBeNull();
+      return ligne as HTMLElement;
+    };
+    const detacherDe = (compte: string) =>
+      within(ligneDe(compte)).getByRole("button", { name: "Détacher" });
+
+    // Then chaque bouton annonce le compte qu'il vise : deux gestes identiques au même
+    // endroit de deux lignes ne se distinguent que par là
+    expect(detacherDe("noemie-vaillant").getAttribute("title")).toBe(
+      "Détacher noemie-vaillant de cette personne",
+    );
+    expect(detacherDe("n.vaillant@exemple.invalid").getAttribute("title")).toBe(
+      "Détacher n.vaillant@exemple.invalid de cette personne",
+    );
+
+    // When on coupe le rattachement depuis la seconde ligne
+    repond(detacher, null);
+    await utilisateur.click(detacherDe("n.vaillant@exemple.invalid"));
+
+    // Then c'est l'identité de cette ligne-là qui part, sous le nom que l'action lit.
+    // Ce que porte le formulaire est le seul endroit où le lien se voit : un bouton
+    // câblé sur l'identité d'une voisine afficherait le bon compte, annoncerait le bon
+    // compte, et couperait l'autre rattachement sans que rien à l'écran ne bouge.
+    await vi.waitFor(() => {
+      expect(envois).toHaveLength(1);
+    });
+    expect(envois[0]).toMatchObject({ id: "identite-notion" });
+
+    // When on coupe ensuite depuis la première
+    repond(detacher, null);
+    await utilisateur.click(detacherDe("noemie-vaillant"));
+
+    // Then la sienne part à son tour : les deux lignes ne visent pas la même cible
+    await vi.waitFor(() => {
+      expect(envois).toHaveLength(2);
+    });
+    expect(envois[1]).toMatchObject({ id: "identite-github" });
   });
 
   it("distingue les deux sens, là où le système de design effaçait la valeur des boutons", async () => {

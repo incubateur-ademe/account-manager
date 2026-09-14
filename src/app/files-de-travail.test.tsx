@@ -349,6 +349,91 @@ describe("La file des comptes isolés", () => {
       expect(modaleDe(MODALE_RATTACHEMENT).hasAttribute("open")).toBe(false);
     });
   });
+
+  it("offre trois gestes, chacun vers son action, et fait porter à la confirmation la valeur que le serveur lit", async () => {
+    // Given un compte rapproché par ressemblance, dont la création de fiche se heurtera
+    // à un identifiant déjà pris, et dont le rattachement réclamera une confirmation.
+    const utilisateur = userEvent.setup();
+    doubles.creer.mockResolvedValue({
+      erreur: "« camille.esteve » existe déjà : rattachez le compte à cette fiche.",
+    });
+    doubles.rattacher.mockResolvedValue({
+      erreur:
+        "« solene.brunel » n'est connue que par un compte déjà rattaché. Confirmez pour continuer.",
+      confirmationRequise: true,
+    });
+    monterLaFileDesComptesIsoles();
+    await traiter(utilisateur, RESSEMBLANT.handle);
+    const modale = modaleDe(MODALE_RATTACHEMENT);
+
+    // Then la modale offre trois gestes et non deux : rattacher d'un clic à une
+    // personne proposée, rattacher à un identifiant saisi, ou créer la fiche qui
+    // manque. Le troisième est le seul recours pour qui n'a aucune fiche beta.gouv, et
+    // sa disparition laisserait ces comptes-là sans issue dans la file.
+    const vignette = within(modale).getByRole("button", { name: "Solène Brunel (solene.brunel)" });
+    const champ = within(modale).getByLabelText(/Rattacher à/) as HTMLInputElement;
+    const nom = within(modale).getByLabelText(/Ou créer une fiche/) as HTMLInputElement;
+
+    // And chacun a son propre formulaire : réunis, la touche Entrée frappée dans un
+    // champ soumettrait le premier bouton du formulaire, c'est-à-dire une vignette que
+    // personne n'a choisie.
+    const formulaireDeLaCible = champ.closest("form") as HTMLFormElement;
+    expect(vignette.closest("form")).not.toBe(formulaireDeLaCible);
+    expect(nom.closest("form")).not.toBe(formulaireDeLaCible);
+
+    // When on nomme quelqu'un dont l'espace-membre ne sait rien et qu'on crée sa fiche.
+    await utilisateur.type(nom, "Camille Estève");
+    await utilisateur.click(within(modale).getByRole("button", { name: "Créer la fiche" }));
+
+    // Then c'est l'action de création qui part, et elle seule, avec le compte et le nom
+    // sous les noms qu'elle lit : ce geste câblé sur le rattachement rattacherait le
+    // compte au lieu d'ouvrir la fiche qui manque.
+    expect(doubles.rattacher).not.toHaveBeenCalled();
+    expect(doubles.creer).toHaveBeenCalledTimes(1);
+    const creation = doubles.creer.mock.calls[0]?.[1] as FormData;
+    expect(creation.get("id")).toBe(RESSEMBLANT.id);
+    expect(creation.get("nom")).toBe("Camille Estève");
+
+    // And son refus se lit, sans fermer la modale : la fiche n'a pas été créée.
+    expect(
+      await within(modale).findByText(
+        "« camille.esteve » existe déjà : rattachez le compte à cette fiche.",
+      ),
+    ).toBeDefined();
+
+    // And rien n'offre encore de passer outre : la case ne paraît qu'une fois le
+    // garde-fou rencontré, sans quoi l'écran proposerait d'emblée de l'enjamber.
+    expect(within(modale).queryByLabelText("Oui, c'est la même personne")).toBeNull();
+
+    // When on désigne plutôt une personne connue, et que le serveur demande de
+    // confirmer qu'il s'agit bien de la même.
+    await utilisateur.type(champ, "solene.brunel");
+    await utilisateur.click(within(modale).getByRole("button", { name: "Rattacher" }));
+    const confirmation = await within(modale).findByLabelText("Oui, c'est la même personne");
+
+    // Then tant qu'elle n'est pas cochée, le formulaire n'emporte rien sous ce nom :
+    // c'est ainsi que le HTML dit non, et l'action lit l'absence.
+    expect(Object.fromEntries(new FormData(formulaireDeLaCible))).not.toHaveProperty("confirme");
+
+    // When on la coche.
+    await utilisateur.click(confirmation);
+
+    // Then le formulaire emporte « oui », la chaîne même que l'action compare. Une case
+    // retombée sur le « on » par défaut du HTML ne serait jamais reçue comme une
+    // confirmation, et ce rattachement se heurterait sans fin au même refus.
+    expect(Object.fromEntries(new FormData(formulaireDeLaCible))).toMatchObject({
+      id: RESSEMBLANT.id,
+      cible: "solene.brunel",
+      confirme: "oui",
+    });
+
+    // And c'est bien ce que l'action reçoit au renvoi.
+    await utilisateur.click(within(modale).getByRole("button", { name: "Rattacher" }));
+    expect(doubles.rattacher).toHaveBeenCalledTimes(2);
+    const renvoi = doubles.rattacher.mock.calls[1]?.[1] as FormData;
+    expect(renvoi.get("cible")).toBe("solene.brunel");
+    expect(renvoi.get("confirme")).toBe("oui");
+  });
 });
 
 describe("La file des constats", () => {

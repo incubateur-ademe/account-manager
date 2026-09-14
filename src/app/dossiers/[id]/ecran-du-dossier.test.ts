@@ -1,17 +1,24 @@
+// @vitest-environment jsdom
 import { Badge } from "@codegouvfr/react-dsfr/Badge";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Acteur } from "@/core/dossier";
 import { LIBELLE_TIER } from "@/core/lexique";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 import { CLE_INCUBATEUR, SYSTEME_MODELE } from "@/core/modele-plan";
-import { BoutonClore, BoutonConfirmer, Validation } from "./Pointage";
+import { BoutonClore, BoutonConfirmer, Pointage, Validation } from "./Pointage";
 import DossierPage from "./page";
 
 /**
  * Ce que l'écran d'un dossier montre d'un vrai plan, rendu comme la fonction
- * asynchrone qu'il est : sans DOM et sans bibliothèque de rendu, en parcourant l'arbre
- * que le serveur a produit.
+ * asynchrone qu'il est : en parcourant l'arbre que le serveur a produit, plutôt qu'en
+ * montant la page entière.
+ *
+ * Une seule chose s'y monte pour de vrai, le formulaire de pointage, et c'est pour la
+ * même raison : ce qu'il enverra se lit dans son DOM, jamais dans les accessoires qu'on
+ * lui a passés. Un écran qui relaie à moitié ce qu'il a reçu ne se voit pas autrement.
  *
  * Il couvre les deux passages de la recette que rien ne tenait : la liste numérotée
  * d'un brouillon avec ses badges et ses groupes, et l'étape déclarée qui attend un
@@ -274,6 +281,8 @@ interface LigneRendue {
   badges: string[];
   texte: string;
   controle: Noeud | undefined;
+  /** Le formulaire de pointage tel qu'il a été accroché, prêt à être monté. */
+  pointage: Noeud | undefined;
 }
 
 /** Chaque étape du plan telle que l'écran la rend, dans son ordre de lecture. */
@@ -287,6 +296,7 @@ function lignesRendues(page: unknown): LigneRendue[] {
       ),
       texte: texteRendu(rendu),
       controle: noeudsRendus(rendu, parType(Validation))[0],
+      pointage: noeudsRendus(rendu, parType(Pointage))[0],
     };
   });
 }
@@ -430,6 +440,16 @@ beforeEach(() => {
   ] satisfies DroitEnBase[];
 });
 
+afterEach(cleanup);
+
+/** Le formulaire de pointage d'une ligne, monté pour de vrai. */
+const monterLePointage = (ligne: LigneRendue | undefined) =>
+  render(ligne?.pointage as ReactElement);
+
+/** Ce qu'un formulaire monté enverra à son action. */
+const envoiDe = (formulaire: HTMLElement | null): Record<string, FormDataEntryValue> =>
+  Object.fromEntries(new FormData(formulaire as HTMLFormElement));
+
 describe("l'écran d'un dossier, avec un vrai plan", () => {
   it("rend le brouillon d'un départ : sa liste numérotée, ses badges, ses groupes et ses droits vivants", async () => {
     // Given un départ dont le plan porte quatre étapes figées, venues de trois
@@ -566,7 +586,8 @@ describe("l'écran d'un dossier, avec un vrai plan", () => {
     // et non « pointée » : ce qui a été dit n'est pas encore ce qui a été constaté
     expect(badge?.texte).toContain(`Déclarée le ${enFrancais.format(declaree)} par ${OPERATRICE}.`);
     expect(badge?.texte).not.toContain("Pointée le");
-    expect(badge?.texte).toContain("Valeur saisie :");
+    expect(badge?.texte).toContain("Valeur saisie : 5 mars 2026");
+    expect(charte?.texte).toContain("Valeur saisie : Rendue en main propre");
     expect(badge?.texte).toContain(
       "Cette déclaration attend le regard d'un opérateur. Tant qu'il n'a pas eu lieu, l'étape n'est pas terminée et le dossier ne se clôt pas.",
     );
@@ -587,6 +608,18 @@ describe("l'écran d'un dossier, avec un vrai plan", () => {
       etapeId: "etape-charte",
       possible: true,
       raison: null,
+    });
+
+    // Then le formulaire de pointage de cette étape, monté, réclame bien la valeur que
+    // le modèle demande et repart de celle qui a déjà été déclarée : c'est ce
+    // `FormData` que l'action recevra, et un accessoire relayé à moitié ne se voit
+    // nulle part ailleurs
+    const pointage = monterLePointage(badge);
+    expect(pointage.getByLabelText("Date de restitution")).toBeDefined();
+    expect(envoiDe(pointage.container.querySelector("form"))).toEqual({
+      etapeId: "etape-badge",
+      pointage: "fait",
+      reponse: "5 mars 2026",
     });
 
     // Then les deux étapes qui n'attendent rien n'offrent aucun avis : un second
