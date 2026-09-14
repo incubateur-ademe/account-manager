@@ -164,12 +164,25 @@ describe("le chemin d'envoi du lien de connexion", () => {
     // qui arriverait tel quel dans le champ `to` serait un lien envoyé nulle part.
     expect(remises[1]?.to).toEqual([ADRESSE_DE_LA_FICHE]);
 
-    // Then le lien vaut une demi-heure et non la journée que le paquet donne par défaut.
-    // Épinglé ici parce que rien d'autre ne le tient : c'est une borne de sécurité, un
-    // lien étant un porteur, et elle se perdrait en revenant au défaut sans qu'aucun
-    // écran ni aucune erreur ne le signale.
-    const portes = fournisseursDuLien() as { options?: { maxAge?: number } }[];
-    expect(portes[1]?.options?.maxAge).toBe(30 * 60);
+    // Then le lien vaut une demi-heure et non la journée que le paquet donne par défaut,
+    // et cela pour les deux portes. Épinglé ici parce que rien d'autre ne le tient :
+    // c'est une borne de sécurité, un lien étant un porteur, et elle se perdrait en
+    // revenant au défaut sans qu'aucun écran ni aucune erreur ne le signale. Les deux
+    // valeurs sont demandées et non une seule, parce que c'est précisément par une porte
+    // laissée au défaut que l'écart s'était installé.
+    // La valeur se lit à deux endroits selon la porte, et ce n'est pas une précaution :
+    // le wrapper de l'espace-membre remonte les options à la racine du fournisseur et
+    // supprime `options`, là où le fournisseur nu les y laisse. Ne lire qu'un des deux
+    // chemins rendait cette assertion vide pour la porte qu'elle vient épingler.
+    const portes = fournisseursDuLien() as {
+      id?: string;
+      maxAge?: number;
+      options?: { maxAge?: number };
+    }[];
+    expect(portes.map((porte) => [porte.id, porte.options?.maxAge ?? porte.maxAge])).toEqual([
+      ["espace-membre-beta-gouv-email", 30 * 60],
+      [PROVIDER_ADRESSE, 30 * 60],
+    ]);
   });
 });
 

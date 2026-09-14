@@ -32,6 +32,12 @@ export const espaceMembreProvider = EspaceMembreProvider({
  * porteur : le transférer transfère l'accès, et celui-ci existe pour être suivi tout de
  * suite. Deux bornes à ne pas confondre, le lien vaut une demi-heure, la session qu'il
  * ouvre vaut la durée du jeton.
+ *
+ * **Les deux portes, et la même durée pour les deux.** Ce raisonnement ne regarde pas
+ * par où l'on entre : l'adresse de la fiche beta.gouv est une boîte comme une autre, et
+ * un lien qui y dort une journée est un accès qui attend une journée. La porte
+ * espace-membre restait au défaut du paquet, ce qui ne se lisait nulle part et ne se
+ * déduisait pas de cette constante.
  */
 const LIEN_VALIDE_SECONDES = 30 * 60;
 
@@ -46,7 +52,11 @@ export function fournisseursDuLien(
 ): Provider[] {
   return [
     espaceMembreProvider.ProviderWrapper(
-      Nodemailer({ server: serveur, from: webEnv.SMTP_EMAIL_FROM }),
+      Nodemailer({
+        server: serveur,
+        from: webEnv.SMTP_EMAIL_FROM,
+        maxAge: LIEN_VALIDE_SECONDES,
+      }),
     ),
     // Nu, sans le wrapper de l'espace-membre : celui-ci résout un username auprès de
     // l'annuaire beta.gouv, ce qu'une adresse ne sait pas faire. Il garde donc son
