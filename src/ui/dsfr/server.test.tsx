@@ -38,7 +38,12 @@ describe("la tête du système de design", () => {
     // Then elle porte un script, et ce script écrit les deux attributs dont dépend le
     // thème. Les deux sont demandés : `data-fr-scheme` retient le choix, `data-fr-theme`
     // est celui que la feuille de style lit, et l'un sans l'autre ne peint rien.
-    expect(tete).toContain("<script>");
+    //
+    // La balise se cherche ouverte et non fermée : le paquet lui pose un `nonce` dès
+    // qu'on lui en passe un, et exiger `<script>` ferait tomber ce scénario sur une
+    // politique de sécurité de contenu, c'est-à-dire sur un durcissement plutôt que sur
+    // une perte.
+    expect(tete).toContain("<script");
     expect(tete).toContain("data-fr-scheme");
     expect(tete).toContain("data-fr-theme");
   });
