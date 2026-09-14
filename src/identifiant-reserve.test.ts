@@ -34,17 +34,7 @@ vi.mock("@/lib/env", () => ({
 
 vi.mock("@/lib/policy", () => ({ policy: () => ({ scope: { local: [] } }) }));
 
-vi.mock("@/lib/session", () => ({
-  requireOperateur: () =>
-    Promise.resolve({
-      username: "operatrice.exemple",
-      email: null,
-      nom: null,
-      personId: null,
-      voie: "ESPACE_MEMBRE",
-      operateur: true,
-    }),
-}));
+vi.mock("@/lib/session", async () => (await import("@/test/doubles/session")).sessionDe());
 
 vi.mock("@/lib/audit", () => ({ audit: () => undefined }));
 

@@ -12,18 +12,14 @@ const barriere = vi.hoisted(() => ({
   acces: [] as string[],
 }));
 
-function refuser(garde: string): Promise<never> {
-  barriere.gardes.push(garde);
-  const erreur = new Error(barriere.REDIRECTION);
-  Object.assign(erreur, { digest: barriere.REDIRECTION });
-  return Promise.reject(erreur);
-}
-
-vi.mock("@/lib/session", () => ({
-  requireOperateur: () => refuser("requireOperateur"),
-  requireUtilisateur: () => refuser("requireUtilisateur"),
-  utilisateurCourant: () => Promise.resolve(null),
-}));
+// La barrière n'a plus rien à écrire : sans session, le double partagé emprunte la même
+// branche que le vrai module, et son refus porte le digest que ces chemins relaient.
+vi.mock("@/lib/session", async () =>
+  (await import("@/test/doubles/session")).doublerSession({
+    lire: () => null,
+    relever: (porte) => barriere.gardes.push(porte),
+  }),
+);
 
 vi.mock("@/lib/db", () => ({
   prisma: new Proxy(

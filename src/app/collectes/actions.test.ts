@@ -63,17 +63,13 @@ function attendue(posee: AutorisationEnBase, where: FiltreDAutorisation): boolea
   );
 }
 
-vi.mock("@/lib/session", () => ({
-  requireOperateur: () =>
-    Promise.resolve({
-      username: "capucine.exemple",
-      email: "capucine.exemple@beta.gouv.fr",
-      nom: "Capucine Exemple",
-      personId: null,
-      voie: "espace-membre",
-      operateur: true,
-    }),
-}));
+vi.mock("@/lib/session", async () =>
+  (await import("@/test/doubles/session")).sessionDe({
+    username: "capucine.exemple",
+    email: "capucine.exemple@beta.gouv.fr",
+    nom: "Capucine Exemple",
+  }),
+);
 
 vi.mock("@/lib/db", () => ({
   deconnecter: () => Promise.resolve(),

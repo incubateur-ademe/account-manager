@@ -79,10 +79,7 @@ const base = vi.hoisted(() => ({
   operationsTracees: 0,
 }));
 
-vi.mock("@/lib/session", () => ({
-  requireOperateur: () =>
-    Promise.resolve({ username: "operatrice.exemple", operateur: true, personId: null }),
-}));
+vi.mock("@/lib/session", async () => (await import("@/test/doubles/session")).sessionDe());
 
 vi.mock("@/lib/policy", () => ({
   policy: () => ({

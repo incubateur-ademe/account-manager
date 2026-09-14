@@ -90,17 +90,13 @@ const { base, dans, EMPREINTE, OPERATRICE, PORTEUR } = vi.hoisted(() => ({
   PORTEUR: "camille.exemple",
 }));
 
-vi.mock("@/lib/session", () => ({
-  requireOperateur: () =>
-    Promise.resolve({
-      username: OPERATRICE,
-      email: null,
-      nom: "Anne Exemple",
-      personId: "personne-operatrice",
-      voie: "ESPACE_MEMBRE",
-      operateur: true,
-    }),
-}));
+vi.mock("@/lib/session", async () =>
+  (await import("@/test/doubles/session")).sessionDe({
+    username: OPERATRICE,
+    nom: "Anne Exemple",
+    personId: "personne-operatrice",
+  }),
+);
 
 /**
  * Aucun connecteur : la voie du jour ne se sonde donc pas, et le plan affiché reste
