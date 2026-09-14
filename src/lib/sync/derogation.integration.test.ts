@@ -127,4 +127,47 @@ describe("une tolérance tait un écart, puis le rend", () => {
     expect(apres).toMatchObject({ closedAt: null, openedAt: NUIT_3 });
     expect(apres?.openedAt.getTime()).toBeGreaterThan(avant?.openedAt.getTime() ?? 0);
   });
+
+  it("rend l'écart dès la collecte qui suit une levée, sans effacer la tolérance", async () => {
+    // Given un écart toléré, donc tu,
+    await passer(NUIT_1);
+    const tolerance = await prisma.derogation.create({
+      data: {
+        targetType: "personne",
+        targetId: PARTIE,
+        reason: "départ traité hors de l'outil, le temps de la reprise",
+        createdBy: "operatrice.exemple",
+        createdAt: NUIT_1,
+        expiresAt: new Date("2026-12-31T00:00:00Z"),
+      },
+    });
+    await passer(NUIT_2);
+    expect(await constat(PARTIE)).toMatchObject({ closedAt: NUIT_2, closedBy: null });
+
+    // When quelqu'un la lève avant son terme,
+    await prisma.derogation.update({
+      where: { id: tolerance.id },
+      data: { revokedAt: NUIT_2, revokedBy: "operatrice.exemple" },
+    });
+
+    // Then la collecte suivante rend l'écart, sans attendre l'échéance : c'est ce que
+    // lever veut dire, et la lecture des tolérances doit relire la colonne pour le voir,
+    const apres = await passer(NUIT_3);
+    expect(apres).toMatchObject({ couverts: 0 });
+    expect(await constat(PARTIE)).toMatchObject({ closedAt: null, openedAt: NUIT_3 });
+
+    // Then et la tolérance est toujours là, datée et signée. Supprimer perdrait qui a
+    // décidé d'arrêter de tolérer, et avancer l'échéance rendrait ce geste indiscernable
+    // d'un simple écoulement du temps.
+    expect(
+      await prisma.derogation.findUnique({
+        where: { id: tolerance.id },
+        select: { revokedAt: true, revokedBy: true, expiresAt: true },
+      }),
+    ).toEqual({
+      revokedAt: NUIT_2,
+      revokedBy: "operatrice.exemple",
+      expiresAt: new Date("2026-12-31T00:00:00Z"),
+    });
+  });
 });
