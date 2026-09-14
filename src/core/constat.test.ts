@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  constatsDActionsDeclarees,
   constatsDe,
   constatsDIdentites,
   type PersonneConstatable,
@@ -173,6 +174,7 @@ describe("constats levés par la lecture d'un système cible", () => {
     id: "i1",
     provider: "github",
     handle: "jdupont",
+    externalId: "1042",
     rattachementSur: true,
     personneUsername: null,
     personneSortie: false,
@@ -351,5 +353,85 @@ describe("le garde-fou de mission terminée se lit sur l'échéance effective", 
 
     const veille = personne({ startups: ["produit-omega"], missionEnd: le("2026-08-07") });
     expect(constatsDe([veille], PHASES, TERMINALES, CET_APRES_MIDI, null)).toHaveLength(0);
+  });
+});
+
+describe("chaque constat dit ce qu'une tolérance devrait viser", () => {
+  it("vise la personne sur un écart de périmètre, le compte sur un écart de compte, et rien sur une parole démentie", () => {
+    // Given trois personnes dans les trois situations que le périmètre sait constater,
+    const constatsDePerimetre = constatsDe(
+      [
+        personne({ username: "nina.bertrand", vanishedAt: new Date("2026-08-08") }),
+        personne({ username: "sacha.morel", firstSeenAt: new Date("2026-07-01") }),
+        personne({ username: "lou.vasseur", startups: ["produit-epsilon"] }),
+      ],
+      PHASES,
+      TERMINALES,
+      AUJOURDHUI,
+      { amorcage: new Date("2026-06-01T00:00:00Z") },
+    );
+
+    // Then chacun de ces trois écarts se tolère en nommant la personne, seul objet qu'ils
+    // aient en commun : ce n'est pas un compte qui est en cause mais une présence,
+    expect(
+      Object.fromEntries(constatsDePerimetre.map((constat) => [constat.kind, constat.cible])),
+    ).toEqual({
+      SCOPE_EXIT: { type: "personne", username: "nina.bertrand" },
+      SCOPE_ENTRY: { type: "personne", username: "sacha.morel" },
+      INACTIVE_STARTUP: { type: "personne", username: "lou.vasseur" },
+    });
+
+    // Given deux comptes, l'un détenu par quelqu'un de parti, l'autre que personne ne
+    // réclame, et dont le handle et l'identifiant du fournisseur diffèrent,
+    const compte = {
+      id: "i1",
+      provider: "github",
+      handle: "jdupont",
+      externalId: "1042",
+      rattachementSur: true,
+      personneUsername: null,
+      personneSortie: false,
+      compteDeService: false,
+    };
+    const constatsDeComptes = constatsDIdentites([
+      { ...compte, personneUsername: "jean.dupont", personneSortie: true },
+      { ...compte, id: "i2", handle: "cexemple", externalId: "2087" },
+    ]);
+
+    // Then ils se tolèrent en nommant le compte par l'identifiant du fournisseur, et
+    // jamais par son handle : un handle abandonné est rendu à quelqu'un d'autre, et une
+    // tolérance posée dessus couvrirait un jour un compte que personne n'a admis,
+    expect(
+      Object.fromEntries(constatsDeComptes.map((constat) => [constat.kind, constat.cible])),
+    ).toEqual({
+      ORPHAN: { type: "identite", provider: "github", externalId: "1042" },
+      UNREGISTERED: { type: "identite", provider: "github", externalId: "2087" },
+    });
+    for (const constat of constatsDeComptes) {
+      expect(constat.cible).not.toMatchObject({ externalId: expect.stringContaining("jdupont") });
+    }
+
+    // Given une coupure déclarée faite, que la collecte dément en revoyant le compte,
+    const declaree = new Date("2026-08-01T00:00:00Z");
+    const [dementi] = constatsDActionsDeclarees([
+      {
+        label: "Retirer jean.dupont de l'organisation",
+        systemKey: "github",
+        username: "jean.dupont",
+        sens: "OFFBOARDING",
+        declareeLe: declaree,
+        dossierEncoreVivant: true,
+        compteToujoursLa: true,
+        relueLe: AUJOURDHUI,
+        inverseeLe: null,
+        retourLe: null,
+      },
+    ]);
+
+    // Then rien ne le tolère, et c'est définitif : il ne porte ni sur un compte ni sur
+    // quelqu'un mais sur ce qu'un humain a affirmé, et lui donner une cible laisserait
+    // taire une parole démentie en tolérant ce sur quoi elle portait.
+    expect(dementi?.kind).toBe("OVERDUE_MANUAL_ACTION");
+    expect(dementi?.cible).toBeNull();
   });
 });

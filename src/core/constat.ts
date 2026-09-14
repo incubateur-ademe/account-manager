@@ -1,6 +1,7 @@
 import type { PersonSource, RiskLevel } from "@/generated/prisma/enums";
 
 import { type Attachment, toutesLesStartupsSontTerminees } from "./appartenance";
+import type { Cible } from "./derogation";
 import type { SensDossier } from "./dossier";
 import {
   echeanceEffective,
@@ -27,6 +28,12 @@ export interface Constat {
   username?: string;
   /** Renseigné quand il porte sur un compte observé sur un système cible. */
   identiteId?: string;
+  /**
+   * Ce qu'une dérogation devrait viser pour taire ce constat, ou `null` quand rien ne le
+   * tait. Requise plutôt qu'optionnelle : un constat de plus doit se prononcer, et le
+   * typecheck tombe ici plutôt que de le rendre silencieusement intolérable.
+   */
+  cible: Cible | null;
 }
 
 export interface PersonneConstatable {
@@ -64,6 +71,7 @@ function sortieDuPerimetre(personne: PersonneConstatable): Constat | null {
   return {
     kind: "SCOPE_EXIT",
     username: personne.username,
+    cible: { type: "personne", username: personne.username },
     dedupKey: `SCOPE_EXIT:${personne.username}`,
     severity: "HIGH",
     detail: `${personne.fullname} a quitté le référentiel de l'incubateur`,
@@ -164,6 +172,7 @@ function arriveeSansOnboarding(personne: PersonneConstatable, regle: RegleArrive
   return {
     kind: "SCOPE_ENTRY",
     username: personne.username,
+    cible: { type: "personne", username: personne.username },
     dedupKey: `SCOPE_ENTRY:${personne.username}`,
     severity: "MEDIUM",
     detail: `aucun plan d'arrivée n'a été exécuté pour ${personne.fullname} depuis son entrée dans le périmètre`,
@@ -220,6 +229,7 @@ function startupsToutesTerminees(
   return {
     kind: "INACTIVE_STARTUP",
     username: personne.username,
+    cible: { type: "personne", username: personne.username },
     dedupKey: `INACTIVE_STARTUP:${personne.username}`,
     severity: "MEDIUM",
     detail:
@@ -329,6 +339,8 @@ export interface IdentiteConstatable {
   id: string;
   provider: string;
   handle: string;
+  /** Ce sur quoi une tolérance se pose : le handle se renomme, et pire, il se recycle. */
+  externalId: string;
   /** Vrai quand le rattachement repose sur une preuve, non sur une ressemblance. */
   rattachementSur: boolean;
   personneUsername: string | null;
@@ -460,6 +472,10 @@ export function constatsDActionsDeclarees(actions: readonly ActionDeclaree[]): C
 
     constats.push({
       kind: "OVERDUE_MANUAL_ACTION",
+      // Aucune, et définitivement : ce constat porte sur ce qu'un humain a affirmé et que
+      // la collecte dément, pas sur un compte ni sur quelqu'un. Lui donner une cible
+      // laisserait taire la contradiction d'une parole en tolérant ce sur quoi elle porte.
+      cible: null,
       dedupKey: `OVERDUE_MANUAL_ACTION:${action.systemKey}:${action.username}`,
       severity: "HIGH",
       detail: DETAIL[action.sens](action.label, action.systemKey),
@@ -488,6 +504,7 @@ export function constatsDIdentites(identites: readonly IdentiteConstatable[]): C
       if (identite.personneSortie && identite.rattachementSur) {
         constats.push({
           kind: "ORPHAN",
+          cible: { type: "identite", provider: identite.provider, externalId: identite.externalId },
           dedupKey: `ORPHAN:${identite.provider}:${identite.handle}`,
           severity: "HIGH",
           detail: `${ou} appartient à ${identite.personneUsername}, sortie du référentiel`,
@@ -500,6 +517,7 @@ export function constatsDIdentites(identites: readonly IdentiteConstatable[]): C
 
     constats.push({
       kind: "UNREGISTERED",
+      cible: { type: "identite", provider: identite.provider, externalId: identite.externalId },
       dedupKey: `UNREGISTERED:${identite.provider}:${identite.handle}`,
       severity: "MEDIUM",
       detail: `${ou} n'est réclamé par aucune personne suivie ni aucun compte de service`,
