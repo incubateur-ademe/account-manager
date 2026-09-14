@@ -33,7 +33,11 @@ function Levee({ id }: { id: string }) {
       <Button type="submit" priority="tertiary" size="small" disabled={pending}>
         {pending ? "Levée…" : "Lever"}
       </Button>
-      {etat ? <p className={fr.cx("fr-error-text", "fr-mt-1v", "fr-mb-0")}>{etat.erreur}</p> : null}
+      {etat ? (
+        <p className={fr.cx("fr-error-text", "fr-mt-1v", "fr-mb-0")} role="alert">
+          {etat.erreur}
+        </p>
+      ) : null}
     </form>
   );
 }

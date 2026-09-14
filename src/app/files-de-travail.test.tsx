@@ -597,7 +597,11 @@ describe("le geste de tolérance dans la file des constats", () => {
     expect(envoye.get("jusquAu")).toBe("2026-01-31");
     expect(envoye.get("cible")).toBeNull();
 
-    // And son refus s'affiche.
-    expect(await within(modale).findByText("Cet écart est déjà toléré.")).toBeDefined();
+    // And son refus s'affiche, annoncé comme un refus du geste et non comme une erreur du
+    // champ de date : il peut porter sur la raison, ou sur la cible que ce formulaire ne
+    // montre pas, et le rattacher à la date le ferait annoncer de travers.
+    const refus = await within(modale).findByRole("alert");
+    expect(refus.textContent).toContain("Cet écart est déjà toléré.");
+    expect(jusquAu.getAttribute("aria-describedby")).toBeNull();
   });
 });

@@ -146,25 +146,29 @@ export async function tolererConstat(
       "/",
       ...(constat.person ? [`/personnes/${constat.person.username}`] : []),
     ],
-    ecrire: async (operateur) => {
-      await prisma.derogation.create({
-        data: {
-          targetType: cible.type,
-          targetId:
-            cible.type === "identite" ? `${cible.provider}:${cible.externalId}` : cible.username,
-          reason: raison,
-          createdBy: operateur.username,
-          expiresAt: new Date(`${jusquAu}T00:00:00Z`),
-        },
-      });
-      // Fermé tout de suite plutôt qu'à la collecte suivante : l'écart cesse de faire du
-      // bruit au moment où quelqu'un décide de l'admettre, et sans nom, parce que
-      // personne n'a jugé la situation traitée.
-      await prisma.finding.update({
-        where: { id: constat.id },
-        data: { closedAt: maintenant, closeReason: RAISON_COUVERT, closedBy: null },
-      });
-    },
+    // Les deux écritures ensemble : la nuit suivante réparerait bien l'une sans l'autre,
+    // mais entre les deux l'écran mentirait, en montrant un écart dans la file que le
+    // registre dit toléré, ou l'inverse.
+    ecrire: async (operateur) =>
+      prisma.$transaction(async (tx) => {
+        await tx.derogation.create({
+          data: {
+            targetType: cible.type,
+            targetId:
+              cible.type === "identite" ? `${cible.provider}:${cible.externalId}` : cible.username,
+            reason: raison,
+            createdBy: operateur.username,
+            expiresAt: new Date(`${jusquAu}T00:00:00Z`),
+          },
+        });
+        // Fermé tout de suite plutôt qu'à la collecte suivante : l'écart cesse de faire
+        // du bruit au moment où quelqu'un décide de l'admettre, et sans nom, parce que
+        // personne n'a jugé la situation traitée.
+        await tx.finding.update({
+          where: { id: constat.id },
+          data: { closedAt: maintenant, closeReason: RAISON_COUVERT, closedBy: null },
+        });
+      }),
   });
 
   return null;
