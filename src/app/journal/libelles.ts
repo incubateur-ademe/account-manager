@@ -56,6 +56,8 @@ const LIBELLE_ACTION: Record<string, string> = {
   "personne.appartenance.liberee": "Surcharge d'appartenance retirée",
   "rattachement.pose": "Rattachement manuel à une startup",
   "rattachement.retrait": "Retrait d'un rattachement manuel",
+  "derogation.pose": "Tolérance posée sur un écart",
+  "derogation.levee": "Tolérance levée avant son terme",
   "retirer-de-l-organisation": "Retrait d'une organisation",
 };
 

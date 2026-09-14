@@ -1,4 +1,4 @@
-import type { PersonSource, RiskLevel } from "@/generated/prisma/enums";
+import type { FindingKind, PersonSource, RiskLevel } from "@/generated/prisma/enums";
 
 import { type Attachment, toutesLesStartupsSontTerminees } from "./appartenance";
 import type { Cible } from "./derogation";
@@ -35,6 +35,37 @@ export interface Constat {
    */
   cible: Cible | null;
 }
+
+/**
+ * Ce que chaque constat se laisse viser, dit une fois et par un dictionnaire exhaustif.
+ *
+ * Les constructeurs posent une cible complète, qu'ils sont seuls à savoir composer. Cette
+ * table dit seulement de quelle sorte elle est, et elle existe pour le chemin inverse :
+ * une tolérance se pose depuis un constat relu en base, où il ne reste que le type, la
+ * personne et l'identité. Le jour où une valeur s'ajoute à l'énumération, le typecheck
+ * tombe ici plutôt que de la rendre silencieusement intolérable.
+ *
+ * `src/core/constat.test.ts` épingle l'accord entre cette table et ce que les
+ * constructeurs produisent : deux endroits qui disent la même chose se contredisent un
+ * jour, et celui-là se verra.
+ */
+export const SORTE_DE_CIBLE: Readonly<Record<FindingKind, Cible["type"] | null>> = {
+  SCOPE_EXIT: "personne",
+  SCOPE_ENTRY: "personne",
+  INACTIVE_STARTUP: "personne",
+  ORPHAN: "identite",
+  UNREGISTERED: "identite",
+  OVERDUE_MANUAL_ACTION: null,
+  // Les cinq que l'énumération déclare et qu'aucun code ne produit encore. Nulles plutôt
+  // qu'absentes : une ligne de base portant l'une d'elles ne se tolère pas, faute de
+  // savoir ce qu'elle viserait, et le jour où l'une se met à naître, c'est ici qu'on
+  // vient dire ce qu'elle laisse viser.
+  UNMATCHED_IDENTITY: null,
+  EXPIRED_GRANT: null,
+  DORMANT: null,
+  PRIVILEGE_DRIFT: null,
+  UNVERIFIABLE: null,
+};
 
 export interface PersonneConstatable {
   username: string;

@@ -6,7 +6,11 @@ import {
   couvertureDesConstats,
   type Derogation,
   derogationsEnCours,
+  jourSaisi,
+  leveeAdmissible,
   lireCible,
+  poseAdmissible,
+  TOLERANCE_MAX_JOURS,
 } from "./derogation";
 
 const JOUR = 24 * 60 * 60 * 1000;
@@ -186,5 +190,96 @@ describe("une tolérance ne couvre que ce qu'elle nomme", () => {
       derogationsEnCours([toleree({ cible: parAdresse })], POSE),
     );
     expect(cles(couverture.retenus)).toEqual(["UNREGISTERED:github:1042"]);
+  });
+});
+
+describe("ce qu'une pose exige, et ce qu'une levée exige", () => {
+  const refus = (verdict: ReturnType<typeof poseAdmissible>) =>
+    verdict.possible ? null : verdict.raison;
+
+  it("refuse chaque manquement en le nommant, et accepte jusqu'au dernier jour admissible", () => {
+    // Given une demande par ailleurs valable,
+    const valable = {
+      cible: COMPTE,
+      raison: "compte partagé le temps de la campagne",
+      echeance: dans(30),
+    };
+
+    // Then elle passe,
+    expect(poseAdmissible(valable, new Set(), POSE)).toEqual({ possible: true });
+
+    // Then chaque manquement se refuse en disant lequel, parce que c'est ce que l'écran
+    // montre et qu'une phrase générique ferait recommencer le geste à l'aveugle,
+    expect(refus(poseAdmissible({ ...valable, cible: null }, new Set(), POSE))).toContain(
+      "ne se tolère pas",
+    );
+    expect(refus(poseAdmissible({ ...valable, raison: "  " }, new Set(), POSE))).toContain(
+      "pourquoi",
+    );
+    expect(refus(poseAdmissible({ ...valable, echeance: dans(-1) }, new Set(), POSE))).toContain(
+      "déjà passée",
+    );
+    expect(refus(poseAdmissible(valable, new Set([cleDeCible(COMPTE)]), POSE))).toContain(
+      "déjà toléré",
+    );
+
+    // Then le plafond est une borne inclusive : le dernier jour qu'il autorise passe, et
+    // le suivant non. Sans cette exactitude, une tolérance de six mois pile se ferait
+    // refuser sans que personne ne comprenne pourquoi,
+    expect(
+      poseAdmissible({ ...valable, echeance: dans(TOLERANCE_MAX_JOURS) }, new Set(), POSE),
+    ).toEqual({ possible: true });
+    expect(
+      refus(
+        poseAdmissible({ ...valable, echeance: dans(TOLERANCE_MAX_JOURS + 1) }, new Set(), POSE),
+      ),
+    ).toContain(`${TOLERANCE_MAX_JOURS} jours`);
+
+    // Then une échéance du jour même passe : tolérer jusqu'à ce soir est un geste
+    // légitime, et c'est le lendemain que l'écart revient.
+    expect(poseAdmissible({ ...valable, echeance: POSE }, new Set(), POSE)).toEqual({
+      possible: true,
+    });
+  });
+
+  it("ne lève ni une tolérance déclarée en git, ni une déjà levée, ni une déjà éteinte", () => {
+    // Then une permanente ne se lève pas depuis l'interface : elle vit dans un fichier
+    // versionné, et la lever ici la ferait revenir au prochain démarrage,
+    const permanente = toleree({ provenance: "politique", poseeLe: null, echeance: null });
+    expect(leveeAdmissible(permanente, POSE)).toMatchObject({ possible: false });
+
+    // Then une tolérance déjà levée ne se relève pas,
+    expect(leveeAdmissible(toleree({ leveeLe: dans(1) }), dans(2))).toMatchObject({
+      possible: false,
+    });
+
+    // Then une tolérance éteinte par son échéance non plus : le geste n'aurait rien à
+    // couper, et il laisserait au journal la trace d'une décision que personne n'a eu à
+    // prendre,
+    expect(leveeAdmissible(toleree(), dans(30))).toMatchObject({ possible: false });
+
+    // Then et celle qui court se lève.
+    expect(leveeAdmissible(toleree(), dans(1))).toEqual({ possible: true });
+  });
+});
+
+describe("la date qu'une saisie désigne", () => {
+  it("refuse ce qui n'existe pas au calendrier plutôt que de le déplacer", () => {
+    // Then une date ordinaire revient telle quelle,
+    expect(jourSaisi("2026-01-31")?.toISOString()).toBe("2026-01-31T00:00:00.000Z");
+    expect(jourSaisi("2028-02-29")?.toISOString()).toBe("2028-02-29T00:00:00.000Z");
+
+    // Then un jour qui n'existe pas se refuse au lieu de glisser sur le suivant : sans
+    // cette relecture, un 31 février enregistrerait le 3 mars, donc une échéance que
+    // personne n'a demandée,
+    expect(jourSaisi("2026-02-31")).toBeNull();
+    expect(jourSaisi("2026-04-31")).toBeNull();
+    expect(jourSaisi("2027-02-29")).toBeNull();
+    expect(jourSaisi("2026-13-01")).toBeNull();
+
+    // Then et ce qui n'a pas la forme d'un jour non plus.
+    for (const saisie of ["", "2026-1-5", "31/01/2026", "2026-01-31T12:00:00Z", "demain"]) {
+      expect(jourSaisi(saisie)).toBeNull();
+    }
   });
 });

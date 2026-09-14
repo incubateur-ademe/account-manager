@@ -129,6 +129,15 @@ const CHARGES: Readonly<Record<string, readonly unknown[]>> = {
   rattacherIdentite: [null, champs({ id: IDENTITE, cible: PERSONNE })],
   creerFichePourCompte: [null, champs({ id: IDENTITE, nom: "Camille Exemple" })],
   cloreConstat: [null, champs({ dedupKey: CONSTAT, raison: "compte fermé chez OVH" })],
+  tolererConstat: [
+    null,
+    champs({
+      dedupKey: CONSTAT,
+      raison: "compte partagé le temps de la campagne",
+      jusquAu: "2099-01-31",
+    }),
+  ],
+  leverDerogation: [null, champs({ derogationId: "drg_0000000000000000000000" })],
   detacherIdentite: [null, champs({ id: IDENTITE })],
   rattacherAStartup: [
     null,

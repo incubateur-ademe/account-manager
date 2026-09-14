@@ -19,11 +19,17 @@ const doubles = vi.hoisted(() => ({
   rattacher: vi.fn(),
   creer: vi.fn(),
   clore: vi.fn(),
+  tolerer: vi.fn(),
+  lever: vi.fn(),
 }));
 
 vi.mock("@/app/comptes-isoles/actions", () => ({ rattacherIdentite: doubles.rattacher }));
 vi.mock("@/app/comptes-isoles/creer", () => ({ creerFichePourCompte: doubles.creer }));
-vi.mock("@/app/constats/actions", () => ({ cloreConstat: doubles.clore }));
+vi.mock("@/app/constats/actions", () => ({
+  cloreConstat: doubles.clore,
+  tolererConstat: doubles.tolerer,
+  leverDerogation: doubles.lever,
+}));
 vi.mock("@/app/dossiers/actions", () => ({
   ouvrirArrivee: vi.fn(() => Promise.resolve(null)),
   ouvrirDepart: vi.fn(() => Promise.resolve(null)),
@@ -137,6 +143,7 @@ function fermer(id: string): void {
 
 const MODALE_RATTACHEMENT = "traiter-compte-isole";
 const MODALE_CLOTURE = "clore-constat";
+const MODALE_TOLERANCE = "tolerer-constat";
 
 const ORPHELIN: LigneCompteIsole = {
   id: "id-marceau",
@@ -234,6 +241,7 @@ function monterLaFileDesConstats() {
     <FileDesConstats
       lignes={[CONSTAT_ARRIVEE, CONSTAT_COMPTE_PARTI]}
       profils={{ etat: "illisible" }}
+      dernierJourTolere="2026-03-10"
     />,
   );
 }
@@ -512,5 +520,88 @@ describe("La file des constats", () => {
       "",
     );
     expect(within(rouverte).getByText(COMPTE_PARTI.titre)).toBeDefined();
+  });
+});
+
+describe("le geste de tolérance dans la file des constats", () => {
+  it("ne s'offre qu'aux constats qui se tolèrent, et poste la clé du constat choisi", async () => {
+    // Given une file où figure un constat qui ne se tolère pas : il porte sur ce qu'un
+    // humain a déclaré et que la collecte dément, pas sur un compte ni sur quelqu'un.
+    const utilisateur = userEvent.setup();
+    doubles.tolerer.mockResolvedValue({ erreur: "Cet écart est déjà toléré." });
+    const DEMENTI: LigneConstat = {
+      id: "f-3",
+      dedupKey: "OVERDUE_MANUAL_ACTION:github:m.marceau",
+      kind: "OVERDUE_MANUAL_ACTION",
+      titre: "Action déclarée démentie",
+      explication: "La collecte revoit le compte que quelqu'un a déclaré avoir coupé.",
+      action: "Vérifier ce qui a été fait.",
+      severity: "HIGH",
+      ouvertLe: "20/08/2025",
+      personne: { username: "m.marceau", fullname: "M. Marceau" },
+      compte: null,
+    };
+    render(
+      <FileDesConstats
+        lignes={[CONSTAT_COMPTE_PARTI, DEMENTI]}
+        profils={{ etat: "illisible" }}
+        dernierJourTolere="2026-03-10"
+      />,
+    );
+
+    const ligneCompteParti = screen.getByText(COMPTE_PARTI.titre).closest("tr") as HTMLElement;
+    const ligneDementi = screen.getByText(DEMENTI.titre).closest("tr") as HTMLElement;
+
+    // Then le compte d'une personne partie se tolère, et la parole démentie non : c'est
+    // le type du constat qui décide du geste, et le taire reviendrait à faire taire une
+    // contradiction plutôt qu'un écart.
+    expect(within(ligneCompteParti).getByRole("button", { name: "Tolérer" })).toBeDefined();
+    expect(within(ligneDementi).queryByRole("button", { name: "Tolérer" })).toBeNull();
+
+    // And les deux gardent la clôture, qui ne dit pas la même chose.
+    expect(within(ligneDementi).getByRole("button", { name: "Clore" })).toBeDefined();
+
+    // When on tolère le compte de la personne partie.
+    await utilisateur.click(within(ligneCompteParti).getByRole("button", { name: "Tolérer" }));
+    ouvrir(MODALE_TOLERANCE);
+    const modale = modaleDe(MODALE_TOLERANCE);
+
+    // Then la modale redit sur quoi elle porte, et dit ce que tolérer veut dire ici,
+    // que la clôture ne dit pas.
+    expect(within(modale).getByText("github : m-marceau")).toBeDefined();
+    expect(within(modale).getByText(COMPTE_PARTI.titre)).toBeDefined();
+    expect(
+      within(modale).getByText(/Tolérer ne dit pas que la situation est traitée/),
+    ).toBeDefined();
+
+    // And le champ de date porte la borne que le serveur a calculée, plutôt qu'une
+    // calculée au rendu : deux horloges qui ne tombent pas sur le même jour feraient
+    // diverger le HTML servi de celui qu'on hydrate.
+    const jusquAu = within(modale).getByLabelText(/Jusqu'au/) as HTMLInputElement;
+    expect(jusquAu.max).toBe("2026-03-10");
+
+    // When on dit pourquoi et jusqu'à quand.
+    await utilisateur.type(
+      within(modale).getByLabelText(/Pourquoi cet écart est admis/),
+      "Compte partagé, repris en janvier",
+    );
+    await utilisateur.type(jusquAu, "2026-01-31");
+    await utilisateur.click(within(modale).getByRole("button", { name: "Tolérer" }));
+
+    // Then l'action reçoit la clé du constat choisi et les deux champs sous les noms
+    // qu'elle lit, et surtout aucune cible : celle-ci se déduit du constat côté serveur,
+    // et un champ de plus ici laisserait taire ce que personne n'a regardé.
+    const envoye = doubles.tolerer.mock.calls[0]?.[1] as FormData;
+    expect(envoye.get("dedupKey")).toBe(CONSTAT_COMPTE_PARTI.dedupKey);
+    expect(envoye.get("raison")).toBe("Compte partagé, repris en janvier");
+    expect(envoye.get("jusquAu")).toBe("2026-01-31");
+    expect(envoye.get("cible")).toBeNull();
+
+    // And son refus s'affiche, annoncé comme un refus du geste et non comme une erreur du
+    // champ de date : il peut porter sur la raison, ou sur la cible que ce formulaire ne
+    // montre pas, et le rattacher à la date le ferait annoncer de travers.
+    const refus = await within(modale).findByRole("alert");
+    expect(refus.textContent).toContain("Cet écart est déjà toléré.");
+    expect(jusquAu.getAttribute("aria-describedby")).toBeNull();
   });
 });
