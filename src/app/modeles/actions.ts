@@ -103,7 +103,7 @@ function lireSaisie(formData: FormData): SaisieAttendue | null | Refus {
 
   return saisie.success
     ? saisie.data
-    : { erreur: "La valeur demandée au pointage a besoin d'un libellé lisible." };
+    : { erreur: "La valeur demandée au moment de cocher a besoin d'un libellé lisible." };
 }
 
 function lireEtape(formData: FormData): EtapeSaisie | Refus {

@@ -42,7 +42,7 @@ export function Appartenance({
         <input type="hidden" name="username" value={username} />
         <Input
           label={surcharge ? "Changer la décision" : "Forcer son appartenance"}
-          hintText="Raison obligatoire : sans motif, la décision ne se réexamine pas."
+          hintText="Obligatoire. Elle s'affichera sur cette fiche et restera au journal, avec votre nom."
           nativeInputProps={{
             name: "raison",
             required: true,
@@ -52,12 +52,17 @@ export function Appartenance({
           state={pose ? "error" : "default"}
           stateRelatedMessage={pose?.erreur}
         />
+        {/* `value` en propriété du composant et non dans `nativeButtonProps` : le
+            système de design étale ces derniers puis réapplique sa propre `value`,
+            qui vaut alors `undefined` et efface celle qu'on croyait poser. Les deux
+            boutons partaient ainsi avec un sens vide, que l'action refuse. */}
         <Button
           type="submit"
           priority="secondary"
           size="small"
           disabled={enPose}
-          nativeButtonProps={{ name: "sens", value: "INCLUDE" }}
+          value="INCLUDE"
+          nativeButtonProps={{ name: "sens" }}
         >
           Forcer dans l'incubateur
         </Button>{" "}
@@ -66,7 +71,8 @@ export function Appartenance({
           priority="secondary"
           size="small"
           disabled={enPose}
-          nativeButtonProps={{ name: "sens", value: "EXCLUDE" }}
+          value="EXCLUDE"
+          nativeButtonProps={{ name: "sens" }}
         >
           Déclarer hors incubateur
         </Button>
@@ -76,7 +82,7 @@ export function Appartenance({
         <form action={retirerAction} className={fr.cx("fr-mt-2w")}>
           <input type="hidden" name="username" value={username} />
           <Button type="submit" priority="tertiary" size="small" disabled={enRetrait}>
-            {enRetrait ? "Retrait…" : "Retirer la surcharge"}
+            {enRetrait ? "Retrait…" : "Retirer cette décision"}
           </Button>
           {retrait ? (
             <p className={fr.cx("fr-error-text", "fr-mt-1v")} role="alert">

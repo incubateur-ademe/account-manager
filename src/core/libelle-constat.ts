@@ -15,19 +15,20 @@ export const LIBELLE_CONSTAT: Record<ConstatKind, Libelle> = {
   OVERDUE_MANUAL_ACTION: {
     titre: "Action déclarée faite, mais sans effet observé",
     explication:
-      "Une étape a été pointée comme faite, et la lecture suivante du système dit le contraire : le compte est toujours là après un départ, ou toujours absent après une arrivée. L'outil n'exécute rien lui-même : une case cochée vaut parole, pas preuve, et c'est la collecte qui tranche. Soit le geste a été fait ailleurs qu'attendu, soit il ne l'a pas été.",
-    action: "Reprendre l'étape sur le système, ou corriger le pointage s'il était erroné.",
+      "Une étape a été déclarée faite, et la lecture suivante du système dit le contraire : le compte est toujours là après un départ, ou toujours absent après une arrivée. Une case cochée vaut parole, pas preuve, et c'est la collecte qui tranche. Soit le geste a été fait ailleurs qu'attendu, soit il ne l'a pas été.",
+    action:
+      "Reprendre l'étape sur le système, ou corriger cette déclaration si elle était erronée.",
   },
   SCOPE_EXIT: {
-    titre: "Sortie du référentiel",
+    titre: "Sortie du référentiel des personnes",
     explication:
-      "Cette personne a disparu du référentiel de l'incubateur, et rien ici ne dit ce que ses accès sont devenus. Le référentiel amont retire des équipes les membres dont la mission est terminée, ce qui la rend invisible au moment précis où il faut agir.",
+      "Cette personne a disparu du référentiel des personnes de l'incubateur, et rien ici ne dit ce que ses accès sont devenus. L'amont retire des équipes les membres dont la mission est terminée : elle devient invisible au moment précis où il faut agir.",
     action: "Vérifier ses accès et les couper, puis clore ce constat.",
   },
   SCOPE_ENTRY: {
-    titre: "Arrivée sans onboarding",
+    titre: "Arrivée non préparée",
     explication:
-      "Cette personne est apparue dans le périmètre sans qu'aucun plan d'arrivée n'ait été exécuté pour elle, ce qui veut dire que ses accès ont été posés ailleurs, ou pas posés du tout. Le jour de son départ, l'outil ne saura pas quoi retirer.",
+      "Cette personne est apparue parmi les personnes suivies sans qu'aucun plan d'arrivée n'ait été exécuté pour elle : ses accès ont été posés ailleurs, ou pas posés du tout. Le jour de son départ, l'outil ne saura pas quoi retirer.",
     action: "Préparer son arrivée, ou clore ce constat en disant ce qui a déjà été fait.",
   },
   INACTIVE_STARTUP: {
@@ -39,7 +40,7 @@ export const LIBELLE_CONSTAT: Record<ConstatKind, Libelle> = {
   ORPHAN: {
     titre: "Compte d'une personne partie",
     explication:
-      "Ce compte appartient à quelqu'un qui a quitté le référentiel de l'incubateur, et il est toujours actif sur le système. C'est un accès qui survit à son motif : le rattachement repose sur une preuve, pas sur une ressemblance.",
+      "Ce compte appartient à quelqu'un qui a quitté le référentiel des personnes de l'incubateur, et il est toujours actif sur le système. C'est un accès qui survit à son motif, et le rattachement de ce compte à cette personne repose sur une preuve, pas sur une ressemblance.",
     action: "Couper cet accès, puis clore ce constat.",
   },
   UNREGISTERED: {

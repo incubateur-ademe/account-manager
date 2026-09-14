@@ -43,7 +43,7 @@ export async function rattacherIdentite(
     return { erreur: "Compte introuvable." };
   }
   if (!cible) {
-    return { erreur: "Indiquez un username ou une clé de compte de service." };
+    return { erreur: "Indiquez un identifiant beta.gouv ou une clé de compte de service." };
   }
 
   const identite = await prisma.externalIdentity.findUnique({

@@ -9,6 +9,7 @@ import { useState } from "react";
 import { ClotureConstat } from "@/app/constats/ClotureConstat";
 import { FormulaireOuverture } from "@/app/dossiers/FormulaireOuverture";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
+import { useCleDOuverture } from "@/ui/modale";
 import type { ChoixDeProfils } from "@/ui/profils";
 
 import { modaleRattacherStartup } from "./ModaleRattacherStartup";
@@ -56,6 +57,8 @@ export function CeQuiAppelleUneAction({
   profils: ChoixDeProfils;
 }) {
   const [choisi, setChoisi] = useState<GesteDeCloture | null>(null);
+  const ouvertureCloture = useCleDOuverture(modaleCloture);
+  const ouvertureArrivee = useCleDOuverture(modaleArrivee);
 
   if (motifs.length === 0) {
     return null;
@@ -150,7 +153,7 @@ export function CeQuiAppelleUneAction({
               rouvrira pas tant qu'elle la constate, et votre nom reste au journal avec la raison.
             </p>
             <ClotureConstat
-              key={choisi.dedupKey}
+              key={`${ouvertureCloture}:${choisi.dedupKey}`}
               dedupKey={choisi.dedupKey}
               onSucces={modaleCloture.close}
             />
@@ -159,7 +162,12 @@ export function CeQuiAppelleUneAction({
       </modaleCloture.Component>
 
       <modaleArrivee.Component title={LIBELLE_DOSSIER.ONBOARDING.ouvrir}>
-        <FormulaireOuverture username={username} sens="ONBOARDING" profils={profils} />
+        <FormulaireOuverture
+          key={ouvertureArrivee}
+          username={username}
+          sens="ONBOARDING"
+          profils={profils}
+        />
       </modaleArrivee.Component>
     </section>
   );

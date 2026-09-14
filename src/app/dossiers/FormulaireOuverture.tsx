@@ -4,6 +4,7 @@ import { fr } from "@codegouvfr/react-dsfr";
 import { Button } from "@codegouvfr/react-dsfr/Button";
 import { useActionState, useId, useState } from "react";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
+import { useListesApresEnvoi } from "@/ui/formulaire";
 import type { ChoixDeProfils } from "@/ui/profils";
 
 import { type EtatDossier, ouvrirArrivee, ouvrirDepart } from "./actions";
@@ -27,7 +28,8 @@ const SANS_PROFIL = "";
  * ferait chercher dans la liste un profil qu'on sait avoir déclaré, et le refus se
  * lirait après le clic plutôt qu'avant.
  */
-function ChoixDeProfil({ profils }: { profils: ChoixDeProfils }) {
+function ChoixDeProfil({ profils, pending }: { profils: ChoixDeProfils; pending: boolean }) {
+  const envoi = useListesApresEnvoi(pending);
   const [choisi, setChoisi] = useState(SANS_PROFIL);
 
   // La fiche d'une personne monte ce formulaire deux fois, dans son en-tête et dans le
@@ -66,6 +68,7 @@ function ChoixDeProfil({ profils }: { profils: ChoixDeProfils }) {
             </span>
           </label>
           <select
+            key={`profil-${envoi}`}
             className={fr.cx("fr-select")}
             id={champ}
             name="profil"
@@ -151,7 +154,9 @@ export function FormulaireOuverture(proprietes: ProprietesDOuverture) {
 
       <form action={formAction}>
         <input type="hidden" name="username" value={username} />
-        {proprietes.sens === "ONBOARDING" ? <ChoixDeProfil profils={proprietes.profils} /> : null}
+        {proprietes.sens === "ONBOARDING" ? (
+          <ChoixDeProfil profils={proprietes.profils} pending={pending} />
+        ) : null}
         <Button type="submit" priority="primary" disabled={pending}>
           {pending ? "Calcul du plan…" : "Ouvrir le dossier"}
         </Button>

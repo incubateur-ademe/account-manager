@@ -52,7 +52,7 @@ export function expliquerStatut(
 ): string {
   switch (statut) {
     case "SORTI":
-      return "Elle a quitté le référentiel de l'incubateur, et rien ici ne dit ce que ses accès sont devenus.";
+      return "Elle a quitté le référentiel des personnes de l'incubateur, et rien ici ne dit ce que ses accès sont devenus.";
     case "A_TRAITER":
       return `Son échéance est dépassée au-delà du délai de grâce de ${graceDays} jours.`;
     case "EN_SURSIS":

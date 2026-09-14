@@ -16,6 +16,7 @@ import {
   MOMENTS,
   modelesDuProprietaire,
 } from "../../lecture";
+import { MODELE } from "../../redaction";
 
 export const dynamic = "force-dynamic";
 
@@ -85,8 +86,8 @@ export default async function ModeleDeStartupPage({ params }: Props) {
         <Alert
           className={fr.cx("fr-mt-3w")}
           severity="warning"
-          title="Ce ghid ne correspond à aucune startup connue"
-          description="Aucun plan ne portera ses étapes : l'assemblage compare des ghid à des ghid, et celui-ci n'est plus rendu par le référentiel. Un renommage amont, une sortie de l'incubateur ou une faute de frappe donnent ici le même symptôme. Redéclarez ces étapes sous le bon ghid, puis retirez celles-ci."
+          title="Cet identifiant ne correspond à aucune startup connue"
+          description={MODELE.orphelins.seul}
         />
       )}
 
@@ -113,8 +114,8 @@ export default async function ModeleDeStartupPage({ params }: Props) {
                   <>
                     <p className={fr.cx("fr-mb-1w")}>
                       {neutralisees[moment] === 0
-                        ? "Aucune étape n'est déclarée ici pour ce moment, et aucune ne pourrait l'être tant que l'autorisation reste fermée."
-                        : `${neutralisees[moment]} étape${neutralisees[moment] > 1 ? "s" : ""} déclarée${neutralisees[moment] > 1 ? "s" : ""} ici ${neutralisees[moment] > 1 ? "sont neutralisées" : "est neutralisée"} : ${neutralisees[moment] > 1 ? "elles restent" : "elle reste"} en base et ${neutralisees[moment] > 1 ? "n'entrent" : "n'entre"} dans aucun plan. Rouvrir l'autorisation ${neutralisees[moment] > 1 ? "les rend" : "la rend"} à l'identique.`}
+                        ? "Aucune étape n'est déclarée ici pour ce moment, et aucune ne peut l'être tant que l'autorisation reste fermée."
+                        : MODELE.neutralisees(neutralisees[moment], "ici")}
                     </p>
                     <p className={fr.cx("fr-mb-0")}>
                       <Link href="/modeles/incubateur">

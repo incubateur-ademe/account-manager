@@ -1,4 +1,10 @@
-import { type Acteur, dossierVivant, type EtatDossier, type EtatValidation } from "./dossier";
+import {
+  type Acteur,
+  dossierVivant,
+  type EtatDossier,
+  type EtatValidation,
+  type SensDossier,
+} from "./dossier";
 import { type FicheManuelle, ficheEditable } from "./fiche-manuelle";
 import { estOperateur } from "./identite";
 
@@ -228,10 +234,34 @@ export type CanalDuDroit =
   | { vivant: true; adresse: string; origine: OrigineCanal }
   | { vivant: false };
 
-/** Le même verdict, augmenté de ce qui va couper l'adresse qu'il retient. */
+/** Le même verdict, augmenté de ce que ce dossier va faire à l'adresse qu'il retient. */
 export type EtatCanal =
   | { vivant: true; adresse: string; origine: OrigineCanal; menace: boolean }
   | { vivant: false };
+
+/**
+ * Le départ qu'un dossier acte, lu depuis le droit qui s'y donne.
+ *
+ * Deux faits et non un seul. Le sens d'abord : une arrivée ne ferme aucune boîte, et
+ * juger sans lui faisait avertir là où personne ne part. Les deux fiches ensuite : le
+ * bénéficiaire d'un droit n'est pas forcément la personne concernée, et le départ de
+ * celle-ci ne coupe rien chez celui-là.
+ */
+export interface DepartEnCause {
+  sens: SensDossier;
+  /**
+   * L'identifiant interne de la fiche que le dossier concerne, et non son username :
+   * un identifiant fabriqué ici se renomme, et deux noms qui cessent de coïncider
+   * éteindraient l'avertissement sans que personne ne le voie.
+   */
+  concerne: string;
+  /** Celui de la fiche qui reçoit le droit. */
+  beneficiaire: string;
+}
+
+function departFermeLaBoite(depart: DepartEnCause): boolean {
+  return depart.sens === "OFFBOARDING" && depart.beneficiaire === depart.concerne;
+}
 
 /**
  * Où le lien de connexion de ce droit partirait aujourd'hui, ou nulle part.
@@ -266,7 +296,7 @@ export function canalDuDroit(
 }
 
 /**
- * Une adresse est-elle sur une boîte que le départ de son titulaire va couper ?
+ * Une adresse est-elle sur une boîte qu'un départ coupe ?
  *
  * La question se juge sur le domaine, et non sur l'égalité des deux adresses de la
  * fiche : cette égalité rate une adresse secondaire qui est elle aussi une boîte
@@ -283,23 +313,35 @@ function domaineMenace(adresse: string, domainesMenaces: readonly string[]): boo
 }
 
 /**
- * Où le lien de connexion de ce droit part, et ce qui va le couper. Un seul verdict,
- * parce que deux se composaient mal.
+ * Où le lien de connexion de ce droit part, et ce que ce dossier lui fait. Un seul
+ * verdict, parce que deux se composaient mal.
  *
  * La menace se jugeait à part, sur une adresse de fiche que `canalDuDroit` avait déjà
  * écartée : l'octroi annonçait donc que le lien partait sur une boîte condamnée pour un
  * droit dont la liste, une ligne plus bas, disait qu'aucune adresse ne le servait. Une
  * adresse dont rien ne part n'est menacée par rien, et la seule façon que les deux
  * écrans ne se contredisent plus est qu'ils n'aient plus qu'une réponse à lire.
+ *
+ * Le départ en cause décide avec le domaine : sans lui, la menace se levait sur une
+ * arrivée, où personne ne part, et sur un tiers, dont ce dossier ne dit pas le départ.
+ * Ce que le verdict affirme, il l'affirme donc pour ce dossier-ci, et les phrases des
+ * écrans le disent sans réserve.
  */
 export function etatDuCanal(
   fiche: FicheManuelle & CanalDeFiche,
   canal: string | null,
   declaresLocaux: readonly string[],
   domainesMenaces: readonly string[],
+  depart: DepartEnCause,
 ): EtatCanal {
   const vif = canalDuDroit(fiche, canal, declaresLocaux);
-  return vif.vivant ? { ...vif, menace: domaineMenace(vif.adresse, domainesMenaces) } : vif;
+  if (!vif.vivant) {
+    return vif;
+  }
+  return {
+    ...vif,
+    menace: departFermeLaBoite(depart) && domaineMenace(vif.adresse, domainesMenaces),
+  };
 }
 
 /** Une étape lue par ce qu'elle attend de qui. */

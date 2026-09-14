@@ -36,6 +36,6 @@ export const RATTACHEMENT_IDENTITE: Record<MatchMethod, { libelle: string; sur: 
   DECLARED: { libelle: "Déclaré", sur: true },
   GITHUB_LOGIN: { libelle: "Login GitHub", sur: true },
   EMAIL_EXACT: { libelle: "Adresse exacte", sur: true },
-  HEURISTIC: { libelle: "Heuristique", sur: false },
-  NONE: { libelle: "Aucun", sur: false },
+  HEURISTIC: { libelle: "Ressemblance de nom", sur: false },
+  NONE: { libelle: "Sans preuve", sur: false },
 };

@@ -40,9 +40,10 @@ export interface LibelleDossier {
   /**
    * Le pointage qui constate que quelqu'un est passé avant. Il n'a de sens que dans
    * un sens : proposer « déjà absent » sur une arrivée reviendrait à faire signer
-   * l'inverse de ce qui a été fait.
+   * l'inverse de ce qui a été fait. Son refus nomme le seul choix qui vaut ici,
+   * l'écran d'en face ayant proposé l'autre.
    */
-  constat: { valeur: string; libelle: string };
+  constat: { valeur: string; libelle: string; refus: string };
   annule: string;
   annuler: string;
   annulationTitre: string;
@@ -66,17 +67,21 @@ export const LIBELLE_DOSSIER: Record<SensDossier, LibelleDossier> = {
       "Ce dossier était déjà ouvert : vous êtes revenu dessus, aucun second dossier n'a été créé. Une arrivée ne s'ouvre qu'une fois par personne tant qu'elle n'est pas close.",
     cocher:
       "Cocher une étape n'exécute rien : l'outil consigne ce que vous déclarez avoir fait, il n'ouvre aucun accès lui-même. La collecte suivante dira si le compte est réellement apparu.",
-    droitPossibleSur: "une arrivée décidée et pas encore soldée",
+    droitPossibleSur: "une arrivée décidée et pas encore close",
     aFaire: "Ce qu'il faudra donner",
     restant: "Ce qu'il reste à donner",
     propose: "Ce que ce plan proposait de donner",
     planVide:
-      "Aucune étape : le profil retenu à l'ouverture n'ouvre rien sur les systèmes couverts, ou aucun ne l'a été, et aucun modèle d'arrivée ne concerne cette personne. Le dossier est bien ouvert, sa liste viendra de l'un ou de l'autre.",
+      "Aucune étape : aucun profil n'a été retenu à l'ouverture, ou celui qui l'a été n'ouvre rien sur les systèmes couverts, et aucun modèle d'arrivée ne concerne cette personne. Le dossier est bien ouvert, sa liste viendra de l'un ou de l'autre.",
     sansPlanIssue: " L'annuler est la seule issue, une nouvelle arrivée restant ouvrable ensuite.",
     derive:
       "Ce que les systèmes savent donner a changé depuis son calcul : il ne peut plus être confirmé en l'état.",
     echecTitre: "Des accès n'ont pas été donnés",
-    constat: { valeur: "deja-present", libelle: "Déjà présent" },
+    constat: {
+      valeur: "deja-present",
+      libelle: "Déjà présent",
+      refus: "Ce choix ne vaut pas sur une arrivée : seul « Déjà présent » s'y déclare.",
+    },
     annule: "arrivée annulée",
     annuler: "Annuler cette arrivée",
     annulationTitre: "Cette arrivée a été annulée",
@@ -96,22 +101,26 @@ export const LIBELLE_DOSSIER: Record<SensDossier, LibelleDossier> = {
     aideOuverture:
       "Ouvrir un dossier de départ et calculer la liste de ce qu'il faudra retirer, système par système. Rien n'est exécuté et aucun accès n'est coupé.",
     ouvertureExplication:
-      "Un dossier est ouvert et la liste de ce qu'il faut retirer est calculée à partir des comptes observés, système par système. Rien n'est exécuté et aucun accès n'est coupé : le plan reste à confirmer, puis à pointer à la main.",
+      "Un dossier est ouvert et la liste de ce qu'il faut retirer est calculée à partir des comptes observés, système par système. Rien n'est exécuté et aucun accès n'est coupé : le plan reste à confirmer, puis à cocher à la main.",
     dejaOuvert:
       "Ce dossier était déjà ouvert : vous êtes revenu dessus, aucun second dossier n'a été créé. Un départ ne s'ouvre qu'une fois par personne tant qu'il n'est pas clos.",
     cocher:
       "Cocher une étape n'exécute rien : l'outil consigne ce que vous déclarez avoir fait, il ne coupe aucun accès lui-même. La collecte suivante dira si le compte a réellement disparu.",
-    droitPossibleSur: "un départ décidé et pas encore soldé",
+    droitPossibleSur: "un départ décidé et pas encore clos",
     aFaire: "Ce qu'il faudra retirer",
     restant: "Ce qu'il reste à retirer",
     propose: "Ce que ce plan proposait de retirer",
     planVide:
-      "Aucune étape : aucun compte rattaché de façon sûre n'a été trouvé sur les systèmes que l'outil sait traiter.",
+      "Aucune étape : aucun compte rattaché de façon sûre n'a été trouvé sur les systèmes couverts.",
     sansPlanIssue: " L'annuler est la seule issue, un nouveau départ restant ouvrable ensuite.",
     derive:
       "Les accès observés ont changé depuis son calcul : il ne peut plus être confirmé en l'état.",
     echecTitre: "Des accès sont restés ouverts",
-    constat: { valeur: "deja-absent", libelle: "Déjà absent" },
+    constat: {
+      valeur: "deja-absent",
+      libelle: "Déjà absent",
+      refus: "Ce choix ne vaut pas sur un départ : seul « Déjà absent » s'y déclare.",
+    },
     annule: "départ annulé",
     annuler: "Annuler ce départ",
     annulationTitre: "Ce départ a été annulé",

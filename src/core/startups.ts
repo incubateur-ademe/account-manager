@@ -323,7 +323,7 @@ export const LIBELLE_ECARTE: Record<RaisonEcarte, string> = {
   PHASE_INCONNUE_AILLEURS: "Rattachée à une startup dont la phase est inconnue",
   DOSSIER_DEJA_OUVERT: "Un dossier de départ est déjà ouvert",
   SURCHARGE_EXISTANTE: "Une décision d'appartenance a déjà été posée sur sa fiche",
-  DEJA_SORTIE: "Déjà sortie du référentiel",
+  DEJA_SORTIE: "Déjà sortie du référentiel des personnes",
 };
 
 export interface MembreATraiter extends MembreDeStartup {

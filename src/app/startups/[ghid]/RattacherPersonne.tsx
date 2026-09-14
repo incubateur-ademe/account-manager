@@ -15,7 +15,7 @@ import {
 import style from "@/ui/Actions.module.css";
 import { Aide } from "@/ui/Aide";
 import { ChampAvecListe } from "@/ui/ChampAvecListe";
-import { useFermetureApresSucces } from "@/ui/modale";
+import { useCleDOuverture, useFermetureApresSucces } from "@/ui/modale";
 import { messageObligatoire } from "@/ui/validation";
 
 export interface PersonneProposable {
@@ -82,7 +82,7 @@ function FormulaireRattachement({
             suggestions={personnes.map((personne) => ({
               valeur: personne.username,
               libelle: personne.fullname,
-              ...(personne.disparue ? { mention: "hors référentiel" } : {}),
+              ...(personne.disparue ? { mention: "hors référentiel des personnes" } : {}),
             }))}
             requis
             onValeur={setUsername}
@@ -106,7 +106,7 @@ function FormulaireRattachement({
         <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
           <Input
             label="Motif"
-            hintText="Facultatif."
+            hintText="Facultatif. Restera au journal, avec votre nom."
             nativeInputProps={{ name: "motif", autoComplete: "off" }}
           />
         </div>
@@ -126,7 +126,7 @@ function FormulaireRattachement({
           className={fr.cx("fr-mb-2w")}
           severity="info"
           small
-          description="Cette personne n'est plus rendue par le référentiel à la dernière collecte. Le rattachement reste possible, il ne lui rend aucun accès par lui-même."
+          description="Cette personne n'est plus rendue par le référentiel des personnes à la dernière collecte. Le rattachement reste possible, il ne lui rend aucun accès par lui-même."
         />
       ) : null}
 
@@ -159,7 +159,7 @@ function FormulaireRattachement({
 
       <p className={fr.cx("fr-text--sm", "fr-mt-2w")}>
         Le constat de startups terminées ne se lève ni ne se ferme sur ce geste : il est revu à la
-        prochaine collecte, qui seule connaît les phases de toutes les startups.
+        prochaine collecte.
       </p>
     </form>
   );
@@ -178,6 +178,8 @@ export function RattacherPersonne({
   nomStartup: string;
   personnes: readonly PersonneProposable[];
 }) {
+  const ouverture = useCleDOuverture(modaleRattacherPersonne);
+
   return (
     <>
       <span className={style["geste"]}>
@@ -191,7 +193,7 @@ export function RattacherPersonne({
         </Button>
         <Aide>
           {
-            "Rattacher une personne à cette startup par une décision datée, qui survit aux collectes et porte le nom de qui l'a prise. Peut repousser son échéance."
+            "Rattacher une personne à cette startup par une décision datée qui porte votre nom. Aucune collecte ne l'efface, et elle peut repousser l'échéance de cette personne."
           }
         </Aide>
       </span>
@@ -201,11 +203,11 @@ export function RattacherPersonne({
         size="large"
       >
         <p className={fr.cx("fr-text--sm")}>
-          Un rattachement manuel porte obligatoirement une date de fin et le nom de qui l'a posé. Il
-          survit aux collectes, contrairement aux rattachements collectés, que l'espace-membre
-          réécrit à chaque passage.
+          Un rattachement manuel porte obligatoirement une date de fin et le nom de qui l'a posé.
+          Aucune collecte ne l'efface, là où les rattachements collectés sont réécrits chaque nuit.
         </p>
         <FormulaireRattachement
+          key={ouverture}
           ghid={ghid}
           personnes={personnes}
           onSucces={modaleRattacherPersonne.close}

@@ -460,7 +460,7 @@ describe("ce que l'action de sortie accepte de l'écran qui l'appelle", () => {
     // fermé la seule sortie du garde-fou.
     expect(sansMesure).toEqual({
       erreur:
-        "Le dernier passage n'a pas pu compter combien de personnes une datation ferait partir. Une décision posée maintenant serait écartée sans rien dater : reprenez-la quand ce nombre sera de nouveau annoncé.",
+        "La dernière collecte n'a pas pu compter combien de personnes une datation ferait partir. Une décision posée maintenant resterait sans effet et ne daterait rien : reprenez-la quand ce nombre sera de nouveau annoncé.",
     });
     expect(base.autorisations).toEqual([]);
     expect(base.journal).toEqual([]);

@@ -12,6 +12,7 @@ import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 import type { RiskLevel } from "@/generated/prisma/enums";
 import styleActions from "@/ui/Actions.module.css";
 import { Aide } from "@/ui/Aide";
+import { useCleDOuverture } from "@/ui/modale";
 import type { ChoixDeProfils } from "@/ui/profils";
 import { LIBELLE_SEVERITE, SEVERITE_CONSTAT } from "@/ui/severites";
 import { TableCustom } from "@/ui/TableCustom";
@@ -62,6 +63,8 @@ export function FileDesConstats({
 }) {
   const [choisi, setChoisi] = useState<LigneConstat | null>(null);
   const [arrivee, setArrivee] = useState<{ username: string; fullname: string } | null>(null);
+  const ouvertureCloture = useCleDOuverture(modale);
+  const ouvertureArrivee = useCleDOuverture(modaleArrivee);
 
   return (
     <>
@@ -196,7 +199,11 @@ export function FileDesConstats({
               de revenir chaque nuit. La collecte rouvrira le constat le jour où elle constatera à
               nouveau la situation.
             </p>
-            <ClotureConstat key={choisi.id} dedupKey={choisi.dedupKey} onSucces={modale.close} />
+            <ClotureConstat
+              key={`${ouvertureCloture}:${choisi.id}`}
+              dedupKey={choisi.dedupKey}
+              onSucces={modale.close}
+            />
           </>
         )}
       </modale.Component>
@@ -207,7 +214,7 @@ export function FileDesConstats({
             <p className={fr.cx("fr-text--lead", "fr-mb-1v")}>{arrivee.fullname}</p>
             <p className={fr.cx("fr-text--sm", "fr-mb-2w")}>{arrivee.username}</p>
             <FormulaireOuverture
-              key={arrivee.username}
+              key={`${ouvertureArrivee}:${arrivee.username}`}
               username={arrivee.username}
               sens="ONBOARDING"
               profils={profils}

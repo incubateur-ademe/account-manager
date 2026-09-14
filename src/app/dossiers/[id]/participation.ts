@@ -5,6 +5,7 @@ import type { FicheManuelle } from "@/core/fiche-manuelle";
 import { estOperateur } from "@/core/identite";
 import {
   type CanalDeFiche,
+  type DepartEnCause,
   DUREE_MAX_JOURS,
   echeanceDOctroi,
   etatDuCanal,
@@ -44,7 +45,7 @@ const REFUS_DE_CANAL: Record<RefusAdresse, string> = {
   ALLOWLIST:
     "Cette adresse porte le nom d'un opérateur de l'outil : elle n'ouvrira jamais un droit par dossier.",
   LIGNE_ETRANGERE:
-    "Quelqu'un s'est déjà connecté avec cette adresse par son identifiant beta.gouv : elle ne peut pas servir de canal.",
+    "Quelqu'un s'est déjà connecté avec cette adresse par son identifiant beta.gouv : elle ne peut pas servir ici.",
 };
 
 /**
@@ -94,7 +95,7 @@ export async function octroyerParticipation(
 
   const dossier = await prisma.accessCase.findUnique({
     where: { id: dossierId },
-    select: { id: true, state: true },
+    select: { id: true, state: true, kind: true, personId: true },
   });
 
   if (dossier === null) {
@@ -136,7 +137,9 @@ export async function octroyerParticipation(
   let canal: string | null = null;
   if (canalSaisi.length > 0) {
     if (voieDeConnexion(canalSaisi) !== "ADRESSE") {
-      return { erreur: "Le canal est une adresse de courriel, ou rien du tout." };
+      return {
+        erreur: "L'adresse pour se connecter est une adresse de courriel, ou reste vide.",
+      };
     }
     const refus = await canalRecevable(personne, canalSaisi);
     if (refus !== null) {
@@ -184,7 +187,11 @@ export async function octroyerParticipation(
     },
   });
 
-  return avertissementDuCanal(personne, canal);
+  return avertissementDuCanal(personne, canal, {
+    sens: dossier.kind,
+    concerne: dossier.personId,
+    beneficiaire: personne.id,
+  });
 }
 
 /**
@@ -203,6 +210,7 @@ export async function octroyerParticipation(
 function avertissementDuCanal(
   personne: FicheManuelle & CanalDeFiche,
   canal: string | null,
+  depart: DepartEnCause,
 ): EtatParticipation {
   const politique = policy();
   const etat = etatDuCanal(
@@ -210,6 +218,7 @@ function avertissementDuCanal(
     canal,
     politique.scope.local.map((entree) => entree.username),
     politique.mail.domainsLostOnDeparture,
+    depart,
   );
 
   if (!etat.vivant) {

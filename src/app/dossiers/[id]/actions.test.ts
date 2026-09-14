@@ -696,8 +696,11 @@ describe("pointer une étape, dans le sens du dossier", () => {
       formulaire({ etapeId: seconde?.id ?? "", pointage: "deja-absent" }),
     );
 
-    // Then il est refusé, et l'étape n'a pas bougé
-    expect(contresens.erreur).toBe("Ce constat ne vaut pas dans le sens de ce dossier.");
+    // Then il est refusé, l'étape n'a pas bougé, et le refus nomme le seul choix qui
+    // vaut ici plutôt que de renvoyer au « sens » du dossier, qui est un mot de modèle
+    expect(contresens.erreur).toBe(
+      "Ce choix ne vaut pas sur une arrivée : seul « Déjà présent » s'y déclare.",
+    );
     expect(seconde?.state).toBe("PENDING");
 
     // When la seconde étape est faite pour de bon
@@ -730,8 +733,10 @@ describe("pointer une étape, dans le sens du dossier", () => {
     );
 
     // Then il est refusé : « déjà présent » sous une étape de retrait dirait le
-    // contraire de ce que le dossier prépare.
-    expect(contresens.erreur).toBe("Ce constat ne vaut pas dans le sens de ce dossier.");
+    // contraire de ce que le dossier prépare, et le refus s'accorde avec le sens.
+    expect(contresens.erreur).toBe(
+      "Ce choix ne vaut pas sur un départ : seul « Déjà absent » s'y déclare.",
+    );
     expect(etape?.state).toBe("PENDING");
 
     // When on écarte l'étape sans dire pourquoi

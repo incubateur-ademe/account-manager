@@ -5,6 +5,7 @@ import { Button } from "@codegouvfr/react-dsfr/Button";
 import { createModal } from "@codegouvfr/react-dsfr/Modal";
 import style from "@/ui/Actions.module.css";
 import { Aide } from "@/ui/Aide";
+import { useCleDOuverture } from "@/ui/modale";
 
 import { RattacherStartup, type StartupProposable } from "./RattacherStartup";
 
@@ -32,6 +33,8 @@ export function ModaleRattacherStartup({
   missionEnd: string | null;
   startups: readonly StartupProposable[];
 }) {
+  const ouverture = useCleDOuverture(modaleRattacherStartup);
+
   return (
     <>
       <span className={style["geste"]}>
@@ -52,11 +55,11 @@ export function ModaleRattacherStartup({
 
       <modaleRattacherStartup.Component title="Rattacher à une startup" size="large">
         <p className={fr.cx("fr-text--sm")}>
-          Un rattachement manuel porte obligatoirement une date de fin et le nom de qui l'a posé. Il
-          survit aux collectes, contrairement aux startups collectées, que l'espace-membre réécrit à
-          chaque passage.
+          Un rattachement manuel porte obligatoirement une date de fin et le nom de qui l'a posé.
+          Aucune collecte ne l'efface, là où les startups collectées sont réécrites chaque nuit.
         </p>
         <RattacherStartup
+          key={ouverture}
           username={username}
           missionEnd={missionEnd}
           startups={startups}

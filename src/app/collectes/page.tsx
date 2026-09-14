@@ -3,6 +3,7 @@ import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import { Table } from "@codegouvfr/react-dsfr/Table";
 
+import { LIBELLE_ETAT_COLLECTE } from "@/core/lexique";
 import { prisma } from "@/lib/db";
 import { requireOperateur } from "@/lib/session";
 import { collecteEnCours } from "@/lib/sync/executer";
@@ -17,20 +18,6 @@ const dateFr = new Intl.DateTimeFormat("fr-FR", {
   timeStyle: "short",
   timeZone: "Europe/Paris",
 });
-
-const SEVERITE = {
-  OK: "success",
-  PARTIAL: "warning",
-  FAILED: "error",
-  SKIPPED: "info",
-} as const;
-
-const EXPLICATION = {
-  OK: "Relevé complet, les disparitions ont pu être datées.",
-  PARTIAL: "Relevé incomplet : aucune disparition n'a été datée.",
-  FAILED: "Le système n'a pas répondu.",
-  SKIPPED: "Système non lu, ce qui n'est pas la même chose que sans écart.",
-} as const;
 
 function duree(debut: Date, fin: Date | null): string {
   if (!fin) {
@@ -81,7 +68,7 @@ export default async function CollectesPage() {
       <h1>Collectes</h1>
 
       <p className={fr.cx("fr-text--sm")}>
-        Une collecte lit les systèmes cibles et le référentiel des personnes, puis en tire des
+        Une collecte lit les systèmes couverts et le référentiel des personnes, puis en tire des
         constats. Elle ne modifie aucun accès. Le traitement quotidien la lance chaque nuit ; ce
         bouton sert quand on ne veut pas attendre la nuit.
       </p>
@@ -114,12 +101,12 @@ export default async function CollectesPage() {
             <strong key="s">{run.provider}</strong>,
             dateFr.format(run.startedAt),
             duree(run.startedAt, run.finishedAt),
-            <Badge key="e" severity={SEVERITE[run.status]} small noIcon>
-              {run.status}
+            <Badge key="e" severity={LIBELLE_ETAT_COLLECTE[run.status].severite} small noIcon>
+              {LIBELLE_ETAT_COLLECTE[run.status].libelle}
             </Badge>,
             run.status === "SKIPPED" ? "sans objet" : run.itemsSeen,
             <span key="m" className={fr.cx("fr-text--sm")}>
-              {messages(run.error).join(" / ") || EXPLICATION[run.status]}
+              {messages(run.error).join(" / ") || LIBELLE_ETAT_COLLECTE[run.status].explication}
             </span>,
           ])}
         />

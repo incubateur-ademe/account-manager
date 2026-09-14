@@ -8,6 +8,7 @@ import { useState } from "react";
 
 import type { SuggestionRattachement } from "@/core/suggestion-rattachement";
 import type { Suggestion } from "@/ui/ChampAvecListe";
+import { useCleDOuverture } from "@/ui/modale";
 import { TableCustom } from "@/ui/TableCustom";
 
 import { Rattacher } from "./Rattacher";
@@ -46,6 +47,7 @@ export function FileDesComptesIsoles({
   cibles: readonly Suggestion[];
 }) {
   const [choisi, setChoisi] = useState<LigneCompteIsole | null>(null);
+  const ouverture = useCleDOuverture(modale);
 
   return (
     <>
@@ -63,7 +65,7 @@ export function FileDesComptesIsoles({
             { children: ligne.provider },
             {
               children: (
-                <span>
+                <div>
                   <strong>{ligne.handle}</strong>
                   {ligne.ressemblance ? (
                     <>
@@ -73,7 +75,7 @@ export function FileDesComptesIsoles({
                       </Badge>
                     </>
                   ) : null}
-                </span>
+                </div>
               ),
             },
             {
@@ -121,7 +123,11 @@ export function FileDesComptesIsoles({
       <modale.Component title="À qui appartient ce compte" size="large">
         {choisi === null ? null : (
           <>
-            <p className={fr.cx("fr-mb-1w")}>
+            {/* Un `div` et non un `p` : le badge du système de design rend lui-même un
+                `p`, et l'imbriquer dans un autre est du HTML invalide que React refuse
+                d'hydrater. L'écran se rend côté serveur puis meurt au réveil, ce qui ne
+                se voit pas en lisant le composant. */}
+            <div className={fr.cx("fr-mb-1w")}>
               <strong>
                 {choisi.provider} : {choisi.handle}
               </strong>
@@ -133,7 +139,7 @@ export function FileDesComptesIsoles({
                   </Badge>
                 </>
               ) : null}
-            </p>
+            </div>
             <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
               Observé depuis le {choisi.vuDepuis}, encore le {choisi.vuEncore}.
             </p>
@@ -166,7 +172,7 @@ export function FileDesComptesIsoles({
               manque une fiche, plutôt qu'il ne faut retirer un accès.
             </p>
             <Rattacher
-              key={choisi.id}
+              key={`${ouverture}:${choisi.id}`}
               id={choisi.id}
               cibles={cibles}
               propositions={choisi.propositions}

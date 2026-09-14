@@ -31,7 +31,7 @@ export default async function MonEspacePage() {
         </p>
       ) : (
         <Table
-          headers={["Personne concernée", "Sens", "État", "Accès jusqu'au"]}
+          headers={["Personne concernée", "Arrivée ou départ", "État", "Accès jusqu'au"]}
           data={dossiers.map((dossier) => [
             // Vers la route du participant et non vers celle du dossier, qui le
             // renverrait ici : ce ne sont pas deux vues du même écran.

@@ -83,7 +83,7 @@ export function RattacherStartup({
         <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
           <Input
             label="Motif"
-            hintText="Facultatif."
+            hintText="Facultatif. Restera au journal, avec votre nom."
             nativeInputProps={{ name: "motif", autoComplete: "off" }}
           />
         </div>
@@ -136,7 +136,7 @@ export function RattacherStartup({
 
       <p className={fr.cx("fr-text--sm", "fr-mt-2w")}>
         Le constat de startups terminées ne se lève ni ne se ferme sur ce geste : il est revu à la
-        prochaine collecte, qui seule connaît les phases de toutes les startups.
+        prochaine collecte.
       </p>
     </form>
   );

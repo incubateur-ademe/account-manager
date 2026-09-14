@@ -13,6 +13,7 @@ import { useActionState, useCallback, useState } from "react";
 import { type Acteur, combinaisonValide } from "@/core/dossier";
 import { LIBELLE_ACTEUR } from "@/core/libelle-dossier";
 import type { RiskLevel, TemplateKind } from "@/generated/prisma/enums";
+import { useListesApresEnvoi } from "@/ui/formulaire";
 import { useFermetureApresSucces } from "@/ui/modale";
 import { messageObligatoire } from "@/ui/validation";
 
@@ -24,6 +25,7 @@ import {
   retirerEtapeDuModele,
 } from "./actions";
 import type { EtapeAffichee } from "./lecture";
+import { MODELE } from "./redaction";
 
 const RISQUE: Record<RiskLevel, string> = {
   LOW: "Ordinaire",
@@ -93,20 +95,17 @@ function valeursDe(defaut?: EtapeAffichee): Valeurs {
  * étape que l'incubateur n'admet pas est un chemin prévu, pas un accident, et il ferait
  * ici perdre tout ce qui vient d'être écrit.
  */
-function ChampsDeLEtape({
-  valeurs,
-  changer,
-}: {
-  valeurs: Valeurs;
-  changer: (modification: Partial<Valeurs>) => void;
-}) {
+function ChampsDeLEtape({ formulaire, pending }: { formulaire: Formulaire; pending: boolean }) {
+  const { valeurs, changer, choisirLActeur, choisirLeControleur, controleurRetire } = formulaire;
+  const envoi = useListesApresEnvoi(pending);
+
   return (
     <>
       <div className={fr.cx("fr-grid-row", "fr-grid-row--gutters")}>
         <div className={fr.cx("fr-col-12", "fr-col-md-6")}>
           <Input
             label="Ce qu'il y a à faire"
-            hintText="Le titre de l'étape. C'est lui qui fait sa clé : deux modèles qui écrivent le même titre demandent le même geste, et il ne se fait qu'une fois."
+            hintText={MODELE.champs.titre}
             nativeInputProps={{
               name: "titre",
               required: true,
@@ -121,7 +120,7 @@ function ChampsDeLEtape({
         <div className={fr.cx("fr-col-12", "fr-col-md-6")}>
           <Input
             label="C'est fait quand"
-            hintText="Ce qu'il faut constater pour cocher. Obligatoire : sans lui, « fait » ne veut rien dire."
+            hintText={MODELE.champs.critere}
             nativeInputProps={{
               name: "critere",
               required: true,
@@ -168,6 +167,7 @@ function ChampsDeLEtape({
             }}
           />
           <Select
+            key={`risque-${envoi}`}
             label="Risque"
             nativeSelectProps={{
               name: "risque",
@@ -189,20 +189,14 @@ function ChampsDeLEtape({
       <div className={fr.cx("fr-grid-row", "fr-grid-row--gutters")}>
         <div className={fr.cx("fr-col-12", "fr-col-md-6")}>
           <Select
+            key={`acteur-${envoi}`}
             label="Qui fait cette étape"
-            hint="Quel que soit ce choix, le pointage reste ouvert à un opérateur en substitution : aucune étape ne devient impointable."
+            hint={MODELE.champs.acteur}
             nativeSelectProps={{
               name: "acteur",
               value: valeurs.acteur,
               onChange: (evenement) => {
-                const acteur = evenement.target.value as Acteur;
-                // Le contrôleur déjà choisi peut devenir impossible : le laisser ferait
-                // soumettre une paire que le serveur refuse, sur un formulaire contrôlé
-                // dont le refus est un chemin prévu.
-                changer({
-                  acteur,
-                  ...(combinaisonValide(acteur, valeurs.controleur) ? {} : { controleur: null }),
-                });
+                choisirLActeur(evenement.target.value as Acteur);
               },
             }}
           >
@@ -215,17 +209,20 @@ function ChampsDeLEtape({
         </div>
         <div className={fr.cx("fr-col-12", "fr-col-md-6")}>
           <Select
+            key={`controleur-${envoi}`}
             label="Qui contrôle ce qui y sera déclaré"
-            hint={
-              valeurs.controleur === valeurs.acteur
-                ? "Tant que ce regard n'a pas eu lieu, l'étape n'est pas soldée et le dossier ne se clôt pas. Acteur et contrôleur portant ici le même rôle, personne ne se substitue à personne : il faudra deux noms d'opérateurs pour solder cette étape, sur n'importe quel dossier."
-                : "Tant que ce regard n'a pas eu lieu, l'étape n'est pas soldée et le dossier ne se clôt pas."
+            hint={MODELE.champs.controleur(valeurs.controleur === valeurs.acteur)}
+            state={controleurRetire === null ? "default" : "info"}
+            stateRelatedMessage={
+              controleurRetire === null
+                ? undefined
+                : MODELE.champs.controleurRetire(controleurRetire, valeurs.acteur)
             }
             nativeSelectProps={{
               name: "controleur",
               value: valeurs.controleur ?? "",
               onChange: (evenement) => {
-                changer({ controleur: (evenement.target.value || null) as Acteur | null });
+                choisirLeControleur((evenement.target.value || null) as Acteur | null);
               },
             }}
           >
@@ -244,8 +241,8 @@ function ChampsDeLEtape({
       <div className={fr.cx("fr-grid-row", "fr-grid-row--gutters")}>
         <div className={fr.cx("fr-col-12", "fr-col-md-6")}>
           <Input
-            label="Valeur demandée au pointage"
-            hintText="Facultatif. Le libellé de ce qu'on demandera de saisir, par exemple « Date de signature ». Laissez vide si cocher suffit."
+            label={MODELE.champs.saisieLibelle}
+            hintText={MODELE.champs.saisie}
             nativeInputProps={{
               name: "saisieLibelle",
               value: valeurs.saisieLibelle,
@@ -257,38 +254,75 @@ function ChampsDeLEtape({
           />
         </div>
         <div className={fr.cx("fr-col-12", "fr-col-md-6")}>
-          <Checkbox
-            small
-            options={[
-              {
-                label: "Sans cette valeur, l'étape ne peut pas être déclarée faite",
-                nativeInputProps: {
-                  name: "saisieObligatoire",
-                  value: "oui",
-                  checked: valeurs.saisieObligatoire,
-                  onChange: (evenement) => {
-                    changer({ saisieObligatoire: evenement.target.checked });
+          {valeurs.saisieLibelle.trim() === "" ? (
+            <p className={fr.cx("fr-hint-text", "fr-mt-4w")}>{MODELE.champs.saisieSansValeur}</p>
+          ) : (
+            <Checkbox
+              small
+              className={fr.cx("fr-mt-4w")}
+              options={[
+                {
+                  label: "Sans cette valeur, l'étape ne peut pas être déclarée faite",
+                  nativeInputProps: {
+                    name: "saisieObligatoire",
+                    value: "oui",
+                    checked: valeurs.saisieObligatoire,
+                    onChange: (evenement) => {
+                      changer({ saisieObligatoire: evenement.target.checked });
+                    },
                   },
                 },
-              },
-            ]}
-          />
+              ]}
+            />
+          )}
         </div>
       </div>
     </>
   );
 }
 
-/** L'état d'un formulaire d'étape, et le geste qui en modifie un champ. */
+/**
+ * L'état d'un formulaire d'étape, les gestes qui en modifient un champ, et le
+ * contrôle qu'un changement d'acteur a retiré.
+ *
+ * Ce dernier n'est pas une valeur du formulaire, c'est ce qu'il vient de faire sans
+ * qu'on le lui demande : il se dit une fois, puis s'efface au choix suivant.
+ */
 function useValeurs(defaut?: EtapeAffichee) {
   const [valeurs, setValeurs] = useState(() => valeursDe(defaut));
+  const [controleurRetire, setControleurRetire] = useState<Acteur | null>(null);
 
   const changer = useCallback((modification: Partial<Valeurs>) => {
     setValeurs((precedentes) => ({ ...precedentes, ...modification }));
   }, []);
 
-  return { valeurs, changer, setValeurs };
+  const choisirLActeur = (acteur: Acteur) => {
+    // Le contrôleur déjà choisi peut devenir impossible : le laisser ferait soumettre
+    // une paire que le serveur refuse, sur un formulaire contrôlé dont le refus est un
+    // chemin prévu.
+    const retire =
+      valeurs.controleur !== null && !combinaisonValide(acteur, valeurs.controleur)
+        ? valeurs.controleur
+        : null;
+
+    setControleurRetire(retire);
+    changer({ acteur, ...(retire === null ? {} : { controleur: null }) });
+  };
+
+  const choisirLeControleur = (controleur: Acteur | null) => {
+    setControleurRetire(null);
+    changer({ controleur });
+  };
+
+  const vider = useCallback(() => {
+    setControleurRetire(null);
+    setValeurs(valeursDe());
+  }, []);
+
+  return { valeurs, changer, choisirLActeur, choisirLeControleur, controleurRetire, vider };
 }
+
+type Formulaire = ReturnType<typeof useValeurs>;
 
 /**
  * L'ajout d'une étape. Le formulaire se vide au succès et pas avant : conservé rempli,
@@ -306,19 +340,16 @@ function FormulaireDAjout({
     ajouterEtapeAuModele,
     null,
   );
-  const { valeurs, changer, setValeurs } = useValeurs();
-  const vider = useCallback(() => {
-    setValeurs(valeursDe());
-  }, [setValeurs]);
+  const formulaire = useValeurs();
 
-  useFermetureApresSucces(pending, etat?.erreur, vider);
+  useFermetureApresSucces(pending, etat?.erreur, formulaire.vider);
 
   return (
     <form action={formAction}>
       <input type="hidden" name="proprietaire" value={proprietaire} />
       <input type="hidden" name="moment" value={moment} />
 
-      <ChampsDeLEtape valeurs={valeurs} changer={changer} />
+      <ChampsDeLEtape formulaire={formulaire} pending={pending} />
 
       <Button type="submit" priority="secondary" disabled={pending}>
         {pending ? "Ajout…" : "Ajouter cette étape"}
@@ -333,13 +364,13 @@ function FormulaireDeModification({ etape }: { etape: EtapeAffichee }) {
     modifierEtapeDuModele,
     null,
   );
-  const { valeurs, changer } = useValeurs(etape);
+  const formulaire = useValeurs(etape);
 
   return (
     <form action={formAction}>
       <input type="hidden" name="etapeId" value={etape.id} />
 
-      <ChampsDeLEtape valeurs={valeurs} changer={changer} />
+      <ChampsDeLEtape formulaire={formulaire} pending={pending} />
 
       <Button type="submit" priority="secondary" disabled={pending}>
         {pending ? "Enregistrement…" : "Enregistrer"}
@@ -434,8 +465,8 @@ export function BasculeAutorisation({
         {autorise
           ? "Les étapes déclarées par les modèles des startups entrent dans les plans, à la suite de celles-ci."
           : neutralisees === 0
-            ? "Aucune étape de startup n'est déclarée pour ce moment : refermer n'y neutralise rien aujourd'hui."
-            : `${neutralisees} étape${neutralisees > 1 ? "s" : ""} déclarée${neutralisees > 1 ? "s" : ""} par des startups ${neutralisees > 1 ? "sont neutralisées" : "est neutralisée"} : ${neutralisees > 1 ? "elles restent" : "elle reste"} en base et ${neutralisees > 1 ? "n'entrent" : "n'entre"} dans aucun plan. Rouvrir ${neutralisees > 1 ? "les rend" : "la rend"} à l'identique.`}
+            ? "Aucune étape de startup n'est déclarée pour ce moment : cette fermeture ne neutralise rien aujourd'hui."
+            : MODELE.neutralisees(neutralisees, "par des startups")}
       </p>
 
       <Button type="submit" priority="secondary" size="small" disabled={pending}>
@@ -506,9 +537,17 @@ export function Editeur({
                   className={fr.cx("fr-my-1w")}
                   severity="warning"
                   small
-                  description="La valeur demandée au pointage est illisible en base : tout dossier qui porterait cette étape l'écarterait de son plan. Réécrivez-la ci-dessous, ou videz son libellé."
+                  description={MODELE.saisieIllisible}
                 />
               ) : null}
+              {/* Constaté et non corrigé, à reprendre quand cet écran se refera :
+                  enregistrer une étape referme son dépliant, et celui de l'étape
+                  suivante vient occuper la place laissée libre. Qui vient de
+                  sauvegarder croit relire son étape, lit celle d'après, et conclut que
+                  ses valeurs se sont perdues. Rien n'est perdu, mais le doute suffit à
+                  faire réenregistrer plusieurs fois de suite. Ce qu'il y a à trancher
+                  est le partage de la place entre la liste et le formulaire, pas la
+                  position du dépliant. */}
               <Accordion titleAs="h3" label={`Modifier « ${etape.titre} »`}>
                 <FormulaireDeModification etape={etape} />
                 <BoutonDeRetrait etape={etape} />

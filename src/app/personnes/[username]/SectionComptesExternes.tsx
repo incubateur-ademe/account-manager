@@ -35,7 +35,7 @@ export function SectionComptesExternes({
           small
           description={
             systemesCollectes.length === 0
-              ? "Aucun connecteur n'a encore lu de système cible. Cette liste est vide faute d'observation, ce qui ne dit rien des accès réellement détenus."
+              ? "Aucun système couvert n'a encore été lu. Cette liste est vide faute d'observation, ce qui ne dit rien des accès réellement détenus."
               : `Aucun compte ne lui est rattaché sur les systèmes déjà collectés (${systemesCollectes.join(", ")}). Tout système absent de cette liste n'a jamais été lu : son état reste inconnu.`
           }
         />
@@ -84,10 +84,10 @@ export function SectionComptesExternes({
             })}
           />
           <p className={fr.cx("fr-text--sm", "fr-mt-2w")}>
-            Systèmes collectés à ce jour :{" "}
+            Systèmes couverts lus à ce jour :{" "}
             {systemesCollectes.length === 0 ? "aucun" : systemesCollectes.join(", ")}. Tout système
-            absent de cette liste n'a jamais été lu. Un rattachement heuristique ou absent ne peut
-            jamais produire de révocation.
+            absent de cette liste n'a jamais été lu. Un compte rattaché sur une ressemblance de nom,
+            ou sans preuve, ne fera jamais couper d'accès.
           </p>
         </>
       )}

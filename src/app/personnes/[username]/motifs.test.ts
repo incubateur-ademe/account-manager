@@ -316,7 +316,7 @@ describe("les gestes que porte le bloc d'action d'une fiche", () => {
     // cause est dans le journal des collectes.
     expect(fige.map((motif) => motif.cle)).toEqual(["releve-fige"]);
     expect(fige[0]?.severite).toBe("warning");
-    expect(fige[0]?.description).toContain("3 passages");
+    expect(fige[0]?.description).toContain("3 collectes");
     expect(fige[0]?.description).toContain("pour personne");
     expect(fige[0]?.gestes).toBeUndefined();
     expect(fige[0]?.lien).toBeUndefined();
@@ -330,7 +330,7 @@ describe("les gestes que porte le bloc d'action d'une fiche", () => {
     );
 
     expect(avecFraicheur.map((motif) => motif.cle)).toEqual(["fraicheur", "releve-fige"]);
-    expect(avecFraicheur[1]?.description).toContain("12 passages");
+    expect(avecFraicheur[1]?.description).toContain("12 collectes");
 
     // Then il ne nie pas ce que son voisin annonce. Les deux motifs viennent de
     // passages différents, le gel du dernier et la retenue du dernier qui s'est dit
@@ -341,6 +341,6 @@ describe("les gestes que porte le bloc d'action d'une fiche", () => {
 
     expect(geleEtRetenu.map((motif) => motif.cle)).toEqual(["releve-fige", "sans-reponse"]);
     expect(geleEtRetenu[0]?.description).not.toContain("n'annonce aucune fiche non rendue");
-    expect(geleEtRetenu[0]?.description).toContain("dernier passage qui s'est dit complet");
+    expect(geleEtRetenu[0]?.description).toContain("dernière collecte qui s'est dite complète");
   });
 });

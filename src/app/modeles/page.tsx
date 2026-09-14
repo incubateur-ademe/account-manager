@@ -11,6 +11,7 @@ import { prisma } from "@/lib/db";
 import { requireOperateur } from "@/lib/session";
 
 import { MOMENTS } from "./lecture";
+import { MODELE } from "./redaction";
 
 export const metadata: Metadata = { title: "Modèles de plan" };
 
@@ -75,10 +76,7 @@ export default async function ModelesPage() {
         les connecteurs proposent, au moment où un dossier est ouvert.
       </p>
 
-      <p className={fr.cx("fr-text--sm")}>
-        Modifier un modèle ne change aucun plan déjà calculé : les étapes sont figées à la création
-        du plan. Un brouillon en cours se découvrira obsolète et se réparera par un recalcul.
-      </p>
+      <p className={fr.cx("fr-text--sm")}>{MODELE.effetSurLesPlans}</p>
 
       <section className={fr.cx("fr-mt-4w")}>
         <h2 className={fr.cx("fr-h5")}>Le modèle de l'incubateur</h2>
@@ -116,7 +114,9 @@ export default async function ModelesPage() {
         </p>
 
         {startups.length === 0 ? (
-          <p>Aucune startup n'est connue : la collecte du référentiel n'a rien rendu.</p>
+          <p>
+            Aucune startup n'est connue : la collecte du référentiel des startups n'a rien rendu.
+          </p>
         ) : (
           <Table
             headers={["Startup", "Arrivée", "Départ"]}
@@ -153,12 +153,7 @@ export default async function ModelesPage() {
           title={`${orphelins.length} modèle${orphelins.length > 1 ? "s" : ""} ne correspond${orphelins.length > 1 ? "ent" : ""} plus à aucune startup connue`}
           description={
             <>
-              <p className={fr.cx("fr-mb-1w")}>
-                Aucun plan ne porte plus leurs étapes : l'assemblage compare des ghid à des ghid, et
-                celui-ci n'est plus rendu par le référentiel. Un renommage amont, une sortie de
-                l'incubateur ou une faute de frappe donnent ici le même symptôme, et c'est le seul
-                endroit où cela se voit.
-              </p>
+              <p className={fr.cx("fr-mb-1w")}>{MODELE.orphelins.plusieurs}</p>
               <ul className={fr.cx("fr-mb-0")}>
                 {orphelins.map((ghid) => {
                   const comptes = parProprietaire.get(ghid) ?? AUCUNE;

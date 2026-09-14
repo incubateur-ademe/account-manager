@@ -5,7 +5,8 @@ import { Table } from "@codegouvfr/react-dsfr/Table";
 import Link from "next/link";
 
 import { CONNECTEURS, catalogueDOctroi } from "@/connectors";
-import { type Capability, resolveCapability, type Tier } from "@/core/connector";
+import { type Capability, resolveCapability } from "@/core/connector";
+import { LIBELLE_ETAT_COLLECTE, LIBELLE_TIER } from "@/core/lexique";
 import { verifierProfils } from "@/core/octroi";
 import { prisma } from "@/lib/db";
 import { policy } from "@/lib/policy";
@@ -23,14 +24,6 @@ const CAPACITES: { cle: Capability; libelle: string; quoi: string }[] = [
   { cle: "grant", libelle: "Donner", quoi: "ouvrir un accès" },
   { cle: "verify", libelle: "Vérifier", quoi: "confirmer l'état après coup" },
 ];
-
-const TIER: Record<Tier, { libelle: string; severite: "success" | "warning" | "info" | "error" }> =
-  {
-    auto: { libelle: "automatique", severite: "success" },
-    assisted: { libelle: "assisté", severite: "info" },
-    manual: { libelle: "manuel", severite: "warning" },
-    none: { libelle: "indisponible", severite: "error" },
-  };
 
 interface AccesDeProfil {
   profil: string;
@@ -271,8 +264,8 @@ export default async function SystemesPage() {
 
           <p className={fr.cx("fr-text--sm", "fr-mb-2w")}>
             {dernierReleve
-              ? `Dernier relevé le ${dateFr.format(dernierReleve.startedAt)}, état ${dernierReleve.status}, ${dernierReleve.itemsSeen} comptes.`
-              : "Jamais relevé."}
+              ? `Dernière lecture le ${dateFr.format(dernierReleve.startedAt)}, collecte ${LIBELLE_ETAT_COLLECTE[dernierReleve.status].libelle}, ${dernierReleve.itemsSeen} comptes.`
+              : "Jamais lu."}
           </p>
 
           <Table
@@ -290,12 +283,12 @@ export default async function SystemesPage() {
                 <br />
                 <span className={fr.cx("fr-text--sm")}>{quoi}</span>
               </span>,
-              <Badge key="t" severity={TIER[resolue.tier].severite} small noIcon>
-                {TIER[resolue.tier].libelle}
+              <Badge key="t" severity={LIBELLE_TIER[resolue.tier].severite} small noIcon>
+                {LIBELLE_TIER[resolue.tier].libelle}
               </Badge>,
               resolue.degradedFrom ? (
                 <span key="m" className={fr.cx("fr-text--sm")}>
-                  {TIER[resolue.degradedFrom.tier].libelle} si :{" "}
+                  {LIBELLE_TIER[resolue.degradedFrom.tier].libelle} si :{" "}
                   {resolue.degradedFrom.missing.join(", ")}
                 </span>
               ) : (
@@ -359,7 +352,7 @@ export default async function SystemesPage() {
         severity="info"
         className={fr.cx("fr-mt-4w")}
         small
-        description="Un système absent de cette page n'est pas couvert : ni relevé, ni signalé. Le catalogue systems[] de la politique, lui, ne sert encore à rien, aucun code ne le lit ; la clé connectors, elle, est lue par la collecte et par chaque connecteur qui s'en sert."
+        description="Un système absent de cette page n'est pas couvert : ni lu, ni signalé. Le catalogue systems[] de la politique, lui, ne sert encore à rien, aucun code ne le lit ; la clé connectors, elle, est lue par la collecte et par chaque connecteur qui s'en sert."
       />
     </main>
   );

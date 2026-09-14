@@ -81,9 +81,10 @@ export function plusAncienneInvitation(acces: readonly AccesConstate[]): Date | 
  *
  * Trois cas et non deux. Un système muet n'a pas de chiffre du tout. Un système lu
  * partiellement en a un, mais incomplet : la collecte a avalé des erreurs unitaires,
- * donc elle n'a posé aucune disparition, et ce qui reste en base peut contenir des
- * comptes déjà partis. Le présenter comme sain serait le mensonge le plus tranquille
- * de cet écran.
+ * donc ce qu'elle conclut est partiel. Elle a pu dater une part des disparitions sans
+ * dater les autres, un refus sur les ressources n'empêchant pas celles des identités,
+ * si bien que ce qui reste en base peut contenir des comptes déjà partis. Le présenter
+ * comme sain serait le mensonge le plus tranquille de cet écran.
  */
 export type Observation =
   | { etat: "frais" }
