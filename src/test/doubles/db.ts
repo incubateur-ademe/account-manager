@@ -55,15 +55,24 @@ export function barriereDeBase(
  * code ne doit pas le lire ». Un modèle doublé par précaution dit l'inverse : il répond,
  * donc il autorise, et la lecture qu'il sert ne se voit nulle part.
  *
- * Les symboles passent sans être jugés : `then`, `Symbol.toPrimitive` et leurs voisins sont
- * interrogés par le moteur lui-même, sur un objet qu'on attend ou qu'on inspecte, et les
- * refuser ferait échouer des chemins qui ne lisent aucune donnée.
+ * Deux sortes d'accès passent sans être jugées, parce que le moteur les fait lui-même sur
+ * une valeur qu'on attend ou qu'on inspecte, et non parce qu'un code lit la base : les
+ * symboles, et `then`, que toute valeur passée à `await` ou à `Promise.resolve` se voit
+ * demander. Les refuser ferait échouer des chemins qui ne lisent rien.
+ *
+ * La déclaration se juge sur les propriétés propres et non par `in` : ce dernier suit la
+ * chaîne de prototypes, si bien que `toString` et `constructor` passeraient la barrière
+ * sans qu'aucun modèle ne soit doublé.
  */
 export function doublerBase<T extends object>(modeles: T): DoubleDeBase {
   return {
     prisma: new Proxy(modeles, {
       get(cible, propriete, recepteur) {
-        if (typeof propriete === "symbol" || propriete in cible) {
+        if (
+          typeof propriete === "symbol" ||
+          propriete === "then" ||
+          Object.hasOwn(cible, propriete)
+        ) {
           return Reflect.get(cible, propriete, recepteur);
         }
         throw new Error(`ce harnais ne double pas prisma.${propriete}`);
