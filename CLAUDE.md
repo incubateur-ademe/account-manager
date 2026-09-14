@@ -175,11 +175,11 @@ Tout en **français** : code, commentaires, messages d'erreur, noms de tests, do
 une rupture. Le titre de la PR compte double, c'est lui qui devient le message du squash sur `main`.
 La description suit `.github/pull_request_template.md`, qui demande le pourquoi avant le quoi.
 
-**Un titre dit ce que fait le changement : un verbe à l'infinitif et son objet.** `monter Next en
-16.3.5`, `uniformiser le vocabulaire des écrans`. Une cinquantaine de caractères, 72 au plafond. Ni
-personnification (« l'écran cesse de mentir »), ni seconde proposition après une virgule, ni
-chiffre qui ne fait que résumer le diff. Il se lira seul dans une liste, des mois plus tard, par
-quelqu'un qui cherche quand une chose a changé.
+**Un titre dit ce que fait le changement : un verbe à l'infinitif et son objet.** Ainsi
+`monter Next en 16.3.5`, ou `uniformiser le vocabulaire des écrans`. Une cinquantaine de
+caractères, 72 au plafond. Ni personnification (« l'écran cesse de mentir »), ni seconde
+proposition après une virgule, ni chiffre qui ne fait que résumer le diff. Il se lira seul dans
+une liste, des mois plus tard, par quelqu'un qui cherche quand une chose a changé.
 
 **Le corps et la description portent le pourquoi, en restant lisibles jusqu'au bout.** Une liste de
 défauts ou de décisions s'écrit en puces, pas en paragraphes. Le cheminement ne s'écrit nulle part :
