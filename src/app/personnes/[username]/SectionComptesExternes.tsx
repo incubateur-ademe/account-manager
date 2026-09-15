@@ -16,6 +16,8 @@ export interface CompteExterne {
   matchMethod: MatchMethod;
   lastSeenAt: Date;
   vanishedAt: Date | null;
+  /** Renseigné quand une tolérance couvre ce compte : ce qu'elle dit, et jusqu'à quand. */
+  tolere: string | null;
 }
 
 export function SectionComptesExternes({
@@ -67,6 +69,14 @@ export function SectionComptesExternes({
                             </Badge>
                           </>
                         ) : null}
+                        {identite.tolere === null ? null : (
+                          <>
+                            <br />
+                            <Badge severity="info" small noIcon>
+                              {identite.tolere}
+                            </Badge>
+                          </>
+                        )}
                       </span>
                     ),
                   },

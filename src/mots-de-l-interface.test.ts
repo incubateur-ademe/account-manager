@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-
+import { peutConfirmer } from "@/core/dossier";
 import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
 import { LIBELLE_ACTEUR, LIBELLE_DOSSIER, LIBELLE_ETAT_DOSSIER } from "@/core/libelle-dossier";
 import * as ENUMS from "@/generated/prisma/enums";
@@ -112,5 +112,38 @@ describe("aucune valeur de la base n'arrive telle quelle sous les yeux d'un opé
         .map((ligne) => `${dette.enumeration}.${ligne.valeur} écrit par ${ligne.par.join(", ")}`),
     );
     expect(ecrites).toEqual([]);
+  });
+});
+
+describe("ce qu'une phrase dit d'un plan dépassé", () => {
+  const refus = (verdict: ReturnType<typeof peutConfirmer>) =>
+    verdict.possible ? "" : verdict.raison;
+
+  it("n'accuse plus les accès observés sur un départ, qu'une tolérance peut expliquer", () => {
+    // Given les deux phrases qu'un opérateur lit quand un plan ne décrit plus la
+    // situation : celle de l'écran du dossier, et celle du refus de confirmation,
+    const surUnDepart = LIBELLE_DOSSIER.OFFBOARDING.derive;
+    const surLaConfirmation = refus(peutConfirmer("DRAFT", { perime: false, obsolete: true }, 3));
+
+    // Then aucune n'attribue le changement à ce que les systèmes rendent. Depuis qu'une
+    // tolérance écarte du calcul un système entièrement couvert, l'écart vient aussi
+    // d'une décision humaine datée, et cette phrase enverrait alors chercher du côté de
+    // la collecte une différence que personne n'y trouverait,
+    for (const phrase of [surUnDepart, surLaConfirmation]) {
+      expect(phrase).not.toMatch(/accès observés/);
+      expect(phrase).toMatch(/calculerait aujourd'hui/);
+    }
+
+    // Then celle d'une arrivée, elle, reste vraie et ne bouge pas : une tolérance ne
+    // touche jamais une arrivée, qui ne lit aucun compte. Lui retirer sa cause
+    // appauvrirait la phrase sans rien corriger,
+    expect(LIBELLE_DOSSIER.ONBOARDING.derive).toMatch(/systèmes savent donner/);
+
+    // Then et la péremption garde la sienne, qui parle du temps et non du contenu : les
+    // deux appellent des gestes différents, et les confondre ferait relire un plan là où
+    // il faut le recalculer.
+    expect(refus(peutConfirmer("DRAFT", { perime: true, obsolete: false }, 3))).toMatch(
+      /date de validité/,
+    );
   });
 });

@@ -113,8 +113,11 @@ export const LIBELLE_DOSSIER: Record<SensDossier, LibelleDossier> = {
     planVide:
       "Aucune étape : aucun compte rattaché de façon sûre n'a été trouvé sur les systèmes couverts.",
     sansPlanIssue: " L'annuler est la seule issue, un nouveau départ restant ouvrable ensuite.",
+    // Sans nommer de cause, depuis qu'une tolérance peut écarter un système du calcul :
+    // l'écart vient alors d'une décision humaine datée, et accuser les accès observés
+    // enverrait chercher du côté de la collecte une différence que personne n'y trouvera.
     derive:
-      "Les accès observés ont changé depuis son calcul : il ne peut plus être confirmé en l'état.",
+      "Ce plan ne décrit plus ce que l'outil calculerait aujourd'hui : il ne peut plus être confirmé en l'état.",
     echecTitre: "Des accès sont restés ouverts",
     constat: {
       valeur: "deja-absent",

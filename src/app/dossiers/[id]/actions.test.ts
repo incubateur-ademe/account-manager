@@ -585,9 +585,12 @@ describe("le geste qui engage : confirmer un plan", () => {
     }
     const dementi = await confirmerPlan(null, formulaire({ planId: plan.id }));
 
-    // Then la confirmation refuse, et le dit par ce qui a changé plutôt que par une
-    // phrase de péremption : les deux appellent des gestes différents.
-    expect(dementi.erreur).toContain("Les accès observés ont changé");
+    // Then la confirmation refuse par la dérive et non par la péremption : les deux
+    // appellent des gestes différents. Sans nommer de cause, depuis qu'une tolérance peut
+    // écarter un système du calcul : accuser les accès observés enverrait chercher du
+    // côté de la collecte une différence qui vient d'une décision humaine.
+    expect(dementi.erreur).toContain("ne décrit plus ce que l'outil calculerait");
+    expect(dementi.erreur).not.toContain("date de validité");
     expect(plan.state).toBe("DRAFT");
     expect(plan.confirmedDigest).toBeNull();
 
