@@ -187,7 +187,7 @@ describe("une arrivée ouvre pour de vrai ce qu'un profil déclare", () => {
     // est celle de l'octroi : tous ceux qui déclarent savoir donner, et non ceux où un
     // compte est observé, puisqu'à l'arrivée elle n'en a par définition aucun
     expect(plan.refus).toEqual([]);
-    expect(plan.systemes).toEqual(["github", "notion"]);
+    expect(plan.systemes).toEqual(["github", "notion", "scalingo"]);
     expect(plan.etapes).toHaveLength(2);
 
     // Then l'étape GitHub est celle du connecteur et non un repli inventé par le

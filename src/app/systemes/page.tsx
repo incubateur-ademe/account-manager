@@ -242,8 +242,8 @@ export default async function SystemesPage() {
       <p className={fr.cx("fr-text--sm")}>
         Ce que l'outil sait faire sur chaque système, tel que ses credentials le permettent
         aujourd'hui et non tel que le code l'espère. Un chemin automatique qui tombe redevient un
-        chemin manuel : la marche à suivre est donc toujours affichée, même là où tout est
-        automatique.
+        chemin manuel : la marche à suivre est donc affichée partout où il y a quelque chose à
+        faire, y compris là où tout est automatique aujourd'hui.
       </p>
 
       {profils.etat === "illisible" ? (
@@ -297,7 +297,11 @@ export default async function SystemesPage() {
                 </span>
               ),
               <span key="r" className={fr.cx("fr-text--sm")}>
-                {resolue.runbook}
+                {/* Une capacité qu'aucune voie ne déclare n'a pas de marche à suivre : le
+                    socle retombe alors sur le runbook du contrat, qui dit comment retirer
+                    quelqu'un, et l'afficher là ferait répondre à une question que
+                    personne n'a posée. */}
+                {resolue.decl ? resolue.runbook : "aucune, ce système ne le fait pas"}
               </span>,
             ])}
           />

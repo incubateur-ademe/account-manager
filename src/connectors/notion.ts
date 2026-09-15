@@ -30,6 +30,13 @@ const MEMBRES = "https://www.notion.so/settings/members";
 const RUNBOOK =
   "Retirer la personne dans Paramètres > Membres du workspace Notion, puis vérifier qu'elle ne figure plus dans la liste. Deux limites : le propriétaire qui a créé le jeton SCIM ne se retire pas par ce chemin, et les invités n'y figurent pas, si bien qu'une fiche sans compte Notion peut garder un accès invité.";
 
+/**
+ * Une lecture qui tombe ne devient pas manuelle, elle cesse : ce runbook dit quoi vérifier
+ * pour que la collecte reparte, et non comment relever des sièges à la main.
+ */
+const RUNBOOK_LECTURE =
+  "Vérifier que le jeton SCIM répond encore : Notion le révoque au départ de la personne qui l'a créé comme à son simple changement de rôle, et tout propriétaire de workspace peut le retirer. Un nouveau se génère depuis les paramètres de l'organisation, par un propriétaire. La collecte se relance par « pnpm sync ».";
+
 const RUNBOOK_OCTROI =
   "Inviter la personne dans Paramètres > Membres du workspace Notion, sur son adresse beta.gouv, puis vérifier qu'elle figure dans la liste des membres. Une invitation non acceptée y apparaît déjà : l'accès est accordé, il n'attend qu'une connexion.";
 
@@ -460,7 +467,7 @@ export const CONTRAT_NOTION: ConnectorContract = {
     },
   ],
   capabilities: {
-    list: [{ requires: [CREDENTIAL], tier: "auto" }],
+    list: [{ requires: [CREDENTIAL], tier: "auto", runbook: RUNBOOK_LECTURE }],
     // Manuel comme la révocation, et pour la même raison : le jeton SCIM sait créer
     // un membre, mais il est nominatif et porte le workspace entier, si bien qu'une
     // voie automatique adossée à lui s'éteindrait au premier changement de rôle de

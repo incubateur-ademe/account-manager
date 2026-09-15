@@ -84,7 +84,11 @@ function contratDe(key: string): ConnectorContract {
 describe("ce que les contrats du registre promettent", () => {
   it("ne promet aucune action qu'un credential absent ferait disparaître", () => {
     // Given le registre tel qu'il est, deux connecteurs et non un seul
-    expect(CONNECTEURS.map(({ contract }) => contract.key)).toEqual(["github", "notion"]);
+    expect(CONNECTEURS.map(({ contract }) => contract.key)).toEqual([
+      "github",
+      "notion",
+      "scalingo",
+    ]);
 
     // Then les deux gestes du socle sont déclarés quelque part dans le registre. La
     // vérification est ici et non par contrat : ce qui suit n'oblige qu'une capacité
@@ -144,6 +148,28 @@ describe("ce que les contrats du registre promettent", () => {
         expect(avecTout.runbook.length, ou).toBeGreaterThan(0);
         expect(avecTout.decl, ou).toBe(voies[0]);
       }
+
+      // Then la lecture, quand elle est déclarée, porte sa propre marche à suivre. Le
+      // socle retombe sinon sur celle du contrat, qui dit comment retirer quelqu'un : un
+      // opérateur venu d'un « Jamais lu » y lirait comment couper un accès, ce qui ne
+      // répond pas à sa question. Une lecture qui tombe ne devient pas manuelle, elle
+      // cesse, et ce qu'il faut alors dire est quoi vérifier pour qu'elle reparte.
+      const lecture = contract.capabilities.list;
+      if (lecture) {
+        const ou = `${contract.key} / list`;
+        const resolue = resolveCapability(
+          "list",
+          lecture,
+          sondes(
+            contract,
+            contract.credentials.map(({ id }) => id),
+          ),
+          contract.runbook,
+        );
+
+        expect(resolue.runbook, ou).not.toBe(contract.runbook);
+        expect(resolue.runbook.length, ou).toBeGreaterThan(0);
+      }
     }
   });
 
@@ -166,7 +192,7 @@ describe("ce que les contrats du registre promettent", () => {
 
     // Then les deux déclarent l'octroi aujourd'hui : un profil qui les vise ne se
     // fait plus renvoyer vers un connecteur qui ne saurait pas donner.
-    expect(catalogue.map(({ octroiDeclare }) => octroiDeclare)).toEqual([true, true]);
+    expect(catalogue.map(({ octroiDeclare }) => octroiDeclare)).toEqual([true, true, true]);
   });
 });
 
