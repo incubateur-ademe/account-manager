@@ -281,13 +281,33 @@ export interface CompteCouvrable {
  * Couvrir quelqu'un fait taire ce qu'on signale à son sujet, ça ne décide pas de ce qu'on
  * lui coupe.
  */
+function couvrePlusLoin(candidate: Derogation, tenante: Derogation): boolean {
+  if (candidate.echeance === null) {
+    return true;
+  }
+  if (tenante.echeance === null) {
+    return false;
+  }
+  return candidate.echeance.getTime() > tenante.echeance.getTime();
+}
+
 export function systemesEntierementToleres(
   comptes: readonly CompteCouvrable[],
   derogations: readonly Derogation[],
 ): ReadonlyMap<string, Derogation> {
-  const parCible = new Map(
-    derogations.map((derogation) => [cleDeCible(derogation.cible), derogation]),
-  );
+  // Une cible couverte par plusieurs tolérances l'est jusqu'à la plus lointaine des
+  // leurs, puisqu'il suffit qu'une seule coure, et une permanente ne s'éteint jamais.
+  // Sans ce départage, l'ordre de lecture déciderait et le motif pourrait citer une
+  // échéance déjà passée : le cas n'a rien d'une course, une permanente déclarée en git
+  // sur un compte déjà toléré en base suffit à le produire.
+  const parCible = new Map<string, Derogation>();
+  for (const derogation of derogations) {
+    const cle = cleDeCible(derogation.cible);
+    const deja = parCible.get(cle);
+    if (deja === undefined || couvrePlusLoin(derogation, deja)) {
+      parCible.set(cle, derogation);
+    }
+  }
 
   const parSysteme = new Map<string, { revocables: number; couvrantes: Derogation[] }>();
   for (const compte of comptes) {

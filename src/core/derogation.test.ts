@@ -346,6 +346,32 @@ describe("ce qu'une tolérance retire d'un plan", () => {
       ),
     );
     expect(avecPermanente.get("github")?.id).toBe("der-2087");
+
+    // Then un même compte couvert deux fois l'est jusqu'à la plus lointaine des deux, et
+    // non jusqu'à la première lue : il suffit qu'une seule coure. Une permanente déclarée
+    // en git sur un compte déjà toléré en base suffit à produire ce cas, sans aucune
+    // course, et l'ordre de lecture ferait sinon citer une échéance déjà passée.
+    const deuxFois = [
+      { ...sur("github", "1042"), id: "der-courte", echeance: dans(3) },
+      { ...sur("github", "1042"), id: "der-longue", echeance: dans(60) },
+      { ...sur("github", "2087"), id: "der-2087", echeance: dans(9) },
+    ];
+    for (const ordre of [deuxFois, [...deuxFois].reverse()]) {
+      const juge = systemesEntierementToleres(comptes, derogationsEnCours(ordre, POSE));
+      expect(juge.get("github")?.id).toBe("der-2087");
+    }
+
+    // Then et quand c'est la doublée qui décide du retour, c'est bien sa plus lointaine
+    // qui est citée, quel que soit l'ordre.
+    const doubleeDecide = [
+      { ...sur("github", "1042"), id: "der-courte", echeance: dans(3) },
+      { ...sur("github", "1042"), id: "der-moyenne", echeance: dans(5) },
+      { ...sur("github", "2087"), id: "der-2087", echeance: dans(40) },
+    ];
+    for (const ordre of [doubleeDecide, [...doubleeDecide].reverse()]) {
+      const juge = systemesEntierementToleres(comptes, derogationsEnCours(ordre, POSE));
+      expect(juge.get("github")?.id).toBe("der-moyenne");
+    }
   });
 
   it("ignore les comptes qu'aucune étape ne viserait, et les cibles qui ne sont pas des comptes", () => {
