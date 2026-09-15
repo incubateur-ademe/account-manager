@@ -74,6 +74,7 @@ const ECART: Record<RaisonDEcart, string> = {
   "doublon-sans-controle": "déjà demandée plus haut, sans son second regard",
   "non-autorise": "non autorisée sur ce compte",
   "saisie-illisible": "saisie attendue illisible",
+  tolere: "tolérée",
 };
 
 /** « GITHUB_TOKEN » et « OVH_APP_KEY » se lisent « GITHUB_TOKEN et OVH_APP_KEY ». */
@@ -562,6 +563,10 @@ export default async function DossierPage({
         dossier.person.username,
         maintenant,
         profil,
+        // Le même instant que l'exécution, sans quoi l'écran annoncerait une dérive que
+        // le lancement ne verrait pas, sur chaque plan confirmé dès la première
+        // tolérance posée.
+        plan?.confirmedAt ?? maintenant,
       );
 
   const etat = plan && actuel ? peremptionDuPlan(plan, actuel.empreinte, maintenant) : null;
@@ -1066,6 +1071,9 @@ export default async function DossierPage({
                 <span className={fr.cx("fr-text--sm")}>
                   ({origineLisible(ecartee.origine, nomsDeStartup)})
                 </span>
+                {ecartee.detail ? (
+                  <span className={fr.cx("fr-text--sm")}> {ecartee.detail}</span>
+                ) : null}
               </li>
             ))}
           </ul>

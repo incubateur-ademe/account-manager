@@ -103,6 +103,10 @@ async function planEnBase(planId: string) {
       id: true,
       state: true,
       confirmedDigest: true,
+      // L'instant dont l'ensemble de tolérances a produit `confirmedDigest`, et par
+      // construction plutôt que par discipline : la confirmation écrit les deux dans la
+      // même transaction, avec le « maintenant » qu'elle a passé au calcul.
+      confirmedAt: true,
       expiresAt: true,
       accessCaseId: true,
       accessCase: {
@@ -304,6 +308,10 @@ export async function executerPlan(
     plan.accessCase.person.username,
     maintenant,
     profilDeLaPolitique(plan.accessCase.profileKey),
+    // Les tolérances telles qu'elles étaient à la confirmation, et non celles du jour :
+    // une pose ou une expiration survenue depuis déplacerait l'empreinte, et ce plan
+    // deviendrait inexécutable sans issue, le recalcul n'étant ouvert qu'à un brouillon.
+    plan.confirmedAt ?? maintenant,
   );
 
   const ecart = refusDEcart(plan.confirmedDigest, actuel.empreinte);

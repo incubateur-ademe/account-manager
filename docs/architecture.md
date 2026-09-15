@@ -98,6 +98,13 @@ depuis l'interface avec un événement d'audit nominatif. Une dérogation expir�
 redevient mécaniquement un écart visible : c'est le mécanisme anti-pourrissement.
 Seules les dérogations permanentes vivent en git.
 
+Une dérogation vise un compte, par l'identifiant que son fournisseur lui donne, ou
+quelqu'un, par son identifiant beta.gouv. Jamais le nom d'usage d'un compte : celui-ci se
+renomme, et un nom abandonné est rendu à quelqu'un d'autre, si bien qu'une tolérance posée
+dessus couvrirait un jour un compte que personne n'a admis. Elle ne s'étend ni de l'un à
+l'autre : couvrir quelqu'un n'est pas couvrir ce qu'il détient, et l'inverse le serait
+encore moins.
+
 ---
 
 ## 2. Le périmètre
@@ -510,6 +517,15 @@ deux façons qu'il ne faut pas confondre : il **périme** par le temps, ce qui a
 constaté devenant trop vieux pour qu'on agisse dessus sans regarder à nouveau, et il
 devient **obsolète** par le contenu, le plan recalculé ne disant plus la même chose.
 L'empreinte est recalculée au démarrage de l'exécution, pas seulement à la confirmation.
+
+**Une dérogation entre dans le calcul, et l'instant où elle se juge est celui de la
+confirmation.** Un système dont toutes les identités révocables sont couvertes ne produit
+pas d'étape, et celle qui est écartée se dit avec sa raison plutôt que de disparaître.
+Comme l'empreinte se recalcule au démarrage de l'exécution, une tolérance posée, levée ou
+expirée depuis la confirmation déplacerait ce qui a été approuvé et rendrait le plan
+inexécutable sans issue, le recalcul n'étant ouvert qu'à un brouillon. Le calcul rejoue
+donc les tolérances telles qu'elles étaient à l'instant de la confirmation, que le plan
+porte déjà.
 
 **L'état d'un plan se déduit de ses étapes** et ne se pose jamais à la main. Pointer une
 étape reste une déclaration humaine et non une exécution : l'outil ne touche aucun
