@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { RAISON_COUVERT } from "@/core/derogation";
 import { prisma } from "@/lib/db";
-import { derogationsApplicables } from "@/lib/derogation";
+import { derogationsApplicables, toleranceDesComptes } from "@/lib/derogation";
 import { syncConstats } from "@/lib/sync/constats";
 
 /**
@@ -169,5 +169,71 @@ describe("une tolérance tait un écart, puis le rend", () => {
       revokedBy: "operatrice.exemple",
       expiresAt: new Date("2026-12-31T00:00:00Z"),
     });
+  });
+});
+
+describe("ce qu'un écran sait dire d'un compte toléré", () => {
+  const COMPTE_COUVERT = "cpt-couvert";
+  const COMPTE_NU = "cpt-nu";
+
+  beforeEach(async () => {
+    await semer();
+    const personne = await prisma.person.findUniqueOrThrow({ where: { username: PARTIE } });
+    for (const externalId of [COMPTE_COUVERT, COMPTE_NU]) {
+      await prisma.externalIdentity.create({
+        data: {
+          provider: "github",
+          externalId,
+          handle: externalId,
+          matchMethod: "GITHUB_LOGIN",
+          personId: personne.id,
+        },
+      });
+    }
+  });
+
+  it("apparie un compte à sa tolérance, ignore ceux que rien ne couvre, et retient la plus lointaine", async () => {
+    // Given un compte couvert deux fois, d'échéances différentes, et un compte que rien
+    // ne couvre,
+    // La plus lointaine posée en premier, à dessein : lue en dernier, elle gagnerait par
+    // le seul ordre de lecture, et ce scénario passerait sans rien tenir.
+    for (const [jours, jour] of [
+      [60, new Date("2026-11-09T00:00:00Z")],
+      [3, new Date("2026-09-13T00:00:00Z")],
+    ] as const) {
+      await prisma.derogation.create({
+        data: {
+          targetType: "identite",
+          targetId: `github:${COMPTE_COUVERT}`,
+          reason: `tolérance de ${jours} jours`,
+          createdBy: "operatrice.exemple",
+          createdAt: NUIT_1,
+          expiresAt: jour,
+        },
+      });
+    }
+
+    const comptes = [
+      { provider: "github", externalId: COMPTE_COUVERT },
+      { provider: "github", externalId: COMPTE_NU },
+    ];
+
+    // When un écran demande ce qui couvre ces comptes,
+    const couverts = await toleranceDesComptes(comptes, NUIT_2);
+
+    // Then seul le compte couvert y figure : un écran qui montrerait une tolérance sur un
+    // compte que rien ne couvre ferait croire à une décision que personne n'a prise,
+    expect([...couverts.keys()]).toEqual([`identite:github:${COMPTE_COUVERT}`]);
+
+    // Then et c'est la plus lointaine des deux qui est rendue, la même que celle dont le
+    // calcul du plan se sert : deux écrans voisins qui citeraient deux échéances
+    // différentes du même compte feraient douter des deux.
+    expect(couverts.get(`identite:github:${COMPTE_COUVERT}`)?.echeance).toEqual(
+      new Date("2026-11-09T00:00:00Z"),
+    );
+
+    // Then une tolérance éteinte ne compte pas davantage qu'une absente.
+    const apresEcheance = await toleranceDesComptes(comptes, new Date("2026-11-10T02:00:00Z"));
+    expect([...apresEcheance.keys()]).toEqual([]);
   });
 });

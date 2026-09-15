@@ -16,7 +16,6 @@ export interface CompteExterne {
   matchMethod: MatchMethod;
   lastSeenAt: Date;
   vanishedAt: Date | null;
-  /** Renseigné quand une tolérance couvre ce compte : ce qu'elle dit, et jusqu'à quand. */
   tolere: string | null;
 }
 

@@ -281,6 +281,31 @@ export interface CompteCouvrable {
  * Couvrir quelqu'un fait taire ce qu'on signale à son sujet, ça ne décide pas de ce qu'on
  * lui coupe.
  */
+/**
+ * Ce qui couvre chaque cible, et jusqu'où.
+ *
+ * Une cible visée par plusieurs tolérances est couverte jusqu'à la plus lointaine des
+ * leurs, puisqu'il suffit qu'une seule coure, et une permanente ne s'éteint jamais. Sans
+ * ce départage, l'ordre de lecture déciderait : le cas n'a rien d'une course, une
+ * permanente déclarée en git sur un compte déjà toléré en base suffit à le produire.
+ *
+ * Dit une fois et ici, parce que deux endroits qui départagent chacun de leur côté finissent
+ * par citer deux échéances différentes du même compte, sur deux écrans voisins.
+ */
+export function couvertureParCible(
+  derogations: readonly Derogation[],
+): ReadonlyMap<string, Derogation> {
+  const parCible = new Map<string, Derogation>();
+  for (const derogation of derogations) {
+    const cle = cleDeCible(derogation.cible);
+    const deja = parCible.get(cle);
+    if (deja === undefined || couvrePlusLoin(derogation, deja)) {
+      parCible.set(cle, derogation);
+    }
+  }
+  return parCible;
+}
+
 function couvrePlusLoin(candidate: Derogation, tenante: Derogation): boolean {
   if (candidate.echeance === null) {
     return true;
@@ -295,19 +320,7 @@ export function systemesEntierementToleres(
   comptes: readonly CompteCouvrable[],
   derogations: readonly Derogation[],
 ): ReadonlyMap<string, Derogation> {
-  // Une cible couverte par plusieurs tolérances l'est jusqu'à la plus lointaine des
-  // leurs, puisqu'il suffit qu'une seule coure, et une permanente ne s'éteint jamais.
-  // Sans ce départage, l'ordre de lecture déciderait et le motif pourrait citer une
-  // échéance déjà passée : le cas n'a rien d'une course, une permanente déclarée en git
-  // sur un compte déjà toléré en base suffit à le produire.
-  const parCible = new Map<string, Derogation>();
-  for (const derogation of derogations) {
-    const cle = cleDeCible(derogation.cible);
-    const deja = parCible.get(cle);
-    if (deja === undefined || couvrePlusLoin(derogation, deja)) {
-      parCible.set(cle, derogation);
-    }
-  }
+  const parCible = couvertureParCible(derogations);
 
   const parSysteme = new Map<string, { revocables: number; couvrantes: Derogation[] }>();
   for (const compte of comptes) {

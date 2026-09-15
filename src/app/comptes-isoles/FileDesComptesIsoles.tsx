@@ -17,7 +17,6 @@ export interface LigneCompteIsole {
   id: string;
   provider: string;
   handle: string;
-  /** Renseigné quand une tolérance couvre ce compte : ce qu'elle dit, et jusqu'à quand. */
   tolere: string | null;
   ressemblance: boolean;
   /** Qui pourrait détenir ce compte, recalculé à chaque affichage et jamais écrit. */

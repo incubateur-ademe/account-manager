@@ -1,4 +1,10 @@
-import { cleDeCible, type Derogation, derogationsEnCours, lireCible } from "@/core/derogation";
+import {
+  cleDeCible,
+  couvertureParCible,
+  type Derogation,
+  derogationsEnCours,
+  lireCible,
+} from "@/core/derogation";
 import { prisma } from "@/lib/db";
 import { policy } from "@/lib/policy";
 
@@ -98,9 +104,7 @@ export async function toleranceDesComptes(
     return new Map();
   }
   const { applicables } = await derogationsApplicables(instant);
-  const parCle = new Map(
-    applicables.map((derogation) => [cleDeCible(derogation.cible), derogation]),
-  );
+  const parCle = couvertureParCible(applicables);
 
   const couverts = new Map<string, Derogation>();
   for (const compte of comptes) {

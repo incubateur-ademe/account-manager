@@ -274,7 +274,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
   // Dit ici plutôt que laissé au départ : c'est sur cette fiche qu'on décide d'ouvrir un
   // dossier, et un compte qu'un plan n'ira pas couper doit se voir avant, pas au moment
   // où le plan surprend en ne le portant pas.
-  const couverts = await toleranceDesComptes(personne.identities, new Date());
+  const couverts = await toleranceDesComptes(personne.identities, today);
   const comptes = personne.identities.map((identite) => ({
     ...identite,
     tolere: tolerance(couverts, identite),
