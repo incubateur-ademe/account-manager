@@ -17,6 +17,7 @@ export interface LigneCompteIsole {
   id: string;
   provider: string;
   handle: string;
+  tolere: string | null;
   ressemblance: boolean;
   /** Qui pourrait détenir ce compte, recalculé à chaque affichage et jamais écrit. */
   propositions: readonly SuggestionRattachement[];
@@ -75,6 +76,14 @@ export function FileDesComptesIsoles({
                       </Badge>
                     </>
                   ) : null}
+                  {ligne.tolere === null ? null : (
+                    <>
+                      <br />
+                      <Badge severity="info" small noIcon>
+                        {ligne.tolere}
+                      </Badge>
+                    </>
+                  )}
                 </div>
               ),
             },

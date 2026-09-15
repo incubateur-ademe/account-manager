@@ -4,9 +4,11 @@ import type { Metadata } from "next";
 import { type SuggestionRattachement, suggererRattachements } from "@/core/suggestion-rattachement";
 import { OU_NON_REVOCABLE } from "@/lib/comptes-isoles";
 import { prisma } from "@/lib/db";
+import { toleranceDesComptes } from "@/lib/derogation";
 import { requireOperateur } from "@/lib/session";
 import type { Suggestion } from "@/ui/ChampAvecListe";
 import { dateFr } from "@/ui/dates";
+import { tolerance } from "@/ui/tolerance";
 
 import { FileDesComptesIsoles, type LigneCompteIsole } from "./FileDesComptesIsoles";
 
@@ -84,6 +86,7 @@ export default async function ComptesIsolesPage() {
         id: true,
         provider: true,
         handle: true,
+        externalId: true,
         matchMethod: true,
         person: { select: { username: true, fullname: true } },
         firstSeenAt: true,
@@ -117,10 +120,16 @@ export default async function ComptesIsolesPage() {
     })),
   ];
 
+  // Un compte toléré reste dans cette file : il est toujours isolé, et le rattacher
+  // reste le geste qui le résout. Ce qui change, c'est qu'il ne remonte plus dans les
+  // constats, et le taire ici ferait chercher pourquoi.
+  const couverts = await toleranceDesComptes(isoles, new Date());
+
   const lignes: LigneCompteIsole[] = isoles.map((identite) => ({
     id: identite.id,
     provider: identite.provider,
     handle: identite.handle,
+    tolere: tolerance(couverts, identite),
     ressemblance: identite.matchMethod === "HEURISTIC",
     propositions: propositions(identite.handle, identite.person, personnes),
     acces: identite.grants.map((acces) => `${acces.role} sur ${acces.resource.label}`),

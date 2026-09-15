@@ -1,4 +1,10 @@
-import { type Derogation, derogationsEnCours, lireCible } from "@/core/derogation";
+import {
+  cleDeCible,
+  couvertureParCible,
+  type Derogation,
+  derogationsEnCours,
+  lireCible,
+} from "@/core/derogation";
 import { prisma } from "@/lib/db";
 import { policy } from "@/lib/policy";
 
@@ -81,4 +87,32 @@ export async function derogationsApplicables(instant: Date): Promise<LectureDeDe
   }
 
   return { applicables: derogationsEnCours(connues, instant), illisibles };
+}
+
+/**
+ * Ce qui couvre chacun des comptes donnés, indexé par la clé de leur cible.
+ *
+ * Les écrans qui montrent des comptes s'en servent pour dire lesquels sont tolérés, plutôt
+ * que de refaire l'appariement chacun de leur côté : une clé composée à la main quelque
+ * part finirait par diverger de celle que la réconciliation compare.
+ */
+export async function toleranceDesComptes(
+  comptes: readonly { provider: string; externalId: string }[],
+  instant: Date,
+): Promise<ReadonlyMap<string, Derogation>> {
+  if (comptes.length === 0) {
+    return new Map();
+  }
+  const { applicables } = await derogationsApplicables(instant);
+  const parCle = couvertureParCible(applicables);
+
+  const couverts = new Map<string, Derogation>();
+  for (const compte of comptes) {
+    const cle = cleDeCible({ type: "identite", ...compte });
+    const couvrante = parCle.get(cle);
+    if (couvrante) {
+      couverts.set(cle, couvrante);
+    }
+  }
+  return couverts;
 }

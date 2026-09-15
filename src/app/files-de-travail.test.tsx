@@ -149,6 +149,7 @@ const ORPHELIN: LigneCompteIsole = {
   id: "id-marceau",
   provider: "github",
   handle: "m-marceau",
+  tolere: null,
   ressemblance: false,
   propositions: [],
   acces: [],
@@ -161,6 +162,7 @@ const RESSEMBLANT: LigneCompteIsole = {
   id: "id-brunel",
   provider: "notion",
   handle: "solene.brunel@exemple.org",
+  tolere: null,
   ressemblance: true,
   propositions: [
     {

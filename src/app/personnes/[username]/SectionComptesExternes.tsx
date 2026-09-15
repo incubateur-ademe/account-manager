@@ -16,6 +16,7 @@ export interface CompteExterne {
   matchMethod: MatchMethod;
   lastSeenAt: Date;
   vanishedAt: Date | null;
+  tolere: string | null;
 }
 
 export function SectionComptesExternes({
@@ -67,6 +68,14 @@ export function SectionComptesExternes({
                             </Badge>
                           </>
                         ) : null}
+                        {identite.tolere === null ? null : (
+                          <>
+                            <br />
+                            <Badge severity="info" small noIcon>
+                              {identite.tolere}
+                            </Badge>
+                          </>
+                        )}
                       </span>
                     ),
                   },

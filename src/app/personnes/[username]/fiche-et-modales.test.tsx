@@ -278,6 +278,63 @@ describe("la fiche d'une personne et ses deux modales", () => {
     expect(jusquAu().value).toBe("");
   });
 
+  it("dit d'un compte toléré jusqu'à quand il l'est, sans le confondre avec un compte disparu", () => {
+    // Given une fiche portant un compte toléré jusqu'à une date, un compte toléré sans
+    // terme, et un compte que rien ne couvre,
+    render(
+      <SectionComptesExternes
+        comptes={[
+          {
+            id: "identite-github",
+            provider: "github",
+            handle: "compte-partage",
+            matchMethod: "DECLARED",
+            lastSeenAt: new Date("2026-09-01T00:00:00Z"),
+            vanishedAt: null,
+            tolere: "toléré jusqu'au 31/12/2026",
+          },
+          {
+            id: "identite-notion",
+            provider: "notion",
+            handle: "bot-integration",
+            matchMethod: "DECLARED",
+            lastSeenAt: new Date("2026-09-01T00:00:00Z"),
+            vanishedAt: null,
+            tolere: "toléré sans terme",
+          },
+          {
+            id: "identite-ovh",
+            provider: "ovh",
+            handle: "n.vaillant",
+            matchMethod: "DECLARED",
+            lastSeenAt: new Date("2026-09-01T00:00:00Z"),
+            vanishedAt: null,
+            tolere: null,
+          },
+        ]}
+        systemesCollectes={["github", "notion", "ovh"]}
+      />,
+    );
+
+    // Then chacun dit ce qu'il est, et jusqu'à quand : c'est sur cette fiche qu'on décide
+    // d'ouvrir un départ, et un compte qu'un plan n'ira pas couper doit se voir avant,
+    // plutôt qu'au moment où le plan surprend en ne le portant pas,
+    const toleres = screen.getAllByText(/^toléré/);
+    expect(toleres.map((badge) => badge.textContent)).toEqual([
+      "toléré jusqu'au 31/12/2026",
+      "toléré sans terme",
+    ]);
+
+    // Then une tolérance sans terme se dit ainsi plutôt que par une date vide, et le
+    // compte que rien ne couvre ne porte rien,
+    const ligneNue = screen.getByText("n.vaillant").closest("tr") as HTMLElement;
+    expect(within(ligneNue).queryByText(/toléré/)).toBeNull();
+
+    // Then et rien ne parle de disparition : un compte toléré est observé, c'est
+    // justement pour ça qu'il remonterait sans sa tolérance.
+    expect(screen.queryByText(/Disparu le/)).toBeNull();
+  });
+
   it("dit d'un compte rapproché par ressemblance qu'il ne fera jamais couper d'accès, sans laisser affleurer le mot de base", () => {
     // Given une fiche portant un compte déclaré et un compte rapproché sur ressemblance
     render(
@@ -290,6 +347,7 @@ describe("la fiche d'une personne et ses deux modales", () => {
             matchMethod: "DECLARED",
             lastSeenAt: new Date("2026-09-01T00:00:00Z"),
             vanishedAt: null,
+            tolere: null,
           },
           {
             id: "identite-notion",
@@ -298,6 +356,7 @@ describe("la fiche d'une personne et ses deux modales", () => {
             matchMethod: "HEURISTIC",
             lastSeenAt: new Date("2026-09-01T00:00:00Z"),
             vanishedAt: null,
+            tolere: null,
           },
         ]}
         systemesCollectes={["github", "notion"]}
@@ -343,6 +402,7 @@ describe("la fiche d'une personne et ses deux modales", () => {
             matchMethod: "DECLARED",
             lastSeenAt: new Date("2026-09-01T00:00:00Z"),
             vanishedAt: null,
+            tolere: null,
           },
           {
             id: "identite-notion",
@@ -351,6 +411,7 @@ describe("la fiche d'une personne et ses deux modales", () => {
             matchMethod: "DECLARED",
             lastSeenAt: new Date("2026-09-02T00:00:00Z"),
             vanishedAt: null,
+            tolere: null,
           },
         ]}
         systemesCollectes={["github", "notion"]}

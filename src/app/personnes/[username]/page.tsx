@@ -28,6 +28,7 @@ import { LIBELLE_STATUT, statutDePersonne } from "@/core/statut";
 import { appartenanceDeLaLigne } from "@/lib/appartenance";
 import { profilsOfferts } from "@/lib/arrivee";
 import { prisma } from "@/lib/db";
+import { toleranceDesComptes } from "@/lib/derogation";
 import { env } from "@/lib/env";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
@@ -35,6 +36,7 @@ import { dernierPassageComplet } from "@/lib/sync/perimetre";
 import { dateFr } from "@/ui/dates";
 import { SEVERITE_STATUT } from "@/ui/severites";
 import { TableCustom } from "@/ui/TableCustom";
+import { tolerance } from "@/ui/tolerance";
 
 import { ActionsDePage } from "./ActionsDePage";
 import { CeQuiAppelleUneAction } from "./CeQuiAppelleUneAction";
@@ -113,6 +115,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
             id: true,
             provider: true,
             handle: true,
+            externalId: true,
             matchMethod: true,
             lastSeenAt: true,
             vanishedAt: true,
@@ -267,6 +270,15 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
     .map((collecte) => collecte.provider)
     .filter((provider) => provider !== FOURNISSEUR_PERIMETRE)
     .sort((a, b) => a.localeCompare(b, "fr"));
+
+  // Dit ici plutôt que laissé au départ : c'est sur cette fiche qu'on décide d'ouvrir un
+  // dossier, et un compte qu'un plan n'ira pas couper doit se voir avant, pas au moment
+  // où le plan surprend en ne le portant pas.
+  const couverts = await toleranceDesComptes(personne.identities, today);
+  const comptes = personne.identities.map((identite) => ({
+    ...identite,
+    tolere: tolerance(couverts, identite),
+  }));
 
   // Un titre d'appartenance qui ne passe par aucune startup : la même exception que
   // celle du calcul des constats, sans quoi l'écran lèverait ici ce que la file
@@ -494,7 +506,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
         inconnues={inconnues}
       />
 
-      <SectionComptesExternes comptes={personne.identities} systemesCollectes={systemesCollectes} />
+      <SectionComptesExternes comptes={comptes} systemesCollectes={systemesCollectes} />
 
       {fermes.length > 0 ? (
         <Accordion

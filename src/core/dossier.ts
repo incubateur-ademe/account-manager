@@ -99,7 +99,9 @@ export function peutConfirmer(etat: EtatPlan, peremption: Peremption, etapes: nu
   if (peremption.obsolete) {
     return {
       possible: false,
-      raison: "Les accès observés ont changé depuis le calcul : ce plan ne les décrit plus.",
+      // Muet sur la cause, et pour les deux sens à la fois : l'écart d'un départ peut
+      // venir d'une tolérance posée depuis, et non de ce que les systèmes rendent.
+      raison: "Ce plan ne décrit plus ce que l'outil calculerait aujourd'hui.",
     };
   }
   return { possible: true };
