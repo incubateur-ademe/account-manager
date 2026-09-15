@@ -4,8 +4,15 @@ import type { Intent, RunContext } from "@/core/connector";
 import {
   CONTRAT_SCALINGO,
   collecter,
+  constaterCollaborateur,
+  type EcritureScalingo,
+  executerScalingo,
+  interpreterOctroi,
+  interpreterRetrait,
   type LecteurScalingo,
   type Pause,
+  planifierOctroiScalingo,
+  type ReponseScalingo,
   scalingo,
 } from "./scalingo";
 
@@ -522,6 +529,73 @@ describe("ce que le connecteur Scalingo propose à un départ", () => {
     expect(await scalingo.plan(service, CONTEXTE)).toEqual([]);
   });
 
+  it("vise chaque application constatée dès que le socle lui dit où la personne est", async () => {
+    // Given un départ, avec ce que la collecte a constaté et l'adresse dont le socle répond
+    const etapes = await scalingo.plan(
+      {
+        kind: "revoke",
+        subject: {
+          kind: "person",
+          username: "camille.exemple",
+          handles: { scalingo: "camille@exemple.invalid" },
+          acces: [
+            {
+              identityExternalId: "us-camille",
+              resourceExternalId: "app-annuaire",
+              resourceLabel: "service-annuaire (osc-fr1)",
+              role: "collaborator",
+            },
+            {
+              identityExternalId: "us-camille",
+              resourceExternalId: "app-paie",
+              resourceLabel: "service-paie (osc-secnum-fr1)",
+              role: "limited",
+            },
+          ],
+        },
+      },
+      CONTEXTE,
+    );
+
+    // Then une coupure par application, chacune sur sa région, plus la rotation : un seul
+    // geste pour tout le parc ne se pointerait ni ne s'exécuterait application par
+    // application
+    expect(etapes.map(({ idempotencyKey }) => idempotencyKey)).toEqual([
+      "scalingo:osc-fr1:service-annuaire:revoke:camille.exemple",
+      "scalingo:osc-secnum-fr1:service-paie:revoke:camille.exemple",
+      "scalingo:rotation:camille.exemple",
+    ]);
+
+    // Then chaque coupure porte de quoi être exécutée : la région qui donne l'hôte, le nom
+    // de l'application, et l'adresse par laquelle la collaboration se retrouve
+    expect(etapes[1]?.params).toEqual({
+      region: "osc-secnum-fr1",
+      application: "service-paie",
+      beneficiaire: "camille@exemple.invalid",
+    });
+    expect(etapes[1]?.manual?.deeplink).toBe(
+      "https://dashboard.scalingo.com/apps/osc-secnum-fr1/service-paie/settings/collaborators",
+    );
+
+    // Then sans jeton, tout dégrade en manuel plutôt que de promettre un geste que la
+    // boucle n'emprunterait pas
+    expect(etapes.map(({ tier }) => tier)).toEqual(["manual", "manual", "manual"]);
+
+    // Then sans adresse sûre, le connecteur ne vise rien et retombe sur un seul geste, sur
+    // la vue consolidée : ce qui manque est une donnée et non un credential
+    const aveugle = await scalingo.plan(
+      {
+        kind: "revoke",
+        subject: { kind: "person", username: "camille.exemple", acces: [] },
+      },
+      CONTEXTE,
+    );
+    expect(aveugle.map(({ idempotencyKey }) => idempotencyKey)).toEqual([
+      "scalingo:revoke:camille.exemple",
+      "scalingo:rotation:camille.exemple",
+    ]);
+  });
+
   it("n'ouvre un accès que sous un scope validé, et pèse le rôle qu'il accorde", async () => {
     // Given un octroi dont la portée manque
     const sansScope: Intent = {
@@ -534,7 +608,11 @@ describe("ce que le connecteur Scalingo propose à un départ", () => {
     expect(await scalingo.plan(sansScope, CONTEXTE)).toEqual([]);
 
     // Given une portée complète, avec sa région
-    const scope = { region: "osc-fr1", application: "service-annuaire", role: "collaborator" };
+    const scope = {
+      region: "osc-fr1",
+      application: "service-annuaire",
+      role: "collaborator" as const,
+    };
 
     // When le profil ouvre cet accès
     const etapes = scalingo.planifierOctroi?.(scope, {
@@ -551,6 +629,20 @@ describe("ce que le connecteur Scalingo propose à un départ", () => {
       "https://dashboard.scalingo.com/apps/osc-fr1/service-annuaire/settings/collaborators",
     );
 
+    // Then sans adresse, l'octroi dégrade de lui-même même avec le jeton : Scalingo invite
+    // sur une adresse et non sur un compte, et ce qui manque est une donnée
+    expect(
+      planifierOctroiScalingo(scope, { kind: "person", username: "camille.exemple" }, true)[0]
+        ?.tier,
+    ).toBe("manual");
+    expect(
+      planifierOctroiScalingo(
+        scope,
+        { kind: "person", username: "camille.exemple", email: "camille@exemple.invalid" },
+        true,
+      )[0]?.tier,
+    ).toBe("auto");
+
     // Then le rôle plein pèse plus lourd que le limité : il ouvre les variables
     // d'environnement, donc les secrets de l'application et les accès à ses bases
     expect(etapes?.[0]?.riskLevel).toBe("high");
@@ -566,5 +658,218 @@ describe("ce que le connecteur Scalingo propose à un départ", () => {
       false,
     );
     expect(CONTRAT_SCALINGO.scopeSchema.safeParse({ ...scope, role: "owner" }).success).toBe(false);
+  });
+});
+
+describe("ce que le connecteur Scalingo écrit, et ce qu'il refuse d'écrire", () => {
+  const ETAPE = {
+    systemKey: "scalingo",
+    capability: "revoke" as const,
+    tier: "auto" as const,
+    action: "retirer-des-collaborateurs",
+    label: "Retirer",
+    params: { region: "osc-fr1", application: "service-annuaire", beneficiaire: TITULAIRE.email },
+    riskLevel: "high" as const,
+    expectedState: { collaborateur: false },
+    idempotencyKey: "scalingo:osc-fr1:service-annuaire:revoke:camille.exemple",
+  };
+
+  const ROSTER = {
+    [`${FR}/v1/apps/service-annuaire/collaborators`]: { collaborators: [TITULAIRE, CONVIEE] },
+  };
+
+  function ecrivain(reponse: ReponseScalingo): {
+    ecrire: EcritureScalingo;
+    appels: { methode: string; url: string; corps?: unknown }[];
+  } {
+    const appels: { methode: string; url: string; corps?: unknown }[] = [];
+    return {
+      ecrire: (methode, url, corps) => {
+        appels.push({ methode, url, ...(corps === undefined ? {} : { corps }) });
+        return Promise.resolve(reponse);
+      },
+      appels,
+    };
+  }
+
+  it("interprète chaque famille de réponses sans jamais avoir à deviner celle de Scalingo", () => {
+    // Given un retrait. Scalingo ne documente pas ce qu'il rend sur une collaboration
+    // absente, et son client officiel traite tout sauf 204 comme une erreur : les deux
+    // branches existent donc ici, et « déjà absent » est un succès, pas un échec
+    expect(interpreterRetrait(204, undefined).state).toBe("SUCCEEDED");
+    expect(interpreterRetrait(404, undefined).state).toBe("ALREADY_ABSENT");
+
+    // Then une panne se reprend, un refus non : les confondre ferait réessayer
+    // indéfiniment ce qui ne passera jamais
+    const panne = interpreterRetrait(503, { error: "indisponible" });
+    expect(panne).toEqual({
+      state: "FAILED",
+      error: "Scalingo a répondu 503 : indisponible",
+      retryable: true,
+    });
+    expect(interpreterRetrait(403, undefined)).toMatchObject({ retryable: false });
+    expect(interpreterRetrait(429, undefined)).toMatchObject({ retryable: true });
+
+    // Given une invitation. Un conflit dit que la personne détient déjà l'accès : le
+    // traiter en échec enverrait un opérateur corriger ce qui est fait
+    expect(interpreterOctroi(201, undefined).state).toBe("SUCCEEDED");
+    expect(interpreterOctroi(409, undefined).state).toBe("ALREADY_PRESENT");
+    expect(interpreterOctroi(422, undefined).state).toBe("ALREADY_PRESENT");
+    expect(interpreterOctroi(500, undefined)).toMatchObject({ retryable: true });
+
+    // Then le succès d'un retrait dit ce qu'il n'a pas fait : les secrets restent en place
+    expect(interpreterRetrait(204, undefined)).toMatchObject({
+      evidence: expect.stringContaining("rotation"),
+    });
+  });
+
+  it("constate avant d'écrire, et se rapproche sur l'adresse et non sur un identifiant", async () => {
+    const { lire } = lecteur(ROSTER);
+
+    // Then une personne présente n'est pas encore retirée : l'étape reste à faire
+    expect(await constaterCollaborateur(lire, ETAPE)).toEqual({ state: "READY" });
+
+    // Then une personne absente solde l'étape sans qu'aucune écriture ne parte, ce qui est
+    // le cas nominal quand une autre main est passée avant
+    const partie = {
+      ...ETAPE,
+      params: { ...ETAPE.params, beneficiaire: "partie@exemple.invalid" },
+    };
+    expect(await constaterCollaborateur(lire, partie)).toEqual({ state: "ALREADY_ABSENT" });
+
+    // Then sur un octroi, un rôle qui ne correspond pas est un écart et non un doublon :
+    // la personne est là, mais pas avec l'accès que le plan décrivait
+    const octroi = {
+      ...ETAPE,
+      capability: "grant" as const,
+      action: "inviter-comme-collaborateur",
+      params: { ...ETAPE.params, role: "limited" },
+    };
+    expect(await constaterCollaborateur(lire, octroi)).toEqual({
+      state: "STALE",
+      expected: { role: "limited" },
+      actual: { role: "collaborator" },
+    });
+    expect(
+      await constaterCollaborateur(lire, {
+        ...octroi,
+        params: { ...octroi.params, role: "collaborator" },
+      }),
+    ).toEqual({ state: "ALREADY_PRESENT" });
+
+    // Then la casse ne sépare pas quelqu'un de son propre compte : Scalingo n'impose rien
+    // sur celle des adresses, et comparer brut laisserait un accès ouvert derrière un
+    // départ pour une majuscule
+    const criard = lecteur({
+      [`${FR}/v1/apps/service-annuaire/collaborators`]: {
+        collaborators: [{ ...TITULAIRE, email: TITULAIRE.email.toUpperCase() }],
+      },
+    });
+    expect(await constaterCollaborateur(criard.lire, ETAPE)).toEqual({ state: "READY" });
+
+    // Then une étape que le connecteur ne sait pas lire ne lève pas : lever ferait compter
+    // un échec à chaque passage sur la rotation des secrets, qui ne se lit par aucune API
+    const rotation = { ...ETAPE, action: "renouveler-les-secrets", params: { username: "qui" } };
+    expect(await constaterCollaborateur(lire, rotation)).toEqual({ state: "READY" });
+  });
+
+  it("refuse d'écrire en simulation, sans jeton, ou sur une étape qu'il ne reconnaît pas", async () => {
+    const { lire } = lecteur(ROSTER);
+    const { ecrire, appels } = ecrivain({ statut: 204, corps: undefined });
+
+    // Then la simulation lève avant même de regarder ce que l'étape demande : ce qui ne
+    // part pas ne peut pas partir par erreur
+    await expect(executerScalingo(lire, ecrire, true, ETAPE, CONTEXTE)).rejects.toThrow(
+      /ACTIONS_ENABLED/,
+    );
+
+    const reel = { ...CONTEXTE, dryRun: false };
+
+    // Then sans jeton, un échec qui ne se reprend pas et qui renvoie à la marche à suivre
+    expect(await executerScalingo(lire, ecrire, false, ETAPE, reel)).toMatchObject({
+      state: "FAILED",
+      retryable: false,
+    });
+
+    // Then une étape sans voie automatique n'est pas une panne : elle attend une main
+    const rotation = { ...ETAPE, action: "renouveler-les-secrets", params: { username: "qui" } };
+    expect(await executerScalingo(lire, ecrire, true, rotation, reel)).toMatchObject({
+      state: "FAILED",
+      retryable: false,
+    });
+
+    // Then aucun de ces trois refus n'a laissé partir le moindre appel
+    expect(appels).toEqual([]);
+  });
+
+  it("retire la collaboration du jour, et jamais celle qu'un plan figé désignait", async () => {
+    const { lire } = lecteur(ROSTER);
+    const { ecrire, appels } = ecrivain({ statut: 204, corps: undefined });
+    const reel = { ...CONTEXTE, dryRun: false };
+
+    expect(await executerScalingo(lire, ecrire, true, ETAPE, reel)).toMatchObject({
+      state: "SUCCEEDED",
+    });
+
+    // Then l'identifiant supprimé est celui relu à l'instant, et non un identifiant figé
+    // dans le plan : celui-ci change dès qu'une invitation est retirée puis réémise, si
+    // bien qu'un plan confirmé la veille viserait une collaboration morte
+    expect(appels).toEqual([
+      { methode: "DELETE", url: `${FR}/v1/apps/service-annuaire/collaborators/collab-titulaire` },
+    ]);
+
+    // Then quelqu'un qui n'est plus là ne déclenche aucune suppression
+    const partie = {
+      ...ETAPE,
+      params: { ...ETAPE.params, beneficiaire: "partie@exemple.invalid" },
+    };
+    const seconde = ecrivain({ statut: 204, corps: undefined });
+    expect(await executerScalingo(lire, seconde.ecrire, true, partie, reel)).toEqual({
+      state: "ALREADY_ABSENT",
+    });
+    expect(seconde.appels).toEqual([]);
+  });
+
+  it("invite sur une adresse, en disant toujours quel rôle il ouvre", async () => {
+    const { lire } = lecteur(ROSTER);
+    const { ecrire, appels } = ecrivain({ statut: 201, corps: { collaborator: {} } });
+    const octroi = {
+      ...ETAPE,
+      capability: "grant" as const,
+      action: "inviter-comme-collaborateur",
+      params: {
+        region: "osc-fr1",
+        application: "service-annuaire",
+        beneficiaire: "nouvelle@exemple.invalid",
+        role: "limited",
+      },
+    };
+
+    expect(
+      await executerScalingo(lire, ecrire, true, octroi, { ...CONTEXTE, dryRun: false }),
+    ).toMatchObject({ state: "SUCCEEDED" });
+
+    // Then le rôle part explicitement. Le défaut de l'API est le rôle limité quand son
+    // client officiel envoie l'inverse : l'implicite reviendrait à ne pas savoir quel
+    // accès on vient d'ouvrir
+    expect(appels).toEqual([
+      {
+        methode: "POST",
+        url: `${FR}/v1/apps/service-annuaire/collaborators`,
+        corps: { collaborator: { email: "nouvelle@exemple.invalid", is_limited: true } },
+      },
+    ]);
+
+    const plein = ecrivain({ statut: 201, corps: undefined });
+    await executerScalingo(
+      lire,
+      plein.ecrire,
+      true,
+      { ...octroi, params: { ...octroi.params, role: "collaborator" } },
+      { ...CONTEXTE, dryRun: false },
+    );
+    expect(plein.appels[0]?.corps).toEqual({
+      collaborator: { email: "nouvelle@exemple.invalid", is_limited: false },
+    });
   });
 });

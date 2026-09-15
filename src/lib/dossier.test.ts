@@ -100,6 +100,7 @@ interface PlanEnBase {
 const base = vi.hoisted(() => ({
   derogations: [] as DerogationEnBase[],
   identites: [] as IdentiteEnBase[],
+  adresse: null as string | null,
   dossiers: [] as DossierEnBase[],
   plans: [] as PlanEnBase[],
   modeles: [] as ModeleEnBase[],
@@ -130,21 +131,32 @@ vi.mock("@/lib/db", () => ({
       findMany: ({ where }: { where: { personId: string; vanishedAt: null } }) => {
         base.lecturesDIdentites += 1;
         return Promise.resolve(
-          base.identites.filter(
-            (identite) =>
-              identite.personId === where.personId && identite.vanishedAt === where.vanishedAt,
-          ),
+          base.identites
+            .filter(
+              (identite) =>
+                identite.personId === where.personId && identite.vanishedAt === where.vanishedAt,
+            )
+            // Prisma rend toujours le tableau d'une relation sélectionnée, vide s'il le
+            // faut : l'omettre ferait passer un double pour ce qu'aucune base ne rend.
+            .map((identite) => ({ grants: [], ...identite })),
         );
       },
     },
     person: {
-      findUnique: ({ select }: { select: { startupAssignments: { where: { endedAt: null } } } }) =>
-        Promise.resolve({
-          startups: base.startupsCollectees,
-          startupAssignments: base.rattachements.filter(
-            (rattachement) => rattachement.endedAt === select.startupAssignments.where.endedAt,
-          ),
-        }),
+      // Deux lectures distinctes sur la même table : le rattachement aux startups, et
+      // l'adresse dont le socle répond. Le double suit ce que chacune demande.
+      findUnique: ({ select }: { select: { startupAssignments?: { where: { endedAt: null } } } }) =>
+        Promise.resolve(
+          select.startupAssignments
+            ? {
+                startups: base.startupsCollectees,
+                startupAssignments: base.rattachements.filter(
+                  (rattachement) =>
+                    rattachement.endedAt === select.startupAssignments?.where.endedAt,
+                ),
+              }
+            : { primaryEmail: base.adresse, communicationEmail: null },
+        ),
     },
     planTemplate: {
       findMany: ({ where }: { where: { ownerKey: { in: readonly string[] }; kind: string } }) => {

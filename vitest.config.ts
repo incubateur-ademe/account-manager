@@ -31,8 +31,10 @@ const ADRESSES_MORTES = {
   ESPACE_MEMBRE_URL: `http://${MORT}`,
   ESPACE_MEMBRE_API_KEY: "aucune-cle-en-test",
   AUTH_SECRET: "aucun-secret-en-test",
-  // Vidé plutôt qu'absent : un jeton hérité du shell ferait sortir un appel réel.
+  // Vidés plutôt qu'absents : un jeton hérité du shell ferait sortir un appel réel, et
+  // ferait en plus résoudre en « automatique » des étapes que la suite croit manuelles.
   NOTION_SCIM_TOKEN: "",
+  SCALINGO_API_TOKEN: "",
   // Redit ici bien qu'il vaille faux par défaut : l'invariant du produit est qu'aucune
   // exécution n'écrit sans autorisation explicite, et un poste qui l'autorise ne doit
   // pas le transmettre à une suite de tests.

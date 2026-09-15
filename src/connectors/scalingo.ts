@@ -10,6 +10,9 @@ import type {
   ObservedIdentity,
   ObservedResource,
   PlannedStep,
+  PrecheckResult,
+  RunContext,
+  StepOutcome,
   SubjectRef,
 } from "@/core/connector";
 import { lireChaque } from "@/core/lecture";
@@ -157,6 +160,18 @@ const ROLE_LIMITE = "limited";
  * porteur d'une heure est un détail du transport, il ne remonte pas jusqu'ici.
  */
 export type LecteurScalingo = (url: string) => Promise<unknown>;
+
+/** Ce qu'une écriture rend, statut compris : c'est lui qui distingue un refus d'un doublon. */
+export interface ReponseScalingo {
+  statut: number;
+  corps: unknown;
+}
+
+export type EcritureScalingo = (
+  methode: "POST" | "DELETE",
+  url: string,
+  corps?: unknown,
+) => Promise<ReponseScalingo>;
 
 function message(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
@@ -632,6 +647,104 @@ export async function collecter(
  * une troisième décrirait un droit que Scalingo ne sait pas poser, et la propriété d'une
  * application ne s'accorde pas, elle se transfère.
  */
+/** Les statuts dont la cause peut disparaître d'elle-même, et eux seuls. */
+function reprenable(statut: number): boolean {
+  return statut === 408 || statut === 429 || statut >= 500;
+}
+
+function messageDuCorps(corps: unknown): string | null {
+  if (typeof corps !== "object" || corps === null) {
+    return null;
+  }
+  const dit = (corps as Record<string, unknown>)["error"];
+  return typeof dit === "string" && dit.length > 0 ? dit : null;
+}
+
+/**
+ * Ce qu'une suppression devient, et le 404 en est le cœur : Scalingo ne documente pas ce
+ * qu'il rend sur une collaboration absente, et son client officiel traite tout sauf 204
+ * comme une erreur. Les deux cas se traitent donc ici, et « déjà absent » est un succès,
+ * c'est le cas nominal quand une autre main est passée avant.
+ */
+export function interpreterRetrait(statut: number, corps: unknown): StepOutcome {
+  if (statut === 404) {
+    return { state: "ALREADY_ABSENT" };
+  }
+
+  if (statut < 200 || statut >= 300) {
+    const dit = messageDuCorps(corps);
+    return {
+      state: "FAILED",
+      error: `Scalingo a répondu ${statut}${dit === null ? "" : ` : ${dit}`}`,
+      retryable: reprenable(statut),
+    };
+  }
+
+  return {
+    state: "SUCCEEDED",
+    evidence:
+      "Collaboration retirée. Les variables d'environnement et les identifiants de base n'ont pas changé pour autant : c'est l'objet de l'étape de rotation.",
+  };
+}
+
+/**
+ * Ce qu'une invitation devient. Le conflit est un succès et non un échec : quelqu'un déjà
+ * invité détient déjà l'accès, et refaire échouer l'étape enverrait un opérateur corriger
+ * ce qui est fait.
+ */
+export function interpreterOctroi(statut: number, corps: unknown): StepOutcome {
+  if (statut === 409 || statut === 422) {
+    return { state: "ALREADY_PRESENT" };
+  }
+
+  if (statut < 200 || statut >= 300) {
+    const dit = messageDuCorps(corps);
+    return {
+      state: "FAILED",
+      error: `Scalingo a répondu ${statut}${dit === null ? "" : ` : ${dit}`}`,
+      retryable: reprenable(statut),
+    };
+  }
+
+  return {
+    state: "SUCCEEDED",
+    evidence:
+      "Invitation envoyée. Elle figure dans les collaborateurs dès maintenant, sans attendre d'être acceptée, et c'est déjà un accès accordé.",
+  };
+}
+
+/**
+ * Ce que le relevé d'une application dit d'une personne, avant d'écrire. Rapproché sur
+ * l'adresse et non sur l'identifiant de collaboration : celui-ci change dès qu'une
+ * invitation est retirée puis réémise, si bien qu'un plan confirmé la veille viserait une
+ * collaboration morte. C'est aussi ce que fait le client officiel avant de supprimer.
+ */
+export function constaterCollaboration(
+  collaborateurs: readonly Collaborateur[],
+  adresse: string,
+  attendu: { present: boolean; role?: string },
+): PrecheckResult {
+  const vise = adresse.trim().toLowerCase();
+  const trouve = collaborateurs.find(
+    (collaboration) => collaboration.email.trim().toLowerCase() === vise,
+  );
+
+  if (!attendu.present) {
+    return trouve ? { state: "READY" } : { state: "ALREADY_ABSENT" };
+  }
+
+  if (!trouve) {
+    return { state: "READY" };
+  }
+
+  const role = trouve.is_limited === true ? ROLE_LIMITE : ROLE_PLEIN;
+  if (attendu.role === undefined || role === attendu.role) {
+    return { state: "ALREADY_PRESENT" };
+  }
+
+  return { state: "STALE", expected: { role: attendu.role }, actual: { role } };
+}
+
 const SCOPE = z.strictObject({
   region: z
     .string()
@@ -670,20 +783,25 @@ function risqueDuRole(role: ScopeScalingo["role"]): "medium" | "high" {
 export function planifierOctroiScalingo(
   scope: ScopeScalingo,
   sujet: SubjectRef,
+  credential: boolean,
 ): readonly PlannedStep[] {
   const qui = sujet.kind === "person" ? sujet.username : sujet.key;
+  // Scalingo invite sur une adresse et non sur un compte : sans elle, rien à viser, et
+  // l'étape dégrade d'elle-même. Ce qui manque est une donnée, pas un credential.
+  const adresse = sujet.kind === "person" ? sujet.email : undefined;
+  const auto = credential && adresse !== undefined;
 
   return [
     {
       systemKey: "scalingo",
       capability: "grant",
-      tier: "manual",
+      tier: auto ? "auto" : "manual",
       action: "inviter-comme-collaborateur",
       label: `Inviter ${qui} dans ${scope.application} comme ${scope.role}`,
       params: {
         region: scope.region,
         application: scope.application,
-        beneficiaire: qui,
+        beneficiaire: adresse ?? qui,
         role: scope.role,
       },
       riskLevel: risqueDuRole(scope.role),
@@ -710,25 +828,70 @@ export function planifierOctroiScalingo(
  * un connecteur sur quelles ressources la personne détient un accès, et la vue
  * consolidée du tableau de bord existe précisément pour traiter les deux d'un coup.
  */
-export function planifierDepartScalingo(username: string): readonly PlannedStep[] {
+/**
+ * Une étape par application constatée, et le tier de chacune décidé ici : le connecteur est
+ * le seul à savoir ce qui lui manque. Sans adresse sûre, il n'a rien à viser et dégrade de
+ * lui-même, ce qui manque étant une donnée et non un credential.
+ *
+ * Sans aucun accès transmis, une seule étape pour tout le parc, manuelle, sur la vue
+ * consolidée : c'est ce qui reste faisable quand on ne sait pas où la personne est.
+ */
+export function planifierDepartScalingo(
+  username: string,
+  acces: readonly { resourceExternalId?: string; resourceLabel?: string }[],
+  adresse: string | undefined,
+  credential: boolean,
+): readonly PlannedStep[] {
+  const cibles = acces.filter((un) => un.resourceExternalId !== undefined);
+
+  const coupures: PlannedStep[] =
+    cibles.length === 0 || adresse === undefined
+      ? [
+          {
+            systemKey: "scalingo",
+            capability: "revoke" as const,
+            tier: "manual" as const,
+            action: "retirer-des-collaborateurs",
+            label: `Retirer ${username} des applications Scalingo`,
+            params: { username },
+            riskLevel: "high" as const,
+            expectedState: { collaborateur: false },
+            idempotencyKey: `scalingo:revoke:${username}`,
+            manual: {
+              title: `Retirer ${username} des applications Scalingo`,
+              runbook: RUNBOOK,
+              deeplink: CONSOLIDEE,
+              doneWhen: `${username} n'apparaît plus dans la vue consolidée des collaborateurs, invitations en attente comprises. Si une application lui appartient, sa propriété a été transférée : ce chemin-là ne passe pas par la liste des collaborateurs, où un propriétaire ne figure jamais.`,
+            },
+          },
+        ]
+      : cibles.map((un) => {
+          const application = un.resourceLabel ?? un.resourceExternalId ?? "";
+          // Le libellé porte sa région entre parenthèses, et c'est elle qui donne l'hôte.
+          const nom = application.replace(/\s*\([^)]*\)\s*$/, "");
+          const region = /\(([^)]*)\)\s*$/.exec(application)?.[1] ?? "";
+
+          return {
+            systemKey: "scalingo",
+            capability: "revoke" as const,
+            tier: credential ? ("auto" as const) : ("manual" as const),
+            action: "retirer-des-collaborateurs",
+            label: `Retirer ${username} de ${application}`,
+            params: { region, application: nom, beneficiaire: adresse },
+            riskLevel: "high" as const,
+            expectedState: { collaborateur: false },
+            idempotencyKey: `scalingo:${region}:${nom}:revoke:${username}`,
+            manual: {
+              title: `Retirer ${username} de ${application}`,
+              runbook: RUNBOOK,
+              deeplink: pageDesCollaborateurs(region, nom),
+              doneWhen: `${username} n'apparaît plus dans les collaborateurs de ${application}, invitation en attente comprise. Si l'application lui appartient, sa propriété a été transférée : un propriétaire ne figure dans aucune liste de collaborateurs.`,
+            },
+          };
+        });
+
   return [
-    {
-      systemKey: "scalingo",
-      capability: "revoke" as const,
-      tier: "manual" as const,
-      action: "retirer-des-collaborateurs",
-      label: `Retirer ${username} des applications Scalingo`,
-      params: { username },
-      riskLevel: "high" as const,
-      expectedState: { collaborateur: false },
-      idempotencyKey: `scalingo:revoke:${username}`,
-      manual: {
-        title: `Retirer ${username} des applications Scalingo`,
-        runbook: RUNBOOK,
-        deeplink: CONSOLIDEE,
-        doneWhen: `${username} n'apparaît plus dans la vue consolidée des collaborateurs, invitations en attente comprises. Si une application lui appartient, sa propriété a été transférée : ce chemin-là ne passe pas par la liste des collaborateurs, où un propriétaire ne figure jamais.`,
-      },
-    },
+    ...coupures,
     {
       systemKey: "scalingo",
       capability: "revoke" as const,
@@ -747,6 +910,143 @@ export function planifierDepartScalingo(username: string): readonly PlannedStep[
       },
     },
   ];
+}
+
+/** Ce qu'une étape vise, quand elle vise quelque chose de lisible. */
+function cibleDeLEtape(
+  step: PlannedStep,
+): { region: string; application: string; adresse: string } | undefined {
+  const { region, application, beneficiaire } = step.params;
+  if (typeof region !== "string" || typeof application !== "string") {
+    return undefined;
+  }
+  if (typeof beneficiaire !== "string" || !beneficiaire.includes("@")) {
+    return undefined;
+  }
+  return { region, application, adresse: beneficiaire };
+}
+
+const hoteDe = (region: string) => `https://api.${region}.scalingo.com`;
+
+const ACTIONS_LUES = new Set(["retirer-des-collaborateurs", "inviter-comme-collaborateur"]);
+
+/**
+ * Le précheck, qui est une lecture et rien d'autre. Il tourne dans les deux régimes,
+ * simulation comprise, et jusque sur une étape manuelle : éviter d'envoyer un humain faire
+ * ce qui est déjà fait en est le meilleur usage.
+ *
+ * Rien à constater n'est pas un échec. Lever ici ferait compter un échec à chaque passage
+ * sur une étape dont on sait déjà qu'elle est manuelle, ou sur la rotation des secrets, qui
+ * ne se lit par aucune API.
+ */
+export async function constaterCollaborateur(
+  lire: LecteurScalingo,
+  step: PlannedStep,
+): Promise<PrecheckResult> {
+  const cible = cibleDeLEtape(step);
+  if (!cible || !ACTIONS_LUES.has(step.action)) {
+    return { state: "READY" };
+  }
+
+  const releve = await lireCollaborateurs(
+    lire,
+    `${hoteDe(cible.region)}/v1/apps/${cible.application}/collaborators`,
+    "precheck",
+  );
+
+  // Ne pas savoir n'autorise pas à écrire, mais n'autorise pas davantage à conclure que le
+  // geste est fait : l'étape reste prête, et l'écriture rencontrera le même mur.
+  if (!releve.lue) {
+    return { state: "READY" };
+  }
+
+  return step.action === "retirer-des-collaborateurs"
+    ? constaterCollaboration(releve.items, cible.adresse, { present: false })
+    : constaterCollaboration(releve.items, cible.adresse, {
+        present: true,
+        ...(typeof step.params["role"] === "string" ? { role: step.params["role"] } : {}),
+      });
+}
+
+const REFUS_SIMULATION =
+  "ACTIONS_ENABLED n'autorise aucune écriture : une exécution a été demandée en simulation, et aucun appel n'est parti. Le garde-fou est ici autant que chez l'appelant, pour qu'aucun appelant n'ait à s'en souvenir.";
+
+/**
+ * L'écriture, et les refus qui la précèdent.
+ *
+ * La simulation d'abord, avant même de regarder ce que l'étape demande : ce qui ne part pas
+ * ne peut pas partir par erreur.
+ */
+export async function executerScalingo(
+  lire: LecteurScalingo,
+  ecrire: EcritureScalingo,
+  credential: boolean,
+  step: PlannedStep,
+  ctx: RunContext,
+): Promise<StepOutcome> {
+  if (ctx.dryRun) {
+    throw new Error(REFUS_SIMULATION);
+  }
+
+  if (!credential) {
+    return {
+      state: "FAILED",
+      error: `Aucun jeton Scalingo : ${step.manual?.runbook ?? RUNBOOK}`,
+      retryable: false,
+    };
+  }
+
+  const cible = cibleDeLEtape(step);
+  if (!cible || !ACTIONS_LUES.has(step.action)) {
+    return {
+      state: "FAILED",
+      error: `Étape « ${step.action} » sans voie automatique : elle attend la main d'un opérateur.`,
+      retryable: false,
+    };
+  }
+
+  const hote = hoteDe(cible.region);
+  const collaborateurs = `${hote}/v1/apps/${cible.application}/collaborators`;
+
+  if (step.action === "inviter-comme-collaborateur") {
+    const { statut, corps } = await ecrire("POST", collaborateurs, {
+      collaborator: {
+        email: cible.adresse,
+        // Toujours explicite : le défaut de l'API est le rôle limité quand son client en
+        // ligne de commande envoie l'inverse, et l'implicite reviendrait à ne pas savoir
+        // quel accès on vient d'ouvrir.
+        is_limited: step.params["role"] === ROLE_LIMITE,
+      },
+    });
+
+    return interpreterOctroi(statut, corps);
+  }
+
+  // La collaboration se retrouve par l'adresse et jamais par son identifiant : celui-ci
+  // change dès qu'une invitation est retirée puis réémise, si bien qu'un plan confirmé la
+  // veille viserait une collaboration morte. C'est aussi ce que fait le client officiel.
+  const releve = await lireCollaborateurs(lire, collaborateurs, "execution");
+  if (!releve.lue) {
+    const cause = releve.erreurs[0]?.message ?? "sans erreur rapportée";
+    return {
+      state: "FAILED",
+      error: `Les collaborateurs de ${cible.application} n'ont pas pu être lus (${cause})`,
+      retryable: true,
+    };
+  }
+
+  const vise = cible.adresse.trim().toLowerCase();
+  const trouve = releve.items.find(
+    (collaboration) => collaboration.email.trim().toLowerCase() === vise,
+  );
+
+  if (!trouve) {
+    return { state: "ALREADY_ABSENT" };
+  }
+
+  const { statut, corps } = await ecrire("DELETE", `${collaborateurs}/${trouve.id}`);
+
+  return interpreterRetrait(statut, corps);
 }
 
 export const CONTRAT_SCALINGO: ConnectorContract = {
@@ -771,8 +1071,14 @@ export const CONTRAT_SCALINGO: ConnectorContract = {
     // système sans jamais écrire dessus. Les voies automatiques viennent ensuite, et
     // celle du retrait attend d'abord que le socle sache dire à un connecteur sur
     // quelles ressources agir.
-    grant: [{ requires: [], tier: "manual", runbook: RUNBOOK_OCTROI }],
-    revoke: [{ requires: [], tier: "manual", runbook: RUNBOOK }],
+    grant: [
+      { requires: [CREDENTIAL], tier: "auto", runbook: RUNBOOK_OCTROI },
+      { requires: [], tier: "manual", runbook: RUNBOOK_OCTROI },
+    ],
+    revoke: [
+      { requires: [CREDENTIAL], tier: "auto", runbook: RUNBOOK },
+      { requires: [], tier: "manual", runbook: RUNBOOK },
+    ],
   },
   scopeSchema: SCOPE,
 };
@@ -828,6 +1134,35 @@ async function porteurValide(): Promise<string> {
   return valeur;
 }
 
+const ecrireTout: EcritureScalingo = async (methode, url, corps) => {
+  const reponse = await fetch(url, {
+    method: methode,
+    headers: {
+      authorization: `Bearer ${await porteurValide()}`,
+      accept: "application/json",
+      ...(corps === undefined ? {} : { "content-type": "application/json" }),
+    },
+    ...(corps === undefined ? {} : { body: JSON.stringify(corps) }),
+    signal: AbortSignal.timeout(DELAI_MS),
+  });
+
+  if (reponse.status === 401) {
+    porteur = undefined;
+  }
+
+  // Un corps illisible n'est pas une panne : une suppression réussie n'en porte aucun, et
+  // son statut suffit à l'interpréter.
+  const texte = await reponse.text().catch(() => "");
+  let lu: unknown;
+  try {
+    lu = texte.length > 0 ? JSON.parse(texte) : undefined;
+  } catch {
+    lu = undefined;
+  }
+
+  return { statut: reponse.status, corps: lu };
+};
+
 const lireTout: LecteurScalingo = async (url) => {
   const reponse = await fetch(url, {
     headers: { authorization: `Bearer ${await porteurValide()}`, accept: "application/json" },
@@ -866,6 +1201,11 @@ export const scalingo: Connector = {
 
   list: (): Promise<CollectResult> => collecter(lireTout),
 
+  precheck: (step) => constaterCollaborateur(lireTout, step),
+
+  execute: (step, ctx) =>
+    executerScalingo(lireTout, ecrireTout, Boolean(env.SCALINGO_API_TOKEN), step, ctx),
+
   plan: (intent) => {
     if (intent.subject.kind !== "person") {
       return Promise.resolve([]);
@@ -877,11 +1217,23 @@ export const scalingo: Connector = {
     if (intent.kind === "grant") {
       const lu = SCOPE.safeParse(intent.scope);
 
-      return Promise.resolve(lu.success ? planifierOctroiScalingo(lu.data, intent.subject) : []);
+      return Promise.resolve(
+        lu.success
+          ? planifierOctroiScalingo(lu.data, intent.subject, Boolean(env.SCALINGO_API_TOKEN))
+          : [],
+      );
     }
 
-    return Promise.resolve(planifierDepartScalingo(intent.subject.username));
+    return Promise.resolve(
+      planifierDepartScalingo(
+        intent.subject.username,
+        intent.subject.acces ?? [],
+        intent.subject.handles?.["scalingo"] ?? intent.subject.email,
+        Boolean(env.SCALINGO_API_TOKEN),
+      ),
+    );
   },
 
-  planifierOctroi: (scope, sujet) => planifierOctroiScalingo(scope as ScopeScalingo, sujet),
+  planifierOctroi: (scope, sujet) =>
+    planifierOctroiScalingo(scope as ScopeScalingo, sujet, Boolean(env.SCALINGO_API_TOKEN)),
 };
