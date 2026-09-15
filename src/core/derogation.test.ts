@@ -10,6 +10,7 @@ import {
   leveeAdmissible,
   lireCible,
   poseAdmissible,
+  systemesEntierementToleres,
   TOLERANCE_MAX_JOURS,
 } from "./derogation";
 
@@ -281,5 +282,138 @@ describe("la date qu'une saisie désigne", () => {
     for (const saisie of ["", "2026-1-5", "31/01/2026", "2026-01-31T12:00:00Z", "demain"]) {
       expect(jourSaisi(saisie)).toBeNull();
     }
+  });
+});
+
+describe("ce qu'une tolérance retire d'un plan", () => {
+  const compte = (provider: string, externalId: string, revocable = true) => ({
+    provider,
+    externalId,
+    revocable,
+  });
+  const sur = (provider: string, externalId: string) =>
+    toleree({ id: `der-${externalId}`, cible: { type: "identite", provider, externalId } });
+
+  it("ne retire un système que lorsque tous ses comptes coupables sont couverts", () => {
+    // Given quelqu'un qui tient deux comptes sur un système et un seul sur un autre,
+    const comptes = [compte("github", "1042"), compte("github", "2087"), compte("notion", "n-1")];
+
+    // When un seul des deux comptes GitHub est toléré,
+    const partiel = systemesEntierementToleres(
+      comptes,
+      derogationsEnCours([sur("github", "1042")], POSE),
+    );
+
+    // Then rien n'est retiré : l'étape de révocation coupe la personne sur tout le
+    // système d'un seul geste, et la retirer épargnerait aussi le compte que personne
+    // n'a admis,
+    expect([...partiel.keys()]).toEqual([]);
+
+    // When les deux le sont,
+    const entier = systemesEntierementToleres(
+      comptes,
+      derogationsEnCours([sur("github", "1042"), sur("github", "2087")], POSE),
+    );
+
+    // Then ce système sort du calcul, et l'autre y reste : une tolérance ne déborde pas
+    // d'un système à l'autre.
+    expect([...entier.keys()]).toEqual(["github"]);
+
+    // Then et le système cite celle qui s'éteindra la première, parce que c'est elle qui
+    // décidera du retour de l'étape : en citer une autre ferait attendre un jour où rien
+    // n'arriverait.
+    const deuxEcheances = systemesEntierementToleres(
+      comptes,
+      derogationsEnCours(
+        [
+          { ...sur("github", "1042"), echeance: dans(40) },
+          { ...sur("github", "2087"), echeance: dans(9) },
+        ],
+        POSE,
+      ),
+    );
+    expect(deuxEcheances.get("github")?.id).toBe("der-2087");
+
+    // Then une permanente ne l'emporte que faute de mieux, puisqu'elle ne s'éteint jamais.
+    const avecPermanente = systemesEntierementToleres(
+      comptes,
+      derogationsEnCours(
+        [
+          { ...sur("github", "1042"), echeance: null, poseeLe: null, provenance: "politique" },
+          { ...sur("github", "2087"), echeance: dans(9) },
+        ],
+        POSE,
+      ),
+    );
+    expect(avecPermanente.get("github")?.id).toBe("der-2087");
+
+    // Then un même compte couvert deux fois l'est jusqu'à la plus lointaine des deux, et
+    // non jusqu'à la première lue : il suffit qu'une seule coure. Une permanente déclarée
+    // en git sur un compte déjà toléré en base suffit à produire ce cas, sans aucune
+    // course, et l'ordre de lecture ferait sinon citer une échéance déjà passée.
+    const deuxFois = [
+      { ...sur("github", "1042"), id: "der-courte", echeance: dans(3) },
+      { ...sur("github", "1042"), id: "der-longue", echeance: dans(60) },
+      { ...sur("github", "2087"), id: "der-2087", echeance: dans(9) },
+    ];
+    for (const ordre of [deuxFois, [...deuxFois].reverse()]) {
+      const juge = systemesEntierementToleres(comptes, derogationsEnCours(ordre, POSE));
+      expect(juge.get("github")?.id).toBe("der-2087");
+    }
+
+    // Then et quand c'est la doublée qui décide du retour, c'est bien sa plus lointaine
+    // qui est citée, quel que soit l'ordre.
+    const doubleeDecide = [
+      { ...sur("github", "1042"), id: "der-courte", echeance: dans(3) },
+      { ...sur("github", "1042"), id: "der-moyenne", echeance: dans(5) },
+      { ...sur("github", "2087"), id: "der-2087", echeance: dans(40) },
+    ];
+    for (const ordre of [doubleeDecide, [...doubleeDecide].reverse()]) {
+      const juge = systemesEntierementToleres(comptes, derogationsEnCours(ordre, POSE));
+      expect(juge.get("github")?.id).toBe("der-moyenne");
+    }
+  });
+
+  it("ignore les comptes qu'aucune étape ne viserait, et les cibles qui ne sont pas des comptes", () => {
+    // Given un système où le seul compte coupable est couvert, à côté d'un compte
+    // rattaché par ressemblance, qui ne produit aucune étape,
+    const comptes = [compte("github", "1042"), compte("github", "ressemblance", false)];
+
+    // Then le système sort quand même : la ressemblance ne pèse d'aucun côté, ni pour
+    // retenir l'étape ni pour la retirer, et la règle qui interdit de couper sur elle
+    // est tenue ailleurs,
+    expect([
+      ...systemesEntierementToleres(
+        comptes,
+        derogationsEnCours([sur("github", "1042")], POSE),
+      ).keys(),
+    ]).toEqual(["github"]);
+
+    // Then couvrir la seule ressemblance ne retire rien, puisque le compte coupable
+    // reste découvert,
+    expect([
+      ...systemesEntierementToleres(
+        comptes,
+        derogationsEnCours([sur("github", "ressemblance")], POSE),
+      ).keys(),
+    ]).toEqual([]);
+
+    // Then un système qui n'a que des ressemblances ne sort pas non plus, faute d'étape
+    // à retirer,
+    expect([
+      ...systemesEntierementToleres(
+        [compte("notion", "n-1", false)],
+        derogationsEnCours([], POSE),
+      ).keys(),
+    ]).toEqual([]);
+
+    // Then et couvrir quelqu'un ne retire jamais rien : ça fait taire ce qu'on signale à
+    // son sujet, ça ne décide pas de ce qu'on lui coupe.
+    expect([
+      ...systemesEntierementToleres(
+        [compte("github", "1042")],
+        derogationsEnCours([toleree({ cible: QUELQUUN })], POSE),
+      ).keys(),
+    ]).toEqual([]);
   });
 });

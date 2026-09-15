@@ -133,17 +133,24 @@ export interface EtapeAssemblee {
  * exemplaires ne demandaient pas la même chose : celui qu'on garde se croit sur
  * parole, celui qu'on écarte réclamait un second regard. Le dire à part est le seul
  * moyen que la perte se voie, la règle du premier arrivé restant entière.
+ *
+ * `tolere` est la seule qui vienne d'une décision humaine datée plutôt que du calcul.
+ * Une étape tolérée est écartée et non absente : un départ amputé en silence est
+ * exactement ce que cette liste existe pour empêcher.
  */
 export type RaisonDEcart =
   | "doublon"
   | "doublon-sans-controle"
   | "non-autorise"
-  | "saisie-illisible";
+  | "saisie-illisible"
+  | "tolere";
 
 export interface EtapeEcartee {
   etape: PlannedStep;
   origine: OrigineEtape;
   raison: RaisonDEcart;
+  /** Ce que la raison seule ne dit pas, quand elle vient d'une décision datée. */
+  detail?: string;
 }
 
 export interface Assemblage {

@@ -203,8 +203,15 @@ function planComplet(plan: PlanEnBase) {
   };
 }
 
+// Lue par le calcul depuis qu'une tolérance peut écarter un système : seule la liste des
+// dérogations permanentes y est atteinte.
+vi.mock("@/lib/policy", () => ({ policy: () => ({ permanentDerogations: [] }) }));
+
 vi.mock("@/lib/db", () => ({
   prisma: {
+    derogation: {
+      findMany: () => Promise.resolve([]),
+    },
     externalIdentity: {
       findMany: ({ where }: { where: { personId: string; vanishedAt: null } }) =>
         Promise.resolve(

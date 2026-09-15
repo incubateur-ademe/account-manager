@@ -19,8 +19,21 @@ import {
 interface IdentiteEnBase {
   personId: string;
   provider: string;
+  /** Ce sur quoi une tolérance se pose, et que le plan lit depuis qu'elle peut l'écarter. */
+  externalId: string;
   matchMethod: string;
   vanishedAt: Date | null;
+}
+
+interface DerogationEnBase {
+  id: string;
+  targetType: string;
+  targetId: string;
+  reason: string;
+  createdBy: string;
+  createdAt: Date;
+  expiresAt: Date;
+  revokedAt: Date | null;
 }
 
 interface DossierEnBase {
@@ -85,6 +98,7 @@ interface PlanEnBase {
 }
 
 const base = vi.hoisted(() => ({
+  derogations: [] as DerogationEnBase[],
   identites: [] as IdentiteEnBase[],
   dossiers: [] as DossierEnBase[],
   plans: [] as PlanEnBase[],
@@ -103,8 +117,15 @@ const base = vi.hoisted(() => ({
 
 vi.mock("@/connectors", () => ({ CONNECTEURS: base.connecteurs }));
 
+// Lue par le calcul depuis qu'une tolérance peut écarter un système : seule la liste des
+// dérogations permanentes y est atteinte.
+vi.mock("@/lib/policy", () => ({ policy: () => ({ permanentDerogations: [] }) }));
+
 vi.mock("@/lib/db", () => ({
   prisma: {
+    derogation: {
+      findMany: () => Promise.resolve(base.derogations),
+    },
     externalIdentity: {
       findMany: ({ where }: { where: { personId: string; vanishedAt: null } }) => {
         base.lecturesDIdentites += 1;
@@ -215,8 +236,21 @@ const MAINTENANT = new Date("2026-08-24T09:00:00Z");
 const identite = (over: Partial<IdentiteEnBase>): IdentiteEnBase => ({
   personId: PERSONNE,
   provider: "github",
+  externalId: `cpt-${base.identites.length + 1}`,
   matchMethod: "GITHUB_LOGIN",
   vanishedAt: null,
+  ...over,
+});
+
+const toleree = (over: Partial<DerogationEnBase> = {}): DerogationEnBase => ({
+  id: `drg-${base.derogations.length + 1}`,
+  targetType: "identite",
+  targetId: "github:cpt-1",
+  reason: "compte partagé le temps de la campagne",
+  createdBy: "operatrice.exemple",
+  createdAt: new Date("2026-08-01T00:00:00Z"),
+  expiresAt: new Date("2026-12-31T00:00:00Z"),
+  revokedAt: null,
   ...over,
 });
 
@@ -336,6 +370,7 @@ function registre(...connecteurs: readonly Connector[]): void {
 
 beforeEach(() => {
   base.identites.length = 0;
+  base.derogations.length = 0;
   base.modeles.length = 0;
   base.startupsCollectees.length = 0;
   base.rattachements.length = 0;
@@ -1258,5 +1293,86 @@ describe("la répartition des rôles, au moment de figer les étapes", () => {
     ]);
     const sansControle = await calculerPlan("OFFBOARDING", PERSONNE, USERNAME, MAINTENANT);
     expect(sansControle.empreinte).not.toBe(calcule.empreinte);
+  });
+});
+
+describe("une tolérance écarte du plan le système qu'elle couvre entièrement", () => {
+  it("ne retire rien tant qu'un compte coupable reste découvert, puis retire le système en le disant", async () => {
+    // Given quelqu'un qui tient deux comptes sur GitHub et un sur Notion,
+    base.identites.push(
+      identite({ provider: "github", externalId: "cpt-1" }),
+      identite({ provider: "github", externalId: "cpt-2" }),
+      identite({ provider: "notion", externalId: "cpt-3", matchMethod: "EMAIL_EXACT" }),
+    );
+
+    // When un seul de ses comptes GitHub est toléré,
+    base.derogations.push(toleree({ targetId: "github:cpt-1" }));
+    const partiel = await calculerPlan("OFFBOARDING", PERSONNE, USERNAME, MAINTENANT);
+
+    // Then le plan ne perd rien : l'étape de révocation coupe la personne sur tout le
+    // système d'un seul geste, et la retirer épargnerait le compte que personne n'a admis,
+    expect(partiel.etapes).toHaveLength(3);
+    expect(partiel.ecartees.filter((ecart) => ecart.raison === "tolere")).toEqual([]);
+
+    // When son second compte GitHub l'est aussi,
+    base.derogations.push(toleree({ targetId: "github:cpt-2", reason: "repris par l'équipe" }));
+    const entier = await calculerPlan("OFFBOARDING", PERSONNE, USERNAME, MAINTENANT);
+
+    // Then les deux étapes GitHub quittent le plan, et Notion y reste : une tolérance ne
+    // déborde pas d'un système à l'autre,
+    expect(entier.etapes.map(({ etape }) => etape.idempotencyKey)).toEqual([
+      "notion:revoke:camille.exemple",
+    ]);
+
+    // Then elles sont écartées et non absentes, avec le libellé du geste supprimé et la
+    // raison qu'un humain a écrite : un départ amputé en silence est exactement ce que
+    // cette liste existe pour empêcher,
+    const tolerees = entier.ecartees.filter((ecart) => ecart.raison === "tolere");
+    expect(tolerees.map((ecart) => ecart.etape.idempotencyKey)).toEqual([
+      "github:incubateur-ademe:revoke:camille.exemple",
+      "github:betagouv:revoke:camille.exemple",
+    ]);
+    expect(tolerees.every((ecart) => ecart.detail !== undefined)).toBe(true);
+
+    // Then le rang de lecture reste strictement croissant sur ce qui est retenu, sans le
+    // trou qu'aurait laissé une étape retirée,
+    expect(entier.etapes.map(({ ordre }) => ordre)).toEqual([0]);
+
+    // Then l'empreinte a changé, ce qui est tout l'enjeu du gel : un plan confirmé avant
+    // la pose ne doit pas se découvrir obsolète pour autant.
+    expect(entier.empreinte).not.toBe(partiel.empreinte);
+
+    // Then et le système reste dit : un compte toléré est toujours un compte observé, et
+    // le taire ferait croire qu'il n'y a rien là.
+    expect(entier.systemes).toEqual(["github", "notion"]);
+  });
+
+  it("ne touche jamais une arrivée, ni une étape déclarée par un modèle", async () => {
+    // Given les mêmes comptes, tous tolérés,
+    base.identites.push(
+      identite({ provider: "github", externalId: "cpt-1" }),
+      identite({ provider: "github", externalId: "cpt-2" }),
+    );
+    base.derogations.push(
+      toleree({ targetId: "github:cpt-1" }),
+      toleree({ targetId: "github:cpt-2" }),
+    );
+    modele("*incubateur", false, [{ key: "rendre-le-materiel", title: "Rendre le matériel" }]);
+
+    // When on calcule le départ,
+    const depart = await calculerPlan("OFFBOARDING", PERSONNE, USERNAME, MAINTENANT);
+
+    // Then l'étape déclarée reste au plan : elle porte la clé de système des modèles et
+    // non celle d'un connecteur, si bien qu'aucun filtre par système ne peut l'atteindre,
+    expect(depart.etapes.map(({ etape }) => etape.idempotencyKey)).toEqual([
+      "modele:rendre-le-materiel",
+    ]);
+
+    // When on calcule une arrivée pour la même personne,
+    const arrivee = await calculerPlan("ONBOARDING", PERSONNE, USERNAME, MAINTENANT);
+
+    // Then rien n'y est toléré : une tolérance dit qu'on n'a pas à couper, elle ne dit
+    // rien de ce qu'on a à ouvrir.
+    expect(arrivee.ecartees.filter((ecart) => ecart.raison === "tolere")).toEqual([]);
   });
 });

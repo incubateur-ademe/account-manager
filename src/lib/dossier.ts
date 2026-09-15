@@ -3,6 +3,11 @@ import { randomUUID } from "node:crypto";
 import { CONNECTEURS } from "@/connectors";
 import type { Connector, Intent, PlannedStep, RunContext } from "@/core/connector";
 import {
+  type CompteCouvrable,
+  type Derogation,
+  systemesEntierementToleres,
+} from "@/core/derogation";
+import {
   ETATS_VIVANTS,
   type EtatEtape,
   type EtatValidation,
@@ -21,10 +26,12 @@ import {
   exigerDesCombinaisonsValides,
 } from "@/core/plan";
 import type { Profil } from "@/core/policy";
+import { autoriseUneRevocation } from "@/core/rapprochement";
 import { Prisma } from "@/generated/prisma/client";
 import { octroisDUnProfil } from "@/lib/arrivee";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
+import { derogationsApplicables } from "@/lib/derogation";
 import { env } from "@/lib/env";
 import { etapesDeclarees } from "@/lib/modele-plan";
 
@@ -43,7 +50,10 @@ const INTENTION: Record<SensDossier, Intent["kind"]> = {
   OFFBOARDING: "revoke",
 };
 
-const AUCUN_SYSTEME: SystemesDuDepart = { revocables: [], observes: [], nonConfirmes: [] };
+const AUCUN_SYSTEME: ComptesDuDepart = {
+  ...{ revocables: [], observes: [], nonConfirmes: [] },
+  comptes: [],
+};
 
 const AUCUN_OCTROI = { etapes: [], refus: [] } as const;
 
@@ -56,18 +66,30 @@ const AUCUN_OCTROI = { etapes: [], refus: [] } as const;
  * Une identité disparue ne compte pas : elle dit qu'on ne l'observe plus, donc qu'il
  * n'y a plus rien à couper.
  */
-async function systemesDeLaPersonne(personId: string): Promise<SystemesDuDepart> {
+interface ComptesDuDepart extends SystemesDuDepart {
+  /** Les comptes un par un, que la répartition par système ne porte pas. */
+  comptes: readonly CompteCouvrable[];
+}
+
+async function systemesDeLaPersonne(personId: string): Promise<ComptesDuDepart> {
   const identites = await prisma.externalIdentity.findMany({
     where: { personId, vanishedAt: null },
-    select: { provider: true, matchMethod: true },
+    select: { provider: true, externalId: true, matchMethod: true },
   });
 
-  return systemesDuDepart(
-    identites.map((identite) => ({
+  return {
+    ...systemesDuDepart(
+      identites.map((identite) => ({
+        provider: identite.provider,
+        methode: identite.matchMethod,
+      })),
+    ),
+    comptes: identites.map((identite) => ({
       provider: identite.provider,
-      methode: identite.matchMethod,
+      externalId: identite.externalId,
+      revocable: autoriseUneRevocation(identite.matchMethod),
     })),
-  );
+  };
 }
 
 /**
@@ -149,6 +171,15 @@ export async function calculerPlan(
   username: string,
   maintenant: Date,
   profil?: Profil | undefined,
+  /**
+   * L'instant auquel les tolérances se jugent, quand il n'est pas le présent.
+   *
+   * Un plan confirmé rejoue les siennes telles qu'elles étaient à sa confirmation. Sans
+   * ça, une tolérance posée ou expirée depuis déplacerait l'empreinte recalculée au
+   * démarrage de l'exécution, et le plan deviendrait inexécutable sans issue : le
+   * recalcul n'est ouvert qu'à un brouillon.
+   */
+  tolerancesAu?: Date | undefined,
 ): Promise<PlanCalcule> {
   // Les comptes observés ne disent rien de ce qu'il faut donner : les lire pour une
   // arrivée serait une requête pour rien, et les afficher ferait passer un accès
@@ -200,19 +231,52 @@ export async function calculerPlan(
     origines: [...declarees.origines, { origine: "connecteur", etapes: proposees }],
   });
 
+  // Après l'assemblage et non en sautant le connecteur : l'étape écartée porte alors le
+  // libellé exact du geste supprimé, là où un système absent du calcul ne laisserait
+  // qu'un trou. Une étape déclarée n'est jamais atteinte, sa clé de système valant la
+  // constante des modèles et non celle d'un connecteur.
+  //
+  // Le sens n'est testé que pour épargner une requête : une arrivée ne lit aucun compte,
+  // donc elle n'a rien à écarter même si on la laissait passer ici.
+  const tolerances =
+    sens === "OFFBOARDING"
+      ? systemesEntierementToleres(
+          constates.comptes,
+          (await derogationsApplicables(tolerancesAu ?? maintenant)).applicables,
+        )
+      : new Map<string, Derogation>();
+
+  const retenues: EtapeAssemblee[] = [];
+  const tolerees: EtapeEcartee[] = [];
+  for (const assemblee of assemblage.etapes) {
+    const couvrante = tolerances.get(assemblee.etape.systemKey);
+    if (couvrante === undefined) {
+      // Renuméroté plutôt que conservé : le rang de lecture se dit strictement croissant
+      // sur les étapes retenues, et un trou ferait mentir une liste numérotée.
+      retenues.push({ ...assemblee, ordre: retenues.length });
+      continue;
+    }
+    tolerees.push({
+      etape: assemblee.etape,
+      origine: assemblee.origine,
+      raison: "tolere",
+      detail: couvrante.raison,
+    });
+  }
+
   const couverts = new Set(CONNECTEURS.map((connecteur) => connecteur.contract.key));
 
   return {
     sens,
-    etapes: assemblage.etapes,
+    etapes: retenues,
     // Les neutralisées d'abord : une étape que l'incubateur n'admet pas n'est jamais
     // arrivée jusqu'au dédoublonnage, et les taire ferait de l'autorisation refermée
     // une panne muette.
-    ecartees: [...declarees.ecartees, ...assemblage.ecartees],
+    ecartees: [...declarees.ecartees, ...assemblage.ecartees, ...tolerees],
     // Sur les étapes nues, avant que l'enregistrement ne suffixe leurs clés
     // d'idempotence : hacher après suffixage donnerait à deux plans du même dossier
     // des empreintes incomparables, et un plan confirmé se dirait obsolète tout seul.
-    empreinte: empreinteDuPlan(assemblage.etapes.map(({ etape }) => etape)),
+    empreinte: empreinteDuPlan(retenues.map(({ etape }) => etape)),
     systemes,
     // Sur tous les systèmes observés et non sur les seuls révocables : un compte que
     // rien ici ne sait traiter est à traiter dehors, que son rattachement soit sûr

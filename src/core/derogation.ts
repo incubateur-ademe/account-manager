@@ -253,3 +253,96 @@ export function leveeAdmissible(derogation: Derogation, maintenant: Date): Verdi
   }
   return { possible: true };
 }
+
+/** Un compte observé, réduit à ce qui décide d'une couverture. */
+export interface CompteCouvrable {
+  provider: string;
+  externalId: string;
+  /** Vrai quand son rattachement autorise une révocation. */
+  revocable: boolean;
+}
+
+/**
+ * Les systèmes qu'une tolérance retire entièrement du calcul d'un plan.
+ *
+ * Tout ou rien, et c'est la seule règle sûre : une étape de révocation coupe la personne
+ * sur tout un système d'un seul geste, si bien qu'un seul compte couvert ne retire rien.
+ * La retirer épargnerait les comptes que personne n'a admis en même temps que celui qu'on
+ * a admis.
+ *
+ * Les comptes non révocables ne pèsent d'aucun côté. Ils ne produisent aucune étape, donc
+ * les couvrir ne retire rien, et ne pas les couvrir ne retient rien : la règle qui interdit
+ * de couper sur une ressemblance est tenue ailleurs, et la recopier ici lui donnerait un
+ * second exemplaire à maintenir.
+ *
+ * Une cible de personne ne retire jamais aucune étape, et c'est la comparaison sur la clé
+ * entière qui le tient : « personne:untel » ne vaut jamais « identite:github:1042 ». Les
+ * écarter d'abord serait un filtre qui a l'air de porter la garantie sans rien porter.
+ * Couvrir quelqu'un fait taire ce qu'on signale à son sujet, ça ne décide pas de ce qu'on
+ * lui coupe.
+ */
+function couvrePlusLoin(candidate: Derogation, tenante: Derogation): boolean {
+  if (candidate.echeance === null) {
+    return true;
+  }
+  if (tenante.echeance === null) {
+    return false;
+  }
+  return candidate.echeance.getTime() > tenante.echeance.getTime();
+}
+
+export function systemesEntierementToleres(
+  comptes: readonly CompteCouvrable[],
+  derogations: readonly Derogation[],
+): ReadonlyMap<string, Derogation> {
+  // Une cible couverte par plusieurs tolérances l'est jusqu'à la plus lointaine des
+  // leurs, puisqu'il suffit qu'une seule coure, et une permanente ne s'éteint jamais.
+  // Sans ce départage, l'ordre de lecture déciderait et le motif pourrait citer une
+  // échéance déjà passée : le cas n'a rien d'une course, une permanente déclarée en git
+  // sur un compte déjà toléré en base suffit à le produire.
+  const parCible = new Map<string, Derogation>();
+  for (const derogation of derogations) {
+    const cle = cleDeCible(derogation.cible);
+    const deja = parCible.get(cle);
+    if (deja === undefined || couvrePlusLoin(derogation, deja)) {
+      parCible.set(cle, derogation);
+    }
+  }
+
+  const parSysteme = new Map<string, { revocables: number; couvrantes: Derogation[] }>();
+  for (const compte of comptes) {
+    if (!compte.revocable) {
+      continue;
+    }
+    const etat = parSysteme.get(compte.provider) ?? { revocables: 0, couvrantes: [] };
+    etat.revocables += 1;
+    const couvrante = parCible.get(
+      cleDeCible({ type: "identite", provider: compte.provider, externalId: compte.externalId }),
+    );
+    if (couvrante) {
+      etat.couvrantes.push(couvrante);
+    }
+    parSysteme.set(compte.provider, etat);
+  }
+
+  const retenue = new Map<string, Derogation>();
+  for (const [provider, etat] of parSysteme) {
+    if (etat.couvrantes.length !== etat.revocables) {
+      continue;
+    }
+    // Celle qui s'éteindra la première, parce que c'est elle qui décidera du retour de
+    // l'étape : citer une autre ferait attendre un jour où rien n'arriverait. Une
+    // permanente ne s'éteint jamais, et ne l'emporte donc que faute de mieux.
+    const premiere = etat.couvrantes.reduce((tot, candidate) => {
+      if (tot.echeance === null) {
+        return candidate;
+      }
+      if (candidate.echeance === null) {
+        return tot;
+      }
+      return candidate.echeance.getTime() < tot.echeance.getTime() ? candidate : tot;
+    });
+    retenue.set(provider, premiere);
+  }
+  return retenue;
+}

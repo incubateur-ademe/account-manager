@@ -55,6 +55,7 @@ vi.mock("@/lib/policy", () => ({
     connectors: { github: { organisations: [base.organisation] } },
     profiles: base.profils,
     thresholds: { maxPlanSteps: 20 },
+    permanentDerogations: [],
   }),
 }));
 
@@ -71,6 +72,7 @@ vi.mock("@/lib/db", async () =>
         Promise.resolve(base.identites.map((identite) => ({ ...identite, vanishedAt: null }))),
     },
     planTemplate: { findMany: () => Promise.resolve([]) },
+    derogation: { findMany: () => Promise.resolve([]) },
     plan: {
       create: ({
         data,
