@@ -66,6 +66,13 @@ const DELAI_MS = 15_000;
 const RUNBOOK =
   "Retirer la personne dans Settings > People de l'organisation, puis vérifier qu'elle ne figure plus dans la liste des membres ni dans les invitations en attente.";
 
+/**
+ * Une lecture qui tombe ne devient pas manuelle, elle cesse : ce runbook dit quoi vérifier
+ * pour que la collecte reparte, et non comment relever des comptes à la main.
+ */
+const RUNBOOK_LECTURE =
+  "Vérifier que le jeton de lecture n'a pas expiré, puis qu'il porte toujours les organisations déclarées sous connectors.github.organisations : un jeton fine-grained en perd une dès qu'elle retire son approbation, sans cesser de répondre pour autant. La collecte se relance par « pnpm sync ».";
+
 const RUNBOOK_OCTROI =
   "Inviter la personne dans Settings > People de l'organisation, avec le rôle demandé, puis vérifier qu'elle figure parmi les membres avec ce rôle ou parmi les invitations en attente. Une invitation reste en attente tant qu'elle n'est pas acceptée : c'est un accès accordé, pas un accès en suspens.";
 
@@ -920,7 +927,7 @@ export const CONTRAT_GITHUB: ConnectorContract = {
     },
   ],
   capabilities: {
-    list: [{ requires: [CREDENTIAL], tier: "auto" }],
+    list: [{ requires: [CREDENTIAL], tier: "auto", runbook: RUNBOOK_LECTURE }],
     // La voie manuelle est inconditionnelle et reste déclarée sous la voie
     // automatique : un chemin auto qui tombe redevient un chemin manuel, et sans
     // elle un jeton d'administration absent ferait disparaître l'octroi au lieu de le

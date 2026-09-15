@@ -234,10 +234,36 @@ export type CollectResult =
 // Planification et exécution
 // ---------------------------------------------------------------------------
 
+/**
+ * Un accès que la collecte a constaté sur le système interrogé, et dont le rattachement
+ * autorise déjà une coupure. Un connecteur ne peut pas le deviner : il ne sait pas quelles
+ * ressources une personne détient, et les relire à chaque calcul de plan coûterait une
+ * lecture distante sur cinq sites d'appel.
+ */
+export interface ObservedAccess {
+  identityExternalId: string;
+  resourceExternalId?: string;
+  /** Le libellé relevé, pour que l'étape se lise sans rien rouvrir. */
+  resourceLabel?: string;
+  role: string;
+}
+
 export type SubjectRef =
   | {
       kind: "person";
       username: string;
+      /**
+       * L'adresse dont le socle répond. Elle existe pour les systèmes qui invitent sur une
+       * adresse et non sur un compte, lesquels n'ont par définition aucun identifiant à
+       * viser tant que la personne n'est pas venue.
+       */
+      email?: string;
+      /**
+       * Les accès constatés sur ce système, et seulement ceux dont le rattachement en
+       * autorise la coupure. Absent vaut « rien de sûr à couper », et le connecteur n'a
+       * alors rien à proposer de ciblé.
+       */
+      acces?: readonly ObservedAccess[];
       /**
        * Les identifiants de la personne sur les systèmes, indexés par clé de système,
        * et seulement ceux dont on répond. Une identité rapprochée par ressemblance

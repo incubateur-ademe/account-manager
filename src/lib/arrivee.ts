@@ -169,14 +169,24 @@ export async function octroisDUnProfil(
   username: string,
   maintenant: Date,
 ): Promise<OctroiCalcule> {
-  const [catalogue, handles] = await Promise.all([
+  const [catalogue, handles, fiche] = await Promise.all([
     catalogueOctroyeur(),
     identifiantsSurs(personId),
+    // L'adresse dont le socle répond : un système qui invite sur une adresse plutôt que sur
+    // un compte n'a rien à viser tant que la personne n'est pas venue, et c'est justement
+    // le cas d'une arrivée.
+    prisma.person.findUnique({
+      where: { id: personId },
+      select: { primaryEmail: true, communicationEmail: true },
+    }),
   ]);
+
+  const adresse = fiche?.communicationEmail ?? fiche?.primaryEmail ?? undefined;
 
   const sujet: SubjectRef = {
     kind: "person",
     username,
+    ...(adresse === undefined ? {} : { email: adresse }),
     ...(Object.keys(handles).length > 0 ? { handles } : {}),
   };
 
