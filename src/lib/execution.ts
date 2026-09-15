@@ -301,6 +301,17 @@ export async function executerPlan(
     return refuser(perime);
   }
 
+  // Avant le calcul, et pour la même raison que la péremption : sans l'instant de sa
+  // confirmation, les tolérances de ce plan ne se rejouent pas, et le recalculer au
+  // présent rendrait autre chose que ce qui a été approuvé. Le cas ne se produit pas, la
+  // confirmation écrivant l'instant et l'empreinte dans la même écriture, et c'est
+  // précisément pourquoi il se refuse ici plutôt que de se replier en silence.
+  if (plan.confirmedAt === null) {
+    return refuser(
+      "Ce plan ne porte pas l'instant de sa confirmation : rien ne dit ce qui était toléré quand il a été approuvé. Recalculez-le, puis confirmez-le.",
+    );
+  }
+
   const sens = plan.accessCase.kind;
   const actuel = await calculerPlan(
     sens,
@@ -311,7 +322,7 @@ export async function executerPlan(
     // Les tolérances telles qu'elles étaient à la confirmation, et non celles du jour :
     // une pose ou une expiration survenue depuis déplacerait l'empreinte, et ce plan
     // deviendrait inexécutable sans issue, le recalcul n'étant ouvert qu'à un brouillon.
-    plan.confirmedAt ?? maintenant,
+    plan.confirmedAt,
   );
 
   const ecart = refusDEcart(plan.confirmedDigest, actuel.empreinte);

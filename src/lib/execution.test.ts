@@ -46,6 +46,8 @@ interface PlanEnBase {
   id: string;
   state: string;
   confirmedDigest: string | null;
+  /** L'instant dont l'empreinte confirmée est issue, et auquel les tolérances se rejouent. */
+  confirmedAt: Date | null;
   expiresAt: Date;
   accessCaseId: string;
   accessCase: {
@@ -444,6 +446,7 @@ async function figerLePlan(
     id: PLAN,
     state: "EXECUTING",
     confirmedDigest: calcule.empreinte,
+    confirmedAt: MAINTENANT,
     expiresAt,
     accessCaseId: DOSSIER,
     accessCase: {
@@ -1090,6 +1093,18 @@ describe("les gardes qui précèdent la moindre lecture", () => {
 
     // Then il n'y a rien à comparer, donc rien à exécuter
     expect((await lancer()).refus).toContain("aucune empreinte confirmée");
+    expect(appels()).toEqual([]);
+
+    // Given un plan engagé dont l'instant de confirmation manque
+    await figerLePlan();
+    if (base.plan) {
+      base.plan.confirmedAt = null;
+    }
+
+    // Then il se refuse avant tout calcul, plutôt que de rejouer les tolérances du jour :
+    // recalculé au présent, il rendrait autre chose que ce qui a été approuvé, et ce
+    // repli-là ne se verrait nulle part.
+    expect((await lancer()).refus).toContain("l'instant de sa confirmation");
     expect(appels()).toEqual([]);
   });
 });
