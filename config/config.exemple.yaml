@@ -144,16 +144,13 @@ permanentDerogations:
     reason: Compte de demonstration conserve a la demande de la direction
     owner: claire.durand
 
-# yaml-language-server: $schema=./accounts.schema.json
-
-# Modele du fichier qui nomme : personnes suivies et comptes machine.
+# ---------------------------------------------------------------------------
+# Perimetre suivi
 #
-# Rien ici n'est reel. Le fichier de l'instance porte le meme nom sans « exemple »,
-# et il n'est pas versionne dans ce depot : il designe des personnes et dessine la
-# carte des acces techniques, ce qui n'a pas a etre publie avec le code.
-#
-# Toutes les entrees possibles y figurent, y compris celles dont une instance n'a pas
-# l'usage : un modele qui ne montre que le strict minimum n'apprend rien.
+# Ce bloc nomme des personnes, et c'est pourquoi le fichier de l'instance n'est
+# pas versionne avec le code : il porte le meme nom sans « exemple », et vit
+# dans le depot de configuration.
+# ---------------------------------------------------------------------------
 
 # Version du format, non du contenu. Elle existe pour qu'un fichier ecrit pour une
 # autre version du code soit refuse net plutot que lu de travers.

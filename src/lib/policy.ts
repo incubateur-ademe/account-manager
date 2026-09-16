@@ -53,8 +53,8 @@ function brut(fichier: string): Record<string, unknown> {
 }
 
 let surcharges: Readonly<Record<string, unknown>> = {};
-const provenances: readonly Provenance[] = [];
-const inconnues: readonly string[] = [];
+let provenances: readonly Provenance[] = [];
+let inconnues: readonly string[] = [];
 
 export function provenancesDeLaPolitique(): readonly Provenance[] {
   policy();
@@ -107,6 +107,9 @@ export function loadPolicy(): Policy {
     fichier,
     base: surcharges,
   });
+
+  provenances = resolution.provenances;
+  inconnues = resolution.inconnues;
 
   const lu = policySchema.safeParse({ version: 1, ...resolution.valeurs });
   if (!lu.success) {

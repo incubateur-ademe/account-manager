@@ -13,6 +13,9 @@ import { prisma } from "@/lib/db";
  */
 export async function comptesEnRetardDeRevue(maintenant: Date): Promise<readonly string[]> {
   const comptes = await prisma.serviceAccount.findMany({
+    // Un ordre explicite : sans lui, la même liste s'écrirait différemment d'une nuit à
+    // l'autre dans le journal, et ce bruit se lirait comme un changement.
+    orderBy: { key: "asc" },
     select: { key: true, reviewEveryDays: true, lastReviewedAt: true, createdAt: true },
   });
 

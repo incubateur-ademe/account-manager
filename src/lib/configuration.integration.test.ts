@@ -5,7 +5,12 @@ import { join, resolve } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { prisma } from "@/lib/db";
-import { policy } from "@/lib/policy";
+import {
+  policy,
+  politiqueEntierementParDefaut,
+  provenancesDeLaPolitique,
+  variablesInconnues,
+} from "@/lib/policy";
 import { chargerLesSurcharges } from "@/lib/surcharges";
 
 const REPERTOIRE = mkdtempSync(join(tmpdir(), "configuration-"));
@@ -43,6 +48,45 @@ describe("un réglage posé en base gouverne ce que le fichier déclarait", () =
     // Then le fichier reprend la main, et non le défaut du schéma : lever une surcharge
     // rend la valeur à qui la portait avant, sans quoi lever reviendrait à effacer
     expect(policy().thresholds.graceDays).toBe(7);
+  });
+
+  it("dit d'où vient chaque valeur, faute de quoi personne ne saurait pourquoi un réglage ne prend pas", async () => {
+    // Given un seuil qui vient du fichier, et un autre réglé depuis l'outil
+    await prisma.configOverride.create({
+      data: { path: "thresholds.graceDays", value: 21, updatedBy: "operatrice.exemple" },
+    });
+    await chargerLesSurcharges();
+
+    const provenances = new Map(
+      provenancesDeLaPolitique().map(({ chemin, niveau }) => [chemin, niveau]),
+    );
+
+    // Then chacune nomme son niveau. Trois niveaux font trois endroits où se tromper, et
+    // une provenance qui rendrait « défaut » partout serait pire que pas de provenance du
+    // tout : elle aurait l'air de répondre
+    expect(provenances.get("thresholds.graceDays")).toBe("base");
+    expect(provenances.get("thresholds.soonDays")).toBe("fichier");
+    expect(provenancesDeLaPolitique().length).toBeGreaterThan(3);
+
+    // Then une politique qui vient du fichier n'est pas une politique par défaut
+    expect(politiqueEntierementParDefaut()).toBe(false);
+
+    // Then la version n'est pas un réglage : la surcharger ferait refuser toute la
+    // politique, et l'afficher inviterait à le faire
+    expect(provenances.has("version")).toBe(false);
+  });
+
+  it("nomme une variable d'environnement qu'aucun réglage ne réclame", async () => {
+    // Given une faute de frappe dans un nom d'environnement
+    process.env["CONFIG_THRESHOLDS_GRACE_DAY"] = "3";
+    await chargerLesSurcharges();
+
+    // Then elle est nommée. Elle ne se voit nulle part ailleurs : la valeur ne prend pas,
+    // et rien ne le dirait
+    expect(variablesInconnues()).toContain("CONFIG_THRESHOLDS_GRACE_DAY");
+    expect(policy().thresholds.graceDays).toBe(7);
+
+    delete process.env["CONFIG_THRESHOLDS_GRACE_DAY"];
   });
 
   it("porte une liste entière, et non une entrée de plus", async () => {

@@ -77,6 +77,13 @@ export function nomDeVariable(chemin: string): string {
  * par une variable d'environnement, et prétendre le contraire donnerait une syntaxe que
  * personne ne saurait écrire.
  */
+/**
+ * Ce qui n'est pas un réglage mais une propriété du fichier. La version dit quel format il
+ * parle : la surcharger ferait refuser toute la politique, et l'afficher comme réglable
+ * inviterait à le faire.
+ */
+const HORS_REGLAGE = new Set(["version"]);
+
 export function cheminsConnus(schema: z.ZodType): readonly CheminConnu[] {
   const racine = z.toJSONSchema(schema, { io: "input" }) as NoeudJson;
   const trouves: CheminConnu[] = [];
@@ -84,6 +91,10 @@ export function cheminsConnus(schema: z.ZodType): readonly CheminConnu[] {
   const descendre = (noeud: NoeudJson, prefixe: readonly string[]): void => {
     for (const [cle, enfant] of Object.entries(noeud.properties ?? {})) {
       const chemin = [...prefixe, cle];
+
+      if (HORS_REGLAGE.has(chemin.join("."))) {
+        continue;
+      }
 
       if (enfant.properties) {
         descendre(enfant, chemin);
