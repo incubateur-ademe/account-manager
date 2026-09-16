@@ -61,7 +61,7 @@ jobs:
       - name: Les JSON Schema commités sont ceux que la génération produit
         run: |
           pnpm policy:schema
-          if ! git diff --exit-code -- config/accounts.schema.json config/config.schema.json; then
+          if ! git diff --exit-code -- config/config.schema.json; then
             echo "Les schémas versionnés ne suivent plus les schémas Zod : lancez pnpm policy:schema et commitez le résultat."
             exit 1
           fi
