@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import type { Intent, RunContext } from "@/core/connector";
 import {
+  avecReprise,
   CONTRAT_SCALINGO,
   collecter,
   constaterCollaborateur,
   type EcritureScalingo,
+  ErreurDeLecture,
   executerScalingo,
   interpreterOctroi,
   interpreterRetrait,
@@ -54,6 +56,7 @@ const REGIONS = {
   ],
 };
 
+/** Le compte que porte le jeton : c'est lui qui possède les applications de l'incubateur. */
 const PILOTE = { id: "us-pilote", email: "pilote@exemple.invalid", username: "pilote" };
 const INTENDANCE = {
   id: "us-intendance",
@@ -74,7 +77,15 @@ const REVUE = {
   owner: PILOTE,
   parent_app_name: "service-annuaire",
 };
-const PAIE = { id: "app-paie", name: "service-paie", owner: INTENDANCE, parent_app_name: "" };
+const PAIE = { id: "app-paie", name: "service-paie", owner: PILOTE, parent_app_name: "" };
+
+/** Possédée par quelqu'un d'autre : le compte n'en est que collaborateur. */
+const ETRANGERE = {
+  id: "app-etrangere",
+  name: "service-d-ailleurs",
+  owner: INTENDANCE,
+  parent_app_name: "",
+};
 
 const TITULAIRE = {
   id: "collab-titulaire",
@@ -108,6 +119,7 @@ const TITULAIRE_AILLEURS = {
 
 function parcComplet(): Record<string, unknown> {
   return {
+    [`${AUTH}/v1/users/self`]: { user: { id: PILOTE.id } },
     [`${AUTH}/v1/regions`]: REGIONS,
     [`${FR}/v1/apps`]: { apps: [ANNUAIRE, REVUE] },
     [`${FR}/v1/apps/service-annuaire/collaborators`]: { collaborators: [TITULAIRE, CONVIEE] },
@@ -148,8 +160,8 @@ describe("ce que le connecteur Scalingo remonte du parc", () => {
     // Then une ressource par application retenue, la fille exclue, et chacune porte sa
     // région : deux régions peuvent servir le même nom
     expect(collecte.resources.map((ressource) => ressource.label)).toEqual([
-      "service-annuaire (osc-fr1)",
-      "service-paie (osc-secnum-fr1)",
+      "service-annuaire, osc-fr1",
+      "service-paie, osc-secnum-fr1",
     ]);
     expect(collecte.resources[1]?.url).toBe(
       "https://dashboard.scalingo.com/apps/osc-secnum-fr1/service-paie/settings/collaborators",
@@ -159,11 +171,10 @@ describe("ce que le connecteur Scalingo remonte du parc", () => {
     // propriétaires sont là : ils ne figurent dans aucune liste de collaborateurs
     expect(collecte.identities.map((identite) => identite.externalId).sort()).toEqual([
       "collab-conviee",
-      "us-intendance",
       "us-pilote",
       "us-titulaire",
     ]);
-    expect(collecte.itemsSeen).toBe(4);
+    expect(collecte.itemsSeen).toBe(3);
 
     // Then l'invitation en attente est un accès et non une absence, son identité porte
     // l'adresse et jamais le « n/a » que Scalingo écrit à la place du nom d'utilisateur
@@ -184,7 +195,7 @@ describe("ce que le connecteur Scalingo remonte du parc", () => {
         role: "collaborator",
       },
       { identityExternalId: "collab-conviee", resourceExternalId: "app-annuaire", role: "limited" },
-      { identityExternalId: "us-intendance", resourceExternalId: "app-paie", role: "owner" },
+      { identityExternalId: "us-pilote", resourceExternalId: "app-paie", role: "owner" },
       { identityExternalId: "us-titulaire", resourceExternalId: "app-paie", role: "limited" },
     ]);
   });
@@ -362,7 +373,7 @@ describe("ce que le connecteur Scalingo remonte du parc", () => {
     // Then son propriétaire reste rendu : une application sans collaborateur n'est pas
     // une application sans accès
     expect(sansPersonne.grants).toContainEqual({
-      identityExternalId: "us-intendance",
+      identityExternalId: "us-pilote",
       resourceExternalId: "app-paie",
       role: "owner",
     });
@@ -375,7 +386,7 @@ describe("ce que le connecteur Scalingo remonte du parc", () => {
     const HOMONYME = {
       id: "app-annuaire-secnum",
       name: "service-annuaire",
-      owner: INTENDANCE,
+      owner: PILOTE,
       parent_app_name: "",
     };
     parc[`${SECNUM}/v1/apps`] = { apps: [PAIE, HOMONYME] };
@@ -426,12 +437,42 @@ describe("ce que le connecteur Scalingo remonte du parc", () => {
       collecte.grants.filter(({ identityExternalId }) => identityExternalId === PILOTE.id),
     ).toEqual([
       { identityExternalId: "us-pilote", resourceExternalId: "app-annuaire", role: "owner" },
+      { identityExternalId: "us-pilote", resourceExternalId: "app-paie", role: "owner" },
+      { identityExternalId: "us-pilote", resourceExternalId: "app-annuaire-secnum", role: "owner" },
       {
         identityExternalId: "us-pilote",
         resourceExternalId: "app-annuaire-secnum",
         role: "collaborator",
       },
     ]);
+  });
+
+  it("laisse dehors les applications que l'incubateur ne possède pas", async () => {
+    // Given une application dont le compte n'est que collaborateur : elle appartient à une
+    // autre structure, et le compte la voit sans en décider
+    const parc = parcComplet();
+    parc[`${FR}/v1/apps`] = { apps: [ANNUAIRE, REVUE, ETRANGERE] };
+    parc[`${FR}/v1/apps/service-d-ailleurs/collaborators`] = {
+      collaborators: [{ ...TITULAIRE, id: "collab-ailleurs", app_id: "app-etrangere" }],
+    };
+    const { lire, appels } = lecteur(parc);
+
+    // When on collecte
+    const collecte = await collecter(lire, SANS_PAUSE);
+
+    expect(collecte.status).toBe("ok");
+    if (collecte.status === "failed") {
+      throw new Error("la collecte devait aboutir");
+    }
+
+    // Then elle ne produit ni ressource, ni accès, et son relevé n'a pas même été demandé :
+    // ouvrir des constats sur des gens dont personne ici ne décide des accès ferait du
+    // bruit que personne ne saurait traiter
+    expect(collecte.resources.map(({ externalId }) => externalId)).not.toContain("app-etrangere");
+    expect(
+      collecte.grants.some(({ resourceExternalId }) => resourceExternalId === "app-etrangere"),
+    ).toBe(false);
+    expect(appels.some((url) => url.includes("service-d-ailleurs"))).toBe(false);
   });
 
   it("n'accuse pas la lecture qui a répondu quand celle d'une application n'a pas abouti", async () => {
@@ -467,9 +508,127 @@ describe("ce que le connecteur Scalingo remonte du parc", () => {
     ]);
   });
 
+  it("retente une fois ce qui a expiré, et une fois seulement", async () => {
+    /** Ce que lève `AbortSignal.timeout` : le nom est fixé par la plateforme, le message non. */
+    const abandon = () => {
+      const cause = new Error("The operation was aborted due to timeout");
+      cause.name = "TimeoutError";
+      return cause;
+    };
+
+    // Given une lecture qui expire au premier essai puis répond
+    let essais = 0;
+    const capricieux: LecteurScalingo = (url) => {
+      if (url.endsWith("/apps/service-annuaire/collaborators")) {
+        essais += 1;
+        if (essais === 1) {
+          return Promise.reject(abandon());
+        }
+      }
+      return lecteur(parcComplet()).lire(url);
+    };
+
+    // When on collecte
+    const collecte = await collecter(avecReprise(capricieux, SANS_PAUSE), SANS_PAUSE);
+
+    // Then le run est complet. La collecte enchaîne une requête par application : laisser
+    // un hoquet de réseau la rendre partielle lui interdirait de dater la moindre
+    // disparition, toutes les nuits, sans que rien ne soit cassé
+    expect(collecte.status).toBe("ok");
+    expect(essais).toBe(2);
+
+    // Given une lecture qui expire à chaque fois
+    let obstines = 0;
+    const mort: LecteurScalingo = (url) => {
+      if (url.endsWith("/apps/service-annuaire/collaborators")) {
+        obstines += 1;
+        return Promise.reject(abandon());
+      }
+      return lecteur(parcComplet()).lire(url);
+    };
+
+    // Then deux essais et pas un de plus : ce qui ne passe pas au second est un vrai
+    // écart, et insister doublerait la dépense sous un plafond de soixante requêtes par
+    // minute. Le compte l'épingle, faute de quoi dix reprises passeraient aussi bien
+    const tetu = await collecter(avecReprise(mort, SANS_PAUSE), SANS_PAUSE);
+    expect(obstines).toBe(2);
+    expect(tetu.status).toBe("partial");
+    expect(tetu.errors?.some(({ message }) => message.includes("timeout"))).toBe(true);
+
+    // Given un délai dépassé rendu par le serveur lui-même, dont le message ne porte pas
+    // le mot qu'une comparaison de chaînes chercherait, et pas dans cette casse
+    let lents = 0;
+    const lent: LecteurScalingo = (url) => {
+      if (url.endsWith("/apps/service-annuaire/collaborators")) {
+        lents += 1;
+        if (lents === 1) {
+          return Promise.reject(new ErreurDeLecture("408 Request Timeout", 408));
+        }
+      }
+      return lecteur(parcComplet()).lire(url);
+    };
+
+    // Then il est repris comme les autres : ce qui décide est le statut porté par
+    // l'erreur, et jamais la casse d'un texte rendu par un tiers
+    expect((await collecter(avecReprise(lent, SANS_PAUSE), SANS_PAUSE)).status).toBe("ok");
+    expect(lents).toBe(2);
+
+    // Given une panne du serveur, et le porteur périmé qui emprunte le même chemin :
+    // celui-ci vient d'être oublié, si bien que le second essai en échangera un neuf
+    for (const enPanne of [503, 500]) {
+      let pannes = 0;
+      const tombe: LecteurScalingo = (url) => {
+        if (url.endsWith("/apps/service-annuaire/collaborators")) {
+          pannes += 1;
+          if (pannes === 1) {
+            return Promise.reject(new ErreurDeLecture(`${enPanne} Server Error`, enPanne));
+          }
+        }
+        return lecteur(parcComplet()).lire(url);
+      };
+
+      expect((await collecter(avecReprise(tombe, SANS_PAUSE), SANS_PAUSE)).status).toBe("ok");
+      expect(pannes).toBe(2);
+    }
+
+    // Given un refus de droits, qui se reproduira à l'identique
+    let refus = 0;
+    const interdit: LecteurScalingo = (url) => {
+      if (url.endsWith("/apps/service-annuaire/collaborators")) {
+        refus += 1;
+        return Promise.reject(new ErreurDeLecture("403 Forbidden", 403));
+      }
+      return lecteur(parcComplet()).lire(url);
+    };
+
+    // Then aucune reprise : le retenter ne ferait que dépenser une requête de plus
+    await collecter(avecReprise(interdit, SANS_PAUSE), SANS_PAUSE);
+    expect(refus).toBe(1);
+  });
+
+  it("échoue sans rien rendre quand le compte du jeton ne se lit pas", async () => {
+    // Given un compte hors d'atteinte
+    const parc = parcComplet();
+    parc[`${AUTH}/v1/users/self`] = "echec";
+    const { lire, appels } = lecteur(parc);
+
+    // When on collecte
+    const collecte = await collecter(lire, SANS_PAUSE);
+
+    // Then rien n'est rendu. Sans savoir à qui sont les applications, le périmètre ne se
+    // décide pas : relever tout ce que le compte voit ferait entrer les applications
+    // d'autres structures, et n'en relever aucune daterait le parc entier comme disparu
+    expect(collecte.status).toBe("failed");
+    expect(collecte.errors?.[0]?.scope).toBe("compte");
+    expect(appels.some((url) => url.includes("/v1/apps"))).toBe(false);
+  });
+
   it("échoue sans rien rendre quand aucune région ne se lit", async () => {
     // Given la liste des régions elle-même hors d'atteinte
-    const { lire, appels } = lecteur({ [`${AUTH}/v1/regions`]: "echec" });
+    const { lire, appels } = lecteur({
+      [`${AUTH}/v1/users/self`]: { user: { id: PILOTE.id } },
+      [`${AUTH}/v1/regions`]: "echec",
+    });
 
     // When on collecte
     const collecte = await collecter(lire, SANS_PAUSE);
@@ -478,7 +637,7 @@ describe("ce que le connecteur Scalingo remonte du parc", () => {
     // chercher n'autorise pas à conclure qu'il n'y a rien
     expect(collecte.status).toBe("failed");
     expect(collecte.errors?.[0]?.scope).toBe("regions");
-    expect(appels).toEqual([`${AUTH}/v1/regions`]);
+    expect(appels).toEqual([`${AUTH}/v1/users/self`, `${AUTH}/v1/regions`]);
   });
 });
 
@@ -542,13 +701,13 @@ describe("ce que le connecteur Scalingo propose à un départ", () => {
             {
               identityExternalId: "us-camille",
               resourceExternalId: "app-annuaire",
-              resourceLabel: "service-annuaire (osc-fr1)",
+              resourceLabel: "service-annuaire, osc-fr1",
               role: "collaborator",
             },
             {
               identityExternalId: "us-camille",
               resourceExternalId: "app-paie",
-              resourceLabel: "service-paie (osc-secnum-fr1)",
+              resourceLabel: "service-paie, osc-secnum-fr1",
               role: "limited",
             },
           ],

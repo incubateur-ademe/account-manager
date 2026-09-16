@@ -75,6 +75,8 @@ const regionSchema = z.object({ name: z.string().min(1), api: z.url() });
 
 const enveloppeRegions = z.object({ regions: z.array(z.unknown()).optional() });
 
+const compteSchema = z.object({ user: z.object({ id: z.string().min(1) }) });
+
 const proprietaireSchema = z.object({
   id: z.string().min(1),
   email: z.string().min(1),
@@ -179,6 +181,61 @@ function message(cause: unknown): string {
 
 export type Pause = (ms: number) => Promise<void>;
 
+/**
+ * Une lecture qui a échoué pour une cause passagère est retentée une fois, et une seule.
+ * Sont passagers un abandon, un délai dépassé, un plafond de requêtes atteint, une panne
+ * du serveur, et le porteur périmé, que le second essai rééchange.
+ *
+ * La collecte enchaîne une requête par application : sur un parc de plusieurs dizaines,
+ * un seul hoquet de réseau rend le run partiel, donc lui interdit de dater la moindre
+ * disparition. Le garde-fou de chute est fait pour une source qui ment, pas pour une
+ * réponse lente, et le laisser se déclencher là-dessus fige l'inventaire toutes les nuits
+ * sans que rien ne soit cassé.
+ *
+ * Une seule reprise, et seulement sur ce qui peut passer au second essai : un refus de
+ * droits ou une forme illisible se reproduiront à l'identique, et les retenter ne ferait
+ * que doubler la dépense sous un plafond de soixante requêtes par minute.
+ */
+export function avecReprise(lire: LecteurScalingo, pause: Pause = attendre): LecteurScalingo {
+  return async (url) => {
+    try {
+      return await lire(url);
+    } catch (cause: unknown) {
+      if (!passagere(cause)) {
+        throw cause;
+      }
+      await pause(ESPACEMENT_MS);
+      return lire(url);
+    }
+  };
+}
+
+/**
+ * Ce dont la cause peut disparaître d'elle-même, et rien d'autre.
+ *
+ * Le statut porté par l'erreur et jamais son texte : un `408 Request Timeout` ne contient
+ * pas le mot que chercherait une comparaison de chaînes, et la casse d'un message rendu
+ * par un tiers n'est promise par personne. Un abandon n'en porte aucun, et se reconnaît à
+ * son nom, que la plateforme fixe.
+ */
+function passagere(cause: unknown): boolean {
+  if (cause instanceof ErreurDeLecture) {
+    return cause.statut === 408 || cause.statut === 429 || cause.statut >= 500;
+  }
+  return cause instanceof Error && (cause.name === "TimeoutError" || cause.name === "AbortError");
+}
+
+/** Une lecture qui n'a pas abouti, et le statut qui dit si elle peut aboutir plus tard. */
+export class ErreurDeLecture extends Error {
+  readonly statut: number;
+
+  constructor(texte: string, statut: number) {
+    super(texte);
+    this.name = "ErreurDeLecture";
+    this.statut = statut;
+  }
+}
+
 const attendre: Pause = (ms) => new Promise((resoudre) => setTimeout(resoudre, ms));
 
 export interface LectureDuParc {
@@ -221,6 +278,7 @@ export async function lireApplications(
   lire: LecteurScalingo,
   region: string,
   api: string,
+  proprietaire: string,
 ): Promise<{
   applications: ApplicationSituee[];
   /** Toutes celles que l'API a rendues, filles comprises : le recoupement en a besoin. */
@@ -263,6 +321,11 @@ export async function lireApplications(
 
   const retenues = lues.items
     .filter((application) => !application.parent_app_name)
+    // Et seulement celles que l'incubateur possède. Le compte voit aussi les applications
+    // d'autres structures dont il n'est que collaborateur : leurs collaborateurs ne
+    // relèvent pas de cet outil, et les relever ferait ouvrir des constats sur des gens
+    // dont personne ici ne décide des accès.
+    .filter((application) => application.owner.id === proprietaire)
     .map((application) => ({ application, region }));
 
   if (lues.items.length === 0) {
@@ -400,6 +463,29 @@ export function recouper(
 }
 
 /**
+ * Le compte que porte le jeton, et rien d'autre : c'est lui qui dit quelles applications
+ * appartiennent à l'incubateur. Son échec est fatal, comme celui des régions : sans lui, le
+ * périmètre ne se décide pas, et relever tout ce que le compte voit ferait entrer des
+ * applications d'autres structures, dont il n'est que collaborateur.
+ */
+export async function lireCompte(
+  lire: LecteurScalingo,
+): Promise<{ id?: string; erreurs: CollectError[] }> {
+  let brut: unknown;
+  try {
+    brut = await lire(`${HOTE_AUTH}/v1/users/self`);
+  } catch (cause: unknown) {
+    return { erreurs: [{ scope: "compte", message: message(cause) }] };
+  }
+
+  const lu = compteSchema.safeParse(brut);
+
+  return lu.success
+    ? { id: lu.data.user.id, erreurs: [] }
+    : { erreurs: [{ scope: "compte", message: "le compte du jeton n'est pas lisible" }] };
+}
+
+/**
  * Les régions se lisent avant tout le reste, et leur échec est fatal : ne pas savoir où
  * chercher n'autorise pas à conclure que le parc est ailleurs vide.
  */
@@ -431,7 +517,19 @@ export async function lireParc(
   pause: Pause = attendre,
 ): Promise<LectureDuParc> {
   const vide = new Map<string, Collaborateur[]>();
-  const regions = await lireRegions(lire);
+  const [compte, regions] = [await lireCompte(lire), await lireRegions(lire)];
+
+  if (compte.id === undefined) {
+    const [premiere, ...reste] = [...compte.erreurs, ...regions.erreurs];
+    return {
+      applications: [],
+      parApplication: vide,
+      erreurs: premiere
+        ? [premiere, ...reste]
+        : [{ scope: "compte", message: "aucun compte rendu, sans erreur rapportée" }],
+      fatale: true,
+    };
+  }
 
   if (regions.regions.length === 0) {
     const [premiere, ...reste] = regions.erreurs;
@@ -451,7 +549,7 @@ export async function lireParc(
   let lisibles = 0;
 
   for (const region of regions.regions) {
-    const parc = await lireApplications(lire, region.name, region.api);
+    const parc = await lireApplications(lire, region.name, region.api, compte.id);
     erreurs.push(...parc.erreurs);
 
     // Une région qui tombe n'annule pas les autres : perdre tout le parc parce qu'une
@@ -561,8 +659,10 @@ export function assembler(
     ressources.push({
       externalId: application.id,
       // La région entre dans le libellé : deux régions peuvent servir le même nom, et un
-      // écran qui les confondrait enverrait couper un accès sur la mauvaise.
-      label: `${application.name} (${region})`,
+      // écran qui les confondrait enverrait couper un accès sur la mauvaise. Séparée par
+      // une virgule et non par des parenthèses : les écrans composent déjà les leurs, et
+      // un nom d'application Scalingo n'en contient jamais.
+      label: `${application.name}, ${region}`,
       url: pageDesCollaborateurs(region, application.name),
     });
 
@@ -878,9 +978,9 @@ export function planifierDepartScalingo(
         ]
       : cibles.map((un) => {
           const application = un.resourceLabel ?? un.resourceExternalId ?? "";
-          // Le libellé porte sa région entre parenthèses, et c'est elle qui donne l'hôte.
-          const nom = application.replace(/\s*\([^)]*\)\s*$/, "");
-          const region = /\(([^)]*)\)\s*$/.exec(application)?.[1] ?? "";
+          // Le libellé porte « nom, région », et c'est la région qui donne l'hôte. Le nom
+          // d'une application Scalingo ne contient jamais de virgule.
+          const [nom = "", region = ""] = application.split(", ");
 
           return {
             systemKey: "scalingo",
@@ -1185,11 +1285,13 @@ const lireTout: LecteurScalingo = async (url) => {
   // Scalingo. Les confondre ferait réessayer indéfiniment un refus définitif.
   if (reponse.status === 401) {
     porteur = undefined;
-    throw new Error("le porteur a expiré en cours de lecture");
+    // Repris comme une panne passagère, et pour cause : le porteur vient d'être oublié,
+    // si bien que le second essai en échangera un neuf.
+    throw new ErreurDeLecture("le porteur a expiré en cours de lecture", 503);
   }
 
   if (!reponse.ok) {
-    throw new Error(`${reponse.status} ${reponse.statusText}`);
+    throw new ErreurDeLecture(`${reponse.status} ${reponse.statusText}`, reponse.status);
   }
 
   return reponse.json();
@@ -1210,7 +1312,7 @@ export const scalingo: Connector = {
       },
     ]),
 
-  list: (): Promise<CollectResult> => collecter(lireTout),
+  list: (): Promise<CollectResult> => collecter(avecReprise(lireTout)),
 
   precheck: (step) => constaterCollaborateur(lireTout, step),
 

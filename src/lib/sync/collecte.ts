@@ -122,14 +122,13 @@ async function enregistrerRessources(
 const RESSOURCE_SYSTEME = "(systeme)";
 
 async function ressourceDuSysteme(provider: string): Promise<string> {
+  // Le libellé se met à jour et ne se pose pas une fois pour toutes : il s'affiche tel
+  // quel dans les écrans, et un texte figé à la première collecte ne se corrigerait plus.
+  const label = "tout le système";
   const enregistree = await prisma.resource.upsert({
     where: { provider_externalId: { provider, externalId: RESSOURCE_SYSTEME } },
-    update: {},
-    create: {
-      provider,
-      externalId: RESSOURCE_SYSTEME,
-      label: `${provider} (le système lui-même)`,
-    },
+    update: { label },
+    create: { provider, externalId: RESSOURCE_SYSTEME, label },
     select: { id: true },
   });
   return enregistree.id;
