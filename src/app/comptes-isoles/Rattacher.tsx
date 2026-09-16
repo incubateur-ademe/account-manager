@@ -4,15 +4,23 @@ import { fr } from "@codegouvfr/react-dsfr";
 import { Button } from "@codegouvfr/react-dsfr/Button";
 import { Checkbox } from "@codegouvfr/react-dsfr/Checkbox";
 import { Input } from "@codegouvfr/react-dsfr/Input";
+import { RadioButtons } from "@codegouvfr/react-dsfr/RadioButtons";
 import { Tag } from "@codegouvfr/react-dsfr/Tag";
 import { useActionState, useState } from "react";
 
+import { REVUE_PAR_DEFAUT } from "@/core/compte-de-service";
 import type { SuggestionRattachement } from "@/core/suggestion-rattachement";
 import { ChampAvecListe, type Suggestion } from "@/ui/ChampAvecListe";
 import { useFermetureApresSucces } from "@/ui/modale";
 
 import { type EtatRattachement, rattacherIdentite } from "./actions";
-import { creerFichePourCompte, type EtatCreation } from "./creer";
+import {
+  creerFichePourCompte,
+  declarerCompteDeServicePourCompte,
+  type EtatCreation,
+} from "./creer";
+
+type Nature = "personne" | "machine";
 
 export function Rattacher({
   id,
@@ -33,7 +41,16 @@ export function Rattacher({
     creerFichePourCompte,
     null,
   );
+  const [declaration, declarerAction, enDeclaration] = useActionState<EtatCreation, FormData>(
+    declarerCompteDeServicePourCompte,
+    null,
+  );
   const [cible, setCible] = useState("");
+
+  // Sans défaut, et c'est tout l'objet de ce choix. Un formulaire de création déjà ouvert
+  // est la réponse « une personne » donnée d'avance, et c'est ainsi qu'un bot finit avec
+  // une fiche fabriquée qu'aucun écran ne sait supprimer.
+  const [nature, setNature] = useState<Nature | null>(null);
 
   // Le refus n'est pas une erreur de saisie mais une question posée : la case ne
   // s'affiche qu'une fois qu'elle a un sens, pour ne pas proposer d'emblée de passer
@@ -42,6 +59,7 @@ export function Rattacher({
 
   useFermetureApresSucces(pending, etat?.erreur, onSucces);
   useFermetureApresSucces(enCreation, creation?.erreur, onSucces);
+  useFermetureApresSucces(enDeclaration, declaration?.erreur, onSucces);
 
   // Les propositions arrivent déjà rangées par motif : le regroupement se fait donc
   // sur des voisines, sans index intermédiaire ni second tri.
@@ -134,19 +152,91 @@ export function Rattacher({
         </Button>
       </form>
 
-      <form action={creerAction} className={fr.cx("fr-mt-2w")}>
-        <input type="hidden" name="id" value={id} />
-        <Input
-          label="Ou créer une fiche"
-          hintText="Nom, en dernier recours : pour qui n'a aucune fiche beta.gouv."
-          nativeInputProps={{ name: "nom", autoComplete: "off" }}
-          state={creation ? "error" : "default"}
-          stateRelatedMessage={creation?.erreur}
+      <div className={fr.cx("fr-mt-2w")}>
+        <RadioButtons
+          small
+          orientation="horizontal"
+          legend="Ou déclarer ce compte, si rien ne le porte encore"
+          hintText="Un bot et une personne ne se déclarent pas au même endroit, et se confondent facilement."
+          options={[
+            {
+              label: "C'est une personne",
+              nativeInputProps: {
+                checked: nature === "personne",
+                onChange: () => {
+                  setNature("personne");
+                },
+              },
+            },
+            {
+              label: "C'est une machine",
+              nativeInputProps: {
+                checked: nature === "machine",
+                onChange: () => {
+                  setNature("machine");
+                },
+              },
+            },
+          ]}
         />
-        <Button type="submit" priority="tertiary" size="small" disabled={enCreation}>
-          {enCreation ? "Création…" : "Créer la fiche"}
-        </Button>
-      </form>
+
+        {nature === "personne" ? (
+          <form action={creerAction}>
+            <input type="hidden" name="id" value={id} />
+            <Input
+              label="Nom de la personne"
+              hintText="En dernier recours : pour qui n'a aucune fiche beta.gouv."
+              nativeInputProps={{ name: "nom", autoComplete: "off", required: true }}
+              state={creation ? "error" : "default"}
+              stateRelatedMessage={creation?.erreur}
+            />
+            <Button type="submit" priority="tertiary" size="small" disabled={enCreation}>
+              {enCreation ? "Création…" : "Créer la fiche"}
+            </Button>
+          </form>
+        ) : null}
+
+        {nature === "machine" ? (
+          <form action={declarerAction}>
+            <input type="hidden" name="id" value={id} />
+            <Input
+              label="Clé"
+              hintText="Identifiant court et stable, en minuscules"
+              nativeInputProps={{ name: "key", autoComplete: "off", required: true }}
+            />
+            <Input label="Libellé" nativeInputProps={{ name: "label", required: true }} />
+            <Input
+              label="Usage"
+              hintText="Ce que ce compte fait, en une phrase lisible dans deux ans"
+              nativeInputProps={{ name: "purpose", required: true }}
+            />
+            <Input
+              label="Propriétaire"
+              hintText="Username beta.gouv de qui en répond"
+              nativeInputProps={{ name: "ownerUsername", required: true }}
+            />
+            <Input
+              label="Revue tous les"
+              hintText="En jours. Un compte machine n'a pas de fin de mission, c'est la revue qui le remet en question."
+              nativeInputProps={{
+                name: "reviewEveryDays",
+                type: "number",
+                defaultValue: REVUE_PAR_DEFAUT,
+                min: 1,
+              }}
+            />
+            {/* Au formulaire et non à un champ : une clé déjà prise ne concerne ni la
+                revue ni le propriétaire, et l'y accrocher désignerait le mauvais endroit,
+                aux lecteurs d'écran comme aux autres. */}
+            {declaration?.erreur ? (
+              <p className={fr.cx("fr-error-text", "fr-mb-1w")}>{declaration.erreur}</p>
+            ) : null}
+            <Button type="submit" priority="tertiary" size="small" disabled={enDeclaration}>
+              {enDeclaration ? "Déclaration…" : "Déclarer le compte de service"}
+            </Button>
+          </form>
+        ) : null}
+      </div>
     </>
   );
 }

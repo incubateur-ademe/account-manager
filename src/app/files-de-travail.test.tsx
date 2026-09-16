@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { LigneCompteIsole } from "@/app/comptes-isoles/FileDesComptesIsoles";
 import type { LigneConstat } from "@/app/constats/FileDesConstats";
+import { REVUE_PAR_DEFAUT } from "@/core/compte-de-service";
 import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 
@@ -18,13 +19,17 @@ import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 const doubles = vi.hoisted(() => ({
   rattacher: vi.fn(),
   creer: vi.fn(),
+  declarer: vi.fn(),
   clore: vi.fn(),
   tolerer: vi.fn(),
   lever: vi.fn(),
 }));
 
 vi.mock("@/app/comptes-isoles/actions", () => ({ rattacherIdentite: doubles.rattacher }));
-vi.mock("@/app/comptes-isoles/creer", () => ({ creerFichePourCompte: doubles.creer }));
+vi.mock("@/app/comptes-isoles/creer", () => ({
+  creerFichePourCompte: doubles.creer,
+  declarerCompteDeServicePourCompte: doubles.declarer,
+}));
 vi.mock("@/app/constats/actions", () => ({
   cloreConstat: doubles.clore,
   tolererConstat: doubles.tolerer,
@@ -377,12 +382,18 @@ describe("La file des comptes isolés", () => {
     const modale = modaleDe(MODALE_RATTACHEMENT);
 
     // Then la modale offre trois gestes et non deux : rattacher d'un clic à une
-    // personne proposée, rattacher à un identifiant saisi, ou créer la fiche qui
-    // manque. Le troisième est le seul recours pour qui n'a aucune fiche beta.gouv, et
-    // sa disparition laisserait ces comptes-là sans issue dans la file.
+    // personne proposée, rattacher à un identifiant saisi, ou déclarer ce que ce compte
+    // est. Le troisième est le seul recours pour ce qu'aucune fiche ne porte, et sa
+    // disparition laisserait ces comptes-là sans issue dans la file.
     const vignette = within(modale).getByRole("button", { name: "Solène Brunel (solene.brunel)" });
     const champ = within(modale).getByLabelText(/Rattacher à/) as HTMLInputElement;
-    const nom = within(modale).getByLabelText(/Ou créer une fiche/) as HTMLInputElement;
+
+    // And le troisième ne s'ouvre qu'une fois la nature du compte tranchée : un
+    // formulaire de création déjà là répondrait « une personne » à la place de qui
+    // traite, et c'est ainsi qu'un bot reçoit une fiche que rien ne sait supprimer.
+    expect(within(modale).queryByLabelText(/Nom de la personne/)).toBeNull();
+    await utilisateur.click(within(modale).getByLabelText("C'est une personne"));
+    const nom = within(modale).getByLabelText(/Nom de la personne/) as HTMLInputElement;
 
     // And chacun a son propre formulaire : réunis, la touche Entrée frappée dans un
     // champ soumettrait le premier bouton du formulaire, c'est-à-dire une vignette que
@@ -443,6 +454,57 @@ describe("La file des comptes isolés", () => {
     const renvoi = doubles.rattacher.mock.calls[1]?.[1] as FormData;
     expect(renvoi.get("cible")).toBe("solene.brunel");
     expect(renvoi.get("confirme")).toBe("oui");
+  });
+
+  it("mène la machine à sa déclaration et non à une fiche, avec le compte et la revue que l'action lit", async () => {
+    // Given un compte sans détenteur connu, qui se trouve être un bot.
+    const utilisateur = userEvent.setup();
+    doubles.declarer.mockResolvedValue(null);
+    monterLaFileDesComptesIsoles();
+    await utilisateur.click(
+      within(ligneDe(ORPHELIN.handle)).getByRole("button", { name: "Traiter" }),
+    );
+    ouvrir(MODALE_RATTACHEMENT);
+    const modale = modaleDe(MODALE_RATTACHEMENT);
+
+    // Then aucune des deux natures n'est cochée d'avance : ni formulaire de fiche, ni
+    // formulaire de compte de service. C'est le défaut absent qui fait poser la question.
+    expect(within(modale).queryByLabelText(/Nom de la personne/)).toBeNull();
+    expect(within(modale).queryByLabelText(/^Clé/)).toBeNull();
+
+    // When on tranche que c'est une machine.
+    await utilisateur.click(within(modale).getByLabelText("C'est une machine"));
+
+    // Then c'est la déclaration d'un compte de service qui s'ouvre, et le formulaire de
+    // fiche disparaît : offrir les deux à la fois ramènerait le geste qu'on vient
+    // d'écarter.
+    expect(within(modale).queryByLabelText(/Nom de la personne/)).toBeNull();
+    await utilisateur.type(within(modale).getByLabelText(/^Clé/), "scalingo-deploy-bot");
+    await utilisateur.type(within(modale).getByLabelText(/^Libellé/), "Bot de déploiement");
+    await utilisateur.type(within(modale).getByLabelText(/^Usage/), "Déploie les applications");
+    await utilisateur.type(within(modale).getByLabelText(/^Propriétaire/), "claire.durand");
+    await utilisateur.click(
+      within(modale).getByRole("button", { name: "Déclarer le compte de service" }),
+    );
+
+    // Then c'est l'action de déclaration qui part, et elle seule : câblée sur la création
+    // de fiche, elle fabriquerait exactement la fiche qu'on cherche à ne plus créer.
+    expect(doubles.creer).not.toHaveBeenCalled();
+    expect(doubles.rattacher).not.toHaveBeenCalled();
+    expect(doubles.declarer).toHaveBeenCalledTimes(1);
+
+    // And elle emporte le compte traité et la saisie sous les noms qu'elle lit, la revue
+    // comprise : sans elle, le serveur retomberait sur une périodicité que personne n'a
+    // choisie, et un compte machine ne se remet en question que par sa revue.
+    const declaration = doubles.declarer.mock.calls[0]?.[1] as FormData;
+    expect(Object.fromEntries(declaration)).toMatchObject({
+      id: ORPHELIN.id,
+      key: "scalingo-deploy-bot",
+      label: "Bot de déploiement",
+      purpose: "Déploie les applications",
+      ownerUsername: "claire.durand",
+      reviewEveryDays: String(REVUE_PAR_DEFAUT),
+    });
   });
 });
 

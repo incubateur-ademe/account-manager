@@ -6,6 +6,8 @@ import { Button } from "@codegouvfr/react-dsfr/Button";
 import { Input } from "@codegouvfr/react-dsfr/Input";
 import { useActionState } from "react";
 
+import { REVUE_PAR_DEFAUT } from "@/core/compte-de-service";
+
 import { declarerUnCompteDeService, type EtatDeclaration } from "./actions";
 
 /**
@@ -43,7 +45,12 @@ export function Declarer() {
         <Input
           label="Revue tous les"
           hintText="En jours. Un compte machine n'a pas de fin de mission, c'est la revue qui le remet en question."
-          nativeInputProps={{ name: "reviewEveryDays", type: "number", defaultValue: 180, min: 1 }}
+          nativeInputProps={{
+            name: "reviewEveryDays",
+            type: "number",
+            defaultValue: REVUE_PAR_DEFAUT,
+            min: 1,
+          }}
         />
 
         {/* Au formulaire et non à un champ : une clé déjà prise ou un libellé manquant ne
