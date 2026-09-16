@@ -2,8 +2,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { parse } from "yaml";
-import type { z } from "zod";
 
+import { cheminsConnus, type Provenance, resoudre } from "@/core/configuration";
 import { type Policy, policySchema } from "@/core/policy";
 
 /**
@@ -28,41 +28,53 @@ function dossier(): string {
 
 let cached: Policy | undefined;
 
-function lire<T>(fichier: string, schema: z.ZodType<T>): T {
+/**
+ * Le fichier tel quel, avant toute validation : il n'est plus qu'une des trois sources, et
+ * le valider seul refuserait une politique que l'environnement ou la base complètent.
+ *
+ * Un fichier absent n'est pas une erreur ici. Ce qui manque vraiment se dira en une fois,
+ * les trois niveaux réunis, plutôt que par une liste de champs qui envoie chercher une
+ * faute de saisie dans un fichier qui n'existe pas.
+ */
+function brut(fichier: string): Record<string, unknown> {
   const chemin = resolve(dossier(), fichier);
-
-  // Un fichier absent n'est pas lu comme un fichier vide : le schéma décide, et il
-  // n'acceptera que celui dont tout a un défaut. Les comptes, eux, seront refusés,
-  // ce qui vaut mieux qu'un périmètre silencieusement réduit à personne.
-  const present = existsSync(chemin);
-  const brut = present ? parse(readFileSync(chemin, "utf8")) : { version: 1 };
-  const lu = schema.safeParse(brut);
-
-  if (!lu.success) {
-    // Un fichier absent produirait autrement une liste de champs manquants, qui
-    // envoie chercher une faute de saisie dans un fichier qui n'existe pas. La
-    // cause est ailleurs : l'image a été construite sans politique, ou POLICY_DIR
-    // ne désigne pas le bon répertoire.
-    if (!present) {
-      throw new Error(
-        `Fichier de politique absent : ${chemin}. L'image a-t-elle été construite avec CONFIG_REPO, et POLICY_DIR désigne-t-il le bon répertoire ?`,
-      );
-    }
-
-    const details = lu.error.issues
-      .map((issue) => `  ${issue.path.join(".") || "(racine)"} : ${issue.message}`)
-      .join("\n");
-
-    // Une version qui ne correspond pas ne dit pas qu'un champ est faux, mais que ce
-    // fichier et ce code n'avancent plus ensemble.
-    const explication = lu.error.issues.some((issue) => issue.path[0] === "version")
-      ? "\n\nLa version du format ne correspond pas à celle qu'attend ce code. Le fichier a été écrit pour une autre version : mettez-le à jour, ou déployez la version du code qui va avec."
-      : "";
-
-    throw new Error(`Fichier de politique invalide (${chemin}) :\n${details}${explication}`);
+  if (!existsSync(chemin)) {
+    return {};
   }
 
-  return lu.data;
+  const lu: unknown = parse(readFileSync(chemin, "utf8"));
+  if (typeof lu !== "object" || lu === null || Array.isArray(lu)) {
+    throw new Error(`Fichier de politique illisible (${chemin}) : un objet était attendu.`);
+  }
+
+  const { version: _version, ...reste } = lu as Record<string, unknown>;
+
+  return reste;
+}
+
+let surcharges: Readonly<Record<string, unknown>> = {};
+let provenances: readonly Provenance[] = [];
+let inconnues: readonly string[] = [];
+
+export function provenancesDeLaPolitique(): readonly Provenance[] {
+  policy();
+  return provenances;
+}
+
+/** Les variables `CONFIG_` qu'aucun chemin ne réclame : une faute de frappe ne se voit nulle part ailleurs. */
+export function variablesInconnues(): readonly string[] {
+  policy();
+  return inconnues;
+}
+
+/**
+ * Charge les surcharges de la base avant toute lecture de politique. Séparé et explicite :
+ * `policy()` est synchrone et appelée partout, y compris là où aucune base n'existe, et la
+ * rendre asynchrone obligerait chaque écran à attendre ce qu'il ne lit pas.
+ */
+export function poserLesSurcharges(lues: Readonly<Record<string, unknown>>): void {
+  surcharges = lues;
+  cached = undefined;
 }
 
 export function loadPolicy(): Policy {
@@ -75,7 +87,39 @@ export function loadPolicy(): Policy {
     );
   }
 
-  const { version: _version, ...declare } = lire("config.yaml", policySchema);
+  const fichier = brut("config.yaml");
+  const resolution = resoudre(cheminsConnus(policySchema), {
+    environnement: process.env,
+    fichier,
+    base: surcharges,
+  });
+
+  // Rien nulle part reste une erreur de déploiement, et non une politique vide. Tout ayant
+  // un défaut, une instance démarrerait sinon sur un périmètre qui ne suit personne, et
+  // c'est exactement ce qu'un POLICY_DIR mal pointé produit.
+  if (
+    Object.keys(fichier).length === 0 &&
+    Object.keys(surcharges).length === 0 &&
+    resolution.provenances.every(({ niveau }) => niveau === "defaut")
+  ) {
+    throw new Error(
+      `Aucune politique nulle part : ni ${resolve(dossier(), "config.yaml")}, ni variable CONFIG_, ni réglage en base. L'image a-t-elle été construite avec CONFIG_REPO, et POLICY_DIR désigne-t-il le bon répertoire ?`,
+    );
+  }
+
+  provenances = resolution.provenances;
+  inconnues = resolution.inconnues;
+
+  const lu = policySchema.safeParse({ version: 1, ...resolution.valeurs });
+  if (!lu.success) {
+    const details = lu.error.issues
+      .map((issue) => `  ${issue.path.join(".") || "(racine)"} : ${issue.message}`)
+      .join("\n");
+
+    throw new Error(`Configuration invalide, les trois niveaux réunis :\n${details}`);
+  }
+
+  const { version: _version, ...declare } = lu.data;
 
   return declare;
 }

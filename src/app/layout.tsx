@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { utilisateurCourant } from "@/lib/session";
+import { chargerLesSurcharges } from "@/lib/surcharges";
 import { Deconnexion } from "@/ui/Deconnexion";
 import { DsfrProvider, StartDsfrOnHydration } from "@/ui/dsfr/client";
 import { DsfrHead, getHtmlAttributes } from "@/ui/dsfr/server";
@@ -14,6 +15,10 @@ export const metadata: Metadata = {
 const lang = "fr";
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
+  // Avant tout rendu : un réglage posé dans l'interface doit valoir dès l'écran suivant, et
+  // le cache de politique ne se relit pas tout seul.
+  await chargerLesSurcharges();
+
   const utilisateur = await utilisateurCourant();
 
   return (

@@ -915,3 +915,23 @@ model ScopeDropOverride {
 
   @@index([provider, famille, consumedAt])
 }
+
+/// Une valeur de configuration réglée depuis l'outil, qui l'emporte sur le fichier et sur
+/// l'environnement.
+///
+/// Une ligne par chemin et non un document : l'audit doit nommer ce qui a changé, la
+/// provenance s'affiche chemin par chemin, et surcharger un seul seuil ne doit pas
+/// réécrire l'ensemble ni risquer d'effacer une modification concurrente.
+///
+/// C'est la quatrième famille non reconstructible, avec le journal, les dérogations et
+/// l'état décidé : aucune collecte ne redevinera ce que quelqu'un a réglé ici.
+model ConfigOverride {
+  /// Le chemin dans le schéma de politique, par exemple « thresholds.graceDays ».
+  path String @id
+
+  value Json
+
+  /// Le username beta.gouv de qui a réglé, jamais un identifiant technique.
+  updatedBy String
+  updatedAt DateTime @updatedAt
+}
