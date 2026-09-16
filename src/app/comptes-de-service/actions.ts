@@ -1,5 +1,6 @@
 "use server";
 
+import { lireDeclaration, REVUE_PAR_DEFAUT } from "@/core/compte-de-service";
 import { Prisma } from "@/generated/prisma/client";
 import { actionTracee } from "@/lib/actions";
 import { prisma } from "@/lib/db";
@@ -68,18 +69,18 @@ export async function declarerUnCompteDeService(
 ): Promise<EtatDeclaration> {
   await requireOperateur();
 
-  const key = String(formData.get("key") ?? "").trim();
-  const label = String(formData.get("label") ?? "").trim();
-  const purpose = String(formData.get("purpose") ?? "").trim();
-  const ownerUsername = String(formData.get("ownerUsername") ?? "").trim();
-  const reviewEveryDays = Number(formData.get("reviewEveryDays") ?? 180);
-
-  if (!key || !label || !purpose || !ownerUsername) {
-    return { erreur: "La clé, le libellé, l'usage et le propriétaire sont tous exigés." };
+  const lecture = lireDeclaration({
+    key: String(formData.get("key") ?? ""),
+    label: String(formData.get("label") ?? ""),
+    purpose: String(formData.get("purpose") ?? ""),
+    ownerUsername: String(formData.get("ownerUsername") ?? ""),
+    reviewEveryDays: Number(formData.get("reviewEveryDays") ?? REVUE_PAR_DEFAUT),
+  });
+  if ("erreur" in lecture) {
+    return lecture;
   }
-  if (!Number.isInteger(reviewEveryDays) || reviewEveryDays < 1) {
-    return { erreur: "La revue se compte en jours entiers, au moins un." };
-  }
+  const { declaration } = lecture;
+  const { key } = declaration;
 
   const existant = await prisma.serviceAccount.findUnique({ where: { key } });
   if (existant) {
@@ -91,12 +92,10 @@ export async function declarerUnCompteDeService(
       action: "compte-de-service.declaration",
       targetType: "compte-de-service",
       targetId: key,
-      after: { label, purpose, ownerUsername, reviewEveryDays },
+      after: { ...declaration },
       revalider: ["/comptes-de-service"],
       ecrire: async () => {
-        await prisma.serviceAccount.create({
-          data: { key, label, purpose, ownerUsername, reviewEveryDays },
-        });
+        await prisma.serviceAccount.create({ data: declaration });
       },
     });
   } catch (cause: unknown) {
