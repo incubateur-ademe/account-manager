@@ -10,6 +10,7 @@ function contrat(key: string, configSchema?: z.ZodType): ConnectorContract {
     label: key,
     criticality: "low",
     runbook: "à la main",
+    accountSlug: ({ handle }) => handle,
     credentials: [],
     capabilities: {},
     scopeSchema: z.object({}),

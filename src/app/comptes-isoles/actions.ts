@@ -82,8 +82,20 @@ export async function rattacherIdentite(
         identities: { where: { vanishedAt: null, id: { not: id } }, take: 2 },
       },
     }),
-    prisma.serviceAccount.findUnique({ where: { key: cible }, select: { id: true } }),
+    prisma.serviceAccount.findUnique({
+      where: { key: cible },
+      select: { id: true, provider: true },
+    }),
   ]);
+
+  // Un compte relevé sur un système ne peut pas appartenir à la machine d'un autre.
+  // Refusé plutôt que signalé après coup : la fiche d'un système liste ses comptes
+  // machine, et un rattachement croisé l'y ferait apparaître sous le mauvais.
+  if (compte && compte.provider !== identite.provider) {
+    return {
+      erreur: `« ${cible} » est un compte de service ${compte.provider}, et celui-ci est relevé sur ${identite.provider}.`,
+    };
+  }
 
   let horsPerimetre: MembreDetaille | null = null;
 

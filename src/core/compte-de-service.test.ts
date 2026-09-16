@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { lireDeclaration, REVUE_PAR_DEFAUT } from "./compte-de-service";
+import {
+  cleProposee,
+  enKebab,
+  fragmentDAdresse,
+  libellePropose,
+  lireDeclaration,
+  propositionDeMachine,
+  REVUE_PAR_DEFAUT,
+} from "./compte-de-service";
 
 /**
  * Cette lecture existe pour être la même aux deux endroits qui déclarent un compte
@@ -17,13 +25,18 @@ const COMPLETE = {
   purpose: "Déploie les applications de l'incubateur",
   ownerUsername: "claire.durand",
   reviewEveryDays: REVUE_PAR_DEFAUT,
+  provider: "scalingo",
 };
+
+const SYSTEMES = ["github", "notion", "scalingo"];
+
+const lire = (brut: typeof COMPLETE) => lireDeclaration(brut, SYSTEMES);
 
 describe("la saisie d'un compte de service", () => {
   it("passe entière et détourée, et se refuse dès qu'un des quatre dits manque", () => {
     // Given une saisie complète, dont les bords portent les espaces qu'un copier-coller
     // emporte toujours.
-    const lu = lireDeclaration({
+    const lu = lire({
       ...COMPLETE,
       key: "  bot-de-deploiement  ",
       ownerUsername: " claire.durand ",
@@ -36,13 +49,13 @@ describe("la saisie d'un compte de service", () => {
     // Then chacun des quatre champs dits est exigé, y compris quand il n'est fait que
     // d'espaces : un libellé vide donne une ligne qu'on ne sait plus identifier.
     for (const vide of ["key", "label", "purpose"] as const) {
-      expect(lireDeclaration({ ...COMPLETE, [vide]: "   " })).toHaveProperty("erreur");
+      expect(lire({ ...COMPLETE, [vide]: "   " })).toHaveProperty("erreur");
     }
 
     // Then le propriétaire a son propre refus, et il dit pourquoi : c'est lui, avec la
     // revue, qui rend un accès permanent non humain gouvernable. Un message commun
     // laisserait croire à un champ administratif de plus.
-    const sansProprietaire = lireDeclaration({ ...COMPLETE, ownerUsername: "" });
+    const sansProprietaire = lire({ ...COMPLETE, ownerUsername: "" });
     expect(sansProprietaire).toHaveProperty("erreur");
     expect("erreur" in sansProprietaire && sansProprietaire.erreur).toContain("répond");
   });
@@ -54,13 +67,96 @@ describe("la saisie d'un compte de service", () => {
       // Then elle est refusée. Zéro est le cas qui coûte : il poserait une revue due
       // chaque jour, un badge rouge que rien ne peut plus éteindre, et un signal qui ne
       // s'éteint jamais finit par ne plus rien signaler.
-      expect(lireDeclaration({ ...COMPLETE, reviewEveryDays: revue })).toHaveProperty("erreur");
+      expect(lire({ ...COMPLETE, reviewEveryDays: revue })).toHaveProperty("erreur");
     }
 
     // Then un seul jour passe : c'est court, mais c'est une décision, pas une erreur de
     // saisie, et rien ici n'a autorité pour dire combien de temps un bot se garde.
-    expect(lireDeclaration({ ...COMPLETE, reviewEveryDays: 1 })).toEqual({
+    expect(lire({ ...COMPLETE, reviewEveryDays: 1 })).toEqual({
       declaration: { ...COMPLETE, reviewEveryDays: 1 },
     });
+  });
+});
+
+describe("la clé proposée pour un compte constaté", () => {
+  it("détoure une adresse de son extension, et compose sans jamais perdre le système", () => {
+    // Given l'adresse d'un bot sur un domaine d'incubateur.
+    // Then le fragment garde ce qui distingue et laisse l'extension, qui ne distingue
+    // rien entre deux comptes du même domaine et allonge la lecture pour rien.
+    expect(fragmentDAdresse("bot@incubateur.ademe.fr")).toBe("bot-incubateur-ademe");
+
+    // Then un domaine sans extension garde tout : le retirer laisserait un fragment qui
+    // ne dit plus d'où vient le compte.
+    expect(fragmentDAdresse("bot@localhost")).toBe("bot-localhost");
+
+    // Then la composition met le système devant, toujours : c'est ce qui rend une clé
+    // lisible seule dans une liste où trois systèmes se mélangent.
+    expect(cleProposee("notion", "bot-incubateur-ademe")).toBe("notion-bot-incubateur-ademe");
+
+    // Then un compte que rien n'identifie ne reçoit pas de clé inventée, seulement le nom
+    // du système. La saisie la complète, et c'est le bon moment pour s'en apercevoir :
+    // une clé est ce sur quoi un rattachement se fait ensuite.
+    expect(cleProposee("github", "")).toBe("github");
+
+    // Then le détourage vaut aussi pour ce qu'on lui passe : un fragment déjà sale ne
+    // doit pas produire une clé à deux tirets ou à accent, qu'on ne retrouverait plus.
+    expect(cleProposee("notion", " Équipe  Données ")).toBe("notion-equipe-donnees");
+    expect(enKebab("m--marceau_")).toBe("m-marceau");
+
+    // Then le libellé garde le compte tel qu'il se lit chez lui : c'est la colonne qu'on
+    // parcourt, et une clé remise en mots y perdrait l'adresse réelle, seule chose qui
+    // permette de reconnaître le compte sans l'ouvrir.
+    expect(libellePropose("Notion", "bot@incubateur.ademe.fr")).toBe(
+      "Notion · bot@incubateur.ademe.fr",
+    );
+  });
+});
+
+describe("le système d'un compte de service", () => {
+  it("est exigé et doit être servi par un connecteur", () => {
+    // Then un système qu'aucun connecteur ne sert est refusé : la fiche d'un système
+    // liste ses comptes machine, et celui-là n'a aucune fiche où les montrer.
+    const inconnu = lire({ ...COMPLETE, provider: "heroku" });
+    expect("erreur" in inconnu && inconnu.erreur).toContain("heroku");
+
+    // Then son absence a son propre message : « aucun système ne porte la clé "" » se
+    // lirait comme un défaut de l'outil plutôt que comme un champ à remplir.
+    const absent = lire({ ...COMPLETE, provider: "" });
+    expect("erreur" in absent && absent.erreur).toBe(
+      "Indiquez le système auquel ce compte appartient.",
+    );
+  });
+});
+
+describe("ce qu'un compte constaté remplit tout seul", () => {
+  it("compose les cinq champs déductibles, et laisse l'usage à qui déclare", () => {
+    // Given un système dont le connecteur réduit les adresses, et un compte relevé chez lui.
+    const notion = {
+      key: "notion",
+      label: "Notion",
+      accountSlug: ({ handle }: { handle: string }) => fragmentDAdresse(handle),
+    };
+
+    // When on prépare la déclaration, au nom de qui regarde.
+    const proposition = propositionDeMachine(
+      notion,
+      { handle: "bot@incubateur.ademe.fr", externalId: "u-1" },
+      "operatrice.exemple",
+    );
+
+    // Then la clé porte son système en tête. Sans ce préfixe, deux comptes du même nom sur
+    // deux systèmes se disputeraient la même clé, et aucune ne dirait plus d'où elle vient.
+    expect(proposition).toEqual({
+      provider: "notion",
+      systemeLibelle: "Notion",
+      key: "notion-bot-incubateur-ademe",
+      label: "Notion · bot@incubateur.ademe.fr",
+      ownerUsername: "operatrice.exemple",
+      reviewEveryDays: REVUE_PAR_DEFAUT,
+    });
+
+    // Then rien n'y propose d'usage : c'est le seul champ que la saisie doit arracher, et
+    // un défaut l'aurait rempli d'une phrase que personne ne relit.
+    expect(proposition).not.toHaveProperty("purpose");
   });
 });

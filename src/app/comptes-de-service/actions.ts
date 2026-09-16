@@ -1,5 +1,6 @@
 "use server";
 
+import { systemesQuiAccueillentUnCompteMachine } from "@/connectors";
 import { lireDeclaration, REVUE_PAR_DEFAUT } from "@/core/compte-de-service";
 import { Prisma } from "@/generated/prisma/client";
 import { actionTracee } from "@/lib/actions";
@@ -69,13 +70,17 @@ export async function declarerUnCompteDeService(
 ): Promise<EtatDeclaration> {
   await requireOperateur();
 
-  const lecture = lireDeclaration({
-    key: String(formData.get("key") ?? ""),
-    label: String(formData.get("label") ?? ""),
-    purpose: String(formData.get("purpose") ?? ""),
-    ownerUsername: String(formData.get("ownerUsername") ?? ""),
-    reviewEveryDays: Number(formData.get("reviewEveryDays") ?? REVUE_PAR_DEFAUT),
-  });
+  const lecture = lireDeclaration(
+    {
+      key: String(formData.get("key") ?? ""),
+      label: String(formData.get("label") ?? ""),
+      purpose: String(formData.get("purpose") ?? ""),
+      ownerUsername: String(formData.get("ownerUsername") ?? ""),
+      reviewEveryDays: Number(formData.get("reviewEveryDays") ?? REVUE_PAR_DEFAUT),
+      provider: String(formData.get("provider") ?? ""),
+    },
+    systemesQuiAccueillentUnCompteMachine().map(({ key }) => key),
+  );
   if ("erreur" in lecture) {
     return lecture;
   }

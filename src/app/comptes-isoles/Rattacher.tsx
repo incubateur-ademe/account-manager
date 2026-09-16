@@ -8,7 +8,7 @@ import { RadioButtons } from "@codegouvfr/react-dsfr/RadioButtons";
 import { Tag } from "@codegouvfr/react-dsfr/Tag";
 import { useActionState, useState } from "react";
 
-import { REVUE_PAR_DEFAUT } from "@/core/compte-de-service";
+import type { PropositionDeMachine } from "@/core/compte-de-service";
 import type { SuggestionRattachement } from "@/core/suggestion-rattachement";
 import { ChampAvecListe, type Suggestion } from "@/ui/ChampAvecListe";
 import { useFermetureApresSucces } from "@/ui/modale";
@@ -26,11 +26,13 @@ export function Rattacher({
   id,
   cibles,
   propositions,
+  machine,
   onSucces,
 }: {
   id: string;
   cibles: readonly Suggestion[];
   propositions: readonly SuggestionRattachement[];
+  machine: PropositionDeMachine | null;
   onSucces?: () => void;
 }) {
   const [etat, formAction, pending] = useActionState<EtatRattachement, FormData>(
@@ -170,8 +172,12 @@ export function Rattacher({
             },
             {
               label: "C'est une machine",
+              // Offert seulement quand un connecteur sert ce système : sans lui, ni clé à
+              // proposer ni système où ranger la machine, et le formulaire se refuserait
+              // après coup plutôt que de ne pas s'ouvrir.
               nativeInputProps: {
                 checked: nature === "machine",
+                disabled: machine === null,
                 onChange: () => {
                   setNature("machine");
                 },
@@ -196,15 +202,33 @@ export function Rattacher({
           </form>
         ) : null}
 
-        {nature === "machine" ? (
+        {nature === "machine" && machine !== null ? (
           <form action={declarerAction}>
             <input type="hidden" name="id" value={id} />
+            {/* Le système ne se saisit pas : ce compte y a été relevé. Affiché quand même,
+                parce qu'il décide de la clé proposée et du système sous lequel la machine
+                se rangera, et qu'un champ absent se découvre après coup. L'action le relit
+                du compte et jamais du formulaire. */}
+            <Input
+              label="Système"
+              hintText="Celui sur lequel ce compte a été relevé."
+              disabled
+              nativeInputProps={{ value: machine.systemeLibelle, readOnly: true }}
+            />
             <Input
               label="Clé"
               hintText="Identifiant court et stable, en minuscules"
-              nativeInputProps={{ name: "key", autoComplete: "off", required: true }}
+              nativeInputProps={{
+                name: "key",
+                autoComplete: "off",
+                required: true,
+                defaultValue: machine.key,
+              }}
             />
-            <Input label="Libellé" nativeInputProps={{ name: "label", required: true }} />
+            <Input
+              label="Libellé"
+              nativeInputProps={{ name: "label", required: true, defaultValue: machine.label }}
+            />
             <Input
               label="Usage"
               hintText="Ce que ce compte fait, en une phrase lisible dans deux ans"
@@ -213,7 +237,11 @@ export function Rattacher({
             <Input
               label="Propriétaire"
               hintText="Username beta.gouv de qui en répond"
-              nativeInputProps={{ name: "ownerUsername", required: true }}
+              nativeInputProps={{
+                name: "ownerUsername",
+                required: true,
+                defaultValue: machine.ownerUsername,
+              }}
             />
             <Input
               label="Revue tous les"
@@ -221,7 +249,7 @@ export function Rattacher({
               nativeInputProps={{
                 name: "reviewEveryDays",
                 type: "number",
-                defaultValue: REVUE_PAR_DEFAUT,
+                defaultValue: machine.reviewEveryDays,
                 min: 1,
               }}
             />

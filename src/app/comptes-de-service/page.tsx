@@ -3,6 +3,7 @@ import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import { Table } from "@codegouvfr/react-dsfr/Table";
 import type { Metadata } from "next";
 
+import { systemesQuiAccueillentUnCompteMachine } from "@/connectors";
 import { type EtatRevue, LIBELLE_REVUE, revueDe } from "@/core/revue";
 import { prisma } from "@/lib/db";
 import { requireOperateur } from "@/lib/session";
@@ -32,6 +33,7 @@ export default async function ComptesDeServicePage() {
     select: {
       key: true,
       label: true,
+      provider: true,
       purpose: true,
       ownerUsername: true,
       reviewEveryDays: true,
@@ -50,6 +52,9 @@ export default async function ComptesDeServicePage() {
     );
 
   const enRetard = avecRevue.filter((compte) => compte.revue.etat === "EN_RETARD").length;
+
+  const systemes = systemesQuiAccueillentUnCompteMachine();
+  const libelleDuSysteme = new Map(systemes.map(({ key, label }) => [key, label]));
 
   return (
     <main className={fr.cx("fr-container", "fr-my-6w")}>
@@ -77,6 +82,7 @@ export default async function ComptesDeServicePage() {
           <Table
             headers={[
               "Compte",
+              "Système",
               "Objet",
               "Propriétaire",
               "Périodicité",
@@ -90,6 +96,10 @@ export default async function ComptesDeServicePage() {
                 <br />
                 <span className={fr.cx("fr-text--sm")}>{compte.key}</span>
               </span>,
+              // Le libellé du registre quand il existe, et la clé brute sinon : un système
+              // retiré du registre laisse ses comptes derrière lui, et les afficher sans
+              // système donnerait à croire qu'ils n'en ont jamais eu.
+              libelleDuSysteme.get(compte.provider) ?? compte.provider,
               compte.purpose,
               compte.ownerUsername,
               `tous les ${compte.reviewEveryDays} jours`,
@@ -111,7 +121,7 @@ export default async function ComptesDeServicePage() {
         </>
       )}
 
-      <Declarer />
+      <Declarer systemes={systemes} />
     </main>
   );
 }

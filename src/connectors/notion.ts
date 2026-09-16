@@ -1,5 +1,5 @@
 import { z } from "zod";
-
+import { enKebab, fragmentDAdresse } from "@/core/compte-de-service";
 import type {
   CollectError,
   CollectResult,
@@ -455,6 +455,12 @@ export const CONTRAT_NOTION: ConnectorContract = {
   label: "Notion",
   criticality: "high",
   runbook: RUNBOOK,
+  /**
+   * Le nom d'usage d'un membre Notion, qui est souvent l'adresse par laquelle le
+   * workspace l'a invite, et parfois un nom saisi a la main. Les deux se reduisent, mais
+   * pas de la meme facon : un nom garde ses mots, une adresse perd son extension.
+   */
+  accountSlug: ({ handle }) => (handle.includes("@") ? fragmentDAdresse(handle) : enKebab(handle)),
   credentials: [
     {
       id: CREDENTIAL,

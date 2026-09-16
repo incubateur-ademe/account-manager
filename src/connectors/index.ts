@@ -48,3 +48,16 @@ export function catalogueDOctroi(): readonly SystemeOffrantOctroi[] {
 export function connecteur(key: string): Connector | undefined {
   return CONNECTEURS.find((candidat) => candidat.contract.key === key);
 }
+
+/**
+ * Les systèmes sous lesquels un compte machine peut se ranger, et leur nom d'affichage.
+ * Assemblé depuis le registre plutôt que saisi : un système ajouté doit pouvoir accueillir
+ * un compte de service sans qu'on y pense, et un système retiré ne doit pas laisser une
+ * liste déroulante proposer ce que plus rien ne sert.
+ */
+export function systemesQuiAccueillentUnCompteMachine(): readonly {
+  key: string;
+  label: string;
+}[] {
+  return CONNECTEURS.map(({ contract }) => ({ key: contract.key, label: contract.label }));
+}

@@ -1,6 +1,8 @@
 import { fr } from "@codegouvfr/react-dsfr";
 import type { Metadata } from "next";
 
+import { connecteur } from "@/connectors";
+import { propositionDeMachine } from "@/core/compte-de-service";
 import { type SuggestionRattachement, suggererRattachements } from "@/core/suggestion-rattachement";
 import { OU_NON_REVOCABLE } from "@/lib/comptes-isoles";
 import { prisma } from "@/lib/db";
@@ -76,7 +78,7 @@ function propositions(
 }
 
 export default async function ComptesIsolesPage() {
-  await requireOperateur();
+  const operateur = await requireOperateur();
 
   const [isoles, personnes, comptes] = await Promise.all([
     prisma.externalIdentity.findMany({
@@ -140,6 +142,12 @@ export default async function ComptesIsolesPage() {
       (acces) => `« ${acces.role} » ${acces.resource.provider} (${acces.resource.label})`,
     ),
     metadonnees: metadonnees(identite.details),
+    // Nul quand aucun connecteur enregistré ne sert ce système : la déclaration n'aurait
+    // alors ni clé à proposer ni système où ranger la machine, et l'écran ne l'offre pas.
+    machine: (() => {
+      const systeme = connecteur(identite.provider)?.contract;
+      return systeme ? propositionDeMachine(systeme, identite, operateur.username) : null;
+    })(),
     vuDepuis: dateFr.format(identite.firstSeenAt),
     vuEncore: dateFr.format(identite.lastSeenAt),
   }));

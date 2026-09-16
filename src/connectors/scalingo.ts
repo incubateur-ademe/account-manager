@@ -1,5 +1,5 @@
 import { z } from "zod";
-
+import { fragmentDAdresse } from "@/core/compte-de-service";
 import type {
   CollectError,
   CollectResult,
@@ -1165,6 +1165,12 @@ export const CONTRAT_SCALINGO: ConnectorContract = {
   label: "Scalingo",
   criticality: "high",
   runbook: RUNBOOK,
+  /**
+   * Scalingo ne rend jamais qu'une adresse, proprietaire d'application comme
+   * collaborateur. La branche du nom d'usage n'existe donc pas ici, et l'ajouter par
+   * symetrie inventerait un cas que l'API ne produit pas.
+   */
+  accountSlug: ({ handle }) => fragmentDAdresse(handle),
   credentials: [
     {
       id: CREDENTIAL,

@@ -196,6 +196,16 @@ model ServiceAccount {
   purpose       String
   ownerUsername String
 
+  /// Systeme auquel ce compte machine appartient, sous la meme cle que
+  /// ExternalIdentity.provider pour que les deux se comparent sans traduction.
+  ///
+  /// Declare et non deduit des identites rattachees, parce que la moitie de la
+  /// population n'en a aucune : un systeme en tier manuel n'a pas de collecte, donc
+  /// rien ne constatera jamais son jeton. Sans cette colonne, ces comptes-la
+  /// n'appartiendraient a aucun systeme et la fiche d'un systeme mentirait par
+  /// omission.
+  provider String
+
   reviewEveryDays Int       @default(180)
   lastReviewedAt  DateTime?
 
@@ -206,6 +216,7 @@ model ServiceAccount {
 
   @@index([ownerUsername])
   @@index([lastReviewedAt])
+  @@index([provider])
 }
 
 // ---------------------------------------------------------------------------

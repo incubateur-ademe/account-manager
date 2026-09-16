@@ -93,6 +93,26 @@ export interface ConnectorContract {
   configSchema?: z.ZodType;
   /** Fonctionnalités hors socle, qui ne passent ni par Person ni par AccessGrant. */
   features?: readonly ConnectorFeature[];
+  /**
+   * Réduit un compte constaté au fragment qui l'identifie, pour proposer la clé du
+   * compte de service qu'on déclare depuis lui. Le socle préfixe ensuite avec `key`.
+   *
+   * Ici et non dans le socle, parce qu'un `handle` n'a pas la même nature d'un système
+   * à l'autre, ni même d'une ligne à l'autre : GitHub rend un login, sinon une adresse,
+   * sinon une phrase fabriquée faute des deux ; Notion rend un nom d'usage qui se trouve
+   * souvent être une adresse ; Scalingo rend toujours une adresse. Une règle générique
+   * serait fausse chez au moins un des trois, et fausse en silence : personne ne relit
+   * une clé pré-remplie avant de la voir dans la liste, des mois plus tard.
+   *
+   * Obligatoire, et non facultative avec un défaut : un défaut ne se voit pas, et le
+   * connecteur qui aurait dû le remplacer ne se distinguerait pas de celui à qui il
+   * convient.
+   *
+   * Rend une chaîne vide quand rien n'identifie ce compte. La clé retombe alors sur le
+   * seul nom du système, que la saisie corrige : proposer un fragment inventé serait
+   * pire, la clé étant ce sur quoi un rattachement se fait ensuite.
+   */
+  accountSlug: (compte: { handle: string; externalId: string }) => string;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 "use server";
 
+import { systemesQuiAccueillentUnCompteMachine } from "@/connectors";
 import { lireDeclaration, REVUE_PAR_DEFAUT } from "@/core/compte-de-service";
 import { identifiantReserve, normaliserIdentifiant } from "@/core/fiche-manuelle";
 import { Prisma } from "@/generated/prisma/client";
@@ -219,22 +220,29 @@ export async function declarerCompteDeServicePourCompte(
 
   const id = String(formData.get("id") ?? "").trim();
 
-  const lecture = lireDeclaration({
-    key: String(formData.get("key") ?? ""),
-    label: String(formData.get("label") ?? ""),
-    purpose: String(formData.get("purpose") ?? ""),
-    ownerUsername: String(formData.get("ownerUsername") ?? ""),
-    reviewEveryDays: Number(formData.get("reviewEveryDays") ?? REVUE_PAR_DEFAUT),
-  });
-  if ("erreur" in lecture) {
-    return lecture;
-  }
-  const { declaration } = lecture;
-
   const identite = await identiteATraiter(id);
   if ("erreur" in identite) {
     return identite;
   }
+
+  // Le système ne se saisit pas ici, il se constate : ce compte a été relevé sur un
+  // système, et l'écran n'offre pas d'en choisir un autre. Lu du compte plutôt que du
+  // formulaire, un champ posté à la main ne peut pas le contredire.
+  const lecture = lireDeclaration(
+    {
+      key: String(formData.get("key") ?? ""),
+      label: String(formData.get("label") ?? ""),
+      purpose: String(formData.get("purpose") ?? ""),
+      ownerUsername: String(formData.get("ownerUsername") ?? ""),
+      reviewEveryDays: Number(formData.get("reviewEveryDays") ?? REVUE_PAR_DEFAUT),
+      provider: identite.provider,
+    },
+    systemesQuiAccueillentUnCompteMachine().map(({ key }) => key),
+  );
+  if ("erreur" in lecture) {
+    return lecture;
+  }
+  const { declaration } = lecture;
 
   const existant = await prisma.serviceAccount.findUnique({
     where: { key: declaration.key },

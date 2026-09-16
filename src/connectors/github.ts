@@ -1,5 +1,5 @@
 import { z } from "zod";
-
+import { enKebab, fragmentDAdresse } from "@/core/compte-de-service";
 import type {
   CollectError,
   CollectResult,
@@ -910,6 +910,18 @@ export const CONTRAT_GITHUB: ConnectorContract = {
   label: "GitHub",
   criticality: "high",
   runbook: RUNBOOK,
+  /**
+   * Un login GitHub est deja un identifiant court et stable, et il se suffit. Une
+   * invitation n'en a pas encore : elle porte l'adresse invitee, dont le fragment vaut
+   * mieux que rien, ou a defaut la phrase que la collecte fabrique pour la nommer, qui
+   * n'identifie aucun compte et ne doit donc pas devenir une cle.
+   */
+  accountSlug: ({ handle }) => {
+    if (handle.includes("@")) {
+      return fragmentDAdresse(handle);
+    }
+    return handle.startsWith("invitation ") ? "" : enKebab(handle);
+  },
   credentials: [
     {
       id: CREDENTIAL,

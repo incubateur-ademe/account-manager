@@ -336,3 +336,51 @@ describe("l'examen de scope que le registre attache à son connecteur", () => {
     expect(ailleurs[0]?.motif).toContain("incubateur-ademe");
   });
 });
+
+describe("la clé qu'un connecteur propose pour un compte machine", () => {
+  it("réduit chaque forme de handle selon ce que son système produit, sans jamais inventer", () => {
+    // Given les trois natures de handle que ce dépôt relève réellement.
+    const github = contratDe("github");
+    const notion = contratDe("notion");
+    const scalingo = contratDe("scalingo");
+
+    // Then un login GitHub se suffit : c'est déjà un identifiant court et stable, et le
+    // réduire davantage lui ferait perdre ce qui le rend reconnaissable.
+    expect(github.accountSlug({ handle: "m-marceau", externalId: "MDQ6VXNlcjEwNDI=" })).toBe(
+      "m-marceau",
+    );
+
+    // Then une invitation GitHub porte l'adresse invitée, qui se détoure comme partout
+    // ailleurs : la collecte y retombe quand le login n'existe pas encore.
+    expect(github.accountSlug({ handle: "bot@incubateur.ademe.fr", externalId: "42" })).toBe(
+      "bot-incubateur-ademe",
+    );
+
+    // Then l'invitation qui n'a ni login ni adresse ne donne aucune clé. La phrase que la
+    // collecte fabrique pour la nommer n'identifie aucun compte, et « github-invitation-7 »
+    // aurait l'air d'une clé alors qu'elle désigne un numéro de ligne.
+    expect(github.accountSlug({ handle: "invitation 7", externalId: "7" })).toBe("");
+
+    // Then Notion rend un nom d'usage, qui est souvent une adresse et parfois un nom
+    // saisi à la main. Les deux se réduisent, mais pas de la même façon.
+    expect(notion.accountSlug({ handle: "bot@incubateur.ademe.fr", externalId: "u-1" })).toBe(
+      "bot-incubateur-ademe",
+    );
+    expect(notion.accountSlug({ handle: "Intégration CI", externalId: "u-2" })).toBe(
+      "integration-ci",
+    );
+
+    // Then Scalingo ne rend jamais qu'une adresse, propriétaire comme collaborateur.
+    expect(scalingo.accountSlug({ handle: "deploy@incubateur.ademe.fr", externalId: "us-9" })).toBe(
+      "deploy-incubateur-ademe",
+    );
+  });
+
+  it("est promise par tous les contrats du registre, sans exception tolérée", () => {
+    // Then aucun connecteur n'en est dispensé : un défaut générique ne se voit pas, et
+    // celui qui aurait dû le remplacer ne se distinguerait pas de celui à qui il convient.
+    for (const { contract } of CONNECTEURS) {
+      expect(typeof contract.accountSlug).toBe("function");
+    }
+  });
+});
