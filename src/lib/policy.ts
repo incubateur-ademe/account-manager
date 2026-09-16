@@ -53,8 +53,8 @@ function brut(fichier: string): Record<string, unknown> {
 }
 
 let surcharges: Readonly<Record<string, unknown>> = {};
-let provenances: readonly Provenance[] = [];
-let inconnues: readonly string[] = [];
+const provenances: readonly Provenance[] = [];
+const inconnues: readonly string[] = [];
 
 export function provenancesDeLaPolitique(): readonly Provenance[] {
   policy();
@@ -65,6 +65,20 @@ export function provenancesDeLaPolitique(): readonly Provenance[] {
 export function variablesInconnues(): readonly string[] {
   policy();
   return inconnues;
+}
+
+/**
+ * Vrai quand aucune des trois sources ne porte quoi que ce soit, donc que tout vient des
+ * défauts du schéma. Ce n'est pas une erreur, le schéma promettant qu'une instance sans
+ * fichier fonctionne, et c'est le cas du développement local comme du bout en bout.
+ *
+ * Mais c'est aussi exactement ce qu'un POLICY_DIR mal pointé produit, avec un périmètre qui
+ * ne suit personne. Dit plutôt que refusé : refuser emporterait la page de connexion et les
+ * sondes, là où le dire laisse quelqu'un s'en apercevoir.
+ */
+export function politiqueEntierementParDefaut(): boolean {
+  policy();
+  return provenances.every(({ niveau }) => niveau === "defaut");
 }
 
 /**
@@ -93,22 +107,6 @@ export function loadPolicy(): Policy {
     fichier,
     base: surcharges,
   });
-
-  // Rien nulle part reste une erreur de déploiement, et non une politique vide. Tout ayant
-  // un défaut, une instance démarrerait sinon sur un périmètre qui ne suit personne, et
-  // c'est exactement ce qu'un POLICY_DIR mal pointé produit.
-  if (
-    Object.keys(fichier).length === 0 &&
-    Object.keys(surcharges).length === 0 &&
-    resolution.provenances.every(({ niveau }) => niveau === "defaut")
-  ) {
-    throw new Error(
-      `Aucune politique nulle part : ni ${resolve(dossier(), "config.yaml")}, ni variable CONFIG_, ni réglage en base. L'image a-t-elle été construite avec CONFIG_REPO, et POLICY_DIR désigne-t-il le bon répertoire ?`,
-    );
-  }
-
-  provenances = resolution.provenances;
-  inconnues = resolution.inconnues;
 
   const lu = policySchema.safeParse({ version: 1, ...resolution.valeurs });
   if (!lu.success) {
