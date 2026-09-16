@@ -50,7 +50,6 @@ function resume(): string[] {
     `chute maximale      ${Math.round(politique.thresholds.maxScopeDrop * 100)} %`,
     `arrivees maximales  ${Math.round(politique.thresholds.maxNewPersonShare * 100)} %`,
     `collecte perimee    ${politique.thresholds.collectStaleHours} h`,
-    `systemes            ${politique.systems.length}`,
     `profils             ${politique.profiles.length}`,
     `acces de profil     ${politique.profiles.reduce((total, profil) => total + profil.accesses.length, 0)}`,
     `derogations         ${politique.permanentDerogations.length}`,

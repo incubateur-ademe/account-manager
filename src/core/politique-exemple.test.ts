@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
-import { configSchema } from "./policy";
+import { policySchema } from "./policy";
 
 /**
  * Le fichier d'exemple est la seule documentation de la forme attendue, et rien ne le
@@ -20,7 +20,7 @@ describe("le fichier de politique d'exemple", () => {
     const brut: unknown = parse(readFileSync(EXEMPLE, "utf8"));
 
     // When on le valide comme le démarrage le ferait,
-    const verdict = configSchema.safeParse(brut);
+    const verdict = policySchema.safeParse(brut);
 
     // Then il passe, et le dire ainsi plutôt que par un booléen fait apparaître le
     // chemin fautif dans la sortie le jour où il ne passe plus,

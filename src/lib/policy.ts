@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { parse } from "yaml";
 import type { z } from "zod";
 
-import { accountsSchema, configSchema, type Policy } from "@/core/policy";
+import { type Policy, policySchema } from "@/core/policy";
 
 /**
  * Répertoire des fichiers de politique. Configurable parce qu'ils ne vivent pas
@@ -66,10 +66,18 @@ function lire<T>(fichier: string, schema: z.ZodType<T>): T {
 }
 
 export function loadPolicy(): Policy {
-  const { version: _versionComptes, ...comptes } = lire("accounts.yaml", accountsSchema);
-  const { version: _versionReglages, ...reglages } = lire("config.yaml", configSchema);
+  // Un fichier resté là où il n'a plus rien à faire ne se lirait plus, et ce qu'il porte
+  // disparaîtrait en silence : refuser de démarrer vaut mieux que d'appliquer une politique
+  // amputée de ce que quelqu'un croit avoir déclaré.
+  if (existsSync(resolve(dossier(), "accounts.yaml"))) {
+    throw new Error(
+      "accounts.yaml ne se lit plus : son contenu a rejoint config.yaml. Y verser les clés « scope » et « serviceAccounts », puis supprimer le fichier.",
+    );
+  }
 
-  return { ...reglages, ...comptes };
+  const { version: _version, ...declare } = lire("config.yaml", policySchema);
+
+  return declare;
 }
 
 export function policy(): Policy {

@@ -13,7 +13,7 @@ import {
   verifierProfils,
 } from "@/core/octroi";
 import { empreinteDuPlan } from "@/core/plan";
-import { configSchema, type Profil } from "@/core/policy";
+import { type Profil, policySchema } from "@/core/policy";
 
 /**
  * Le vrai schéma du connecteur et son vrai examen, et non des doublures : ce qui est
@@ -269,7 +269,7 @@ describe("un accès élevé sans échéance ne s'applique pas, et une échéance
 
 describe("la politique charge un profil sans en valider le scope", () => {
   it("accepte un scope que le connecteur refusera, et refuse ce qui rendrait le fichier illisible", () => {
-    const lu = configSchema.parse({
+    const lu = policySchema.parse({
       version: 1,
       profiles: [
         {
@@ -295,7 +295,7 @@ describe("la politique charge un profil sans en valider le scope", () => {
     // La clé écrite puis laissée vide, que YAML rend en `null` : elle vaut le scope
     // vide et non le refus du fichier. Le défaut ne couvrait que l'absence de la clé,
     // si bien que ce seul caractère manquant arrêtait la collecte de tout le parc.
-    const laisseVide = configSchema.parse({
+    const laisseVide = policySchema.parse({
       version: 1,
       profiles: [
         {
@@ -324,7 +324,7 @@ describe("la politique charge un profil sans en valider le scope", () => {
     // Le coeur de la validation en deux passes : ce scope est refusé par le
     // connecteur, et pourtant le fichier se charge. S'il ne se chargeait pas, une
     // faute de frappe dans un profil arrêterait la collecte nocturne de tout le parc.
-    const douteux = configSchema.parse({
+    const douteux = policySchema.parse({
       version: 1,
       profiles: [
         {
@@ -341,7 +341,7 @@ describe("la politique charge un profil sans en valider le scope", () => {
     // Deux profils de même clé, en revanche, rendent le fichier ininterprétable : une
     // arrivée qui désigne cette clé ne sait plus ce qu'elle demande.
     expect(() =>
-      configSchema.parse({
+      policySchema.parse({
         version: 1,
         profiles: [
           { key: "developpeur", label: "Un", accesses: [] },
@@ -351,7 +351,7 @@ describe("la politique charge un profil sans en valider le scope", () => {
     ).toThrow(/même clé/);
 
     expect(() =>
-      configSchema.parse({
+      policySchema.parse({
         version: 1,
         profiles: [{ key: "developpeur", label: "Développeur", acces: [] }],
       }),
@@ -359,7 +359,7 @@ describe("la politique charge un profil sans en valider le scope", () => {
 
     // Absent, le noeud vaut la liste vide : une instance qui ne déclare aucun profil
     // fonctionne, elle n'ouvre simplement rien automatiquement à l'arrivée.
-    expect(configSchema.parse({ version: 1 }).profiles).toEqual([]);
+    expect(policySchema.parse({ version: 1 }).profiles).toEqual([]);
   });
 });
 
@@ -367,7 +367,7 @@ describe("un scope mal formé se charge quand même, et c'est la seconde passe q
   it("laisse passer ce qui n'est pas un objet, puis le refuse en nommant l'accès fautif", () => {
     // Given un fichier où plusieurs profils écrivent leur scope de travers, et un
     // profil qui déclare deux accès sur le même système, l'un valide et l'autre non
-    const lu = configSchema.parse({
+    const lu = policySchema.parse({
       version: 1,
       profiles: [
         {

@@ -124,40 +124,6 @@ const derogationSchema = z
   })
   .meta({ description: "Un écart admis pour de bon, qu'aucune collecte ne doit plus signaler." });
 
-const systemSchema = z
-  .strictObject({
-    key: z
-      .string()
-      .min(1)
-      .meta({
-        description: "Clé du système, telle que la déclare son connecteur.",
-        examples: ["mon-systeme"],
-      }),
-    label: z
-      .string()
-      .min(1)
-      .meta({
-        description: "Nom lisible du système.",
-        examples: ["Mon système"],
-      }),
-    criticality: z
-      .enum(["low", "medium", "high"])
-      .default("medium")
-      .meta({
-        description: "Ce que coûte un accès oublié sur ce système.",
-        examples: ["high"],
-      }),
-    runbook: z
-      .string()
-      .min(1)
-      .meta({
-        description:
-          "Ce qu'il faut faire à la main quand aucune voie automatique n'existe, ou quand celle-ci tombe.",
-        examples: ["https://exemple.org/procedures/mon-systeme"],
-      }),
-  })
-  .meta({ description: "Un système couvert par le catalogue." });
-
 const accesDeProfilSchema = z
   .strictObject({
     system: z
@@ -237,11 +203,16 @@ const profileSchema = z
 export type Profil = z.infer<typeof profileSchema>;
 
 /**
- * Qui l'incubateur suit, et quels comptes machine il détient. Tout ce fichier nomme :
- * des personnes, des propriétaires, des jetons. C'est ce qui le rend sensible et ce
- * qui justifie qu'il puisse vivre hors du dépôt du code.
+ * Ce que l'incubateur déclare : qui il suit, quels comptes machine il détient, et les
+ * règles qui gouvernent ses décisions.
+ *
+ * Un seul objet là où il y en avait deux. La séparation reposait sur l'idée qu'un des deux
+ * fichiers nommait des gens et l'autre non, ce qui justifiait de le sortir du dépôt du code.
+ * Elle ne tient plus : une dérogation permanente porte le nom de qui en répond, et elle
+ * vivait du côté qui n'était censé nommer personne. Les deux ont donc la même sensibilité,
+ * et le même lieu.
  */
-export const accountsSchema = z
+const declareSchema = z
   .strictObject({
     version,
 
@@ -281,6 +252,9 @@ export const accountsSchema = z
             examples: [[{ username: "prestataire.exemple", until: "2027-06-30" }]],
           }),
       })
+      // Tous ses champs ont un défaut : une instance qui ne déclare pas son périmètre
+      // démarre quand même, et le dit dans ses écrans plutôt qu'au visage de qui la lance.
+      .prefault({})
       .meta({ description: "Qui l'incubateur suit, et sous quelle autorité." }),
 
     serviceAccounts: z
@@ -306,21 +280,6 @@ export const accountsSchema = z
           ],
         ],
       }),
-  })
-  .meta({
-    description:
-      "Personnes suivies et comptes de service. Ce fichier nomme, il ne vit donc pas nécessairement dans le dépôt du code.",
-  });
-
-/**
- * Les règles du produit : des seuils, un vocabulaire, deux catalogues. Rien n'y
- * désigne quiconque, et tout y a un défaut raisonnable, si bien qu'une instance qui
- * ne fournirait pas ce fichier fonctionnerait quand même.
- */
-export const configSchema = z
-  .strictObject({
-    version,
-
     startups: z
       .strictObject({
         terminalPhases: z
@@ -428,24 +387,6 @@ export const configSchema = z
       .prefault({})
       .meta({ description: "Les délais et les proportions qui gouvernent les décisions." }),
 
-    systems: z
-      .array(systemSchema)
-      .default([])
-      .meta({
-        description:
-          "Réservé : catalogue des systèmes couverts. Aucun code ne le lit encore, le catalogue vit pour l'instant dans la documentation d'architecture.",
-        examples: [
-          [
-            {
-              key: "mon-systeme",
-              label: "Mon système",
-              criticality: "medium",
-              runbook: "https://exemple.org/procedures/mon-systeme",
-            },
-          ],
-        ],
-      }),
-
     profiles: z
       .array(profileSchema)
       .refine(
@@ -501,12 +442,10 @@ export const configSchema = z
       "Règles du produit : seuils, vocabulaire, catalogues. Rien n'y désigne personne et tout y a un défaut raisonnable.",
   });
 
-export type Accounts = z.infer<typeof accountsSchema>;
-export type Config = z.infer<typeof configSchema>;
+export const policySchema = declareSchema;
 
 /**
- * Les deux fichiers réunis, tels que le reste du code les consomme. La version de
- * chacun a servi à les accepter, elle n'a plus rien à dire ensuite : c'est une
- * propriété du fichier, pas de la politique.
+ * Ce que le reste du code consomme. La version a servi à accepter le fichier, elle n'a
+ * plus rien à dire ensuite : c'est une propriété du fichier, pas de la politique.
  */
-export type Policy = Omit<Accounts, "version"> & Omit<Config, "version">;
+export type Policy = Omit<z.infer<typeof declareSchema>, "version">;

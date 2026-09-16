@@ -70,8 +70,8 @@ export default async function ComptesDeServicePage() {
 
       {avecRevue.length === 0 ? (
         <p>
-          Aucun compte de service. Ces comptes sont déclarés dans <code>config/accounts.yaml</code>{" "}
-          et la collecte les reporte ici : ils ne se découvrent pas.
+          Aucun compte de service. Ces comptes sont déclarés dans <code>config/config.yaml</code> et
+          la collecte les reporte ici : ils ne se découvrent pas.
         </p>
       ) : (
         <>
@@ -129,11 +129,11 @@ export default async function ComptesDeServicePage() {
               <h2 className={fr.cx("fr-h5")}>Comptes retirés de la politique</h2>
               <p>
                 {retires} compte{retires > 1 ? "s" : ""} ne figure{retires > 1 ? "nt" : ""} plus
-                dans <code>config/accounts.yaml</code> mais reste{retires > 1 ? "nt" : ""} en base.
-                La collecte ne supprime rien : les accès du compte existent toujours sur les
-                systèmes couverts. Coupez-les d'abord, puis supprimez la ligne à la main : l'effacer
-                avant ferait perdre son propriétaire et le rattachement de ses comptes, qui
-                reviendraient comme comptes isolés à la collecte suivante.
+                dans <code>config/config.yaml</code> mais reste{retires > 1 ? "nt" : ""} en base. La
+                collecte ne supprime rien : les accès du compte existent toujours sur les systèmes
+                couverts. Coupez-les d'abord, puis supprimez la ligne à la main : l'effacer avant
+                ferait perdre son propriétaire et le rattachement de ses comptes, qui reviendraient
+                comme comptes isolés à la collecte suivante.
               </p>
             </section>
           ) : null}
