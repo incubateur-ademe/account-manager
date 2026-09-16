@@ -6,7 +6,6 @@ import {
 import type { MatchMethod } from "@/generated/prisma/enums";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
-import { policy } from "@/lib/policy";
 
 export interface ResultatRapprochement {
   examinees: number;
@@ -49,18 +48,23 @@ export async function rapprocherIdentites(correlationId: string): Promise<Result
         communicationEmail: true,
       },
     }),
-    prisma.serviceAccount.findMany({ select: { id: true, key: true } }),
+    // Les identités déjà rattachées à un compte de service, et elles seules. Un compte
+    // machine se reconnaît parce que quelqu'un l'a dit une fois, depuis l'écran : la
+    // collecte ne devine pas qu'un compte n'est pas humain, et le deviner reviendrait à
+    // décider qu'une personne n'en est pas une.
+    prisma.serviceAccount.findMany({
+      select: {
+        id: true,
+        key: true,
+        identities: { select: { provider: true, externalId: true } },
+      },
+    }),
   ]);
 
-  // Les identités d'un compte de service sont déclarées dans la politique, pas
-  // constatées : c'est une affirmation de l'incubateur sur ce qu'il possède.
-  const declarees = new Map(
-    policy().serviceAccounts.map((compte) => [compte.key, compte.identities]),
-  );
   const comptesConnus: CompteDeServiceConnu[] = comptes.map((compte) => ({
     id: compte.id,
     key: compte.key,
-    identites: declarees.get(compte.key) ?? [],
+    identites: compte.identities,
   }));
 
   let rattachees = 0;

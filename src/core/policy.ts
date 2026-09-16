@@ -25,75 +25,6 @@ const version = z.literal(1).meta({
   examples: [1],
 });
 
-const serviceAccountSchema = z
-  .strictObject({
-    key: z
-      .string()
-      .min(1)
-      .meta({
-        description:
-          "Identifiant stable du compte, qui lui sert d'identité en base. Le changer crée un nouveau compte plutôt que de renommer l'ancien.",
-        examples: ["bot-de-deploiement"],
-      }),
-    label: z
-      .string()
-      .min(1)
-      .meta({
-        description: "Nom lisible, tel qu'il apparaît à l'écran.",
-        examples: ["Bot de déploiement"],
-      }),
-    purpose: z
-      .string()
-      .min(1)
-      .meta({
-        description:
-          "À quoi sert ce compte. Sert à décider, lors d'une revue, s'il a encore lieu d'être.",
-        examples: ["Déclenche les mises en service des applications de l'incubateur"],
-      }),
-    ownerUsername: username.meta({
-      description:
-        "Qui répond de ce compte. Obligatoire : un compte machine sans responsable est précisément ce que cet outil cherche à éviter.",
-      examples: ["claire.durand"],
-    }),
-    reviewEveryDays: z
-      .number()
-      .int()
-      .positive()
-      .default(180)
-      .meta({
-        description:
-          "Périodicité de revue en jours. Un compte machine n'a pas de fin de mission : c'est le seul signal qu'il puisse émettre. Faute de revue enregistrée, le compte à rebours court depuis sa déclaration.",
-        examples: [180, 90],
-      }),
-    identities: z
-      .array(
-        z.strictObject({
-          provider: z
-            .string()
-            .min(1)
-            .meta({
-              description: "Clé du système cible, telle que la déclare son connecteur.",
-              examples: ["github"],
-            }),
-          externalId: z
-            .string()
-            .min(1)
-            .meta({
-              description:
-                "Identifiant du compte sur ce système, tel que la collecte le rend. Il ne se devine pas : il se relève à la première collecte.",
-              examples: ["123456789"],
-            }),
-        }),
-      )
-      .default([])
-      .meta({
-        description:
-          "Comptes que ce compte de service détient sur les systèmes cibles. Sans cette déclaration, chaque collecte les rendrait comme des comptes que personne ne réclame, à chaque passage.",
-        examples: [[{ provider: "github", externalId: "123456789" }]],
-      }),
-  })
-  .meta({ description: "Un compte non humain : bot, jeton d'intégration continue, clé d'API." });
-
 const derogationSchema = z
   .strictObject({
     targetType: z.enum(["identite", "personne"]).meta({
@@ -257,29 +188,6 @@ const declareSchema = z
       .prefault({})
       .meta({ description: "Qui l'incubateur suit, et sous quelle autorité." }),
 
-    serviceAccounts: z
-      .array(serviceAccountSchema)
-      .refine(
-        (comptes) => new Set(comptes.map((compte) => compte.key)).size === comptes.length,
-        "deux comptes de service ne peuvent pas partager la même clé, qui est leur identité en base",
-      )
-      .default([])
-      .meta({
-        description:
-          "Comptes non humains. Ils n'ont pas de fin de mission, d'où la revue périodique, et leur propriétaire est obligatoire.",
-        examples: [
-          [
-            {
-              key: "bot-de-deploiement",
-              label: "Bot de déploiement",
-              purpose: "Déclenche les mises en service des applications de l'incubateur",
-              ownerUsername: "claire.durand",
-              reviewEveryDays: 180,
-              identities: [],
-            },
-          ],
-        ],
-      }),
     startups: z
       .strictObject({
         terminalPhases: z

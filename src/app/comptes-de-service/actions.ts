@@ -49,3 +49,54 @@ export async function enregistrerRevue(_etat: EtatRevue, formData: FormData): Pr
 
   return null;
 }
+
+export type EtatDeclaration = { erreur: string } | null;
+
+/**
+ * Déclarer un compte de service, c'est affirmer qu'un accès permanent non humain existe,
+ * que quelqu'un en répond, et qu'il se revoit tous les N jours. Ces deux dernières choses
+ * sont ce qui rend un compte machine gouvernable : sans elles, il ne resterait qu'un nom
+ * dans une liste que personne ne relit.
+ *
+ * Il ne se découvre pas. La collecte ne devine pas qu'un compte n'est pas humain, et le
+ * deviner reviendrait à décider qu'une personne n'en est pas une.
+ */
+export async function declarerUnCompteDeService(
+  _etat: EtatDeclaration,
+  formData: FormData,
+): Promise<EtatDeclaration> {
+  await requireOperateur();
+
+  const key = String(formData.get("key") ?? "").trim();
+  const label = String(formData.get("label") ?? "").trim();
+  const purpose = String(formData.get("purpose") ?? "").trim();
+  const ownerUsername = String(formData.get("ownerUsername") ?? "").trim();
+  const reviewEveryDays = Number(formData.get("reviewEveryDays") ?? 180);
+
+  if (!key || !label || !purpose || !ownerUsername) {
+    return { erreur: "La clé, le libellé, l'usage et le propriétaire sont tous exigés." };
+  }
+  if (!Number.isInteger(reviewEveryDays) || reviewEveryDays < 1) {
+    return { erreur: "La revue se compte en jours entiers, au moins un." };
+  }
+
+  const existant = await prisma.serviceAccount.findUnique({ where: { key } });
+  if (existant) {
+    return { erreur: `Un compte de service porte déjà la clé « ${key} ».` };
+  }
+
+  await actionTracee({
+    action: "compte-de-service.declaration",
+    targetType: "compte-de-service",
+    targetId: key,
+    after: { label, purpose, ownerUsername, reviewEveryDays },
+    revalider: ["/comptes-de-service"],
+    ecrire: async () => {
+      await prisma.serviceAccount.create({
+        data: { key, label, purpose, ownerUsername, reviewEveryDays },
+      });
+    },
+  });
+
+  return null;
+}

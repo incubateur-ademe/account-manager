@@ -7,7 +7,7 @@ import { derogationsApplicables } from "@/lib/derogation";
 import { env } from "@/lib/env";
 import { policy } from "@/lib/policy";
 import { executerCollecte, noterSystemeNonLu } from "@/lib/sync/collecte";
-import { syncComptesDeService } from "@/lib/sync/comptes-service";
+import { comptesEnRetardDeRevue } from "@/lib/sync/comptes-service";
 import { syncConstats, syncStartups } from "@/lib/sync/constats";
 import { noterRefusDArrivees, syncPerimetre } from "@/lib/sync/perimetre";
 import { rapprocherIdentites } from "@/lib/sync/rapprochement";
@@ -94,16 +94,13 @@ export async function executerSync(
     }
   }
 
-  // Reportés avant toute lecture d'un système cible : le rapprochement attribue les
-  // comptes machine à partir de ce qui est déclaré ici, et un compte de service
-  // absent de la base ferait rendre son compte comme réclamé par personne.
-  // Indépendant du périmètre au demeurant : la politique est locale et versionnée,
-  // une panne de l'espace-membre n'empêche pas de reporter les comptes déclarés.
-  const comptes = await syncComptesDeService(now, correlationId);
-  journal(
-    `[sync] comptes de service ${comptes.status} : ${comptes.declares} déclarés, ` +
-      `${comptes.created} créés, ${comptes.updated} mis à jour, ${comptes.enRetard} en retard de revue`,
-  );
+  // Un compte de service ne se reporte plus depuis un fichier : il se déclare une fois
+  // depuis l'écran, et ce qu'il porte vit en base. Reste ce que la collecte peut en dire,
+  // à savoir ceux dont la revue est due.
+  const revues = await comptesEnRetardDeRevue(now);
+  if (revues.length > 0) {
+    journal(`[sync] comptes de service en retard de revue : ${revues.join(", ")}`);
+  }
 
   const systemesEnEchec: string[] = [];
   const nonLus: string[] = [];
@@ -243,13 +240,6 @@ export async function executerSync(
     }
   }
 
-  for (const key of comptes.horsPolitique) {
-    journal(`[sync] compte de service en base mais retiré de la politique : ${key}`);
-  }
-  for (const message of comptes.errors) {
-    journal(`[sync] compte de service ${message}`);
-  }
-
   const retenues = new Set(perimetre.retenues);
   for (const username of perimetre.introuvables) {
     journal(
@@ -298,10 +288,7 @@ export async function executerSync(
   // qu'un systeme n'etait plus lu du tout. Un systeme non lu faute de credential ne
   // compte pas : il est annonce, il est trace, et il n'y a rien a reparer cette nuit.
   const echec =
-    perimetre.status === "FAILED" ||
-    comptes.status === "FAILED" ||
-    startups.erreur !== null ||
-    systemesEnEchec.length > 0;
+    perimetre.status === "FAILED" || startups.erreur !== null || systemesEnEchec.length > 0;
 
   return { correlationId, echec };
 }

@@ -42,7 +42,6 @@ function resume(): string[] {
     `incubateur          ${politique.scope.incubator}`,
     `transverses         ${politique.scope.transverse.length}`,
     `locaux              ${politique.scope.local.length}`,
-    `comptes de service  ${politique.serviceAccounts.length}`,
     `phases terminales   ${politique.startups.terminalPhases.join(", ")}`,
     `report              ${politique.thresholds.graceDays} j`,
     `echeance proche     ${politique.thresholds.soonDays} j`,
