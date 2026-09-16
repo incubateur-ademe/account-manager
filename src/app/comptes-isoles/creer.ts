@@ -18,6 +18,28 @@ interface IdentiteIsolee {
 }
 
 /**
+ * L'état dans lequel `identiteATraiter` a laissé passer le compte, redit en clause de
+ * mise à jour. Il y est relu au moment d'écrire, et non tenu pour acquis depuis la
+ * lecture : deux opérateurs qui traitent la même ligne en même temps liraient tous deux
+ * un compte libre, et le second écraserait la décision du premier sans que rien ne le
+ * dise. Écrire sous condition fait échouer le second, et l'échec annule sa transaction.
+ */
+const ENCORE_A_TRANCHER: Prisma.ExternalIdentityWhereInput = {
+  serviceAccountId: null,
+  OR: [{ personId: null }, { matchMethod: "HEURISTIC" }],
+};
+
+/**
+ * Le compte traité entre-temps. Rendue plutôt que laissée remonter : la transaction doit
+ * échouer, mais une panne et une course ne se racontent pas pareil à qui traite.
+ */
+class CompteDejaTranche extends Error {}
+
+/** Le refus d'une clé prise nomme le geste qui reste : sans lui, il se lit comme une impasse. */
+const cleDejaPrise = (cle: string) =>
+  `Un compte de service porte déjà la clé « ${cle} » : rattachez-lui ce compte.`;
+
+/**
  * Les trois refus que partagent les deux gestes de cet écran : le compte a disparu, il
  * est déjà tenu pour une machine, ou quelqu'un l'a déjà rattaché. Un rattachement issu
  * d'une ressemblance ne compte pas : c'est la supposition que cet écran demande de
@@ -61,11 +83,12 @@ async function identiteATraiter(id: string): Promise<IdentiteIsolee | { erreur: 
  * Sans marque de clôture humaine : la situation a cessé, elle n'a pas été jugée.
  */
 async function fermerLesConstatsResolus(
+  tx: Prisma.TransactionClient,
   identiteId: string,
   raison: string,
   operateur: Utilisateur,
 ): Promise<void> {
-  const resolus = await prisma.finding.findMany({
+  const resolus = await tx.finding.findMany({
     where: { externalIdentityId: identiteId, kind: "UNREGISTERED", closedAt: null },
     select: { id: true, dedupKey: true },
   });
@@ -74,7 +97,7 @@ async function fermerLesConstatsResolus(
     return;
   }
 
-  await prisma.finding.updateMany({
+  await tx.finding.updateMany({
     where: { id: { in: resolus.map((constat) => constat.id) } },
     data: { closedAt: new Date(), closeReason: raison },
   });
@@ -143,27 +166,32 @@ export async function creerFichePourCompte(
     after: { nom, compte: `${identite.provider}:${identite.handle}` },
     revalider: ["/comptes-isoles", "/personnes", "/constats", "/"],
     ecrire: async (operateur) => {
-      const now = new Date();
-      const personne = await prisma.person.create({
-        data: {
-          username,
-          usernameFabricated: true,
-          fullname: nom,
-          attachment: "NONE",
-          source: "LOCAL",
-          startups: [],
-          firstSeenAt: now,
-          lastSeenAt: now,
-        },
-        select: { id: true },
-      });
+      await prisma.$transaction(async (tx) => {
+        const now = new Date();
+        const personne = await tx.person.create({
+          data: {
+            username,
+            usernameFabricated: true,
+            fullname: nom,
+            attachment: "NONE",
+            source: "LOCAL",
+            startups: [],
+            firstSeenAt: now,
+            lastSeenAt: now,
+          },
+          select: { id: true },
+        });
 
-      await prisma.externalIdentity.update({
-        where: { id: identite.id },
-        data: { personId: personne.id, matchMethod: "DECLARED" },
-      });
+        const rattachees = await tx.externalIdentity.updateMany({
+          where: { id: identite.id, ...ENCORE_A_TRANCHER },
+          data: { personId: personne.id, matchMethod: "DECLARED" },
+        });
+        if (rattachees.count !== 1) {
+          throw new CompteDejaTranche();
+        }
 
-      await fermerLesConstatsResolus(identite.id, `fiche créée pour ${username}`, operateur);
+        await fermerLesConstatsResolus(tx, identite.id, `fiche créée pour ${username}`, operateur);
+      });
     },
   });
 
@@ -213,9 +241,7 @@ export async function declarerCompteDeServicePourCompte(
     select: { key: true },
   });
   if (existant) {
-    return {
-      erreur: `Un compte de service porte déjà la clé « ${declaration.key} » : rattachez-lui ce compte.`,
-    };
+    return { erreur: cleDejaPrise(declaration.key) };
   }
 
   try {
@@ -226,38 +252,60 @@ export async function declarerCompteDeServicePourCompte(
       after: { ...declaration, compte: `${identite.provider}:${identite.handle}` },
       revalider: ["/comptes-isoles", "/comptes-de-service", "/constats", "/"],
       ecrire: async (operateur) => {
-        const compte = await prisma.serviceAccount.create({
-          data: declaration,
-          select: { id: true },
-        });
+        // Les trois écritures tiennent ensemble ou pas du tout. Séparées, une panne après
+        // la première laisserait une machine déclarée que rien ne porte, et son compte
+        // dans la file d'où l'on vient : deux moitiés de geste, dont aucune ne dit
+        // qu'elle attend l'autre.
+        await prisma.$transaction(async (tx) => {
+          const compte = await tx.serviceAccount.create({
+            data: declaration,
+            select: { id: true },
+          });
 
-        await prisma.externalIdentity.update({
-          where: { id: identite.id },
-          data: { serviceAccountId: compte.id, personId: null, matchMethod: "DECLARED" },
-        });
+          const rattachees = await tx.externalIdentity.updateMany({
+            where: { id: identite.id, ...ENCORE_A_TRANCHER },
+            data: { serviceAccountId: compte.id, personId: null, matchMethod: "DECLARED" },
+          });
+          if (rattachees.count !== 1) {
+            throw new CompteDejaTranche();
+          }
 
-        // Le compte de service porte la trace de sa déclaration ; l'identité, elle, n'en
-        // aurait aucune, et c'est elle qu'on retrouve en cherchant ce qu'un compte
-        // constaté est devenu.
-        audit({
-          actorKind: "HUMAN",
-          actorUsername: operateur.username,
-          action: "identite.rattachement",
-          targetType: "identite",
-          targetId: `${identite.provider}:${identite.handle}`,
-          after: { cible: declaration.key, methode: "DECLARED", voie: operateur.voie },
-          result: "SUCCESS",
-        });
+          // Le compte de service porte la trace de sa déclaration ; l'identité, elle,
+          // n'en aurait aucune, et c'est elle qu'on retrouve en cherchant ce qu'un compte
+          // constaté est devenu.
+          audit({
+            actorKind: "HUMAN",
+            actorUsername: operateur.username,
+            action: "identite.rattachement",
+            targetType: "identite",
+            targetId: `${identite.provider}:${identite.handle}`,
+            after: { cible: declaration.key, methode: "DECLARED", voie: operateur.voie },
+            result: "SUCCESS",
+          });
 
-        await fermerLesConstatsResolus(identite.id, `rattaché à ${declaration.key}`, operateur);
+          await fermerLesConstatsResolus(
+            tx,
+            identite.id,
+            `rattaché à ${declaration.key}`,
+            operateur,
+          );
+        });
       },
     });
   } catch (cause: unknown) {
     // Deux saisies simultanées lisent la même absence avant que l'une n'écrive. Le refus
     // de la base est alors le bon, et le rendre comme une panne enverrait chercher un
-    // incident là où il n'y a qu'une clé déjà prise.
+    // incident là où il n'y a qu'une clé déjà prise. Le même message que le contrôle
+    // préalable, et pour la même raison : les deux chemins mènent au même état, où le
+    // rattachement reste ouvert, et un message qui tairait ce recours se lirait comme
+    // une impasse.
     if (cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === "P2002") {
-      return { erreur: `Un compte de service porte déjà la clé « ${declaration.key} ».` };
+      return { erreur: cleDejaPrise(declaration.key) };
+    }
+    if (cause instanceof CompteDejaTranche) {
+      return {
+        erreur: "Ce compte vient d'être traité ailleurs : rouvrez la file pour voir où il en est.",
+      };
     }
     throw cause;
   }

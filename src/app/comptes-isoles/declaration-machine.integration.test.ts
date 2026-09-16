@@ -155,6 +155,33 @@ describe("déclarer une machine depuis la file des comptes isolés", () => {
     ).toBe(180);
   });
 
+  it("ne déclare pas deux machines pour un même compte, quand le geste part deux fois", async () => {
+    // Given un compte déjà déclaré une fois, ce qu'un double clic ou un retour en arrière
+    // produit sans intention particulière.
+    const identiteId = await semerUnCompteIsole();
+    expect(await declarerCompteDeServicePourCompte(null, saisie(identiteId))).toBeNull();
+
+    // When le geste repart, sous une autre clé.
+    const refus = await declarerCompteDeServicePourCompte(
+      null,
+      saisie(identiteId, { key: "un-autre-bot" }),
+    );
+
+    // Then c'est refusé avant toute écriture, et surtout aucun second compte de service
+    // n'est né : il resterait sans rattachement, puisqu'un compte constaté n'en porte
+    // qu'un, et se revoirait pour toujours sans que rien ne dise ce qu'il est.
+    expect(refus?.erreur).toBe("Ce compte est déclaré comme compte de service.");
+    expect(await prisma.serviceAccount.count()).toBe(1);
+    expect(
+      (
+        await prisma.externalIdentity.findUniqueOrThrow({
+          where: { id: identiteId },
+          select: { serviceAccount: { select: { key: true } } },
+        })
+      ).serviceAccount?.key,
+    ).toBe(SAISIE.key);
+  });
+
   it("refuse un compte qu'on a déjà tranché, pour ne pas le trancher deux fois", async () => {
     // Given un compte constaté qu'une opératrice a déjà rattaché à une personne.
     const personne = await prisma.person.create({
