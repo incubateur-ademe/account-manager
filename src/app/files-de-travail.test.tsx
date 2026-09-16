@@ -150,6 +150,15 @@ const MODALE_RATTACHEMENT = "traiter-compte-isole";
 const MODALE_CLOTURE = "clore-constat";
 const MODALE_TOLERANCE = "tolerer-constat";
 
+const MACHINE_GITHUB = {
+  provider: "github",
+  systemeLibelle: "GitHub",
+  key: "github-m-marceau",
+  label: "GitHub · m-marceau",
+  ownerUsername: "operatrice.exemple",
+  reviewEveryDays: REVUE_PAR_DEFAUT,
+};
+
 const ORPHELIN: LigneCompteIsole = {
   id: "id-marceau",
   provider: "github",
@@ -159,6 +168,7 @@ const ORPHELIN: LigneCompteIsole = {
   propositions: [],
   acces: [],
   metadonnees: [],
+  machine: MACHINE_GITHUB,
   vuDepuis: "12/03/2025",
   vuEncore: "02/09/2025",
 };
@@ -185,6 +195,14 @@ const RESSEMBLANT: LigneCompteIsole = {
   ],
   acces: ["membre sur Espace Suivi des friches", "invité sur Espace Incubateur"],
   metadonnees: [{ libelle: "Adresse", valeur: "solene.brunel@exemple.org" }],
+  machine: {
+    provider: "notion",
+    systemeLibelle: "Notion",
+    key: "notion-solene-brunel-exemple",
+    label: "Notion · solene.brunel@exemple.org",
+    ownerUsername: "operatrice.exemple",
+    reviewEveryDays: REVUE_PAR_DEFAUT,
+  },
   vuDepuis: "04/01/2025",
   vuEncore: "02/09/2025",
 };
@@ -479,10 +497,37 @@ describe("La file des comptes isolés", () => {
     // fiche disparaît : offrir les deux à la fois ramènerait le geste qu'on vient
     // d'écarter.
     expect(within(modale).queryByLabelText(/Nom de la personne/)).toBeNull();
-    await utilisateur.type(within(modale).getByLabelText(/^Clé/), "scalingo-deploy-bot");
-    await utilisateur.type(within(modale).getByLabelText(/^Libellé/), "Bot de déploiement");
-    await utilisateur.type(within(modale).getByLabelText(/^Usage/), "Déploie les applications");
-    await utilisateur.type(within(modale).getByLabelText(/^Propriétaire/), "claire.durand");
+
+    // Then tout ce que le compte constaté sait dire est déjà là : la clé dérivée par le
+    // connecteur, le libellé qui garde le compte tel qu'il se lit chez lui, la personne
+    // qui déclare comme propriétaire, et la revue par défaut.
+    const cle = within(modale).getByLabelText(/^Clé/) as HTMLInputElement;
+    const libelle = within(modale).getByLabelText(/^Libellé/) as HTMLInputElement;
+    const proprietaire = within(modale).getByLabelText(/^Propriétaire/) as HTMLInputElement;
+    const revue = within(modale).getByLabelText(/^Revue tous les/) as HTMLInputElement;
+    expect(cle.value).toBe(MACHINE_GITHUB.key);
+    expect(libelle.value).toBe(MACHINE_GITHUB.label);
+    expect(proprietaire.value).toBe(MACHINE_GITHUB.ownerUsername);
+    expect(revue.value).toBe(String(REVUE_PAR_DEFAUT));
+
+    // Then l'usage, lui, reste vide, et c'est le seul. Il existe pour dire ce que ce
+    // compte fait, en une phrase lisible dans deux ans : le pré-remplir le tuerait,
+    // personne ne remplaçant un champ déjà rempli.
+    const usage = within(modale).getByLabelText(/^Usage/) as HTMLInputElement;
+    expect(usage.value).toBe("");
+
+    // Then le système s'affiche mais ne se saisit pas, et surtout il ne part pas : le
+    // serveur le relit du compte constaté, et un champ posté ne doit pas pouvoir ranger
+    // cette machine sous un autre système que celui où on l'a vue.
+    const systeme = within(modale).getByLabelText(/^Système/) as HTMLInputElement;
+    expect(systeme.value).toBe(MACHINE_GITHUB.systemeLibelle);
+    expect(systeme.disabled).toBe(true);
+    expect(systeme.name).toBe("");
+
+    // When on complète l'usage et qu'on raccourcit la clé, qui reste une proposition.
+    await utilisateur.type(usage, "Automatise les livraisons");
+    await utilisateur.clear(cle);
+    await utilisateur.type(cle, "github-marceau-bot");
     await utilisateur.click(
       within(modale).getByRole("button", { name: "Déclarer le compte de service" }),
     );
@@ -497,12 +542,12 @@ describe("La file des comptes isolés", () => {
     // comprise : sans elle, le serveur retomberait sur une périodicité que personne n'a
     // choisie, et un compte machine ne se remet en question que par sa revue.
     const declaration = doubles.declarer.mock.calls[0]?.[1] as FormData;
-    expect(Object.fromEntries(declaration)).toMatchObject({
+    expect(Object.fromEntries(declaration)).toEqual({
       id: ORPHELIN.id,
-      key: "scalingo-deploy-bot",
-      label: "Bot de déploiement",
-      purpose: "Déploie les applications",
-      ownerUsername: "claire.durand",
+      key: "github-marceau-bot",
+      label: MACHINE_GITHUB.label,
+      purpose: "Automatise les livraisons",
+      ownerUsername: MACHINE_GITHUB.ownerUsername,
       reviewEveryDays: String(REVUE_PAR_DEFAUT),
     });
   });

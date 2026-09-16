@@ -12,6 +12,7 @@ function contrat(key: string, ajouts: Partial<ConnectorContract> = {}): Connecto
     label: key,
     criticality: "low",
     runbook: "à la main",
+    accountSlug: ({ handle }) => handle,
     credentials: [],
     capabilities: {},
     scopeSchema: z.object({}),

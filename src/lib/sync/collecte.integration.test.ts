@@ -54,6 +54,7 @@ function connecteurQuiLit(releve: () => CollectResult): Connector {
       label: "Atelier",
       criticality: "low",
       runbook: "Lire la console de l'atelier.",
+      accountSlug: ({ handle }) => handle,
       credentials: [],
       capabilities: { list: [{ requires: [], tier: "auto" }] },
       scopeSchema: z.object({}),

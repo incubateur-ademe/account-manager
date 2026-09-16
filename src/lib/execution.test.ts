@@ -307,6 +307,7 @@ const FORGE: Connector = {
     label: "Forge",
     criticality: "medium",
     runbook: "Console de la forge, onglet Membres, Inviter.",
+    accountSlug: ({ handle }) => handle,
     credentials: [],
     capabilities: {
       grant: [
@@ -383,6 +384,7 @@ const ATELIER: Connector = {
     label: "Atelier",
     criticality: "low",
     runbook: "Inviter la personne depuis la console de l'atelier.",
+    accountSlug: ({ handle }) => handle,
     credentials: [],
     capabilities: { grant: [{ requires: [], tier: "manual" }] },
     scopeSchema: z.strictObject({}),
@@ -409,6 +411,7 @@ const COFFRE: Connector = {
     label: "Coffre",
     criticality: "low",
     runbook: "Retirer la personne des collections du coffre.",
+    accountSlug: ({ handle }) => handle,
     credentials: [],
     capabilities: { revoke: [{ requires: [], tier: "manual" }] },
     scopeSchema: z.strictObject({}),

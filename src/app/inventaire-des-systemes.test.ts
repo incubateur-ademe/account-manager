@@ -288,6 +288,7 @@ function contratDe(
     label: libelle,
     criticality: "medium",
     runbook: `Marche à suivre de ${libelle}.`,
+    accountSlug: ({ handle }) => handle,
     credentials: [],
     capabilities: capabilities as ConnectorContract["capabilities"],
     scopeSchema: z.strictObject({}),

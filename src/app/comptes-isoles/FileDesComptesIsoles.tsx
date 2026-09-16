@@ -6,6 +6,7 @@ import { Button } from "@codegouvfr/react-dsfr/Button";
 import { createModal } from "@codegouvfr/react-dsfr/Modal";
 import { useState } from "react";
 
+import type { PropositionDeMachine } from "@/core/compte-de-service";
 import type { SuggestionRattachement } from "@/core/suggestion-rattachement";
 import type { Suggestion } from "@/ui/ChampAvecListe";
 import { useCleDOuverture } from "@/ui/modale";
@@ -24,6 +25,12 @@ export interface LigneCompteIsole {
   acces: readonly string[];
   /** Ce que le connecteur sait du compte, rendu tel quel et jamais interprété. */
   metadonnees: readonly { libelle: string; valeur: string }[];
+  /**
+   * Ce qu'un compte de service déclaré depuis ce compte porterait, déduit du système qui
+   * l'a relevé. Nul quand aucun connecteur enregistré ne sert ce système : la déclaration
+   * n'a alors nulle part où ranger la machine, et l'écran ne l'offre pas.
+   */
+  machine: PropositionDeMachine | null;
   vuDepuis: string;
   vuEncore: string;
 }
@@ -185,6 +192,7 @@ export function FileDesComptesIsoles({
               id={choisi.id}
               cibles={cibles}
               propositions={choisi.propositions}
+              machine={choisi.machine}
               onSucces={modale.close}
             />
           </>

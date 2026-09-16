@@ -22,6 +22,7 @@ vi.mock("@/lib/session", () => ({
 }));
 
 const { declarerCompteDeServicePourCompte } = await import("./creer");
+const { rattacherIdentite } = await import("./actions");
 
 const SAISIE = {
   key: "bot-de-deploiement",
@@ -66,20 +67,28 @@ describe("déclarer une machine depuis la file des comptes isolés", () => {
       },
     });
 
-    // When on déclare que c'est une machine.
-    const refus = await declarerCompteDeServicePourCompte(null, saisie(identiteId));
+    // When on déclare que c'est une machine, avec un système posté qui ment. Un formulaire
+    // n'en envoie pas, l'écran l'affichant en lecture seule, mais rien n'empêche de le
+    // poster à la main, et c'est précisément ce que l'action ne doit pas suivre.
+    const formulaire = saisie(identiteId);
+    formulaire.set("provider", "notion");
+    const refus = await declarerCompteDeServicePourCompte(null, formulaire);
 
     // Then rien n'est refusé, et le compte de service existe avec la revue saisie et non
     // celle du défaut : une périodicité que personne n'a choisie n'engage personne.
     expect(refus).toBeNull();
     const compte = await prisma.serviceAccount.findUnique({
       where: { key: SAISIE.key },
-      select: { id: true, label: true, ownerUsername: true, reviewEveryDays: true },
+      select: { id: true, label: true, ownerUsername: true, reviewEveryDays: true, provider: true },
     });
     expect(compte).toMatchObject({
       label: SAISIE.label,
       ownerUsername: SAISIE.ownerUsername,
       reviewEveryDays: 90,
+      // Le système vient du compte relevé et jamais du formulaire : un champ posté à la
+      // main rangerait cette machine sous un système où elle n'a jamais été vue, et la
+      // fiche de ce système l'y afficherait ensuite sans réserve.
+      provider: "scalingo",
     });
 
     // Then le compte constaté pointe vers lui, et vers aucune personne. C'est la seule
@@ -142,7 +151,7 @@ describe("déclarer une machine depuis la file des comptes isolés", () => {
   it("refuse une clé déjà prise sans toucher au compte, et renvoie vers le rattachement", async () => {
     // Given un compte de service déjà déclaré, et un second compte constaté isolé.
     await prisma.serviceAccount.create({
-      data: { ...SAISIE, reviewEveryDays: 180 },
+      data: { ...SAISIE, reviewEveryDays: 180, provider: "scalingo" },
     });
     const identiteId = await semerUnCompteIsole();
 
@@ -191,6 +200,42 @@ describe("déclarer une machine depuis la file des comptes isolés", () => {
         })
       ).serviceAccount?.key,
     ).toBe(SAISIE.key);
+  });
+
+  it("refuse de rattacher un compte à la machine d'un autre système", async () => {
+    // Given un compte de service déclaré sur Scalingo, et un compte constaté sur GitHub.
+    await prisma.serviceAccount.create({
+      data: { ...SAISIE, reviewEveryDays: 180, provider: "scalingo" },
+    });
+    const identite = await prisma.externalIdentity.create({
+      data: {
+        provider: "github",
+        externalId: "MDQ6VXNlcjEwNDI=",
+        handle: "m-marceau",
+        matchMethod: "NONE",
+      },
+      select: { id: true },
+    });
+
+    // When on tente de rattacher l'un à l'autre depuis le champ libre de la file.
+    const formulaire = new FormData();
+    formulaire.set("id", identite.id);
+    formulaire.set("cible", SAISIE.key);
+    const refus = await rattacherIdentite(null, formulaire);
+
+    // Then c'est refusé, et le message nomme les deux systèmes : sans eux, le refus se
+    // lirait comme une clé mal saisie.
+    expect(refus?.erreur).toContain("scalingo");
+    expect(refus?.erreur).toContain("github");
+
+    // Then rien n'a bougé. La fiche d'un système liste ses comptes machine, et un
+    // rattachement croisé y ferait apparaître ce compte sous le mauvais.
+    expect(
+      await prisma.externalIdentity.findUniqueOrThrow({
+        where: { id: identite.id },
+        select: { serviceAccountId: true, personId: true },
+      }),
+    ).toEqual({ serviceAccountId: null, personId: null });
   });
 
   it("refuse un compte qu'on a déjà tranché, pour ne pas le trancher deux fois", async () => {
