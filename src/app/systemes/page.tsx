@@ -241,9 +241,9 @@ export default async function SystemesPage() {
 
       <p className={fr.cx("fr-text--sm")}>
         Ce que l'outil sait faire sur chaque système, tel que ses credentials le permettent
-        aujourd'hui et non tel que le code l'espère. Un chemin automatique qui tombe redevient un
-        chemin manuel : la marche à suivre est donc toujours affichée, même là où tout est
-        automatique.
+        aujourd'hui et non tel que le code l'espère. Un octroi ou un retrait automatique qui tombe
+        redevient un geste à faire à la main ; une lecture qui tombe, elle, s'arrête, et la marche à
+        suivre dit alors quoi vérifier pour qu'elle reparte.
       </p>
 
       {profils.etat === "illisible" ? (
@@ -297,7 +297,15 @@ export default async function SystemesPage() {
                 </span>
               ),
               <span key="r" className={fr.cx("fr-text--sm")}>
-                {resolue.runbook}
+                {/* Une capacité qu'aucune voie ne déclare n'a pas de marche à suivre : le
+                    socle retombe alors sur le runbook du contrat, qui dit comment retirer
+                    quelqu'un, et l'afficher là ferait répondre à une question que personne
+                    n'a posée. Déclarée mais hors d'atteinte, c'est l'inverse : il y a
+                    justement quelque chose à faire, et c'est celle de la voie qu'on ne
+                    peut pas emprunter aujourd'hui. */}
+                {resolue.decl || resolue.degradedFrom
+                  ? resolue.runbook
+                  : "aucune, ce système ne le fait pas"}
               </span>,
             ])}
           />

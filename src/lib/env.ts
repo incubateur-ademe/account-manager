@@ -58,6 +58,15 @@ const coreSchema = z.object({
    * et il porte l'écriture sur le workspace entier.
    */
   NOTION_SCIM_TOKEN: jetonFacultatif,
+
+  /**
+   * Facultatif pour la même raison. Sa portée est le compte entier : un jeton
+   * Scalingo hérite de tous les droits du compte qui l'a créé, sur chaque
+   * application et chaque base, et le fournisseur ne sait pas le restreindre.
+   * D'où un seul jeton là où GitHub en porte deux, séparer lecture et écriture ne
+   * cloisonnant rien quand les deux héritent du même compte.
+   */
+  SCALINGO_API_TOKEN: jetonFacultatif,
 });
 
 /**

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { CONNECTEURS } from "@/connectors";
-import type { Connector, Intent, PlannedStep, RunContext } from "@/core/connector";
+import type { Connector, Intent, ObservedAccess, PlannedStep, RunContext } from "@/core/connector";
 import {
   type CompteCouvrable,
   type Derogation,
@@ -53,6 +53,7 @@ const INTENTION: Record<SensDossier, Intent["kind"]> = {
 const AUCUN_SYSTEME: ComptesDuDepart = {
   ...{ revocables: [], observes: [], nonConfirmes: [] },
   comptes: [],
+  accesParSysteme: new Map(),
 };
 
 const AUCUN_OCTROI = { etapes: [], refus: [] } as const;
@@ -69,15 +70,64 @@ const AUCUN_OCTROI = { etapes: [], refus: [] } as const;
 interface ComptesDuDepart extends SystemesDuDepart {
   /** Les comptes un par un, que la répartition par système ne porte pas. */
   comptes: readonly CompteCouvrable[];
+  /**
+   * Les accès sûrs, par système. Un connecteur ne sait pas sur quelles ressources une
+   * personne détient un accès, et les relire à chaque calcul de plan coûterait une lecture
+   * distante là où le socle les a déjà en base.
+   */
+  accesParSysteme: ReadonlyMap<string, readonly ObservedAccess[]>;
+  /** L'adresse dont le socle répond, pour les systèmes qui visent une adresse et non un compte. */
+  adresse?: string;
 }
 
 async function systemesDeLaPersonne(personId: string): Promise<ComptesDuDepart> {
-  const identites = await prisma.externalIdentity.findMany({
-    where: { personId, vanishedAt: null },
-    select: { provider: true, externalId: true, matchMethod: true },
-  });
+  const [identites, fiche] = await Promise.all([
+    prisma.externalIdentity.findMany({
+      where: { personId, vanishedAt: null },
+      select: {
+        provider: true,
+        externalId: true,
+        matchMethod: true,
+        // Les accès vivants seulement : un accès disparu dit qu'il n'y a plus rien à couper,
+        // et proposer de le retirer enverrait quelqu'un chercher ce qui n'est plus là.
+        grants: {
+          where: { vanishedAt: null },
+          select: { role: true, resource: { select: { externalId: true, label: true } } },
+        },
+      },
+    }),
+    // Celle de communication d'abord : c'est celle que la personne lit, donc celle sur
+    // laquelle un système qui invite par adresse a le plus de chances de la trouver.
+    prisma.person.findUnique({
+      where: { id: personId },
+      select: { primaryEmail: true, communicationEmail: true },
+    }),
+  ]);
+
+  const accesParSysteme = new Map<string, ObservedAccess[]>();
+  for (const identite of identites) {
+    // Une ressemblance n'ouvre aucune coupure : la même règle qu'au-dessus, appliquée à ce
+    // qu'on transmet, sans quoi un connecteur proposerait de couper l'accès d'un homonyme.
+    if (!autoriseUneRevocation(identite.matchMethod)) {
+      continue;
+    }
+    const vus = accesParSysteme.get(identite.provider) ?? [];
+    for (const acces of identite.grants) {
+      vus.push({
+        identityExternalId: identite.externalId,
+        resourceExternalId: acces.resource.externalId,
+        resourceLabel: acces.resource.label,
+        role: acces.role,
+      });
+    }
+    accesParSysteme.set(identite.provider, vus);
+  }
+
+  const adresse = fiche?.communicationEmail ?? fiche?.primaryEmail ?? undefined;
 
   return {
+    accesParSysteme,
+    ...(adresse === undefined ? {} : { adresse }),
     ...systemesDuDepart(
       identites.map((identite) => ({
         provider: identite.provider,
@@ -185,6 +235,7 @@ export async function calculerPlan(
   // arrivée serait une requête pour rien, et les afficher ferait passer un accès
   // existant pour un manque.
   const constates = sens === "OFFBOARDING" ? await systemesDeLaPersonne(personId) : AUCUN_SYSTEME;
+  const adresse = constates.adresse;
   const presente = new Set(constates.revocables);
 
   const ctx: RunContext = {
@@ -211,7 +262,17 @@ export async function calculerPlan(
     // le scope validé, et les deux voies ne doivent jamais proposer le même geste.
     proposees.push(
       ...(await connecteur.plan(
-        { kind: INTENTION[sens], subject: { kind: "person", username } },
+        {
+          kind: INTENTION[sens],
+          subject: {
+            kind: "person",
+            username,
+            ...(adresse === undefined ? {} : { email: adresse }),
+            ...(constates.accesParSysteme.has(connecteur.contract.key)
+              ? { acces: constates.accesParSysteme.get(connecteur.contract.key) }
+              : {}),
+          },
+        },
         ctx,
       )),
     );

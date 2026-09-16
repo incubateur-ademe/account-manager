@@ -68,8 +68,11 @@ vi.mock("@/lib/db", async () =>
         Promise.resolve({ githubLogin: base.githubLogin, startups: [], startupAssignments: [] }),
     },
     externalIdentity: {
-      findMany: () =>
-        Promise.resolve(base.identites.map((identite) => ({ ...identite, vanishedAt: null }))),
+      findMany: (options?: { where?: unknown }) =>
+        Promise.resolve(
+          // Prisma rend toujours le tableau d'une relation sélectionnée, vide s'il le faut.
+          base.identites.map((identite) => ({ grants: [], ...identite, vanishedAt: null })),
+        ) as unknown as Promise<unknown[]> & { options?: typeof options },
     },
     planTemplate: { findMany: () => Promise.resolve([]) },
     derogation: { findMany: () => Promise.resolve([]) },
@@ -187,7 +190,7 @@ describe("une arrivée ouvre pour de vrai ce qu'un profil déclare", () => {
     // est celle de l'octroi : tous ceux qui déclarent savoir donner, et non ceux où un
     // compte est observé, puisqu'à l'arrivée elle n'en a par définition aucun
     expect(plan.refus).toEqual([]);
-    expect(plan.systemes).toEqual(["github", "notion"]);
+    expect(plan.systemes).toEqual(["github", "notion", "scalingo"]);
     expect(plan.etapes).toHaveLength(2);
 
     // Then l'étape GitHub est celle du connecteur et non un repli inventé par le

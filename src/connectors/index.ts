@@ -4,6 +4,7 @@ import { configurationDe } from "@/lib/configuration-connecteur";
 
 import { CONTRAT_GITHUB, type ConfigGithub, creerGithub, examinerScopeGithub } from "./github";
 import { notion } from "./notion";
+import { scalingo } from "./scalingo";
 
 const configGithub = () => configurationDe<ConfigGithub>(CONTRAT_GITHUB);
 
@@ -15,7 +16,7 @@ const configGithub = () => configurationDe<ConfigGithub>(CONTRAT_GITHUB);
  * C'est aussi ici que chacun reçoit sa configuration, sous une forme paresseuse :
  * la politique n'est lue qu'au premier connecteur qui s'en sert.
  */
-export const CONNECTEURS: readonly Connector[] = [creerGithub(configGithub), notion];
+export const CONNECTEURS: readonly Connector[] = [creerGithub(configGithub), notion, scalingo];
 
 /**
  * Ce que chaque connecteur sait des scopes qu'un profil lui adresse et qui ne tient

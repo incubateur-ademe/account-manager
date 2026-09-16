@@ -215,10 +215,13 @@ vi.mock("@/lib/db", () => ({
     externalIdentity: {
       findMany: ({ where }: { where: { personId: string; vanishedAt: null } }) =>
         Promise.resolve(
-          base.identites.filter(
-            (identite) =>
-              identite.personId === where.personId && identite.vanishedAt === where.vanishedAt,
-          ),
+          base.identites
+            .filter(
+              (identite) =>
+                identite.personId === where.personId && identite.vanishedAt === where.vanishedAt,
+            )
+            // Prisma rend toujours le tableau d'une relation sélectionnée, vide s'il le faut.
+            .map((identite) => ({ grants: [], ...identite })),
         ),
     },
     auditEvent: {
