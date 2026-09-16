@@ -30,6 +30,7 @@ type ChargeurTuiles = () => Promise<{ tuiles: readonly TuileDeConnecteur[] }>;
  */
 const TUILES: Readonly<Record<string, ChargeurTuiles>> = {
   github: () => import("./github/tuiles"),
+  scalingo: () => import("./scalingo/tuiles"),
 };
 
 export function tuilesDe(cle: string): ChargeurTuiles | undefined {
