@@ -75,6 +75,8 @@ const regionSchema = z.object({ name: z.string().min(1), api: z.url() });
 
 const enveloppeRegions = z.object({ regions: z.array(z.unknown()).optional() });
 
+const compteSchema = z.object({ user: z.object({ id: z.string().min(1) }) });
+
 const proprietaireSchema = z.object({
   id: z.string().min(1),
   email: z.string().min(1),
@@ -276,6 +278,7 @@ export async function lireApplications(
   lire: LecteurScalingo,
   region: string,
   api: string,
+  proprietaire: string,
 ): Promise<{
   applications: ApplicationSituee[];
   /** Toutes celles que l'API a rendues, filles comprises : le recoupement en a besoin. */
@@ -318,6 +321,11 @@ export async function lireApplications(
 
   const retenues = lues.items
     .filter((application) => !application.parent_app_name)
+    // Et seulement celles que l'incubateur possède. Le compte voit aussi les applications
+    // d'autres structures dont il n'est que collaborateur : leurs collaborateurs ne
+    // relèvent pas de cet outil, et les relever ferait ouvrir des constats sur des gens
+    // dont personne ici ne décide des accès.
+    .filter((application) => application.owner.id === proprietaire)
     .map((application) => ({ application, region }));
 
   if (lues.items.length === 0) {
@@ -455,6 +463,29 @@ export function recouper(
 }
 
 /**
+ * Le compte que porte le jeton, et rien d'autre : c'est lui qui dit quelles applications
+ * appartiennent à l'incubateur. Son échec est fatal, comme celui des régions : sans lui, le
+ * périmètre ne se décide pas, et relever tout ce que le compte voit ferait entrer des
+ * applications d'autres structures, dont il n'est que collaborateur.
+ */
+export async function lireCompte(
+  lire: LecteurScalingo,
+): Promise<{ id?: string; erreurs: CollectError[] }> {
+  let brut: unknown;
+  try {
+    brut = await lire(`${HOTE_AUTH}/v1/users/self`);
+  } catch (cause: unknown) {
+    return { erreurs: [{ scope: "compte", message: message(cause) }] };
+  }
+
+  const lu = compteSchema.safeParse(brut);
+
+  return lu.success
+    ? { id: lu.data.user.id, erreurs: [] }
+    : { erreurs: [{ scope: "compte", message: "le compte du jeton n'est pas lisible" }] };
+}
+
+/**
  * Les régions se lisent avant tout le reste, et leur échec est fatal : ne pas savoir où
  * chercher n'autorise pas à conclure que le parc est ailleurs vide.
  */
@@ -486,7 +517,19 @@ export async function lireParc(
   pause: Pause = attendre,
 ): Promise<LectureDuParc> {
   const vide = new Map<string, Collaborateur[]>();
-  const regions = await lireRegions(lire);
+  const [compte, regions] = [await lireCompte(lire), await lireRegions(lire)];
+
+  if (compte.id === undefined) {
+    const [premiere, ...reste] = [...compte.erreurs, ...regions.erreurs];
+    return {
+      applications: [],
+      parApplication: vide,
+      erreurs: premiere
+        ? [premiere, ...reste]
+        : [{ scope: "compte", message: "aucun compte rendu, sans erreur rapportée" }],
+      fatale: true,
+    };
+  }
 
   if (regions.regions.length === 0) {
     const [premiere, ...reste] = regions.erreurs;
@@ -506,7 +549,7 @@ export async function lireParc(
   let lisibles = 0;
 
   for (const region of regions.regions) {
-    const parc = await lireApplications(lire, region.name, region.api);
+    const parc = await lireApplications(lire, region.name, region.api, compte.id);
     erreurs.push(...parc.erreurs);
 
     // Une région qui tombe n'annule pas les autres : perdre tout le parc parce qu'une
@@ -616,8 +659,10 @@ export function assembler(
     ressources.push({
       externalId: application.id,
       // La région entre dans le libellé : deux régions peuvent servir le même nom, et un
-      // écran qui les confondrait enverrait couper un accès sur la mauvaise.
-      label: `${application.name} (${region})`,
+      // écran qui les confondrait enverrait couper un accès sur la mauvaise. Séparée par
+      // une virgule et non par des parenthèses : les écrans composent déjà les leurs, et
+      // un nom d'application Scalingo n'en contient jamais.
+      label: `${application.name}, ${region}`,
       url: pageDesCollaborateurs(region, application.name),
     });
 
@@ -933,9 +978,9 @@ export function planifierDepartScalingo(
         ]
       : cibles.map((un) => {
           const application = un.resourceLabel ?? un.resourceExternalId ?? "";
-          // Le libellé porte sa région entre parenthèses, et c'est elle qui donne l'hôte.
-          const nom = application.replace(/\s*\([^)]*\)\s*$/, "");
-          const region = /\(([^)]*)\)\s*$/.exec(application)?.[1] ?? "";
+          // Le libellé porte « nom, région », et c'est la région qui donne l'hôte. Le nom
+          // d'une application Scalingo ne contient jamais de virgule.
+          const [nom = "", region = ""] = application.split(", ");
 
           return {
             systemKey: "scalingo",

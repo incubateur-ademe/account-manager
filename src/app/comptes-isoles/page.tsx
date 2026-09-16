@@ -97,7 +97,7 @@ export default async function ComptesIsolesPage() {
           // Ordonnés, sans quoi « le premier accès » de la cellule change d'un jour à
           // l'autre pour la même situation.
           orderBy: [{ resource: { externalId: "asc" } }, { role: "asc" }],
-          select: { role: true, resource: { select: { label: true } } },
+          select: { role: true, resource: { select: { label: true, provider: true } } },
         },
       },
     }),
@@ -132,7 +132,13 @@ export default async function ComptesIsolesPage() {
     tolere: tolerance(couverts, identite),
     ressemblance: identite.matchMethod === "HEURISTIC",
     propositions: propositions(identite.handle, identite.person, personnes),
-    acces: identite.grants.map((acces) => `${acces.role} sur ${acces.resource.label}`),
+    // Une seule forme pour tous les systèmes : le rôle entre guillemets parce qu'il vient
+    // du fournisseur et se lit tel quel, puis le système, puis ce qu'il vise. Un accès qui
+    // ne visait rien de précis porte la ressource que le socle réserve, et dont le libellé
+    // le dit.
+    acces: identite.grants.map(
+      (acces) => `« ${acces.role} » ${acces.resource.provider} (${acces.resource.label})`,
+    ),
     metadonnees: metadonnees(identite.details),
     vuDepuis: dateFr.format(identite.firstSeenAt),
     vuEncore: dateFr.format(identite.lastSeenAt),
