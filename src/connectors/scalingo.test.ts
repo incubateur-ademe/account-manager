@@ -7,6 +7,7 @@ import {
   collecter,
   constaterCollaborateur,
   type EcritureScalingo,
+  ErreurDeLecture,
   executerScalingo,
   interpreterOctroi,
   interpreterRetrait,
@@ -469,13 +470,20 @@ describe("ce que le connecteur Scalingo remonte du parc", () => {
   });
 
   it("retente une fois ce qui a expiré, et une fois seulement", async () => {
+    /** Ce que lève `AbortSignal.timeout` : le nom est fixé par la plateforme, le message non. */
+    const abandon = () => {
+      const cause = new Error("The operation was aborted due to timeout");
+      cause.name = "TimeoutError";
+      return cause;
+    };
+
     // Given une lecture qui expire au premier essai puis répond
     let essais = 0;
     const capricieux: LecteurScalingo = (url) => {
       if (url.endsWith("/apps/service-annuaire/collaborators")) {
         essais += 1;
         if (essais === 1) {
-          return Promise.reject(new Error("The operation was aborted due to timeout"));
+          return Promise.reject(abandon());
         }
       }
       return lecteur(parcComplet()).lire(url);
@@ -493,7 +501,7 @@ describe("ce que le connecteur Scalingo remonte du parc", () => {
     // Given une lecture qui expire deux fois de suite
     const mort: LecteurScalingo = (url) =>
       url.endsWith("/apps/service-annuaire/collaborators")
-        ? Promise.reject(new Error("The operation was aborted due to timeout"))
+        ? Promise.reject(abandon())
         : lecteur(parcComplet()).lire(url);
 
     // Then une seule reprise : ce qui ne passe pas au second essai est un vrai écart, et
@@ -502,12 +510,48 @@ describe("ce que le connecteur Scalingo remonte du parc", () => {
     expect(tetu.status).toBe("partial");
     expect(tetu.errors?.some(({ message }) => message.includes("timeout"))).toBe(true);
 
+    // Given un délai dépassé rendu par le serveur lui-même, dont le message ne porte pas
+    // le mot qu'une comparaison de chaînes chercherait, et pas dans cette casse
+    let lents = 0;
+    const lent: LecteurScalingo = (url) => {
+      if (url.endsWith("/apps/service-annuaire/collaborators")) {
+        lents += 1;
+        if (lents === 1) {
+          return Promise.reject(new ErreurDeLecture("408 Request Timeout", 408));
+        }
+      }
+      return lecteur(parcComplet()).lire(url);
+    };
+
+    // Then il est repris comme les autres : ce qui décide est le statut porté par
+    // l'erreur, et jamais la casse d'un texte rendu par un tiers
+    expect((await collecter(avecReprise(lent, SANS_PAUSE), SANS_PAUSE)).status).toBe("ok");
+    expect(lents).toBe(2);
+
+    // Given une panne du serveur, et le porteur périmé qui emprunte le même chemin :
+    // celui-ci vient d'être oublié, si bien que le second essai en échangera un neuf
+    for (const enPanne of [503, 500]) {
+      let pannes = 0;
+      const tombe: LecteurScalingo = (url) => {
+        if (url.endsWith("/apps/service-annuaire/collaborators")) {
+          pannes += 1;
+          if (pannes === 1) {
+            return Promise.reject(new ErreurDeLecture(`${enPanne} Server Error`, enPanne));
+          }
+        }
+        return lecteur(parcComplet()).lire(url);
+      };
+
+      expect((await collecter(avecReprise(tombe, SANS_PAUSE), SANS_PAUSE)).status).toBe("ok");
+      expect(pannes).toBe(2);
+    }
+
     // Given un refus de droits, qui se reproduira à l'identique
     let refus = 0;
     const interdit: LecteurScalingo = (url) => {
       if (url.endsWith("/apps/service-annuaire/collaborators")) {
         refus += 1;
-        return Promise.reject(new Error("403 Forbidden"));
+        return Promise.reject(new ErreurDeLecture("403 Forbidden", 403));
       }
       return lecteur(parcComplet()).lire(url);
     };

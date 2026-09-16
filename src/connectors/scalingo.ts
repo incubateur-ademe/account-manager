@@ -206,16 +206,30 @@ export function avecReprise(lire: LecteurScalingo, pause: Pause = attendre): Lec
   };
 }
 
-/** Ce dont la cause peut disparaître d'elle-même, et rien d'autre. */
+/**
+ * Ce dont la cause peut disparaître d'elle-même, et rien d'autre.
+ *
+ * Le statut porté par l'erreur et jamais son texte : un `408 Request Timeout` ne contient
+ * pas le mot que chercherait une comparaison de chaînes, et la casse d'un message rendu
+ * par un tiers n'est promise par personne. Un abandon n'en porte aucun, et se reconnaît à
+ * son nom, que la plateforme fixe.
+ */
 function passagere(cause: unknown): boolean {
-  const dit = message(cause);
-  return (
-    dit.includes("timeout") ||
-    dit.includes("aborted") ||
-    dit.includes("429") ||
-    /\b5\d\d\b/.test(dit) ||
-    dit.includes("porteur a expiré")
-  );
+  if (cause instanceof ErreurDeLecture) {
+    return cause.statut === 408 || cause.statut === 429 || cause.statut >= 500;
+  }
+  return cause instanceof Error && (cause.name === "TimeoutError" || cause.name === "AbortError");
+}
+
+/** Une lecture qui n'a pas abouti, et le statut qui dit si elle peut aboutir plus tard. */
+export class ErreurDeLecture extends Error {
+  readonly statut: number;
+
+  constructor(texte: string, statut: number) {
+    super(texte);
+    this.name = "ErreurDeLecture";
+    this.statut = statut;
+  }
 }
 
 const attendre: Pause = (ms) => new Promise((resoudre) => setTimeout(resoudre, ms));
@@ -1224,11 +1238,13 @@ const lireTout: LecteurScalingo = async (url) => {
   // Scalingo. Les confondre ferait réessayer indéfiniment un refus définitif.
   if (reponse.status === 401) {
     porteur = undefined;
-    throw new Error("le porteur a expiré en cours de lecture");
+    // Repris comme une panne passagère, et pour cause : le porteur vient d'être oublié,
+    // si bien que le second essai en échangera un neuf.
+    throw new ErreurDeLecture("le porteur a expiré en cours de lecture", 503);
   }
 
   if (!reponse.ok) {
-    throw new Error(`${reponse.status} ${reponse.statusText}`);
+    throw new ErreurDeLecture(`${reponse.status} ${reponse.statusText}`, reponse.status);
   }
 
   return reponse.json();
