@@ -27,12 +27,7 @@ import type { Profil } from "@/core/policy";
  */
 const REPERTOIRE = mkdtempSync(join(tmpdir(), "politique-registre-"));
 
-for (const fichier of ["accounts", "config"]) {
-  copyFileSync(
-    resolve(process.cwd(), `config/${fichier}.exemple.yaml`),
-    join(REPERTOIRE, `${fichier}.yaml`),
-  );
-}
+copyFileSync(resolve(process.cwd(), "config/config.exemple.yaml"), join(REPERTOIRE, "config.yaml"));
 
 process.env["POLICY_DIR"] = REPERTOIRE;
 

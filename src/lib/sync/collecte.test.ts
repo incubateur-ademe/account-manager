@@ -14,10 +14,7 @@ import { executerCollecte } from "@/lib/sync/collecte";
  * est requis : les réglages, eux, ont tous un défaut.
  */
 const REPERTOIRE = mkdtempSync(join(tmpdir(), "collecte-"));
-copyFileSync(
-  resolve(process.cwd(), "config/accounts.exemple.yaml"),
-  join(REPERTOIRE, "accounts.yaml"),
-);
+copyFileSync(resolve(process.cwd(), "config/config.exemple.yaml"), join(REPERTOIRE, "config.yaml"));
 process.env["POLICY_DIR"] = REPERTOIRE;
 
 interface IdentiteEnBase {

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { loadEnvConfig } from "@next/env";
 
 import { deconnecter } from "@/lib/db";
+import { chargerLesSurcharges } from "@/lib/surcharges";
 import { executerSync } from "@/lib/sync/executer";
 
 // Charge la configuration d'environnement comme le fait Next : sans ça, la collecte
@@ -24,9 +25,14 @@ async function terminer(echec: boolean): Promise<void> {
  * façon de collecter, sans quoi ce qui tourne la nuit et ce qu'un opérateur lance à
  * la main finiraient par diverger.
  */
-executerSync(new Date(), randomUUID(), (ligne) => {
-  console.log(ligne);
-})
+// Avant de collecter : un seuil réglé depuis l'interface gouverne la nuit qui suit, sans
+// quoi la collecte appliquerait une politique que plus personne ne lit dans les écrans.
+chargerLesSurcharges({ strict: true })
+  .then(() =>
+    executerSync(new Date(), randomUUID(), (ligne) => {
+      console.log(ligne);
+    }),
+  )
   .then((compteRendu) => terminer(compteRendu.echec))
   .catch((error: unknown) => {
     console.error("[sync] échec non rattrapé", error);

@@ -5,11 +5,11 @@ import type { Metadata } from "next";
 
 import { type EtatRevue, LIBELLE_REVUE, revueDe } from "@/core/revue";
 import { prisma } from "@/lib/db";
-import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
 import { dateFr } from "@/ui/dates";
 
 import { BoutonRevue } from "./BoutonRevue";
+import { Declarer } from "./Declarer";
 
 export const metadata: Metadata = { title: "Comptes de service" };
 
@@ -40,14 +40,8 @@ export default async function ComptesDeServicePage() {
     },
   });
 
-  const declarees = new Set(policy().serviceAccounts.map((compte) => compte.key));
-
   const avecRevue = comptes
-    .map((compte) => ({
-      ...compte,
-      revue: revueDe(compte, today),
-      declare: declarees.has(compte.key),
-    }))
+    .map((compte) => ({ ...compte, revue: revueDe(compte, today) }))
     .sort(
       (a, b) =>
         ORDRE[a.revue.etat] - ORDRE[b.revue.etat] ||
@@ -56,7 +50,6 @@ export default async function ComptesDeServicePage() {
     );
 
   const enRetard = avecRevue.filter((compte) => compte.revue.etat === "EN_RETARD").length;
-  const retires = avecRevue.filter((compte) => !compte.declare).length;
 
   return (
     <main className={fr.cx("fr-container", "fr-my-6w")}>
@@ -70,8 +63,8 @@ export default async function ComptesDeServicePage() {
 
       {avecRevue.length === 0 ? (
         <p>
-          Aucun compte de service. Ces comptes sont déclarés dans <code>config/accounts.yaml</code>{" "}
-          et la collecte les reporte ici : ils ne se découvrent pas.
+          Aucun compte de service. Un compte machine ne se découvre pas : il se déclare ici, et son
+          compte constaté s'y rattache depuis la file des comptes isolés.
         </p>
       ) : (
         <>
@@ -96,14 +89,6 @@ export default async function ComptesDeServicePage() {
                 {compte.label}
                 <br />
                 <span className={fr.cx("fr-text--sm")}>{compte.key}</span>
-                {compte.declare ? null : (
-                  <>
-                    <br />
-                    <Badge severity="warning" small noIcon>
-                      Retiré de la politique
-                    </Badge>
-                  </>
-                )}
               </span>,
               compte.purpose,
               compte.ownerUsername,
@@ -123,22 +108,10 @@ export default async function ComptesDeServicePage() {
               <BoutonRevue key="a" compteKey={compte.key} />,
             ])}
           />
-
-          {retires > 0 ? (
-            <section className={fr.cx("fr-mt-4w")}>
-              <h2 className={fr.cx("fr-h5")}>Comptes retirés de la politique</h2>
-              <p>
-                {retires} compte{retires > 1 ? "s" : ""} ne figure{retires > 1 ? "nt" : ""} plus
-                dans <code>config/accounts.yaml</code> mais reste{retires > 1 ? "nt" : ""} en base.
-                La collecte ne supprime rien : les accès du compte existent toujours sur les
-                systèmes couverts. Coupez-les d'abord, puis supprimez la ligne à la main : l'effacer
-                avant ferait perdre son propriétaire et le rattachement de ses comptes, qui
-                reviendraient comme comptes isolés à la collecte suivante.
-              </p>
-            </section>
-          ) : null}
         </>
       )}
+
+      <Declarer />
     </main>
   );
 }

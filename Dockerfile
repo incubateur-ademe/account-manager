@@ -53,9 +53,9 @@ WORKDIR /app
 #
 # Sans CONFIG_REPO, l'etape reussit sans rien deposer. C'est le cas du build
 # local et de l'integration continue, qui n'ont aucune politique reelle a
-# fournir. L'image demarre alors et refuse de servir, faute d'accounts.yaml :
-# mieux vaut ce refus franc qu'un demarrage sur un perimetre vide, qui
-# ressemblerait a un incubateur dont tout le monde est parti.
+# fournir. L'image demarre alors sur les defauts du schema et le dit dans son
+# ecran de configuration, faute de quoi elle ressemblerait a un incubateur dont
+# tout le monde est parti sans que rien ne l'explique.
 # ---------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS politique
 
@@ -96,13 +96,19 @@ git clone --depth 1 --branch "${CONFIG_REF:-main}" \
 
 # Copie nominative plutot que copie du depot : ce dernier ne fournit que la
 # politique, jamais un fichier qui entrerait dans l'image par surprise.
-for fichier in accounts.yaml config.yaml; do
-  if [ ! -f "/source/${fichier}" ]; then
-    echo "[politique] ${fichier} absent de ${CONFIG_REPO}@${CONFIG_REF:-main}" >&2
-    exit 1
-  fi
-  cp "/source/${fichier}" /politique/
-done
+if [ ! -f "/source/config.yaml" ]; then
+  echo "[politique] config.yaml absent de ${CONFIG_REPO}@${CONFIG_REF:-main}" >&2
+  exit 1
+fi
+cp /source/config.yaml /politique/
+
+# Un accounts.yaml resté dans le dépôt de configuration ne se lit plus, et ce qu'il porte
+# disparaîtrait en silence. Le refus est ici plutôt qu'au démarrage : mieux vaut une image
+# qui ne se construit pas qu'une image qui se déploie et refuse de servir.
+if [ -f "/source/accounts.yaml" ]; then
+  echo "[politique] accounts.yaml ne se lit plus : verser sa cle « scope » dans config.yaml, puis le supprimer de ${CONFIG_REPO}. Les comptes de service ne se declarent plus dans un fichier, le schema refuse cette cle : ils se saisissent dans l'ecran « Comptes de service »." >&2
+  exit 1
+fi
 
 # Quelle revision de la politique tourne : la question se pose le jour ou un
 # ecran affirme quelque chose d'inattendu, et l'image seule n'y repond pas.
@@ -238,7 +244,7 @@ COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 #
 # Deux provenances qui ne se recouvrent pas. Du depot du code viennent les
 # modeles et les schemas, qui documentent le format. Du depot de configuration
-# viennent accounts.yaml et config.yaml, les seuls fichiers que le code lit.
+# vient config.yaml, le seul fichier que le code lit.
 # POLICY_DIR permet au besoin de les chercher ailleurs, un montage par exemple.
 COPY --from=builder --chown=node:node /app/config ./config
 COPY --from=builder --chown=node:node /app/config ./ops/config

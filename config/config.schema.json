@@ -11,6 +11,84 @@
         1
       ]
     },
+    "scope": {
+      "description": "Qui l'incubateur suit, et sous quelle autorité.",
+      "default": {},
+      "type": "object",
+      "properties": {
+        "incubator": {
+          "default": "ademe",
+          "description": "Identifiant beta.gouv de l'incubateur, tel qu'il apparaît dans les adresses de l'espace-membre. Toute la collecte est scopée dessus : c'est lui qui définit « nous ».",
+          "examples": [
+            "ademe"
+          ],
+          "type": "string",
+          "minLength": 1
+        },
+        "transverse": {
+          "default": [],
+          "description": "Fait autorité sur l'appartenance à l'incubateur. Une équipe transverse n'apparaît dans aucune startup d'État : sans cette liste, elle serait invisible. L'en retirer est le geste qui l'en sort.",
+          "examples": [
+            [
+              "claire.durand",
+              "samir.benali"
+            ]
+          ],
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z0-9.-]+$",
+            "description": "Username beta.gouv, pivot d'identité de tout le système. Minuscules, chiffres, points et tirets.",
+            "examples": [
+              "claire.durand"
+            ]
+          }
+        },
+        "local": {
+          "default": [],
+          "description": "Personnes qui ont des accès sans avoir de fiche espace-membre. Faute de source amont, leur date de fin est saisie ici et n'est rafraîchie par personne : elle vieillit en silence, ce qui rend cette liste bonne à garder courte.",
+          "examples": [
+            [
+              {
+                "username": "prestataire.exemple",
+                "until": "2027-06-30"
+              }
+            ]
+          ],
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "username": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[a-z0-9.-]+$",
+                "description": "Username beta.gouv, pivot d'identité de tout le système. Minuscules, chiffres, points et tirets.",
+                "examples": [
+                  "claire.durand"
+                ]
+              },
+              "until": {
+                "type": "string",
+                "format": "date",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                "description": "Dernier jour travaillé, inclusif, au format AAAA-MM-JJ.",
+                "examples": [
+                  "2027-06-30"
+                ]
+              }
+            },
+            "required": [
+              "username",
+              "until"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "startups": {
       "description": "Ce que l'incubateur tient pour une startup finie.",
       "default": {},
@@ -144,70 +222,6 @@
         }
       },
       "additionalProperties": false
-    },
-    "systems": {
-      "default": [],
-      "description": "Réservé : catalogue des systèmes couverts. Aucun code ne le lit encore, le catalogue vit pour l'instant dans la documentation d'architecture.",
-      "examples": [
-        [
-          {
-            "key": "mon-systeme",
-            "label": "Mon système",
-            "criticality": "medium",
-            "runbook": "https://exemple.org/procedures/mon-systeme"
-          }
-        ]
-      ],
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "key": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Clé du système, telle que la déclare son connecteur.",
-            "examples": [
-              "mon-systeme"
-            ]
-          },
-          "label": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Nom lisible du système.",
-            "examples": [
-              "Mon système"
-            ]
-          },
-          "criticality": {
-            "default": "medium",
-            "description": "Ce que coûte un accès oublié sur ce système.",
-            "examples": [
-              "high"
-            ],
-            "type": "string",
-            "enum": [
-              "low",
-              "medium",
-              "high"
-            ]
-          },
-          "runbook": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Ce qu'il faut faire à la main quand aucune voie automatique n'existe, ou quand celle-ci tombe.",
-            "examples": [
-              "https://exemple.org/procedures/mon-systeme"
-            ]
-          }
-        },
-        "required": [
-          "key",
-          "label",
-          "runbook"
-        ],
-        "additionalProperties": false,
-        "description": "Un système couvert par le catalogue."
-      }
     },
     "profiles": {
       "description": "Ensembles d'accès qu'une arrivée ouvre d'un coup. Le scope de chaque accès n'est vérifié que par le connecteur visé, et ailleurs : une faute de frappe ici ne doit pas empêcher la politique de se charger, sans quoi elle arrêterait la collecte de tout le parc au lieu du seul octroi qu'elle abîme.",

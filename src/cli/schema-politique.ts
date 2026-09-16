@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { z } from "zod";
 
 import { CONNECTEURS } from "@/connectors";
-import { accountsSchema, configSchema } from "@/core/policy";
+import { policySchema } from "@/core/policy";
 
 /**
  * Les schémas Zod restent la seule vérité : ce sont eux qui valident au démarrage et
@@ -21,8 +21,7 @@ import { accountsSchema, configSchema } from "@/core/policy";
  * ce qui est exactement l'inverse du service attendu d'un schéma.
  */
 const FICHIERS = [
-  { nom: "accounts", titre: "Personnes suivies et comptes de service", schema: accountsSchema },
-  { nom: "config", titre: "Règles du gestionnaire de comptes", schema: configSchema },
+  { nom: "config", titre: "Règles du gestionnaire de comptes", schema: policySchema },
 ] as const;
 
 /**

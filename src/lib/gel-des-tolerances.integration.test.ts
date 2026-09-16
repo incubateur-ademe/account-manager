@@ -23,10 +23,7 @@ import { executerPlan } from "@/lib/execution";
  */
 
 const REPERTOIRE = mkdtempSync(join(tmpdir(), "gel-integration-"));
-copyFileSync(
-  resolve(process.cwd(), "config/accounts.exemple.yaml"),
-  join(REPERTOIRE, "accounts.yaml"),
-);
+copyFileSync(resolve(process.cwd(), "config/config.exemple.yaml"), join(REPERTOIRE, "config.yaml"));
 process.env["POLICY_DIR"] = REPERTOIRE;
 
 const USERNAME = "nour.exemple";

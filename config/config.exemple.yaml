@@ -72,13 +72,6 @@ thresholds:
   # deux de suite est une panne.
   collectStaleHours: 48
 
-# Reserve : catalogue des systemes couverts, avec leur criticite et le lien vers leur
-# procedure. Aucun code ne le lit encore.
-systems:
-  - key: mon-systeme
-    label: Mon systeme
-    criticality: medium
-    runbook: https://exemple.org/procedures/mon-systeme
 
 # Ensembles d'acces qu'une arrivee ouvre d'un coup. Un profil est un role et ne nomme
 # personne : c'est ce qui lui permet de vivre ici, dans le fichier qui ne designe
@@ -150,3 +143,37 @@ permanentDerogations:
     targetId: github:MDQ6VXNlcjEwNDI=
     reason: Compte de demonstration conserve a la demande de la direction
     owner: claire.durand
+
+# ---------------------------------------------------------------------------
+# Perimetre suivi
+#
+# Ce bloc nomme des personnes, et c'est pourquoi le fichier de l'instance n'est
+# pas versionne avec le code : il porte le meme nom sans « exemple », et vit
+# dans le depot de configuration.
+# ---------------------------------------------------------------------------
+
+# Version du format, non du contenu. Elle existe pour qu'un fichier ecrit pour une
+# autre version du code soit refuse net plutot que lu de travers.
+scope:
+  # Identifiant beta.gouv de l'incubateur, tel qu'il apparait dans les adresses de
+  # l'espace-membre. Toute la collecte est scopee dessus : c'est lui qui definit
+  # « nous ». Le changer revient a suivre un autre incubateur.
+  incubator: mon-incubateur
+
+  # Fait autorite sur l'appartenance au perimetre. Une equipe transverse n'apparait
+  # dans aucune startup d'Etat : sans cette liste, elle serait invisible. Qui y figure
+  # reste suivi meme si l'espace-membre ne le rattache a aucune equipe, sa fiche ne
+  # servant alors qu'a dater sa fin de mission. L'en retirer est le geste qui l'en
+  # sort. Un nom sans fiche est signale a chaque collecte plutot qu'ignore : c'est une
+  # faute de frappe, ou une fiche a creer.
+  transverse:
+    - claire.durand
+    - samir.benali
+    - alex.nguyen
+
+  # Personnes qui ont des acces sans avoir de fiche espace-membre. Faute de source
+  # amont, leur date de fin est saisie ici et n'est rafraichie par personne : elle
+  # vieillit donc en silence, ce qui rend cette liste bonne a garder courte.
+  local:
+    - username: prestataire.exemple
+      until: 2027-06-30

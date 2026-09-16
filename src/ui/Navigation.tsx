@@ -17,6 +17,7 @@ const LIENS_OPERATEUR = [
   { text: "Systèmes", href: "/systemes" },
   { text: "Collectes", href: "/collectes" },
   { text: "Journal", href: "/journal" },
+  { text: "Configuration", href: "/configuration" },
 ] as const;
 
 /**

@@ -17,10 +17,7 @@ import type { ConnectorContract } from "@/core/connector";
  */
 const REPERTOIRE = mkdtempSync(join(tmpdir(), "politique-connecteurs-"));
 
-copyFileSync(
-  resolve(process.cwd(), "config/accounts.exemple.yaml"),
-  join(REPERTOIRE, "accounts.yaml"),
-);
+copyFileSync(resolve(process.cwd(), "config/config.exemple.yaml"), join(REPERTOIRE, "config.yaml"));
 
 writeFileSync(
   join(REPERTOIRE, "config.yaml"),

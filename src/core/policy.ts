@@ -25,75 +25,6 @@ const version = z.literal(1).meta({
   examples: [1],
 });
 
-const serviceAccountSchema = z
-  .strictObject({
-    key: z
-      .string()
-      .min(1)
-      .meta({
-        description:
-          "Identifiant stable du compte, qui lui sert d'identité en base. Le changer crée un nouveau compte plutôt que de renommer l'ancien.",
-        examples: ["bot-de-deploiement"],
-      }),
-    label: z
-      .string()
-      .min(1)
-      .meta({
-        description: "Nom lisible, tel qu'il apparaît à l'écran.",
-        examples: ["Bot de déploiement"],
-      }),
-    purpose: z
-      .string()
-      .min(1)
-      .meta({
-        description:
-          "À quoi sert ce compte. Sert à décider, lors d'une revue, s'il a encore lieu d'être.",
-        examples: ["Déclenche les mises en service des applications de l'incubateur"],
-      }),
-    ownerUsername: username.meta({
-      description:
-        "Qui répond de ce compte. Obligatoire : un compte machine sans responsable est précisément ce que cet outil cherche à éviter.",
-      examples: ["claire.durand"],
-    }),
-    reviewEveryDays: z
-      .number()
-      .int()
-      .positive()
-      .default(180)
-      .meta({
-        description:
-          "Périodicité de revue en jours. Un compte machine n'a pas de fin de mission : c'est le seul signal qu'il puisse émettre. Faute de revue enregistrée, le compte à rebours court depuis sa déclaration.",
-        examples: [180, 90],
-      }),
-    identities: z
-      .array(
-        z.strictObject({
-          provider: z
-            .string()
-            .min(1)
-            .meta({
-              description: "Clé du système cible, telle que la déclare son connecteur.",
-              examples: ["github"],
-            }),
-          externalId: z
-            .string()
-            .min(1)
-            .meta({
-              description:
-                "Identifiant du compte sur ce système, tel que la collecte le rend. Il ne se devine pas : il se relève à la première collecte.",
-              examples: ["123456789"],
-            }),
-        }),
-      )
-      .default([])
-      .meta({
-        description:
-          "Comptes que ce compte de service détient sur les systèmes cibles. Sans cette déclaration, chaque collecte les rendrait comme des comptes que personne ne réclame, à chaque passage.",
-        examples: [[{ provider: "github", externalId: "123456789" }]],
-      }),
-  })
-  .meta({ description: "Un compte non humain : bot, jeton d'intégration continue, clé d'API." });
-
 const derogationSchema = z
   .strictObject({
     targetType: z.enum(["identite", "personne"]).meta({
@@ -123,40 +54,6 @@ const derogationSchema = z
     }),
   })
   .meta({ description: "Un écart admis pour de bon, qu'aucune collecte ne doit plus signaler." });
-
-const systemSchema = z
-  .strictObject({
-    key: z
-      .string()
-      .min(1)
-      .meta({
-        description: "Clé du système, telle que la déclare son connecteur.",
-        examples: ["mon-systeme"],
-      }),
-    label: z
-      .string()
-      .min(1)
-      .meta({
-        description: "Nom lisible du système.",
-        examples: ["Mon système"],
-      }),
-    criticality: z
-      .enum(["low", "medium", "high"])
-      .default("medium")
-      .meta({
-        description: "Ce que coûte un accès oublié sur ce système.",
-        examples: ["high"],
-      }),
-    runbook: z
-      .string()
-      .min(1)
-      .meta({
-        description:
-          "Ce qu'il faut faire à la main quand aucune voie automatique n'existe, ou quand celle-ci tombe.",
-        examples: ["https://exemple.org/procedures/mon-systeme"],
-      }),
-  })
-  .meta({ description: "Un système couvert par le catalogue." });
 
 const accesDeProfilSchema = z
   .strictObject({
@@ -237,11 +134,16 @@ const profileSchema = z
 export type Profil = z.infer<typeof profileSchema>;
 
 /**
- * Qui l'incubateur suit, et quels comptes machine il détient. Tout ce fichier nomme :
- * des personnes, des propriétaires, des jetons. C'est ce qui le rend sensible et ce
- * qui justifie qu'il puisse vivre hors du dépôt du code.
+ * Ce que l'incubateur déclare : qui il suit, et les règles qui gouvernent ses décisions.
+ * Les comptes machine, eux, ne se déclarent plus ici mais en base, depuis leur écran.
+ *
+ * Un seul objet là où il y en avait deux. La séparation reposait sur l'idée qu'un des deux
+ * fichiers nommait des gens et l'autre non, ce qui justifiait de le sortir du dépôt du code.
+ * Elle ne tient plus : une dérogation permanente porte le nom de qui en répond, et elle
+ * vivait du côté qui n'était censé nommer personne. Les deux ont donc la même sensibilité,
+ * et le même lieu.
  */
-export const accountsSchema = z
+const declareSchema = z
   .strictObject({
     version,
 
@@ -281,45 +183,10 @@ export const accountsSchema = z
             examples: [[{ username: "prestataire.exemple", until: "2027-06-30" }]],
           }),
       })
+      // Tous ses champs ont un défaut : une instance qui ne déclare pas son périmètre
+      // démarre quand même, et le dit dans ses écrans plutôt qu'au visage de qui la lance.
+      .prefault({})
       .meta({ description: "Qui l'incubateur suit, et sous quelle autorité." }),
-
-    serviceAccounts: z
-      .array(serviceAccountSchema)
-      .refine(
-        (comptes) => new Set(comptes.map((compte) => compte.key)).size === comptes.length,
-        "deux comptes de service ne peuvent pas partager la même clé, qui est leur identité en base",
-      )
-      .default([])
-      .meta({
-        description:
-          "Comptes non humains. Ils n'ont pas de fin de mission, d'où la revue périodique, et leur propriétaire est obligatoire.",
-        examples: [
-          [
-            {
-              key: "bot-de-deploiement",
-              label: "Bot de déploiement",
-              purpose: "Déclenche les mises en service des applications de l'incubateur",
-              ownerUsername: "claire.durand",
-              reviewEveryDays: 180,
-              identities: [],
-            },
-          ],
-        ],
-      }),
-  })
-  .meta({
-    description:
-      "Personnes suivies et comptes de service. Ce fichier nomme, il ne vit donc pas nécessairement dans le dépôt du code.",
-  });
-
-/**
- * Les règles du produit : des seuils, un vocabulaire, deux catalogues. Rien n'y
- * désigne quiconque, et tout y a un défaut raisonnable, si bien qu'une instance qui
- * ne fournirait pas ce fichier fonctionnerait quand même.
- */
-export const configSchema = z
-  .strictObject({
-    version,
 
     startups: z
       .strictObject({
@@ -428,24 +295,6 @@ export const configSchema = z
       .prefault({})
       .meta({ description: "Les délais et les proportions qui gouvernent les décisions." }),
 
-    systems: z
-      .array(systemSchema)
-      .default([])
-      .meta({
-        description:
-          "Réservé : catalogue des systèmes couverts. Aucun code ne le lit encore, le catalogue vit pour l'instant dans la documentation d'architecture.",
-        examples: [
-          [
-            {
-              key: "mon-systeme",
-              label: "Mon système",
-              criticality: "medium",
-              runbook: "https://exemple.org/procedures/mon-systeme",
-            },
-          ],
-        ],
-      }),
-
     profiles: z
       .array(profileSchema)
       .refine(
@@ -501,12 +350,10 @@ export const configSchema = z
       "Règles du produit : seuils, vocabulaire, catalogues. Rien n'y désigne personne et tout y a un défaut raisonnable.",
   });
 
-export type Accounts = z.infer<typeof accountsSchema>;
-export type Config = z.infer<typeof configSchema>;
+export const policySchema = declareSchema;
 
 /**
- * Les deux fichiers réunis, tels que le reste du code les consomme. La version de
- * chacun a servi à les accepter, elle n'a plus rien à dire ensuite : c'est une
- * propriété du fichier, pas de la politique.
+ * Ce que le reste du code consomme. La version a servi à accepter le fichier, elle n'a
+ * plus rien à dire ensuite : c'est une propriété du fichier, pas de la politique.
  */
-export type Policy = Omit<Accounts, "version"> & Omit<Config, "version">;
+export type Policy = Omit<z.infer<typeof declareSchema>, "version">;

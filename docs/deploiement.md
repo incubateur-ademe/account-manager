@@ -86,7 +86,7 @@ Deux conséquences à connaître :
   être ajoutée à la liste de promotion du Dockerfile, comme `prisma` et `tsx`. C'est
   le seul endroit du fichier qui demande une maintenance manuelle.
 
-**`config/accounts.yaml` et `config/config.yaml` sont copiés dans les deux arbres.** La
+**`config/config.yaml` est copié dans les deux arbres.** La
 politique est lue sur le disque et jamais bundlée, or les deux arbres ne travaillent pas
 depuis le même répertoire : le serveur web depuis `/app`, le CLI depuis `/app/ops`. Elle
 doit donc exister aux deux endroits. Une image qui ne la porterait qu'à un seul
@@ -99,17 +99,18 @@ qu'au premier écran qui en a besoin.
 
 ### La politique vient d'un autre dépôt
 
-Elle nomme des personnes, désigne des propriétaires de comptes machine et dessine la
-carte des accès techniques de l'incubateur. Le code, lui, est public. Les deux fichiers
-vivent donc dans
+Elle nomme des personnes et dessine la carte des accès techniques de l'incubateur. Le
+code, lui, est public. Le fichier vit donc dans
 [account-manager-config](https://github.com/incubateur-ademe/account-manager-config),
-privé, et l'étape `politique` du Dockerfile va les y chercher au build.
+privé, et l'étape `politique` du Dockerfile va l'y chercher au build.
 
 Cette étape part de l'image node brute, installe `git`, clone en profondeur 1, copie
-**nommément** `accounts.yaml` et `config.yaml` puis écrit la révision clonée dans
-`config/.revision`. Elle n'entre dans aucune image : ni le jeton, ni le clone, ni `git`
-ne survivent au build. Seuls les deux fichiers et la révision passent dans `runner`, par
-un `COPY --from`.
+**nommément** `config.yaml` puis écrit la révision clonée dans `config/.revision`. Elle
+refuse de construire si un `accounts.yaml` y traîne encore : ce fichier ne se lit plus, sa
+clé `scope` a rejoint `config.yaml`, et les comptes de service se déclarent désormais
+depuis leur écran. Elle n'entre dans aucune image : ni le jeton, ni
+le clone, ni `git` ne survivent au build. Seuls le fichier et la révision passent dans
+`runner`, par un `COPY --from`.
 
 Trois choix méritent d'être explicités.
 
@@ -120,10 +121,16 @@ l'historique de la couche porte `${CONFIG_TOKEN}`, jamais sa valeur. Un jeton
 créer.
 
 **Sans `CONFIG_REPO`, le build réussit et n'embarque rien.** C'est le cas du build local
-et de l'intégration continue, qui n'ont aucune politique réelle à fournir. L'image
-démarre alors et refuse de servir, faute d'`accounts.yaml`. Ce refus franc vaut mieux
-qu'un démarrage sur un périmètre vide, qui ressemblerait trait pour trait à un
-incubateur dont tout le monde serait parti.
+et de l'intégration continue, qui n'ont aucune politique réelle à fournir. L'image démarre
+alors sur les défauts du schéma, et son écran de configuration le dit en toutes lettres :
+ni fichier, ni variable `CONFIG_`, ni réglage en base. Sans cet avertissement, elle
+ressemblerait trait pour trait à un incubateur dont tout le monde serait parti.
+
+**Une valeur peut venir de trois endroits**, et l'écran de configuration dit lequel a
+gagné. L'environnement d'abord, sous un nom préfixé `CONFIG_` dérivé du chemin, puis ce
+fichier, puis ce qui a été réglé depuis l'outil. Les garde-fous et le branchement, eux,
+n'entrent dans aucun des trois et restent en environnement seul : voir
+[ADR-0001](adr/0001-configuration-a-trois-niveaux.md).
 
 **Modifier la politique ne change rien tant qu'on n'a pas redéployé.** C'est la
 contrepartie assumée du fetch au build : un déploiement correspond à un état connu de la
