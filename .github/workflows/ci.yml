@@ -51,7 +51,6 @@ jobs:
       - name: La politique d'exemple se charge, et ses profils se valident
         run: |
           mkdir -p "${RUNNER_TEMP}/politique"
-          cp config/accounts.exemple.yaml "${RUNNER_TEMP}/politique/accounts.yaml"
           cp config/config.exemple.yaml "${RUNNER_TEMP}/politique/config.yaml"
           POLICY_DIR="${RUNNER_TEMP}/politique" pnpm policy:check
 
