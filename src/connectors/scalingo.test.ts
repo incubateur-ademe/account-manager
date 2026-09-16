@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Intent, RunContext } from "@/core/connector";
 import {
+  avecReprise,
   CONTRAT_SCALINGO,
   collecter,
   constaterCollaborateur,
@@ -465,6 +466,55 @@ describe("ce que le connecteur Scalingo remonte du parc", () => {
     ).toEqual([
       { identityExternalId: "us-pilote", resourceExternalId: "app-annuaire", role: "owner" },
     ]);
+  });
+
+  it("retente une fois ce qui a expiré, et une fois seulement", async () => {
+    // Given une lecture qui expire au premier essai puis répond
+    let essais = 0;
+    const capricieux: LecteurScalingo = (url) => {
+      if (url.endsWith("/apps/service-annuaire/collaborators")) {
+        essais += 1;
+        if (essais === 1) {
+          return Promise.reject(new Error("The operation was aborted due to timeout"));
+        }
+      }
+      return lecteur(parcComplet()).lire(url);
+    };
+
+    // When on collecte
+    const collecte = await collecter(avecReprise(capricieux, SANS_PAUSE), SANS_PAUSE);
+
+    // Then le run est complet. La collecte enchaîne une requête par application : laisser
+    // un hoquet de réseau la rendre partielle lui interdirait de dater la moindre
+    // disparition, toutes les nuits, sans que rien ne soit cassé
+    expect(collecte.status).toBe("ok");
+    expect(essais).toBe(2);
+
+    // Given une lecture qui expire deux fois de suite
+    const mort: LecteurScalingo = (url) =>
+      url.endsWith("/apps/service-annuaire/collaborators")
+        ? Promise.reject(new Error("The operation was aborted due to timeout"))
+        : lecteur(parcComplet()).lire(url);
+
+    // Then une seule reprise : ce qui ne passe pas au second essai est un vrai écart, et
+    // insister doublerait la dépense sous un plafond de soixante requêtes par minute
+    const tetu = await collecter(avecReprise(mort, SANS_PAUSE), SANS_PAUSE);
+    expect(tetu.status).toBe("partial");
+    expect(tetu.errors?.some(({ message }) => message.includes("timeout"))).toBe(true);
+
+    // Given un refus de droits, qui se reproduira à l'identique
+    let refus = 0;
+    const interdit: LecteurScalingo = (url) => {
+      if (url.endsWith("/apps/service-annuaire/collaborators")) {
+        refus += 1;
+        return Promise.reject(new Error("403 Forbidden"));
+      }
+      return lecteur(parcComplet()).lire(url);
+    };
+
+    // Then aucune reprise : le retenter ne ferait que dépenser une requête de plus
+    await collecter(avecReprise(interdit, SANS_PAUSE), SANS_PAUSE);
+    expect(refus).toBe(1);
   });
 
   it("échoue sans rien rendre quand aucune région ne se lit", async () => {

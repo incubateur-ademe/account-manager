@@ -179,6 +179,45 @@ function message(cause: unknown): string {
 
 export type Pause = (ms: number) => Promise<void>;
 
+/**
+ * Une lecture qui expire est retentée une fois, et une seule.
+ *
+ * La collecte enchaîne une requête par application : sur un parc de plusieurs dizaines,
+ * un seul hoquet de réseau rend le run partiel, donc lui interdit de dater la moindre
+ * disparition. Le garde-fou de chute est fait pour une source qui ment, pas pour une
+ * réponse lente, et le laisser se déclencher là-dessus fige l'inventaire toutes les nuits
+ * sans que rien ne soit cassé.
+ *
+ * Une seule reprise, et seulement sur ce qui peut passer au second essai : un refus de
+ * droits ou une forme illisible se reproduiront à l'identique, et les retenter ne ferait
+ * que doubler la dépense sous un plafond de soixante requêtes par minute.
+ */
+export function avecReprise(lire: LecteurScalingo, pause: Pause = attendre): LecteurScalingo {
+  return async (url) => {
+    try {
+      return await lire(url);
+    } catch (cause: unknown) {
+      if (!passagere(cause)) {
+        throw cause;
+      }
+      await pause(ESPACEMENT_MS);
+      return lire(url);
+    }
+  };
+}
+
+/** Ce dont la cause peut disparaître d'elle-même, et rien d'autre. */
+function passagere(cause: unknown): boolean {
+  const dit = message(cause);
+  return (
+    dit.includes("timeout") ||
+    dit.includes("aborted") ||
+    dit.includes("429") ||
+    /\b5\d\d\b/.test(dit) ||
+    dit.includes("porteur a expiré")
+  );
+}
+
 const attendre: Pause = (ms) => new Promise((resoudre) => setTimeout(resoudre, ms));
 
 export interface LectureDuParc {
@@ -1210,7 +1249,7 @@ export const scalingo: Connector = {
       },
     ]),
 
-  list: (): Promise<CollectResult> => collecter(lireTout),
+  list: (): Promise<CollectResult> => collecter(avecReprise(lireTout)),
 
   precheck: (step) => constaterCollaborateur(lireTout, step),
 
