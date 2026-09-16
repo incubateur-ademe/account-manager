@@ -270,25 +270,29 @@ export async function declarerCompteDeServicePourCompte(
             throw new CompteDejaTranche();
           }
 
-          // Le compte de service porte la trace de sa déclaration ; l'identité, elle,
-          // n'en aurait aucune, et c'est elle qu'on retrouve en cherchant ce qu'un compte
-          // constaté est devenu.
-          audit({
-            actorKind: "HUMAN",
-            actorUsername: operateur.username,
-            action: "identite.rattachement",
-            targetType: "identite",
-            targetId: `${identite.provider}:${identite.handle}`,
-            after: { cible: declaration.key, methode: "DECLARED", voie: operateur.voie },
-            result: "SUCCESS",
-          });
-
           await fermerLesConstatsResolus(
             tx,
             identite.id,
             `rattaché à ${declaration.key}`,
             operateur,
           );
+        });
+
+        // Hors de la transaction, parce que le journal n'en fait pas partie : il s'écrit
+        // sans être attendu, pour qu'une panne du journal ne fasse jamais échouer
+        // l'action. L'y laisser aurait suggéré qu'il s'annule avec elle.
+        //
+        // Le compte de service porte la trace de sa déclaration ; l'identité, elle, n'en
+        // aurait aucune, et c'est elle qu'on retrouve en cherchant ce qu'un compte
+        // constaté est devenu.
+        audit({
+          actorKind: "HUMAN",
+          actorUsername: operateur.username,
+          action: "identite.rattachement",
+          targetType: "identite",
+          targetId: `${identite.provider}:${identite.handle}`,
+          after: { cible: declaration.key, methode: "DECLARED", voie: operateur.voie },
+          result: "SUCCESS",
         });
       },
     });

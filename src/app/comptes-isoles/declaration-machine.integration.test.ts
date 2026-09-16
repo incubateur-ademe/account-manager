@@ -109,23 +109,34 @@ describe("déclarer une machine depuis la file des comptes isolés", () => {
     // Then le journal porte les deux faits sous le nom de qui les a posés : la
     // déclaration du compte machine, et le rattachement de l'identité. Chercher ce
     // qu'un compte constaté est devenu passe par la seconde, que la première ne dit pas.
-    const journal = await prisma.auditEvent.findMany({
-      select: { action: true, targetId: true, actorUsername: true },
-    });
-    expect(journal).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          action: "compte-de-service.declaration",
-          targetId: SAISIE.key,
-          actorUsername: "operatrice.exemple",
-        }),
-        expect.objectContaining({
-          action: "identite.rattachement",
-          targetId: "scalingo:bot@exemple.invalid",
-          actorUsername: "operatrice.exemple",
-        }),
-      ]),
-    );
+    //
+    // Attendu plutôt que lu d'un coup, parce que le journal s'écrit sans être attendu :
+    // une panne du journal ne doit jamais faire échouer l'action métier, si bien que
+    // l'action rend la main avant que ses lignes soient posées. Les lire une seule fois
+    // marchait sur une machine au repos et pas sur une machine chargée, ce qui est la
+    // définition d'un test qu'on finit par relancer sans le lire.
+    await expect
+      .poll(
+        async () =>
+          await prisma.auditEvent.findMany({
+            select: { action: true, targetId: true, actorUsername: true },
+          }),
+        { timeout: 5_000, interval: 25 },
+      )
+      .toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            action: "compte-de-service.declaration",
+            targetId: SAISIE.key,
+            actorUsername: "operatrice.exemple",
+          }),
+          expect.objectContaining({
+            action: "identite.rattachement",
+            targetId: "scalingo:bot@exemple.invalid",
+            actorUsername: "operatrice.exemple",
+          }),
+        ]),
+      );
   });
 
   it("refuse une clé déjà prise sans toucher au compte, et renvoie vers le rattachement", async () => {
