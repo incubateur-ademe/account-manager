@@ -106,7 +106,7 @@ cp /source/config.yaml /politique/
 # disparaîtrait en silence. Le refus est ici plutôt qu'au démarrage : mieux vaut une image
 # qui ne se construit pas qu'une image qui se déploie et refuse de servir.
 if [ -f "/source/accounts.yaml" ]; then
-  echo "[politique] accounts.yaml ne se lit plus : verser ses cles « scope » et « serviceAccounts » dans config.yaml, puis le supprimer de ${CONFIG_REPO}." >&2
+  echo "[politique] accounts.yaml ne se lit plus : verser sa cle « scope » dans config.yaml, puis le supprimer de ${CONFIG_REPO}. Les comptes de service ne se declarent plus dans un fichier, le schema refuse cette cle : ils se saisissent dans l'ecran « Comptes de service »." >&2
   exit 1
 fi
 
