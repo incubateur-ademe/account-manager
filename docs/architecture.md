@@ -262,7 +262,7 @@ la voie **constatée** par l'espace-membre, « aucune » comprise, et rien d'aut
 mélange pas du décidé. `LOCAL` portait un second sens sur cet axe et entrait en collision
 avec `PersonSource.LOCAL`, qui dit d'où vient la fiche.
 
-La liste transverse de `config/accounts.yaml` et `config/config.yaml` fait **autorité sur l'appartenance** : qui
+La liste transverse de `config/config.yaml` fait **autorité sur l'appartenance** : qui
 y est déclaré reste dans l'incubateur même si l'espace-membre ne le rattache à aucune
 équipe, sa fiche ne servant alors qu'à dater sa fin. L'en retirer est le geste qui
 l'en sort. Une personne qui y figure sans avoir de fiche est signalée à chaque
@@ -316,7 +316,13 @@ saisie localement.
 
 ## 3. Objets métier
 
-### 3.1 Déclaré (YAML versionné, validé par un schéma)
+### 3.1 Déclaré (configuration résolue à trois niveaux)
+
+Un seul fichier, `config.yaml`, et trois sources qui le complètent : l'environnement sous
+un nom préfixé `CONFIG_` dérivé du chemin, puis ce fichier, puis ce qui a été réglé depuis
+l'outil. La dernière l'emporte, et l'écran de configuration dit laquelle a gagné. Les
+garde-fous et le branchement n'y entrent jamais et restent en environnement seul, voir
+[ADR-0001](adr/0001-configuration-a-trois-niveaux.md).
 
 - `scope.incubator` : l'acronyme de l'incubateur, `ademe`
 - `scope.transverse[]` : usernames de l'équipe transverse, qui font autorité sur
@@ -324,12 +330,10 @@ saisie localement.
 - `scope.local[]` : personnes hors incubateur, avec leur échéance
 - `startups.terminalPhases[]` : phases dans lesquelles une startup ne justifie plus
   d'accès
-- `systems[]` : le catalogue, voir section 5
 - `mail.domainsLostOnDeparture[]` : domaines des boîtes qu'un départ coupe, qui servent à
   prévenir qu'un lien de connexion partirait sur une adresse près de cesser de répondre
 - `thresholds` : `graceDays`, `soonDays`, `staleDays`, `maxScopeDrop`,
   `collectStaleHours`
-- `serviceAccounts[]` : allowlist des comptes non humains
 - `permanentDerogations[]` : `owner` et `reason` obligatoires
 - `connectors.<clé>` : réglages propres à chaque connecteur, dont le connecteur visé
   décide la forme et qu'il valide lui-même. Une clé qu'aucun connecteur ne porte fait
@@ -552,9 +556,14 @@ geste s'écrit seul et le conflit se journalise.
 
 ### 3.5 Reconstructibilité
 
-Tout est reconstructible en rejouant les connecteurs, sauf le journal, les
-dérogations et l'état décidé. Le périmètre de sauvegarde critique se réduit à ces
-trois familles.
+Tout est reconstructible en rejouant les connecteurs, sauf le journal, les dérogations,
+l'état décidé et la configuration réglée depuis l'outil. Le périmètre de sauvegarde
+critique compte donc quatre familles.
+
+**La configuration y est entrée le jour où elle a cessé de vivre en git seul.** Ce que
+`git log` donnait gratuitement, le journal le donne maintenant : chaque réglage y laisse
+une trace nominative, écrite avant l'écriture. Mais un dump perdu emporte des réglages
+qu'aucune collecte ne redevinera, là où le fichier, lui, se retrouvait dans son dépôt.
 
 **Ce qu'un opérateur attribue relève de l'état décidé**, et se rejoue depuis le
 journal. Rattacher un compte à quelqu'un, l'en détacher, nommer une personne que
