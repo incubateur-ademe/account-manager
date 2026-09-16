@@ -816,9 +816,10 @@ describe("un octroi impossible produit une étape, jamais une omission", () => {
     expect(etapes[0]?.tier).toBe("none");
     expect(etapes[0]?.capability).toBe("grant");
 
-    // Then elle porte le runbook du contrat, requis même sur une capacité automatique,
-    // et elle nomme le credential qui manque plutôt que de se taire
-    expect(etapes[0]?.manual?.runbook).toContain("Marche à suivre du contrat.");
+    // Then elle porte la marche à suivre de la voie qu'on ne peut pas emprunter, et non
+    // celle du contrat : ce qui est utile ici est comment faire à la main le geste que le
+    // credential manquant interdit. Et elle nomme ce credential plutôt que de se taire.
+    expect(etapes[0]?.manual?.runbook).toContain("Ouvrir l'espace, puis inviter.");
     expect(etapes[0]?.manual?.runbook).toContain("jeton-notion");
 
     // Then son critère de complétion existe : sans lui, « fait » ne veut rien dire

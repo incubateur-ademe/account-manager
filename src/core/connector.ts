@@ -138,7 +138,10 @@ export function resolveCapability(
   return {
     capability,
     tier: "none",
-    runbook: contractRunbook,
+    // Celui de la meilleure voie déclarée, et le contrat seulement à défaut : une capacité
+    // qu'aucun credential ne rend praticable a justement une marche à suivre, et c'est
+    // celle de la voie qu'on ne peut pas emprunter aujourd'hui.
+    runbook: best?.runbook ?? contractRunbook,
     ...(best ? degradation(best) : {}),
   };
 }

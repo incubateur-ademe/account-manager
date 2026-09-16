@@ -503,7 +503,12 @@ export async function lireParc(
   for (const surveille of [
     {
       assez: relevees.length > 0,
-      absent: relevees.every((collaboration) => collaboration.is_limited === undefined),
+      // `null` autant qu'absent : le schéma l'accepte, et l'assemblage rend plein tout ce
+      // qui ne vaut pas `true`. La clé remplacée par `null` serait donc aussi muette que
+      // la clé disparue. Le compte, lui, garde `=== undefined` : `null` y est la forme
+      // normale d'une invitation en attente, et un parc qui n'en porterait que serait
+      // signalé à tort.
+      absent: relevees.every((collaboration) => collaboration.is_limited == null),
       quoi: `le rôle : aucune des ${relevees.length} collaborations lues ne porte is_limited, et tous les accès limités passeraient pour des accès pleins`,
     },
     {

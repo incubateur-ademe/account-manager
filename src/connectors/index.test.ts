@@ -169,6 +169,16 @@ describe("ce que les contrats du registre promettent", () => {
 
         expect(resolue.runbook, ou).not.toBe(contract.runbook);
         expect(resolue.runbook.length, ou).toBeGreaterThan(0);
+
+        // Then elle la garde quand aucun credential ne répond. Une capacité déclarée mais
+        // hors d'atteinte a justement quelque chose à faire, et retomber alors sur le
+        // runbook du contrat effacerait la seule marche à suivre qui vaille : celle de la
+        // voie qu'on ne peut pas emprunter aujourd'hui.
+        const sansRien = resolveCapability("list", lecture, sondes(contract, []), contract.runbook);
+
+        expect(sansRien.tier, ou).toBe("none");
+        expect(sansRien.degradedFrom?.missing, ou).toEqual(lecture[0].requires);
+        expect(sansRien.runbook, ou).toBe(resolue.runbook);
       }
     }
   });
