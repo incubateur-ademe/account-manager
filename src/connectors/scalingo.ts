@@ -696,9 +696,15 @@ export function interpreterRetrait(statut: number, corps: unknown): StepOutcome 
  * Ce qu'une invitation devient. Le conflit est un succès et non un échec : quelqu'un déjà
  * invité détient déjà l'accès, et refaire échouer l'étape enverrait un opérateur corriger
  * ce qui est fait.
+ *
+ * Le conflit seul, et jamais l'entité non traitable, que Scalingo rend sur un champ
+ * invalide sans nulle part écrire qu'elle signifie « déjà présent » ici. L'adresse vient de
+ * la base et n'est vérifiée que par la présence d'une arobase : la confondre avec un
+ * doublon solderait l'étape sans qu'aucune invitation ne soit partie, c'est-à-dire
+ * affirmerait un accès que personne ne détient.
  */
 export function interpreterOctroi(statut: number, corps: unknown): StepOutcome {
-  if (statut === 409 || statut === 422) {
+  if (statut === 409) {
     return { state: "ALREADY_PRESENT" };
   }
 

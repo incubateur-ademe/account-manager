@@ -714,7 +714,16 @@ describe("ce que le connecteur Scalingo écrit, et ce qu'il refuse d'écrire", (
     // traiter en échec enverrait un opérateur corriger ce qui est fait
     expect(interpreterOctroi(201, undefined).state).toBe("SUCCEEDED");
     expect(interpreterOctroi(409, undefined).state).toBe("ALREADY_PRESENT");
-    expect(interpreterOctroi(422, undefined).state).toBe("ALREADY_PRESENT");
+
+    // Then une entité non traitable reste un échec. Scalingo la rend sur un champ invalide
+    // sans nulle part dire qu'elle vaut « déjà présent » ici, et l'adresse vient de la base
+    // sans autre contrôle qu'une arobase : la solder affirmerait un accès que personne ne
+    // détient, et personne n'irait le rouvrir.
+    expect(interpreterOctroi(422, { error: "email is invalid" })).toEqual({
+      state: "FAILED",
+      error: "Scalingo a répondu 422 : email is invalid",
+      retryable: false,
+    });
     expect(interpreterOctroi(500, undefined)).toMatchObject({ retryable: true });
 
     // Then le succès d'un retrait dit ce qu'il n'a pas fait : les secrets restent en place
