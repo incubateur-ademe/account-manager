@@ -180,7 +180,9 @@ function message(cause: unknown): string {
 export type Pause = (ms: number) => Promise<void>;
 
 /**
- * Une lecture qui expire est retentée une fois, et une seule.
+ * Une lecture qui a échoué pour une cause passagère est retentée une fois, et une seule.
+ * Sont passagers un abandon, un délai dépassé, un plafond de requêtes atteint, une panne
+ * du serveur, et le porteur périmé, que le second essai rééchange.
  *
  * La collecte enchaîne une requête par application : sur un parc de plusieurs dizaines,
  * un seul hoquet de réseau rend le run partiel, donc lui interdit de dater la moindre

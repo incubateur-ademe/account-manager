@@ -498,15 +498,21 @@ describe("ce que le connecteur Scalingo remonte du parc", () => {
     expect(collecte.status).toBe("ok");
     expect(essais).toBe(2);
 
-    // Given une lecture qui expire deux fois de suite
-    const mort: LecteurScalingo = (url) =>
-      url.endsWith("/apps/service-annuaire/collaborators")
-        ? Promise.reject(abandon())
-        : lecteur(parcComplet()).lire(url);
+    // Given une lecture qui expire à chaque fois
+    let obstines = 0;
+    const mort: LecteurScalingo = (url) => {
+      if (url.endsWith("/apps/service-annuaire/collaborators")) {
+        obstines += 1;
+        return Promise.reject(abandon());
+      }
+      return lecteur(parcComplet()).lire(url);
+    };
 
-    // Then une seule reprise : ce qui ne passe pas au second essai est un vrai écart, et
-    // insister doublerait la dépense sous un plafond de soixante requêtes par minute
+    // Then deux essais et pas un de plus : ce qui ne passe pas au second est un vrai
+    // écart, et insister doublerait la dépense sous un plafond de soixante requêtes par
+    // minute. Le compte l'épingle, faute de quoi dix reprises passeraient aussi bien
     const tetu = await collecter(avecReprise(mort, SANS_PAUSE), SANS_PAUSE);
+    expect(obstines).toBe(2);
     expect(tetu.status).toBe("partial");
     expect(tetu.errors?.some(({ message }) => message.includes("timeout"))).toBe(true);
 
