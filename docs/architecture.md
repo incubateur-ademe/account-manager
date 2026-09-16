@@ -879,7 +879,7 @@ l'offboarding complet au lieu de partiel.
 | `github` | organisations déclarées sous `connectors.github.organisations` | `auto` |
 | `email-list` | alias et redirections, implémentation OVH | à établir |
 | `vaultwarden` | collections et accès | à établir |
-| `scalingo` | collaborateurs par application | à établir |
+| `scalingo` | collaborateurs par application, sur les deux régions | `auto` |
 | `grafana` | comptes de l'instance auto-hébergée | à établir |
 | `sentry` | organisation, sur l'instance de beta.gouv | à établir |
 | `teams-o365` | appartenance Teams et compte `.ext@ademe.fr` | en attente |
@@ -887,6 +887,13 @@ l'offboarding complet au lieu de partiel.
 `github` vise `auto` sans réserve : c'est le seul dont le fournisseur sait émettre un
 credential nativement restreint à une organisation, sans proxy. C'est aussi l'accès le
 plus critique du parc.
+
+`scalingo` n'a pas d'organisation à viser : l'API v1 n'en expose aucune, et la gestion
+des utilisateurs y reste au niveau de l'application. Son objet est donc une liste plate
+de collaborations, un couple personne fois application, dont le rôle tient dans un seul
+booléen. Son jeton hérite de tous les droits du compte qui l'a créé, sans que le
+fournisseur sache le restreindre : c'est le cas d'école inverse de `github`, et la seule
+raison pour laquelle il n'en porte qu'un là où `github` en porte deux.
 
 `email-list` n'est pas un connecteur OVH générique : son objet est le rattachement
 d'une personne à un alias. Un alias a plusieurs destinataires, donc retirer une
@@ -903,8 +910,9 @@ sans jamais détenir les credentials Microsoft.
 
 ### 5.9 Premiers connecteurs implémentés
 
-Deux connecteurs éprouvent le contrat, à condition de tomber de part et d'autre de la
-ligne `auto` contre `manual`.
+Trois connecteurs éprouvent le contrat, et chacun l'éprouve autrement : de part et
+d'autre de la ligne `auto` contre `manual` pour les deux premiers, sur ce que le contrat
+ne savait pas encore dire pour le troisième.
 
 **`notion`**, tier `auto` : membres du workspace par SCIM. Un siège attribué sans
 identité en face est un compte isolé. Son credential est **nominatif** : Notion révoque
@@ -925,6 +933,35 @@ dans le trombinoscope à l'arrivée, l'archiver au départ. Le choix est délib�
 un octroi et non une révocation, il produit une tâche lisible plutôt qu'un appel
 d'API, et il porte sur une référence où archiver ne veut pas dire supprimer. Si le
 contrat ne sait pas exprimer ce cas aussi bien qu'une révocation SCIM, il est faux.
+
+**`scalingo`**, tier `auto` sur les trois capacités : collaborateurs des applications,
+sur les deux régions. Il a demandé au socle deux choses qu'aucun connecteur n'avait
+exigées jusque-là, et qui valent pour tous.
+
+D'abord, **ce qu'un connecteur reçoit au départ**. Il ne recevait que le `username`
+beta.gouv, si bien que rien ne lui disait sur quelles ressources la personne détenait un
+accès. `github` ne s'y heurtait pas, ses organisations étant déclarées en configuration
+et au nombre de deux, mais un parc de dizaines d'applications ne supporte pas qu'on émette
+un geste par ressource déclarée. `SubjectRef` porte donc les accès constatés du système
+interrogé, et seulement ceux dont le rattachement autorise déjà une coupure : une
+ressemblance n'en produit toujours aucune. Il porte aussi l'adresse dont le socle répond,
+pour les systèmes qui invitent sur une adresse et non sur un compte, lesquels n'ont rien à
+viser tant que la personne n'est pas venue.
+
+Ensuite, **une révocation qui ne suffit pas**. Retirer un collaborateur ne change ni les
+variables d'environnement ni les identifiants de base, et le mot de passe de l'utilisateur
+par défaut d'une base passe par le support du fournisseur. Une seule étape cochée « fait »
+affirmerait donc une coupure qui n'a pas eu lieu : le connecteur en émet deux, la coupure
+et la rotation des secrets, sous deux clés distinctes et sous le même système. C'est le
+premier cas où un geste automatique ne se suffit pas à lui-même, et le contrat l'exprime
+sans rien assouplir.
+
+Deux autres traits valent d'être notés parce qu'ils se reverront. Les environnements de
+revue sont écartés du périmètre sur leur seule ascendance : ils se détruisent en deux
+jours, une révocation dessus n'a pas de sens, et les garder noierait la file des constats.
+Et faute d'un total annoncé ou d'une pagination sur la moindre de ses routes, la collecte
+se recoupe elle-même, un relevé par application contre une vue consolidée, une divergence
+valant erreur unitaire. Cela prouve la cohérence et non l'exhaustivité.
 
 ---
 
