@@ -99,16 +99,16 @@ qu'au premier écran qui en a besoin.
 
 ### La politique vient d'un autre dépôt
 
-Elle nomme des personnes, désigne des propriétaires de comptes machine et dessine la
-carte des accès techniques de l'incubateur. Le code, lui, est public. Les deux fichiers
-vivent donc dans
+Elle nomme des personnes et dessine la carte des accès techniques de l'incubateur. Le
+code, lui, est public. Le fichier vit donc dans
 [account-manager-config](https://github.com/incubateur-ademe/account-manager-config),
-privé, et l'étape `politique` du Dockerfile va les y chercher au build.
+privé, et l'étape `politique` du Dockerfile va l'y chercher au build.
 
 Cette étape part de l'image node brute, installe `git`, clone en profondeur 1, copie
 **nommément** `config.yaml` puis écrit la révision clonée dans `config/.revision`. Elle
-refuse de construire si un `accounts.yaml` y traîne encore : ce fichier ne se lit plus, et
-ce qu'il porte disparaîtrait en silence. Elle n'entre dans aucune image : ni le jeton, ni
+refuse de construire si un `accounts.yaml` y traîne encore : ce fichier ne se lit plus, sa
+clé `scope` a rejoint `config.yaml`, et les comptes de service se déclarent désormais
+depuis leur écran. Elle n'entre dans aucune image : ni le jeton, ni
 le clone, ni `git` ne survivent au build. Seuls le fichier et la révision passent dans
 `runner`, par un `COPY --from`.
 

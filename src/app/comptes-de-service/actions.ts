@@ -1,5 +1,6 @@
 "use server";
 
+import { Prisma } from "@/generated/prisma/client";
 import { actionTracee } from "@/lib/actions";
 import { prisma } from "@/lib/db";
 import { requireOperateur } from "@/lib/session";
@@ -85,18 +86,28 @@ export async function declarerUnCompteDeService(
     return { erreur: `Un compte de service porte déjà la clé « ${key} ».` };
   }
 
-  await actionTracee({
-    action: "compte-de-service.declaration",
-    targetType: "compte-de-service",
-    targetId: key,
-    after: { label, purpose, ownerUsername, reviewEveryDays },
-    revalider: ["/comptes-de-service"],
-    ecrire: async () => {
-      await prisma.serviceAccount.create({
-        data: { key, label, purpose, ownerUsername, reviewEveryDays },
-      });
-    },
-  });
+  try {
+    await actionTracee({
+      action: "compte-de-service.declaration",
+      targetType: "compte-de-service",
+      targetId: key,
+      after: { label, purpose, ownerUsername, reviewEveryDays },
+      revalider: ["/comptes-de-service"],
+      ecrire: async () => {
+        await prisma.serviceAccount.create({
+          data: { key, label, purpose, ownerUsername, reviewEveryDays },
+        });
+      },
+    });
+  } catch (cause: unknown) {
+    // Deux saisies simultanées lisent la même absence avant que l'une n'écrive. Le refus
+    // de la base est alors le bon, et le rendre comme une panne enverrait chercher un
+    // incident là où il n'y a qu'une clé déjà prise.
+    if (cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === "P2002") {
+      return { erreur: `Un compte de service porte déjà la clé « ${key} ».` };
+    }
+    throw cause;
+  }
 
   return null;
 }

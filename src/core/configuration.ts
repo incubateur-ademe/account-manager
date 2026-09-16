@@ -133,8 +133,13 @@ export function convertir(brut: string, forme: Forme): unknown {
         .split(",")
         .map((entree) => entree.trim())
         .filter((entree) => entree.length > 0);
-    case "nombre":
-      return Number(brut);
+    case "nombre": {
+      // Ce qui n'est pas un nombre le reste : rendre NaN ferait remonter un refus du schéma
+      // dont le message ne dirait pas que la valeur n'en était pas un, et une chaîne vide
+      // vaudrait zéro, donc un seuil de zéro jour que personne n'a écrit.
+      const lu = brut.trim() === "" ? Number.NaN : Number(brut);
+      return Number.isFinite(lu) ? lu : brut;
+    }
     case "booleen":
       return brut === "true";
     default:

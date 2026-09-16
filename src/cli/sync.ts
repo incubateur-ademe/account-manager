@@ -27,7 +27,7 @@ async function terminer(echec: boolean): Promise<void> {
  */
 // Avant de collecter : un seuil réglé depuis l'interface gouverne la nuit qui suit, sans
 // quoi la collecte appliquerait une politique que plus personne ne lit dans les écrans.
-chargerLesSurcharges()
+chargerLesSurcharges({ strict: true })
   .then(() =>
     executerSync(new Date(), randomUUID(), (ligne) => {
       console.log(ligne);

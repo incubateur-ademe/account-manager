@@ -101,6 +101,12 @@ describe("d'où une valeur de configuration tient ce qu'elle vaut", () => {
     expect(convertir("a, b ,c", "liste")).toEqual(["a", "b", "c"]);
     expect(convertir("", "liste")).toEqual([]);
     expect(convertir("7", "nombre")).toBe(7);
+
+    // Then ce qui n'est pas un nombre le reste, et ne devient ni zéro ni NaN : le premier
+    // poserait un seuil que personne n'a écrit, le second un refus dont le message ne
+    // dirait pas que la valeur n'en était pas un
+    expect(convertir("vingt", "nombre")).toBe("vingt");
+    expect(convertir("", "nombre")).toBe("");
     expect(convertir("true", "booleen")).toBe(true);
     expect(convertir("false", "booleen")).toBe(false);
     expect(convertir("ademe", "texte")).toBe("ademe");

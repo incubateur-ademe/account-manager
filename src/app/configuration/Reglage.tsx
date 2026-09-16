@@ -36,6 +36,9 @@ export function Reglage({
         <Input
           label=""
           hintText={forme === "liste" ? "séparés par des virgules" : forme}
+          // La valeur du jour sert de clé : sans elle, React garde le champ tel quel après
+          // une revalidation, et l'écran affiche une valeur pendant qu'une autre vaut.
+          key={valeur}
           nativeInputProps={{ name: "valeur", defaultValue: valeur, "aria-label": chemin }}
           state={erreur ? "error" : "default"}
           stateRelatedMessage={erreur}

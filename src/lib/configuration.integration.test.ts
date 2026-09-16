@@ -109,6 +109,18 @@ describe("un réglage posé en base gouverne ce que le fichier déclarait", () =
     expect(policy().mail.domainsLostOnDeparture).toEqual(["un.exemple"]);
   });
 
+  it("refuse une valeur qui n'est pas un nombre, en le disant", async () => {
+    // Given un seuil réglé sur un texte
+    await prisma.configOverride.create({
+      data: { path: "thresholds.graceDays", value: "vingt", updatedBy: "operatrice.exemple" },
+    });
+    await chargerLesSurcharges();
+
+    // Then le refus nomme le chemin. Rendre zéro pour une valeur illisible poserait un
+    // seuil de zéro jour que personne n'a écrit
+    expect(() => policy()).toThrow(/thresholds\.graceDays/);
+  });
+
   it("refuse un réglage que le schéma n'accepte pas, plutôt que de l'appliquer à moitié", async () => {
     // Given un seuil réglé sur une valeur que le schéma refuse
     await prisma.configOverride.create({

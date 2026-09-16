@@ -47,9 +47,7 @@ function brut(fichier: string): Record<string, unknown> {
     throw new Error(`Fichier de politique illisible (${chemin}) : un objet était attendu.`);
   }
 
-  const { version: _version, ...reste } = lu as Record<string, unknown>;
-
-  return reste;
+  return lu as Record<string, unknown>;
 }
 
 let surcharges: Readonly<Record<string, unknown>> = {};
@@ -97,7 +95,7 @@ export function loadPolicy(): Policy {
   // amputée de ce que quelqu'un croit avoir déclaré.
   if (existsSync(resolve(dossier(), "accounts.yaml"))) {
     throw new Error(
-      "accounts.yaml ne se lit plus : son contenu a rejoint config.yaml. Y verser les clés « scope » et « serviceAccounts », puis supprimer le fichier.",
+      "accounts.yaml ne se lit plus. Verser sa clé « scope » dans config.yaml, puis supprimer le fichier. Les comptes de service, eux, ne se déclarent plus dans un fichier : ils se saisissent dans l'écran « Comptes de service », et le schéma refuse désormais cette clé.",
     );
   }
 
@@ -111,6 +109,9 @@ export function loadPolicy(): Policy {
   provenances = resolution.provenances;
   inconnues = resolution.inconnues;
 
+  // La version que le fichier déclare, et 1 seulement quand il n'en déclare aucune : la
+  // remplacer ferait accepter comme version 1 un fichier écrit pour une autre, dont les
+  // champs compatibles passeraient et les autres seraient refusés sans qu'on sache pourquoi.
   const lu = policySchema.safeParse({ version: 1, ...resolution.valeurs });
   if (!lu.success) {
     const details = lu.error.issues

@@ -97,9 +97,20 @@ export async function executerSync(
   // Un compte de service ne se reporte plus depuis un fichier : il se déclare une fois
   // depuis l'écran, et ce qu'il porte vit en base. Reste ce que la collecte peut en dire,
   // à savoir ceux dont la revue est due.
-  const revues = await comptesEnRetardDeRevue(now);
-  if (revues.length > 0) {
-    journal(`[sync] comptes de service en retard de revue : ${revues.join(", ")}`);
+  // Isolé du reste : ce relevé n'est qu'un signalement, et le laisser emporter les
+  // connecteurs, le rapprochement et les constats ferait perdre une nuit entière pour une
+  // information qui n'engage rien.
+  let revueEnEchec = false;
+  try {
+    const revues = await comptesEnRetardDeRevue(now);
+    if (revues.length > 0) {
+      journal(`[sync] comptes de service en retard de revue : ${revues.join(", ")}`);
+    }
+  } catch (cause: unknown) {
+    revueEnEchec = true;
+    journal(
+      `[sync] comptes de service non relus : ${cause instanceof Error ? cause.message : String(cause)}`,
+    );
   }
 
   const systemesEnEchec: string[] = [];
@@ -288,7 +299,10 @@ export async function executerSync(
   // qu'un systeme n'etait plus lu du tout. Un systeme non lu faute de credential ne
   // compte pas : il est annonce, il est trace, et il n'y a rien a reparer cette nuit.
   const echec =
-    perimetre.status === "FAILED" || startups.erreur !== null || systemesEnEchec.length > 0;
+    perimetre.status === "FAILED" ||
+    revueEnEchec ||
+    startups.erreur !== null ||
+    systemesEnEchec.length > 0;
 
   return { correlationId, echec };
 }

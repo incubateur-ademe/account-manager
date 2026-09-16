@@ -1,6 +1,7 @@
 "use client";
 
 import { fr } from "@codegouvfr/react-dsfr";
+import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Button } from "@codegouvfr/react-dsfr/Button";
 import { Input } from "@codegouvfr/react-dsfr/Input";
 import { useActionState } from "react";
@@ -43,9 +44,14 @@ export function Declarer() {
           label="Revue tous les"
           hintText="En jours. Un compte machine n'a pas de fin de mission, c'est la revue qui le remet en question."
           nativeInputProps={{ name: "reviewEveryDays", type: "number", defaultValue: 180, min: 1 }}
-          state={etat?.erreur ? "error" : "default"}
-          stateRelatedMessage={etat?.erreur}
         />
+
+        {/* Au formulaire et non à un champ : une clé déjà prise ou un libellé manquant ne
+            concernent pas la revue, et l'y accrocher désignerait le mauvais endroit, aux
+            lecteurs d'écran comme aux autres. */}
+        {etat?.erreur ? (
+          <Alert severity="error" small description={etat.erreur} className={fr.cx("fr-mb-2w")} />
+        ) : null}
         <Button type="submit">Déclarer</Button>
       </form>
     </section>

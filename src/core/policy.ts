@@ -134,8 +134,8 @@ const profileSchema = z
 export type Profil = z.infer<typeof profileSchema>;
 
 /**
- * Ce que l'incubateur déclare : qui il suit, quels comptes machine il détient, et les
- * règles qui gouvernent ses décisions.
+ * Ce que l'incubateur déclare : qui il suit, et les règles qui gouvernent ses décisions.
+ * Les comptes machine, eux, ne se déclarent plus ici mais en base, depuis leur écran.
  *
  * Un seul objet là où il y en avait deux. La séparation reposait sur l'idée qu'un des deux
  * fichiers nommait des gens et l'autre non, ce qui justifiait de le sortir du dépôt du code.

@@ -12,12 +12,19 @@ import { poserLesSurcharges } from "@/lib/policy";
  * depuis la collecte : le cache de politique s'invalide à chaque appel, si bien qu'un
  * réglage posé dans l'interface vaut dès l'écran suivant.
  */
-export async function chargerLesSurcharges(): Promise<void> {
+export async function chargerLesSurcharges({ strict = false } = {}): Promise<void> {
   try {
     const lignes = await prisma.configOverride.findMany({ select: { path: true, value: true } });
 
     poserLesSurcharges(Object.fromEntries(lignes.map((ligne) => [ligne.path, ligne.value])));
   } catch (cause: unknown) {
+    // La collecte, elle, s'arrête : elle décide des coupures, et le faire sur une politique
+    // qui n'est pas celle enregistrée reviendrait à couper sur des seuils que personne n'a
+    // choisis. Un écran qui affiche de travers se répare ; une révocation, non.
+    if (strict) {
+      throw cause;
+    }
+
     // Une base absente ne doit pas emporter la page de connexion. Cet appel est en tête de
     // la disposition racine, donc devant tous les écrans, y compris ceux qui n'ont besoin
     // de rien : lever ici rendrait l'outil inaccessible au moment précis où quelqu'un
