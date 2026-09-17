@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import { catalogueDOctroi } from "@/connectors";
 import type { Intent, ObservedResource, RunContext } from "@/core/connector";
+import { verifierProfils } from "@/core/octroi";
+import type { Profil } from "@/core/policy";
 import {
   avecReprise,
   CONTRAT_SCALINGO,
@@ -8,7 +11,9 @@ import {
   constaterCollaborateur,
   type EcritureScalingo,
   ErreurDeLecture,
+  examinerScopeScalingo,
   executerScalingo,
+  interpreterChangementDeRole,
   interpreterOctroi,
   interpreterRetrait,
   type LecteurScalingo,
@@ -964,8 +969,9 @@ describe("ce que le connecteur Scalingo propose à un départ", () => {
     // dédoublonnage ne rapprocherait pas
     expect(await scalingo.plan(sansScope, CONTEXTE)).toEqual([]);
 
-    // Given une portée complète, avec sa région
+    // Given une portée complète, avec sa nature et sa région
     const scope = {
+      nature: "collaboration" as const,
       region: "osc-fr1",
       application: "service-annuaire",
       role: "collaborator" as const,
@@ -1015,6 +1021,146 @@ describe("ce que le connecteur Scalingo propose à un départ", () => {
       false,
     );
     expect(CONTRAT_SCALINGO.scopeSchema.safeParse({ ...scope, role: "owner" }).success).toBe(false);
+
+    // Then la nature n'a pas de défaut, et c'est la rupture assumée : un profil qui ne la
+    // porte pas ne décrit plus rien, l'octroi d'une collaboration et l'émission d'un jeton
+    // n'ayant aucun champ en commun
+    expect(
+      CONTRAT_SCALINGO.scopeSchema.safeParse({
+        region: scope.region,
+        application: scope.application,
+        role: scope.role,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("pèse un jeton pour ce qu'il est, et refuse une cible que son usage n'ouvrira pas", () => {
+    // Given un jeton qui sert l'inventaire d'une région, sous une région nommée
+    const inventaire = {
+      nature: "jeton" as const,
+      usage: "inventaire-d-une-region" as const,
+      region: "osc-fr1",
+    };
+    expect(CONTRAT_SCALINGO.scopeSchema.safeParse(inventaire).success).toBe(true);
+
+    // Then tout jeton pèse le risque le plus lourd, quel que soit son usage : rien ne le
+    // révoque, si bien que le plus étroit ouvre ce que personne ne saura refermer. C'est
+    // ce qui lui fait exiger une échéance au verdict d'octroi.
+    const examen = examinerScopeScalingo(inventaire);
+    expect(examen).toMatchObject({ refus: [], risque: "high" });
+
+    // Then la cible ne porte pas l'application : deux accès qui demandent le même jeton
+    // pour la même personne demandent la même chose
+    expect(examen.cible).toBe("jeton:inventaire-d-une-region:osc-fr1");
+    expect(
+      examinerScopeScalingo({
+        nature: "jeton",
+        usage: "catalogue-des-regions",
+      }).cible,
+    ).toBe("jeton:catalogue-des-regions:global");
+
+    // Then un usage régional sans région est refusé : chaque région a son propre hôte, et
+    // un jeton n'en ouvre qu'un
+    expect(
+      examinerScopeScalingo({ nature: "jeton", usage: "inventaire-d-une-region" }).refus,
+    ).toEqual([expect.stringContaining("scope.region")]);
+
+    // Then un usage qui vise le service d'authentification et porte quand même une région
+    // est refusé lui aussi : la cible décrite n'est pas celle que le jeton ouvrira
+    expect(
+      examinerScopeScalingo({
+        nature: "jeton",
+        usage: "catalogue-des-regions",
+        region: "osc-fr1",
+      }).refus,
+    ).toEqual([expect.stringContaining("scope.region")]);
+
+    // Then une application se nomme quand les chemins la nomment, et jamais autrement
+    expect(
+      examinerScopeScalingo({
+        nature: "jeton",
+        usage: "collaborateurs-d-une-application",
+        region: "osc-fr1",
+      }).refus,
+    ).toEqual([expect.stringContaining("scope.application")]);
+    expect(examinerScopeScalingo({ ...inventaire, application: "service-annuaire" }).refus).toEqual(
+      [expect.stringContaining("scope.application")],
+    );
+    expect(
+      examinerScopeScalingo({
+        nature: "jeton",
+        usage: "collaborateurs-d-une-application",
+        region: "osc-fr1",
+        application: "service-annuaire",
+      }).refus,
+    ).toEqual([]);
+
+    // Then une collaboration reste pesée par son rôle, et sa cible ignore ce rôle : deux
+    // rôles sur une même application ne s'ajoutent pas, le second remplace le premier
+    const collaboration = {
+      nature: "collaboration" as const,
+      region: "osc-fr1",
+      application: "service-annuaire",
+      role: "limited" as const,
+    };
+    expect(examinerScopeScalingo(collaboration)).toMatchObject({
+      refus: [],
+      risque: "medium",
+      cible: "application:osc-fr1:service-annuaire",
+    });
+    expect(examinerScopeScalingo({ ...collaboration, role: "collaborator" })).toMatchObject({
+      risque: "high",
+      cible: "application:osc-fr1:service-annuaire",
+    });
+  });
+
+  it("refuse un jeton sans terme, et le refus passe par le registre", () => {
+    // Given le catalogue tel que le registre l'assemble, sans doublure d'examen
+    const catalogue = catalogueDOctroi();
+
+    // Then Scalingo y arrive avec son examen. Ce rattachement porte tout ce qui suit :
+    // sans lui, un scope ne serait plus jugé au-delà de sa forme, et la règle du risque
+    // élevé s'éteindrait sans qu'une seule ligne ne proteste
+    expect(catalogue.find(({ key }) => key === "scalingo")?.examinerScope).toBeDefined();
+
+    const profil = (scope: Record<string, unknown>, expiresInDays?: number): readonly Profil[] => [
+      {
+        key: "intendance",
+        label: "Intendance du parc",
+        accesses: [
+          { system: "scalingo", scope, ...(expiresInDays === undefined ? {} : { expiresInDays }) },
+        ],
+      },
+    ];
+
+    const JETON = { nature: "jeton", usage: "catalogue-des-regions" };
+
+    // When un profil demande un jeton sans échéance
+    const sansTerme = verifierProfils(profil(JETON), catalogue);
+
+    // Then il est refusé, et le refus nomme ce que le jeton sert et le champ à écrire :
+    // rien ne révoque un jeton, son terme est la seule reprise qui existe
+    expect(sansTerme).toHaveLength(1);
+    expect(sansTerme[0]?.motif).toContain("un jeton restreint pour découvrir les régions");
+    expect(sansTerme[0]?.motif).toContain("expiresInDays");
+
+    // Then avec un terme il passe : la règle exige une échéance, elle n'interdit pas
+    expect(verifierProfils(profil(JETON, 90), catalogue)).toEqual([]);
+
+    // Then une incohérence que le schéma ne sait pas dire est refusée par le même chemin,
+    // terme ou pas
+    expect(
+      verifierProfils(profil({ ...JETON, region: "osc-fr1" }, 90), catalogue)[0]?.motif,
+    ).toContain("scope.region");
+
+    // Then un profil qui a gardé l'ancienne forme, sans nature, est refusé sur ce champ :
+    // c'est la rupture, et elle se dit là où un auteur de profil la lit
+    expect(
+      verifierProfils(
+        profil({ region: "osc-fr1", application: "service-annuaire", role: "limited" }),
+        catalogue,
+      )[0]?.motif,
+    ).toContain("scope.nature");
   });
 });
 
@@ -1103,19 +1249,16 @@ describe("ce que le connecteur Scalingo écrit, et ce qu'il refuse d'écrire", (
     };
     expect(await constaterCollaborateur(lire, partie)).toEqual({ state: "ALREADY_ABSENT" });
 
-    // Then sur un octroi, un rôle qui ne correspond pas est un écart et non un doublon :
-    // la personne est là, mais pas avec l'accès que le plan décrivait
+    // Then sur un octroi, un rôle qui ne correspond pas laisse l'étape à faire : elle se
+    // corrigera en place. La déclarer en écart la sortirait pour toujours de la portée de
+    // l'exécution, le socle n'exécutant jamais une étape dont le précheck a vu un écart
     const octroi = {
       ...ETAPE,
       capability: "grant" as const,
       action: "inviter-comme-collaborateur",
       params: { ...ETAPE.params, role: "limited" },
     };
-    expect(await constaterCollaborateur(lire, octroi)).toEqual({
-      state: "STALE",
-      expected: { role: "limited" },
-      actual: { role: "collaborator" },
-    });
+    expect(await constaterCollaborateur(lire, octroi)).toEqual({ state: "READY" });
     expect(
       await constaterCollaborateur(lire, {
         ...octroi,
@@ -1237,5 +1380,109 @@ describe("ce que le connecteur Scalingo écrit, et ce qu'il refuse d'écrire", (
     expect(plein.appels[0]?.corps).toEqual({
       collaborator: { email: "nouvelle@exemple.invalid", is_limited: false },
     });
+  });
+
+  it("corrige un rôle en place plutôt que de retirer la personne pour la réinviter", async () => {
+    const reel = { ...CONTEXTE, dryRun: false };
+
+    // Given le titulaire, collaborateur plein de l'application, et une étape d'octroi qui
+    // n'ouvre que le rôle limité
+    const octroi = {
+      ...ETAPE,
+      capability: "grant" as const,
+      action: "inviter-comme-collaborateur",
+      params: { ...ETAPE.params, beneficiaire: TITULAIRE.email, role: "limited" },
+    };
+    const { lire } = lecteur(ROSTER);
+
+    // When le précheck passe : l'étape reste à faire, et c'est ce qui la rend exécutable.
+    // Un écart la ferait sauter à chaque reprise, et le rôle ne se corrigerait jamais
+    expect(await constaterCollaborateur(lire, octroi)).toEqual({ state: "READY" });
+
+    // When l'écriture part
+    const corrige = ecrivain({ statut: 200, corps: { collaborator: { is_limited: true } } });
+    expect(await executerScalingo(lire, corrige.ecrire, true, octroi, reel)).toMatchObject({
+      state: "SUCCEEDED",
+      evidence: expect.stringContaining("en place"),
+    });
+
+    // Then un seul appel, et c'est un PATCH sur la collaboration existante : ni retrait,
+    // ni réinvitation, qui feraient perdre une invitation acceptée et renverraient un
+    // courriel pour un accès déjà détenu
+    expect(corrige.appels).toEqual([
+      {
+        methode: "PATCH",
+        url: `${FR}/v1/apps/service-annuaire/collaborators/collab-titulaire`,
+        corps: { collaborator: { is_limited: true } },
+      },
+    ]);
+
+    // Then l'identifiant visé est celui du relevé de l'instant, retrouvé sur l'adresse en
+    // minuscules : il change dès qu'une invitation est retirée puis réémise, et le plan
+    // n'en porte aucun
+    const reemis = lecteur({
+      [`${FR}/v1/apps/service-annuaire/collaborators`]: {
+        collaborators: [
+          { ...TITULAIRE, id: "collab-reemis", email: TITULAIRE.email.toUpperCase() },
+        ],
+      },
+    });
+    const apresReemission = ecrivain({ statut: 200, corps: undefined });
+    await executerScalingo(reemis.lire, apresReemission.ecrire, true, octroi, reel);
+    expect(apresReemission.appels[0]).toMatchObject({
+      methode: "PATCH",
+      url: `${FR}/v1/apps/service-annuaire/collaborators/collab-reemis`,
+    });
+
+    // Then le rôle déjà en place ne fait rien partir : l'étape est idempotente, et la
+    // corriger vers ce qu'elle constate déjà serait une écriture pour rien
+    const conforme = ecrivain({ statut: 200, corps: undefined });
+    expect(
+      await executerScalingo(
+        lire,
+        conforme.ecrire,
+        true,
+        { ...octroi, params: { ...octroi.params, role: "collaborator" } },
+        reel,
+      ),
+    ).toEqual({ state: "ALREADY_PRESENT" });
+    expect(conforme.appels).toEqual([]);
+
+    // Then c'est bien ce relevé qui décide du geste, et non la planification, qui ne lit
+    // aucun système : la même étape sur une adresse absente invite au lieu de corriger
+    const absente = ecrivain({ statut: 201, corps: undefined });
+    await executerScalingo(
+      lire,
+      absente.ecrire,
+      true,
+      { ...octroi, params: { ...octroi.params, beneficiaire: "nouvelle@exemple.invalid" } },
+      reel,
+    );
+    expect(absente.appels).toEqual([
+      {
+        methode: "POST",
+        url: `${FR}/v1/apps/service-annuaire/collaborators`,
+        corps: { collaborator: { email: "nouvelle@exemple.invalid", is_limited: true } },
+      },
+    ]);
+
+    // Then une collaboration disparue entre la lecture et l'écriture n'est ni un succès ni
+    // une panne : la solder affirmerait un accès que plus personne ne détient, et l'étape
+    // se reprend, la reprise invitant
+    const evanouie = ecrivain({ statut: 404, corps: undefined });
+    expect(await executerScalingo(lire, evanouie.ecrire, true, octroi, reel)).toMatchObject({
+      state: "FAILED",
+      retryable: true,
+    });
+    expect(evanouie.appels).toHaveLength(1);
+
+    // Then les autres familles de réponses se lisent comme ailleurs : une panne se reprend,
+    // un refus non
+    expect(interpreterChangementDeRole(503, { error: "indisponible" })).toEqual({
+      state: "FAILED",
+      error: "Scalingo a répondu 503 : indisponible",
+      retryable: true,
+    });
+    expect(interpreterChangementDeRole(403, undefined)).toMatchObject({ retryable: false });
   });
 });

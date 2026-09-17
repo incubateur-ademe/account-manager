@@ -16,6 +16,7 @@ import type {
   SubjectRef,
 } from "@/core/connector";
 import { lireChaque } from "@/core/lecture";
+import type { ExamenDeScope } from "@/core/octroi";
 import { env } from "@/lib/env";
 
 /**
@@ -186,7 +187,7 @@ export interface ReponseScalingo {
 }
 
 export type EcritureScalingo = (
-  methode: "POST" | "DELETE",
+  methode: "POST" | "PATCH" | "DELETE",
   url: string,
   corps?: unknown,
 ) => Promise<ReponseScalingo>;
@@ -792,15 +793,6 @@ export async function collecter(
     : { status: "ok", ...payload };
 }
 
-/**
- * Strict, et sans clé facultative : dans un profil écrit à la main, une clé inconnue est
- * une faute de frappe, et une faute de frappe ignorée en silence donne un octroi qui ne
- * fait pas ce que son auteur croit avoir écrit.
- *
- * Le rôle n'a que deux valeurs parce que l'API n'en expose qu'un booléen. En inventer
- * une troisième décrirait un droit que Scalingo ne sait pas poser, et la propriété d'une
- * application ne s'accorde pas, elle se transfère.
- */
 /** Les statuts dont la cause peut disparaître d'elle-même, et eux seuls. */
 function reprenable(statut: number): boolean {
   return statut === 408 || statut === 429 || statut >= 500;
@@ -874,6 +866,44 @@ export function interpreterOctroi(statut: number, corps: unknown): StepOutcome {
 }
 
 /**
+ * Ce qu'un changement de rôle devient. Le 404 est le seul cas qui demande une décision :
+ * la collaboration a disparu entre la lecture et l'écriture, si bien qu'il n'y a ni rôle
+ * corrigé ni panne à signaler.
+ *
+ * Il ne se solde ni en succès ni en « déjà absent », qui valent tous deux succès pour le
+ * socle et affirmeraient un accès que plus personne ne détient. Il se reprend : le second
+ * passage relira, ne trouvera personne, et invitera.
+ */
+export function interpreterChangementDeRole(statut: number, corps: unknown): StepOutcome {
+  if (statut === 404) {
+    return {
+      state: "FAILED",
+      error:
+        "La collaboration a disparu entre sa lecture et la correction du rôle : rien n'a été changé, et une reprise invitera.",
+      retryable: true,
+    };
+  }
+
+  if (statut < 200 || statut >= 300) {
+    const dit = messageDuCorps(corps);
+    return {
+      state: "FAILED",
+      error: `Scalingo a répondu ${statut}${dit === null ? "" : ` : ${dit}`}`,
+      retryable: reprenable(statut),
+    };
+  }
+
+  return {
+    state: "SUCCEEDED",
+    evidence:
+      "Rôle corrigé en place, sur la collaboration existante : rien n'a été retiré, et aucune invitation n'a été réémise.",
+  };
+}
+
+const roleConstate = (collaboration: Collaborateur) =>
+  collaboration.is_limited === true ? ROLE_LIMITE : ROLE_PLEIN;
+
+/**
  * Ce que le relevé d'une application dit d'une personne, avant d'écrire. Rapproché sur
  * l'adresse et non sur l'identifiant de collaboration : celui-ci change dès qu'une
  * invitation est retirée puis réémise, si bien qu'un plan confirmé la veille viserait une
@@ -897,15 +927,81 @@ export function constaterCollaboration(
     return { state: "READY" };
   }
 
-  const role = trouve.is_limited === true ? ROLE_LIMITE : ROLE_PLEIN;
+  const role = roleConstate(trouve);
   if (attendu.role === undefined || role === attendu.role) {
     return { state: "ALREADY_PRESENT" };
   }
 
-  return { state: "STALE", expected: { role: attendu.role }, actual: { role } };
+  // Un rôle qui diffère est prêt, et non en écart : l'écriture le corrige en place sur la
+  // collaboration existante, ce qui rend l'étape idempotente. Rendre `STALE` la sortirait
+  // pour toujours de la portée de l'exécution, le socle n'exécutant jamais une étape dont
+  // le précheck a constaté un écart, et il n'y aurait plus de chemin vers la correction.
+  return { state: "READY" };
 }
 
-const SCOPE = z.strictObject({
+const NATURE_COLLABORATION = "collaboration";
+const NATURE_JETON = "jeton";
+
+/**
+ * Un usage est un besoin nommé, pas une liste de chemins. Le profil nomme le besoin, le
+ * connecteur tient les chemins : l'inverse mettrait une règle de pare-feu dans un fichier
+ * de politique que personne ne relit chemin par chemin, et le refus d'octroi n'aurait plus
+ * rien d'intelligible à dire.
+ *
+ * Les trois usages se lisent dans les appels que ce connecteur passe vraiment, et nulle
+ * part ailleurs : un usage qu'aucun appel ne sert ouvrirait un droit dont personne n'a
+ * l'emploi.
+ */
+const USAGES_DE_JETON = [
+  "inventaire-d-une-region",
+  "collaborateurs-d-une-application",
+  "catalogue-des-regions",
+] as const;
+
+type CleDUsage = (typeof USAGES_DE_JETON)[number];
+
+interface UsageDeJeton {
+  libelle: string;
+  /** L'hôte unique que le jeton autorise. Il n'en porte qu'un, d'où le choix et non la liste. */
+  hote: "region" | "authentification";
+  /** Vrai quand les chemins de cet usage nomment une application, donc quand le scope doit la porter. */
+  viseUneApplication: boolean;
+}
+
+const CATALOGUE_DES_USAGES: Readonly<Record<CleDUsage, UsageDeJeton>> = {
+  "inventaire-d-une-region": {
+    libelle: "lire les applications d'une région et la vue consolidée de ses collaborateurs",
+    hote: "region",
+    viseUneApplication: false,
+  },
+  "collaborateurs-d-une-application": {
+    libelle: "tenir les collaborateurs d'une seule application",
+    hote: "region",
+    viseUneApplication: true,
+  },
+  "catalogue-des-regions": {
+    libelle: "découvrir les régions et le compte qui porte le jeton",
+    hote: "authentification",
+    viseUneApplication: false,
+  },
+};
+
+const NATURE = {
+  description:
+    "Ce que cet accès ouvre : « collaboration » invite quelqu'un sur une application, « jeton » fait émettre un jeton restreint devant l'API.",
+};
+
+/**
+ * Strict, et sans clé facultative : dans un profil écrit à la main, une clé inconnue est
+ * une faute de frappe, et une faute de frappe ignorée en silence donne un octroi qui ne
+ * fait pas ce que son auteur croit avoir écrit.
+ *
+ * Le rôle n'a que deux valeurs parce que l'API n'en expose qu'un booléen. En inventer
+ * une troisième décrirait un droit que Scalingo ne sait pas poser, et la propriété d'une
+ * application ne s'accorde pas, elle se transfère.
+ */
+const collaborationSchema = z.strictObject({
+  nature: z.literal(NATURE_COLLABORATION).meta({ ...NATURE, examples: [NATURE_COLLABORATION] }),
   region: z
     .string()
     .min(1)
@@ -929,19 +1025,121 @@ const SCOPE = z.strictObject({
   }),
 });
 
+/**
+ * La région et l'application sont facultatives parce que chaque usage décide de la
+ * sienne : les exiger toutes deux obligerait à écrire une région là où le jeton vise le
+ * service d'authentification, et une application là où ses chemins n'en nomment aucune.
+ * Ce que le schéma ne peut pas dire de ces deux champs, `examinerScopeScalingo` le dit.
+ */
+const jetonSchema = z.strictObject({
+  nature: z.literal(NATURE_JETON).meta({ ...NATURE, examples: [NATURE_JETON] }),
+  usage: z.enum(USAGES_DE_JETON).meta({
+    description:
+      "Le besoin que ce jeton sert. Les chemins qu'il ouvre appartiennent au connecteur et ne s'écrivent pas ici.",
+    examples: ["inventaire-d-une-region"],
+  }),
+  region: z
+    .string()
+    .min(1)
+    .optional()
+    .meta({
+      description:
+        "La région dont l'API est la cible. Absente pour un usage qui vise le service d'authentification : un jeton ne porte qu'une cible.",
+      examples: ["osc-fr1"],
+    }),
+  application: z
+    .string()
+    .min(1)
+    .optional()
+    .meta({
+      description: "L'application visée, pour les seuls usages dont les chemins la nomment.",
+      examples: ["mon-application"],
+    }),
+});
+
+const SCOPE = z.discriminatedUnion("nature", [collaborationSchema, jetonSchema]);
+
 export type ScopeScalingo = z.infer<typeof SCOPE>;
+export type ScopeCollaboration = z.infer<typeof collaborationSchema>;
+type ScopeJeton = z.infer<typeof jetonSchema>;
 
 /**
  * Un collaborateur plein lit les variables d'environnement, donc les secrets de
  * l'application et les identifiants de ses bases. Un collaborateur limité ne les voit
  * pas. C'est la seule différence qui compte ici, et elle vaut un cran de risque.
  */
-function risqueDuRole(role: ScopeScalingo["role"]): "medium" | "high" {
+function risqueDuRole(role: ScopeCollaboration["role"]): "medium" | "high" {
   return role === ROLE_PLEIN ? "high" : "medium";
 }
 
+function examinerJeton(scope: ScopeJeton): ExamenDeScope {
+  const usage = CATALOGUE_DES_USAGES[scope.usage];
+  const regional = usage.hote === "region";
+  const refus: string[] = [];
+
+  if (regional && scope.region === undefined) {
+    refus.push(
+      `scope.region : l'usage « ${scope.usage} » interroge l'API d'une région, et ce profil n'en nomme aucune. Chaque région a son propre hôte, et un jeton n'en ouvre qu'un.`,
+    );
+  }
+  if (!regional && scope.region !== undefined) {
+    refus.push(
+      `scope.region : l'usage « ${scope.usage} » vise le service d'authentification, qui est le même pour toutes les régions. Retirez la région, sans quoi ce profil décrit une cible que le jeton n'ouvrira pas.`,
+    );
+  }
+  if (usage.viseUneApplication && scope.application === undefined) {
+    refus.push(
+      `scope.application : les chemins de l'usage « ${scope.usage} » nomment une application, et ce profil n'en nomme aucune.`,
+    );
+  }
+  if (!usage.viseUneApplication && scope.application !== undefined) {
+    refus.push(
+      `scope.application : les chemins de l'usage « ${scope.usage} » ne nomment aucune application, et « ${scope.application} » n'y ouvrirait donc rien.`,
+    );
+  }
+
+  return {
+    refus,
+    // Toute la nature, et sans égard pour l'usage : un jeton ne se révoque pas, si bien
+    // que même le plus étroit ouvre quelque chose que rien ne saura refermer avant son
+    // terme. C'est ce qui lui fait exiger une échéance.
+    risque: "high",
+    libelle: `un jeton restreint pour ${usage.libelle}`,
+    // L'application en est absente, comme le rôle l'est de la cible d'une collaboration :
+    // deux accès qui demandent le même jeton pour la même personne demandent la même
+    // chose, et le second resterait en écart pour toujours.
+    cible: `jeton:${scope.usage}:${scope.region ?? "global"}`,
+  };
+}
+
+/**
+ * Ce que `SCOPE` ne peut pas dire de lui-même, et qui tient à la nature demandée : les
+ * deux champs facultatifs d'un jeton ne le sont que parce que l'usage décide, or le
+ * schéma est statique pour que `z.toJSONSchema` le rende.
+ *
+ * Le scope arrive tel que `SCOPE` l'a rendu et jamais autrement : c'est le contrat de
+ * `examinerScope`, qui n'est appelé qu'après validation.
+ */
+export function examinerScopeScalingo(scope: unknown): ExamenDeScope {
+  const lu = scope as ScopeScalingo;
+
+  if (lu.nature === NATURE_JETON) {
+    return examinerJeton(lu);
+  }
+
+  return {
+    refus: [],
+    risque: risqueDuRole(lu.role),
+    libelle: `le rôle ${lu.role} sur l'application ${lu.application} en région ${lu.region}`,
+    // Le rôle en est absent : deux rôles sur une même application ne s'ajoutent pas, le
+    // second remplace le premier, et l'accès qui perdrait resterait en écart pour
+    // toujours.
+    cible: `application:${lu.region}:${lu.application}`,
+  };
+}
+
 export function planifierOctroiScalingo(
-  scope: ScopeScalingo,
+  scope: ScopeCollaboration,
   sujet: SubjectRef,
   credential: boolean,
 ): readonly PlannedStep[] {
@@ -1168,20 +1366,6 @@ export async function executerScalingo(
   const hote = hoteDe(cible.region);
   const collaborateurs = `${hote}/v1/apps/${cible.application}/collaborators`;
 
-  if (step.action === "inviter-comme-collaborateur") {
-    const { statut, corps } = await ecrire("POST", collaborateurs, {
-      collaborator: {
-        email: cible.adresse,
-        // Toujours explicite : le défaut de l'API est le rôle limité quand son client en
-        // ligne de commande envoie l'inverse, et l'implicite reviendrait à ne pas savoir
-        // quel accès on vient d'ouvrir.
-        is_limited: step.params["role"] === ROLE_LIMITE,
-      },
-    });
-
-    return interpreterOctroi(statut, corps);
-  }
-
   // La collaboration se retrouve par l'adresse et jamais par son identifiant : celui-ci
   // change dès qu'une invitation est retirée puis réémise, si bien qu'un plan confirmé la
   // veille viserait une collaboration morte. C'est aussi ce que fait le client officiel.
@@ -1200,13 +1384,48 @@ export async function executerScalingo(
     (collaboration) => collaboration.email.trim().toLowerCase() === vise,
   );
 
-  if (!trouve) {
-    return { state: "ALREADY_ABSENT" };
+  if (step.action === "retirer-des-collaborateurs") {
+    if (!trouve) {
+      return { state: "ALREADY_ABSENT" };
+    }
+
+    const { statut, corps } = await ecrire("DELETE", `${collaborateurs}/${trouve.id}`);
+
+    return interpreterRetrait(statut, corps);
   }
 
-  const { statut, corps } = await ecrire("DELETE", `${collaborateurs}/${trouve.id}`);
+  const demande = step.params["role"];
 
-  return interpreterRetrait(statut, corps);
+  // Une seule étape pour l'octroi, et c'est ce relevé qui décide du geste : la
+  // planification ne lit aucun système par construction, elle ne peut pas savoir qui est
+  // déjà là.
+  if (!trouve) {
+    const { statut, corps } = await ecrire("POST", collaborateurs, {
+      collaborator: {
+        email: cible.adresse,
+        // Toujours explicite : le défaut de l'API est le rôle limité quand son client en
+        // ligne de commande envoie l'inverse, et l'implicite reviendrait à ne pas savoir
+        // quel accès on vient d'ouvrir.
+        is_limited: demande === ROLE_LIMITE,
+      },
+    });
+
+    return interpreterOctroi(statut, corps);
+  }
+
+  const attendu = demande === ROLE_LIMITE || demande === ROLE_PLEIN ? demande : undefined;
+  if (attendu === undefined || roleConstate(trouve) === attendu) {
+    return { state: "ALREADY_PRESENT" };
+  }
+
+  // Le rôle se corrige en place plutôt que de retirer puis réinviter : le retrait ferait
+  // perdre l'invitation acceptée, et la réémission renverrait un courriel pour un accès
+  // que la personne détient déjà.
+  const { statut, corps } = await ecrire("PATCH", `${collaborateurs}/${trouve.id}`, {
+    collaborator: { is_limited: attendu === ROLE_LIMITE },
+  });
+
+  return interpreterChangementDeRole(statut, corps);
 }
 
 export const CONTRAT_SCALINGO: ConnectorContract = {
@@ -1233,10 +1452,12 @@ export const CONTRAT_SCALINGO: ConnectorContract = {
   ],
   capabilities: {
     list: [{ requires: [CREDENTIAL], tier: "auto", runbook: RUNBOOK_LECTURE }],
-    // Manuel, alors que l'API sait inviter et retirer : le premier lot couvre le
-    // système sans jamais écrire dessus. Les voies automatiques viennent ensuite, et
-    // celle du retrait attend d'abord que le socle sache dire à un connecteur sur
-    // quelles ressources agir.
+    // Les deux sens ont leur voie automatique, et chacun garde la voie manuelle sous
+    // elle : sans jeton, il reste une marche à suivre, et c'est ce que le second tier
+    // déclare. L'octroi invite ou corrige le rôle en place, le retrait vise chaque
+    // application où la personne est constatée, le socle sachant dire sur quelles
+    // ressources agir. Ce que ni l'un ni l'autre ne fait est la rotation des secrets,
+    // qu'aucune API n'expose et qui sort en étape manuelle.
     grant: [
       { requires: [CREDENTIAL], tier: "auto", runbook: RUNBOOK_OCTROI },
       { requires: [], tier: "manual", runbook: RUNBOOK_OCTROI },
@@ -1386,7 +1607,7 @@ export const scalingo: Connector = {
       const lu = SCOPE.safeParse(intent.scope);
 
       return Promise.resolve(
-        lu.success
+        lu.success && lu.data.nature === NATURE_COLLABORATION
           ? planifierOctroiScalingo(lu.data, intent.subject, Boolean(env.SCALINGO_API_TOKEN))
           : [],
       );
@@ -1402,6 +1623,14 @@ export const scalingo: Connector = {
     );
   },
 
-  planifierOctroi: (scope, sujet) =>
-    planifierOctroiScalingo(scope as ScopeScalingo, sujet, Boolean(env.SCALINGO_API_TOKEN)),
+  // Aucune étape sous la nature « jeton » : rien ici ne sait encore en émettre un, et le
+  // socle rend alors l'étape sans voie, qui dit à un opérateur ce qui reste à sa main. En
+  // fabriquer une affirmerait un geste que personne ne peut faire.
+  planifierOctroi: (scope, sujet) => {
+    const lu = scope as ScopeScalingo;
+
+    return lu.nature === NATURE_COLLABORATION
+      ? planifierOctroiScalingo(lu, sujet, Boolean(env.SCALINGO_API_TOKEN))
+      : [];
+  },
 };
