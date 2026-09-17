@@ -225,6 +225,17 @@ export interface ObservedResource {
   externalId: string;
   label: string;
   url?: string;
+  /**
+   * La clé de la ressource qui contient celle-ci, relevée dans le même passage. Absent vaut
+   * « rien ne la contient », qui est le cas de la plupart des systèmes.
+   *
+   * Déclarée par la contenue et jamais par le contenant : dire la relation dans l'autre sens
+   * obligerait le socle à réconcilier deux déclarations possibles du même fait, et rendrait la
+   * sortie d'une ressource de son contenant indiscernable d'un relevé tronqué.
+   *
+   * Un seul niveau, et le socle refuse le reste.
+   */
+  parentExternalId?: string;
 }
 
 export interface ObservedGrant {

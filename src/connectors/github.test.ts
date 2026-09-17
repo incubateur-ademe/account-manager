@@ -131,6 +131,11 @@ describe("ce que le connecteur GitHub remonte d'une organisation", () => {
         externalId: "incubateur-ademe#10",
         label: "Équipe produit-alpha",
         url: "https://github.com/orgs/incubateur-ademe/teams/produit-alpha",
+        // L'organisation contient l'équipe, et la comparaison exacte épingle du même
+        // coup qu'elle-même n'est contenue par rien. La clé de l'équipe garde son dièse
+        // et son organisation : ce que la contenance retire est l'obligation de l'y
+        // relire, pas la clé, qu'on ne change pas sans dater tous ses accès disparus.
+        parentExternalId: "incubateur-ademe",
       },
     ]);
 

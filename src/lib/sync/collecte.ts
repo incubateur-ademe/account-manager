@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 
-import { champsConstates, chuteExcessive, type RefusDeDatation } from "@/core/collecte";
+import {
+  champsConstates,
+  chuteExcessive,
+  type RefusDeDatation,
+  verifierContenances,
+} from "@/core/collecte";
 import type {
   CollectError,
   CollectResult,
@@ -84,11 +89,20 @@ async function enregistrerIdentites(
   return { creees, revues };
 }
 
+/**
+ * La trace d'un passage se lit de la même façon, que la ligne vienne du connecteur ou du
+ * socle. L'`itemRef` existe pour nommer l'élément fautif.
+ */
+const enPhrase = (erreur: CollectError): string =>
+  erreur.itemRef
+    ? `${erreur.scope} (${erreur.itemRef}) : ${erreur.message}`
+    : `${erreur.scope} : ${erreur.message}`;
+
 async function enregistrerRessources(
   provider: string,
   ressources: readonly ObservedResource[],
 ): Promise<Map<string, string>> {
-  const parExternalId = new Map<string, string>();
+  const ecrites = new Map<string, { id: string; parentId: string | null }>();
 
   for (const ressource of ressources) {
     const enregistree = await prisma.resource.upsert({
@@ -100,9 +114,32 @@ async function enregistrerRessources(
         label: ressource.label,
         url: ressource.url ?? null,
       },
-      select: { id: true },
+      select: { id: true, parentId: true },
     });
-    parExternalId.set(ressource.externalId, enregistree.id);
+    ecrites.set(ressource.externalId, enregistree);
+  }
+
+  // Le contrat ne dit rien de l'ordre du relevé, et il n'a pas à le dire : un contenant
+  // peut arriver après ce qu'il contient, et sa ligne n'existe qu'une fois tout le relevé
+  // écrit. Le contenant ne se résout que dans la table du passage courant, celle d'un seul
+  // système, ce qui rend une contenance entre deux systèmes inécrivable sans qu'aucune
+  // garde n'ait à le dire.
+  for (const ressource of ressources) {
+    const ecrite = ecrites.get(ressource.externalId);
+    const voulu =
+      ressource.parentExternalId === undefined
+        ? null
+        : (ecrites.get(ressource.parentExternalId)?.id ?? null);
+
+    if (!ecrite || ecrite.parentId === voulu) {
+      continue;
+    }
+    await prisma.resource.update({ where: { id: ecrite.id }, data: { parentId: voulu } });
+  }
+
+  const parExternalId = new Map<string, string>();
+  for (const [externalId, { id }] of ecrites) {
+    parExternalId.set(externalId, id);
   }
 
   return parExternalId;
@@ -337,11 +374,7 @@ export async function executerCollecte(
     }
   }
 
-  const erreurs = (lu.errors ?? []).map((erreur) =>
-    erreur.itemRef
-      ? `${erreur.scope} (${erreur.itemRef}) : ${erreur.message}`
-      : `${erreur.scope} : ${erreur.message}`,
-  );
+  const erreurs = (lu.errors ?? []).map(enPhrase);
 
   if (lu.status === "failed") {
     const echec: ResultatCollecte = { ...vide, status: "FAILED", erreurs };
@@ -350,13 +383,14 @@ export async function executerCollecte(
     return echec;
   }
 
+  const contenances = verifierContenances(lu.resources);
   const identites = await enregistrerIdentites(provider, lu.identities, now);
-  const ressources = await enregistrerRessources(provider, lu.resources);
+  const ressources = await enregistrerRessources(provider, contenances.ressources);
   const acces = await enregistrerAcces(provider, lu.grants, ressources, now);
-  erreurs.push(...acces.erreurs);
+  erreurs.push(...contenances.erreurs.map(enPhrase), ...acces.erreurs);
 
   let status: SyncStatus = STATUT[lu.status];
-  if (acces.erreurs.length > 0 && status === "OK") {
+  if ((contenances.erreurs.length > 0 || acces.erreurs.length > 0) && status === "OK") {
     status = "PARTIAL";
   }
 
@@ -372,10 +406,10 @@ export async function executerCollecte(
     const chuteIdentites = chuteExcessive(reference, lu.itemsSeen, seuil)
       ? ({ famille: "identites", observe: lu.itemsSeen, reference } as const)
       : null;
-    const chuteRessources = chuteExcessive(referenceRessources, lu.resources.length, seuil)
+    const chuteRessources = chuteExcessive(referenceRessources, contenances.releve, seuil)
       ? ({
           famille: "ressources",
-          observe: lu.resources.length,
+          observe: contenances.releve,
           reference: referenceRessources,
         } as const)
       : null;

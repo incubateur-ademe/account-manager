@@ -281,10 +281,27 @@ model Resource {
   label      String
   url        String?
 
+  // Nul est le cas normal : la plupart des ressources ne sont contenues par rien, et un
+  // connecteur qui ignore la notion n'a rien à remplir.
+  parentId String?
+
+  // SetNull et non Cascade : `AccessGrant.resource` et `Reference.resource` sont l'un et
+  // l'autre en Cascade, si bien qu'une cascade ici ferait de la suppression d'un
+  // regroupement qui n'ouvre aucun droit la suppression silencieuse de tous les accès de
+  // toutes ses contenues.
+  //
+  // Un seul niveau, tenu par le socle et non par la colonne : PostgreSQL ne refuse ni les
+  // chaînes ni les cycles sur une clé étrangère vers la même table. La collecte refuse à
+  // l'entrée toute contenance dont le contenant est lui-même contenu, si bien qu'aucun
+  // lecteur n'a jamais à parcourir une chaîne ni à se garder d'une boucle.
+  parent   Resource?  @relation("Contenance", fields: [parentId], references: [id], onDelete: SetNull)
+  contenus Resource[] @relation("Contenance")
+
   grants     AccessGrant[]
   references Reference[]
 
   @@unique([provider, externalId])
+  @@index([parentId])
 }
 
 model AccessGrant {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { Intent, RunContext } from "@/core/connector";
+import type { Intent, ObservedResource, RunContext } from "@/core/connector";
 import {
   avecReprise,
   CONTRAT_SCALINGO,
@@ -64,20 +64,32 @@ const INTENDANCE = {
   username: "intendance",
 };
 
+/** Le projet qui regroupe deux des applications du parc d'essai. */
+const SOCLE = { id: "proj-socle", name: "socle-commun" };
+
 /** La chaîne vide et non l'absence : c'est ce que l'API rend sur une application sans parent. */
 const ANNUAIRE = {
   id: "app-annuaire",
   name: "service-annuaire",
   owner: PILOTE,
   parent_app_name: "",
+  project: SOCLE,
 };
 const REVUE = {
   id: "app-revue",
   name: "service-annuaire-pr42",
   owner: PILOTE,
   parent_app_name: "service-annuaire",
+  project: SOCLE,
 };
-const PAIE = { id: "app-paie", name: "service-paie", owner: PILOTE, parent_app_name: "" };
+/** Sans projet, et la clé présente à `null` : l'API la rend toujours. */
+const PAIE = {
+  id: "app-paie",
+  name: "service-paie",
+  owner: PILOTE,
+  parent_app_name: "",
+  project: null,
+};
 
 /** Possédée par quelqu'un d'autre : le compte n'en est que collaborateur. */
 const ETRANGERE = {
@@ -85,6 +97,26 @@ const ETRANGERE = {
   name: "service-d-ailleurs",
   owner: INTENDANCE,
   parent_app_name: "",
+  project: null,
+};
+
+/** Un second projet, sur l'autre région : c'est ce qui rend observable que le libellé la porte. */
+const BAC = { id: "proj-bac", name: "bac-a-sable" };
+
+/** Le même projet que l'annuaire, et dans la même région : deux applications, un contenant. */
+const ALPHA = {
+  id: "app-alpha",
+  name: "produit-alpha",
+  owner: PILOTE,
+  parent_app_name: "",
+  project: SOCLE,
+};
+const BETA = {
+  id: "app-beta",
+  name: "produit-beta",
+  owner: PILOTE,
+  parent_app_name: "",
+  project: BAC,
 };
 
 const TITULAIRE = {
@@ -130,6 +162,36 @@ function parcComplet(): Record<string, unknown> {
   };
 }
 
+/**
+ * Un parc où le regroupement est de toutes les formes à la fois : deux applications d'un
+ * même projet, une d'un autre, une sans. `remplacer` sert à ne faire varier que la clé
+ * `project`, tout le reste du parc restant lisible : c'est ce qui permet de juger de la
+ * clé disparue sans qu'une autre surveillance ne rende le run partiel pour autre chose.
+ */
+function parcAProjets(
+  remplacer: (application: Record<string, unknown>) => Record<string, unknown> = (application) =>
+    application,
+): Record<string, unknown> {
+  const [annuaire, alpha, beta, paie] = [ANNUAIRE, ALPHA, BETA, PAIE].map(remplacer);
+
+  return {
+    [`${AUTH}/v1/users/self`]: { user: { id: PILOTE.id } },
+    [`${AUTH}/v1/regions`]: REGIONS,
+    [`${FR}/v1/apps`]: { apps: [annuaire, alpha] },
+    [`${FR}/v1/apps/service-annuaire/collaborators`]: { collaborators: [TITULAIRE, CONVIEE] },
+    [`${FR}/v1/apps/produit-alpha/collaborators`]: { collaborators: [] },
+    [`${FR}/v1/collaborators`]: { collaborators: [TITULAIRE, CONVIEE] },
+    [`${SECNUM}/v1/apps`]: { apps: [beta, paie] },
+    [`${SECNUM}/v1/apps/produit-beta/collaborators`]: { collaborators: [] },
+    [`${SECNUM}/v1/apps/service-paie/collaborators`]: { collaborators: [TITULAIRE_AILLEURS] },
+    [`${SECNUM}/v1/collaborators`]: { collaborators: [TITULAIRE_AILLEURS] },
+  };
+}
+
+/** Ce que l'écran suivra pour regrouper : la clé du contenant d'une ressource, ou rien. */
+const contenanceDe = (ressources: readonly ObservedResource[], cle: string) =>
+  ressources.find(({ externalId }) => externalId === cle)?.parentExternalId;
+
 const CONTEXTE: RunContext = {
   runId: "collecte-de-test",
   now: new Date("2026-09-15T00:00:00Z"),
@@ -159,11 +221,14 @@ describe("ce que le connecteur Scalingo remonte du parc", () => {
 
     // Then une ressource par application retenue, la fille exclue, et chacune porte sa
     // région : deux régions peuvent servir le même nom
+    // Le projet vient en tête : c'est un contenant, et la ressource qu'il contient doit
+    // pouvoir le désigner quel que soit l'ordre du relevé.
     expect(collecte.resources.map((ressource) => ressource.label)).toEqual([
+      "socle-commun, osc-fr1",
       "service-annuaire, osc-fr1",
       "service-paie, osc-secnum-fr1",
     ]);
-    expect(collecte.resources[1]?.url).toBe(
+    expect(collecte.resources[2]?.url).toBe(
       "https://dashboard.scalingo.com/apps/osc-secnum-fr1/service-paie/settings/collaborators",
     );
 
@@ -220,7 +285,10 @@ describe("ce que le connecteur Scalingo remonte du parc", () => {
     if (collecte.status === "failed") {
       throw new Error("une région lisible devait suffire");
     }
-    expect(collecte.resources.map(({ externalId }) => externalId)).toEqual(["app-annuaire"]);
+    expect(collecte.resources.map(({ externalId }) => externalId)).toEqual([
+      "proj-socle",
+      "app-annuaire",
+    ]);
     expect(collecte.grants).toHaveLength(3);
   });
 
@@ -388,6 +456,7 @@ describe("ce que le connecteur Scalingo remonte du parc", () => {
       name: "service-annuaire",
       owner: PILOTE,
       parent_app_name: "",
+      project: null,
     };
     parc[`${SECNUM}/v1/apps`] = { apps: [PAIE, HOMONYME] };
     parc[`${SECNUM}/v1/apps/service-annuaire/collaborators`] = {
@@ -420,6 +489,7 @@ describe("ce que le connecteur Scalingo remonte du parc", () => {
       "app-annuaire",
       "app-annuaire-secnum",
       "app-paie",
+      "proj-socle",
     ]);
     expect(
       collecte.grants.filter(
@@ -638,6 +708,134 @@ describe("ce que le connecteur Scalingo remonte du parc", () => {
     expect(collecte.status).toBe("failed");
     expect(collecte.errors?.[0]?.scope).toBe("regions");
     expect(appels).toEqual([`${AUTH}/v1/users/self`, `${AUTH}/v1/regions`]);
+  });
+
+  it("le projet regroupe, et il ne porte rien", async () => {
+    // Given un parc de deux régions où deux applications partagent un projet, une
+    // troisième en a un autre, et une quatrième n'en a aucun
+    const { lire } = lecteur(parcAProjets());
+
+    // When on collecte
+    const collecte = await collecter(lire, SANS_PAUSE);
+
+    expect(collecte.status).toBe("ok");
+    if (collecte.status === "failed") {
+      throw new Error("la collecte devait aboutir");
+    }
+
+    // Then un contenant par projet et non par application : deux applications du même
+    // projet qui émettraient chacune le leur poseraient deux fois la même ressource, et
+    // le relevé porterait deux fois la même clé au lieu de regrouper
+    expect(collecte.resources.map(({ externalId }) => externalId)).toEqual([
+      "proj-socle",
+      "proj-bac",
+      "app-annuaire",
+      "app-alpha",
+      "app-beta",
+      "app-paie",
+    ]);
+
+    // Then le libellé d'un projet porte sa région, comme celui d'une application : deux
+    // régions peuvent servir le même nom, et un écran qui les confondrait rangerait sous
+    // un seul intitulé des applications qui n'ont rien à voir
+    expect(collecte.resources.slice(0, 2).map(({ label }) => label)).toEqual([
+      "socle-commun, osc-fr1",
+      "bac-a-sable, osc-secnum-fr1",
+    ]);
+
+    // Then les deux applications du même projet portent la même clé de contenant, et
+    // celle qui n'en a pas n'en porte aucune : sans la contenance, le projet sortirait en
+    // ressource orpheline et l'écran regrouperait sur un lien que personne ne déclare
+    expect(contenanceDe(collecte.resources, "app-annuaire")).toBe("proj-socle");
+    expect(contenanceDe(collecte.resources, "app-alpha")).toBe("proj-socle");
+    expect(contenanceDe(collecte.resources, "app-beta")).toBe("proj-bac");
+    expect(contenanceDe(collecte.resources, "app-paie")).toBeUndefined();
+
+    // Then un contenant ne se range dans rien : la contenance ne tient qu'un niveau, et
+    // en poser un second ferait refuser la ressource à l'écriture
+    expect(contenanceDe(collecte.resources, "proj-socle")).toBeUndefined();
+
+    // Then aucun accès ne vise un projet. Scalingo gère les collaborateurs au niveau de
+    // l'application : un accès posé sur le contenant décrirait un droit que personne ne
+    // détient, et un plan de départ irait ensuite couper ce qui n'existe pas
+    const contenants = new Set(["proj-socle", "proj-bac"]);
+    expect(
+      collecte.grants.filter(({ resourceExternalId }) => contenants.has(resourceExternalId ?? "")),
+    ).toEqual([]);
+    expect(collecte.grants).toHaveLength(7);
+    expect(collecte.itemsSeen).toBe(3);
+
+    // Given une application dont le projet arrive sous une forme neuve, ici un
+    // identifiant nu à la place de l'objet
+    const neuf = await collecter(
+      lecteur(
+        parcAProjets((application) =>
+          application["id"] === ANNUAIRE.id ? { ...application, project: SOCLE.id } : application,
+        ),
+      ).lire,
+      SANS_PAUSE,
+    );
+
+    if (neuf.status === "failed") {
+      throw new Error("un projet de forme neuve ne doit pas emporter l'application");
+    }
+
+    // Then l'application sort quand même, avec tous ses accès et sans contenance : un
+    // schéma qui refuserait la fiche entière daterait comme disparus trois accès bien
+    // réels pour un champ qui ne sert qu'à regrouper
+    expect(neuf.status).toBe("ok");
+    expect(
+      neuf.grants.filter(({ resourceExternalId }) => resourceExternalId === "app-annuaire"),
+    ).toHaveLength(3);
+    expect(contenanceDe(neuf.resources, "app-annuaire")).toBeUndefined();
+
+    // Then le projet reste rendu, l'autre application du même projet le portant encore
+    expect(neuf.resources.map(({ externalId }) => externalId)).toContain("proj-socle");
+
+    // Given un parc où plus aucune application ne porte la clé du projet
+    const sansCle = await collecter(
+      lecteur(parcAProjets(({ project: _, ...reste }) => reste)).lire,
+      SANS_PAUSE,
+    );
+
+    // Then le run est partiel et le message nomme le champ : sans cette surveillance, le
+    // regroupement disparaîtrait de l'écran sur une collecte parfaitement verte
+    expect(sansCle.status).toBe("partial");
+    expect(
+      sansCle.errors?.some(
+        ({ scope, message }) => scope === "applications" && message.includes("project"),
+      ),
+    ).toBe(true);
+
+    if (sansCle.status === "failed") {
+      throw new Error("un champ de regroupement disparu ne fige pas le reste");
+    }
+
+    // Then les accès sortent tous : perdre un attribut de regroupement ne justifie pas de
+    // taire ce que le système sait encore dire
+    expect(sansCle.grants).toHaveLength(7);
+
+    // Given un parc où chaque application porte la clé à `null`, c'est-à-dire un parc qui
+    // n'emploie tout simplement pas les projets
+    const toutNul = await collecter(
+      lecteur(parcAProjets((application) => ({ ...application, project: null }))).lire,
+      SANS_PAUSE,
+    );
+
+    if (toutNul.status === "failed") {
+      throw new Error("un parc sans projet reste un parc lisible");
+    }
+
+    // Then le run est complet, et aucun contenant ne sort. Signaler ici rendrait partiel
+    // chaque run d'un parc légitime, donc gèlerait toutes les nuits la datation des
+    // disparitions pour un regroupement d'écran qui n'ouvre aucun droit
+    expect(toutNul.status).toBe("ok");
+    expect(toutNul.resources.map(({ externalId }) => externalId)).toEqual([
+      "app-annuaire",
+      "app-alpha",
+      "app-beta",
+      "app-paie",
+    ]);
   });
 });
 

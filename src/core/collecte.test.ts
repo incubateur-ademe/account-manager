@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import type { ObservedResource } from "@/core/connector";
+
 import {
   ageDuReleve,
   ageDuReleveDeLaTrace,
@@ -20,6 +22,7 @@ import {
   refusRepete,
   releveFige,
   systemesMuets,
+  verifierContenances,
 } from "./collecte";
 
 const SEUIL = 48;
@@ -774,5 +777,79 @@ describe("l'âge du relevé contre lequel le périmètre décide", () => {
     expect(ageDuReleveDeLaTrace(undefined)).toBeNull();
     expect(ageDuReleveDeLaTrace({ ageDuReleve: "4" })).toBeNull();
     expect(ageDuReleveDeLaTrace("relevé non renouvelé")).toBeNull();
+  });
+});
+
+describe("contenance des ressources", () => {
+  it("garde toute ressource, n'écarte que la contenance, et juge sur ce qui a été déclaré", () => {
+    // Le relevé d'un connecteur qui se contredit de cinq façons différentes. Ce qui est
+    // en jeu tient en une phrase : une contenance n'ouvre aucun droit, une ressource
+    // porte des accès. Jeter la seconde avec la première ferait tomber chacun de ses
+    // accès dans « accès sur une ressource absente de la collecte », donc cesserait de
+    // les rafraîchir, donc finirait par les couper.
+    const releve: ObservedResource[] = [
+      { externalId: "regroupement", label: "Regroupement" },
+      { externalId: "service-annuaire", label: "Annuaire", parentExternalId: "regroupement" },
+      { externalId: "service-paie", label: "Paie", parentExternalId: "jamais-emis" },
+      { externalId: "service-boucle", label: "Boucle", parentExternalId: "service-boucle" },
+      { externalId: "sous-boucle", label: "Sous-boucle", parentExternalId: "service-boucle" },
+      { externalId: "petite-fille", label: "Petite-fille", parentExternalId: "service-annuaire" },
+      { externalId: "duo-a", label: "Duo A", parentExternalId: "duo-b" },
+      { externalId: "duo-b", label: "Duo B", parentExternalId: "duo-a" },
+      { externalId: "service-isole", label: "Isolé", url: "https://exemple.invalid/isole" },
+    ];
+
+    const { ressources, erreurs, releve: compte } = verifierContenances(releve);
+
+    // Les neuf ressources ressortent, au complet et dans l'ordre : c'est la première
+    // chose à tenir, et la mutation qui la casse est de rendre une liste filtrée.
+    expect(ressources.map(({ externalId }) => externalId)).toEqual(
+      releve.map(({ externalId }) => externalId),
+    );
+    expect(ressources.find(({ externalId }) => externalId === "service-isole")).toEqual({
+      externalId: "service-isole",
+      label: "Isolé",
+      url: "https://exemple.invalid/isole",
+    });
+
+    // Une seule contenance survit, celle qui ne se contredit pas.
+    const contenances = new Map(
+      ressources.map(({ externalId, parentExternalId }) => [externalId, parentExternalId]),
+    );
+    expect(contenances.get("service-annuaire")).toBe("regroupement");
+    expect(contenances.get("service-paie")).toBeUndefined();
+    expect(contenances.get("service-boucle")).toBeUndefined();
+    expect(contenances.get("petite-fille")).toBeUndefined();
+    expect(contenances.get("duo-a")).toBeUndefined();
+    expect(contenances.get("duo-b")).toBeUndefined();
+
+    // Six refus, un par contenance fautive, chacun nommant sa ressource en itemRef et
+    // son contenant dans le message. Un cycle de deux compte pour deux, la profondeur
+    // maximale d'un et l'absence de cycle étant la même règle.
+    expect(erreurs).toHaveLength(6);
+    expect(erreurs.map(({ itemRef }) => itemRef)).toEqual([
+      "service-paie",
+      "service-boucle",
+      "sous-boucle",
+      "petite-fille",
+      "duo-a",
+      "duo-b",
+    ]);
+    expect(erreurs.every(({ scope }) => scope === "ressources")).toBe(true);
+    expect(erreurs[0]?.message).toContain("jamais-emis");
+    expect(erreurs[1]?.message).toBe("se contient elle-même");
+
+    // Le cas qui départage les deux implémentations possibles. `sous-boucle` désigne un
+    // contenant dont la contenance vient d'être refusée : juger sur la carte réparée le
+    // ferait passer, puisque `service-boucle` n'y a plus de parent. Le jugement porte sur
+    // ce que le connecteur a déclaré, faute de quoi sa contradiction sortirait du relevé
+    // sans un mot.
+    expect(erreurs[2]?.message).toContain("service-boucle");
+
+    // Le garde-fou de chute ne compte pas les contenants : la référence à laquelle il se
+    // compare ne retient que les ressources portant un accès vivant, et un contenant n'en
+    // porte souvent aucun. Seul « regroupement » en est un ici, les autres contenances
+    // ayant été écartées.
+    expect(compte).toBe(8);
   });
 });

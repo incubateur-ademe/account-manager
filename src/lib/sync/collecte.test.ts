@@ -5,7 +5,13 @@ import { join, resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
-import type { CollectResult, Connector, RunContext } from "@/core/connector";
+import type {
+  CollectResult,
+  Connector,
+  ObservedGrant,
+  ObservedResource,
+  RunContext,
+} from "@/core/connector";
 import { executerCollecte } from "@/lib/sync/collecte";
 
 /**
@@ -34,6 +40,12 @@ interface RunEnBase {
   error: unknown;
 }
 
+interface RessourceEnBase {
+  id: string;
+  externalId: string;
+  parentId: string | null;
+}
+
 interface AutorisationEnBase {
   provider: string;
   famille: string;
@@ -48,6 +60,15 @@ const base = vi.hoisted(() => ({
   identites: [] as IdentiteEnBase[],
   runs: [] as RunEnBase[],
   autorisations: [] as AutorisationEnBase[],
+  ressources: [] as RessourceEnBase[],
+  /**
+   * Ce que la base tient pour vivant côté ressources, c'est-à-dire celles qui portent
+   * encore un accès : la seule chose à laquelle le garde-fou des ressources se compare.
+   * Posé par le scénario, parce que rien dans un relevé ne le fabrique.
+   */
+  ressourcesVivantes: 0,
+  /** Chaque pose de contenance, pour dire si le second passage n'écrit que ce qui diffère. */
+  contenances: [] as { ressource: string; parentId: string | null }[],
   /** Toute écriture qui date une disparition, pour dire si elle a eu lieu. */
   datations: [] as { cible: string; count: number }[],
   journal: [] as { action: string; result: string }[],
@@ -171,10 +192,33 @@ vi.mock("@/lib/db", () => ({
         return Promise.resolve({ count: 0 });
       },
     },
+    // La ligne rendue est une copie et non la ligne vivante : le second passage relit le
+    // contenant tel que le premier l'a lu pour décider s'il écrit, et un double qui lui
+    // rendrait sa propre écriture en cours ferait disparaître cette décision.
     resource: {
-      upsert: ({ where }: { where: { provider_externalId: { externalId: string } } }) =>
-        Promise.resolve({ id: `ressource-${where.provider_externalId.externalId}` }),
-      count: () => Promise.resolve(0),
+      upsert: ({ where }: { where: { provider_externalId: { externalId: string } } }) => {
+        const externalId = where.provider_externalId.externalId;
+        const connue = base.ressources.find((ligne) => ligne.externalId === externalId);
+        if (connue) {
+          return Promise.resolve({ ...connue });
+        }
+        const posee: RessourceEnBase = {
+          id: `ressource-${externalId}`,
+          externalId,
+          parentId: null,
+        };
+        base.ressources.push(posee);
+        return Promise.resolve({ ...posee });
+      },
+      update: ({ where, data }: { where: { id: string }; data: { parentId: string | null } }) => {
+        const ligne = base.ressources.find((candidate) => candidate.id === where.id);
+        if (ligne) {
+          ligne.parentId = data.parentId;
+          base.contenances.push({ ressource: ligne.externalId, parentId: data.parentId });
+        }
+        return Promise.resolve(ligne);
+      },
+      count: () => Promise.resolve(base.ressourcesVivantes),
     },
     // Une autorisation n'est éligible que si elle attend encore et si elle a été posée
     // avant que ce passage ne commence : la seconde condition est ce qui empêche un
@@ -290,6 +334,9 @@ beforeEach(() => {
   base.identites.length = 0;
   base.runs.length = 0;
   base.autorisations.length = 0;
+  base.ressources.length = 0;
+  base.contenances.length = 0;
+  base.ressourcesVivantes = 0;
   base.datations.length = 0;
   base.journal.length = 0;
   contextes.length = 0;
@@ -519,5 +566,180 @@ describe("la sortie nominative d'un plancher de chute", () => {
     expect(apres.refus).toEqual([{ famille: "identites", observe: 2, reference: 4 }]);
     expect(vivantes()).toHaveLength(4);
     expect(levees()).toHaveLength(1);
+  });
+});
+
+/**
+ * Une contenance est une lecture du connecteur, pas un droit : personne n'a d'accès
+ * parce qu'une application appartient à un projet. La contradiction se refuse donc sans
+ * rien jeter, la ressource survivant toujours à sa contenance : la jeter la sortirait de
+ * la table de résolution et ferait tomber chacun de ses accès dans « accès sur une
+ * ressource absente de la collecte », c'est-à-dire qu'un contenant mal nommé effacerait
+ * des accès réels.
+ *
+ * Et le relevé, lui, ne compte plus ses contenants. Un contenant ne porte souvent aucun
+ * accès quand la référence à laquelle le garde-fou se compare ne retient que les
+ * ressources qui en portent un : les compter gonflerait un seul des deux plateaux, donc
+ * masquerait une chute réelle.
+ */
+describe("ce qu'une contenance impossible a le droit de faire perdre", () => {
+  const ACCES: readonly ObservedGrant[] = [
+    {
+      identityExternalId: "compte-1",
+      resourceExternalId: "service-annuaire",
+      role: "collaborateur",
+    },
+  ];
+
+  const nuit = (ressources: readonly ObservedResource[]) => () =>
+    ({
+      status: "ok",
+      itemsSeen: 9,
+      identities: membres(9),
+      resources: ressources,
+      grants: ACCES,
+    }) as const;
+
+  const CONTENANT_ABSENT: readonly ObservedResource[] = [
+    { externalId: "service-annuaire", label: "Annuaire", parentExternalId: "produit-alpha" },
+  ];
+
+  const CONTENANT_PRESENT: readonly ObservedResource[] = [
+    { externalId: "produit-alpha", label: "Produit alpha" },
+    { externalId: "service-annuaire", label: "Annuaire", parentExternalId: "produit-alpha" },
+  ];
+
+  it("gèle la nuit sans rien effacer, et la datation reprend dès que le contenant est là", async () => {
+    // Given dix comptes connus, et une nuit qui se dit complète tout en nommant un
+    // contenant qu'elle n'a pas relevé : le connecteur se contredit lui-même.
+    peupler(10);
+    const gelee = await executerCollecte(
+      connecteurQuiLit(nuit(CONTENANT_ABSENT)),
+      MAINTENANT,
+      "execution-contenance-1",
+    );
+
+    // Then le passage cesse d'être annoncé comme réussi et nomme la ressource fautive.
+    // Une seule phrase, et c'est ce que la liste entière prouve : aucune ne dit qu'un
+    // accès portait sur une ressource absente, la ressource ayant survécu à sa contenance.
+    expect(gelee.status).toBe("PARTIAL");
+    expect(gelee.erreurs).toEqual([
+      "ressources (service-annuaire) : contenue par une ressource absente de la collecte : produit-alpha",
+    ]);
+
+    // Then l'accès que portait cette ressource est bien écrit : refuser la contenance ne
+    // coûte rien, refuser la ressource aurait coûté ses accès.
+    expect(gelee.acces).toEqual({ crees: 1, revus: 0, disparus: 0 });
+    expect(gelee.ressources).toBe(1);
+
+    // Then aucune datation n'a eu lieu, ni sur les comptes ni sur les accès : un passage
+    // qui n'est pas complet conserve le dernier état constaté, et le compte absent du
+    // relevé est peut-être seulement celui que la contradiction cache.
+    expect(base.datations).toEqual([]);
+    expect(gelee.identites.disparues).toBe(0);
+    expect(vivantes()).toHaveLength(10);
+
+    // Then rien n'a été écrit comme contenance : ce qui est refusé n'est pas posé à moitié.
+    expect(base.contenances).toEqual([]);
+    expect(base.ressources.find((ligne) => ligne.externalId === "service-annuaire")?.parentId).toBe(
+      null,
+    );
+    expect(base.runs[0]?.status).toBe("PARTIAL");
+
+    // When la nuit suivante rend le même relevé, contenant compris.
+    const reprise = await executerCollecte(
+      connecteurQuiLit(nuit(CONTENANT_PRESENT)),
+      MAINTENANT,
+      "execution-contenance-2",
+    );
+
+    // Then le passage est complet, la contenance est posée, et la datation reprend son
+    // cours sur le compte réellement absent.
+    expect(reprise.status).toBe("OK");
+    expect(reprise.erreurs).toEqual([]);
+    expect(base.contenances).toEqual([
+      { ressource: "service-annuaire", parentId: "ressource-produit-alpha" },
+    ]);
+    expect(reprise.identites.disparues).toBe(1);
+    expect(
+      base.identites.find((identite) => identite.externalId === "compte-10")?.vanishedAt,
+    ).toEqual(MAINTENANT);
+    expect(base.datations.map((datation) => datation.cible)).toEqual(["identites", "acces"]);
+
+    // When la même nuit se rejoue à l'identique.
+    const rejouee = await executerCollecte(
+      connecteurQuiLit(nuit(CONTENANT_PRESENT)),
+      MAINTENANT,
+      "execution-contenance-3",
+    );
+
+    // Then le second passage d'écriture n'écrit que ce qui diffère : réécrire une
+    // contenance déjà posée serait une écriture par ressource et par nuit, sur une
+    // colonne qui ne bouge presque jamais.
+    expect(rejouee.status).toBe("OK");
+    expect(base.contenances).toHaveLength(1);
+  });
+
+  it("compte le relevé sans ses contenants, de sorte qu'un projet ne masque pas une chute", async () => {
+    // Given douze comptes connus, vingt ressources portant encore un accès, et une nuit
+    // qui ne rend plus que douze applications, chacune rangée dans l'un des six projets
+    // qui l'accompagnent. Les projets ne portent aucun accès : chez Scalingo, un projet
+    // n'a pas de membres.
+    peupler(12);
+    base.ressourcesVivantes = 20;
+
+    const projets: ObservedResource[] = Array.from({ length: 6 }, (_, rang) => ({
+      externalId: `projet-${rang + 1}`,
+      label: `Projet ${rang + 1}`,
+    }));
+    const applications: ObservedResource[] = Array.from({ length: 12 }, (_, rang) => ({
+      externalId: `app-${rang + 1}`,
+      label: `Application ${rang + 1}`,
+      parentExternalId: `projet-${(rang % 6) + 1}`,
+    }));
+    const acces: ObservedGrant[] = applications.map((application, rang) => ({
+      identityExternalId: `compte-${rang + 1}`,
+      resourceExternalId: application.externalId,
+      role: "collaborateur",
+    }));
+
+    // When la collecte tourne, sans que rien ne se plaigne
+    const resultat = await executerCollecte(
+      connecteurQuiLit(() => ({
+        status: "ok",
+        itemsSeen: 12,
+        identities: membres(12),
+        resources: [...projets, ...applications],
+        grants: acces,
+      })),
+      MAINTENANT,
+      "execution-contenance-4",
+    );
+
+    // Then le garde-fou compte douze et non dix-huit : les six projets sont dans le
+    // relevé sans être dans la référence, et les compter aurait fait passer la nuit
+    // au-dessus du plancher de seize, donc daté les accès des huit applications parties.
+    expect(resultat.status).toBe("PARTIAL");
+    expect(resultat.refus).toEqual([{ famille: "ressources", observe: 12, reference: 20 }]);
+    expect(resultat.erreurs).toEqual([
+      "chute des ressources : 12 contre 20 connues, aucune disparition datée",
+    ]);
+    expect(traceDuRefus(base.runs[0]?.error)?.[0]).toMatchObject({
+      famille: "ressources",
+      observe: 12,
+      reference: 20,
+    });
+
+    // Then les dix-huit ressources sont bien écrites, contenances comprises : ce que le
+    // garde-fou refuse de compter, il ne refuse pas de l'enregistrer.
+    expect(resultat.ressources).toBe(18);
+    expect(base.contenances).toHaveLength(12);
+    expect(resultat.acces).toEqual({ crees: 12, revus: 0, disparus: 0 });
+
+    // Then aucun accès n'est daté, et c'est le seul verrou qui a joué : une chute des
+    // ressources n'interdit que les accès, le sort des comptes étant lu ailleurs et
+    // intact, si bien que la datation des comptes a eu lieu et n'a trouvé personne.
+    expect(base.datations).toEqual([{ cible: "identites", count: 0 }]);
+    expect(vivantes()).toHaveLength(12);
   });
 });

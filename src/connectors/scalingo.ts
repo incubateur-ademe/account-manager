@@ -83,6 +83,11 @@ const proprietaireSchema = z.object({
   username: z.string().min(1).nullish(),
 });
 
+const projetSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+});
+
 /**
  * Calé sur ce que l'API rend, jamais sur ce que la doc promet. Sont requis les seuls
  * champs sans lesquels une application n'existe pas : un champ exigé à tort ferait
@@ -96,6 +101,17 @@ const applicationSchema = z.object({
   name: z.string().min(1),
   owner: proprietaireSchema,
   parent_app_name: z.string().nullish(),
+  // `nullish` parce que la documentation le dit toujours présent sans dire s'il peut être
+  // nul, et `catch` parce qu'un projet de forme neuve ferait sinon écarter l'application
+  // entière, donc daterait comme disparus les accès qu'elle porte.
+  //
+  // Le repli vaut `undefined` et non `null`, et les deux ne disent pas la même chose :
+  // `null` est une application sans projet, cas ordinaire d'un parc où la notion n'est pas
+  // employée, quand `undefined` est une clé disparue ou devenue illisible. Se replier sur
+  // `null` rendrait la surveillance aveugle au changement de forme ; surveiller `null`
+  // rendrait tout run partiel sur un parc qui n'a simplement pas de projets, donc gèlerait
+  // la datation pour un regroupement d'écran.
+  project: projetSchema.nullish().catch(undefined),
 });
 
 /**
@@ -598,9 +614,14 @@ export async function lireParc(
   // distingue une disparition de champ d'une ligne incomplète, laquelle est déjà le
   // travail de la collecte. Des erreurs unitaires et non un refus de lire : perdre un
   // attribut ne justifie pas de figer tout ce que le système sait encore dire.
+  //
+  // Le `scope` est porté par chaque entrée : deux d'entre elles constatent sur les
+  // applications et non sur les collaborations, et une trace qui les rangerait sous les
+  // collaborateurs enverrait relire la mauvaise route.
   for (const surveille of [
     {
       assez: relevees.length > 0,
+      scope: "collaborateurs",
       // `null` autant qu'absent : le schéma l'accepte, et l'assemblage rend plein tout ce
       // qui ne vaut pas `true`. La clé remplacée par `null` serait donc aussi muette que
       // la clé disparue. Le compte, lui, garde `=== undefined` : `null` y est la forme
@@ -611,18 +632,30 @@ export async function lireParc(
     },
     {
       assez: relevees.length > 0,
+      scope: "collaborateurs",
       absent: relevees.every((collaboration) => collaboration.user_id === undefined),
       quoi: `le compte : aucune des ${relevees.length} collaborations lues ne porte user_id, et chaque identité retomberait sur son identifiant de collaboration, donc tout le monde disparaîtrait d'un coup pour réapparaître sous une autre clé`,
     },
     {
       assez: applications.length > 0,
+      scope: "applications",
       absent: applications.every(({ application }) => application.parent_app_name === undefined),
       quoi: `l'ascendance : aucune des ${applications.length} applications retenues ne porte parent_app_name, et les environnements de revue entreraient dans le périmètre`,
+    },
+    {
+      assez: applications.length > 0,
+      scope: "applications",
+      // `=== undefined` et non `== null`, contrairement à `is_limited` : un parc entier
+      // sans projet est un état légitime, et le signaler figerait la datation chaque nuit
+      // pour un regroupement qui n'ouvre aucun droit. Seule la clé disparue ou illisible
+      // se signale, le schéma s'y repliant sur `undefined` pour cette raison.
+      absent: applications.every(({ application }) => application.project === undefined),
+      quoi: `le projet : aucune des ${applications.length} applications retenues ne porte project, et le regroupement disparaîtrait de l'écran sans que rien ne le dise`,
     },
   ]) {
     if (surveille.assez && surveille.absent) {
       erreurs.push({
-        scope: "collaborateurs",
+        scope: surveille.scope,
         message: `${surveille.quoi}, la forme de la réponse a changé`,
       });
     }
@@ -648,6 +681,9 @@ export function assembler(
   const identites = new Map<string, ObservedIdentity>();
   const ressources: ObservedResource[] = [];
   const acces: ObservedGrant[] = [];
+  // Une fois par projet et non une fois par application : c'est un contenant, et deux
+  // applications du même projet doivent désigner la même ressource.
+  const projets = new Map<string, ObservedResource>();
 
   const retenir = (identite: ObservedIdentity) => {
     if (!identites.has(identite.externalId)) {
@@ -656,6 +692,11 @@ export function assembler(
   };
 
   for (const { application, region } of applications) {
+    const projet = application.project;
+    if (projet) {
+      projets.set(projet.id, { externalId: projet.id, label: `${projet.name}, ${region}` });
+    }
+
     ressources.push({
       externalId: application.id,
       // La région entre dans le libellé : deux régions peuvent servir le même nom, et un
@@ -664,6 +705,7 @@ export function assembler(
       // un nom d'application Scalingo n'en contient jamais.
       label: `${application.name}, ${region}`,
       url: pageDesCollaborateurs(region, application.name),
+      ...(projet ? { parentExternalId: projet.id } : {}),
     });
 
     retenir({
@@ -709,7 +751,14 @@ export function assembler(
     }
   }
 
-  return { identites: [...identites.values()], ressources, acces };
+  // Les contenants d'abord : un projet ne porte aucun accès, Scalingo laissant la gestion
+  // des utilisateurs au niveau de l'application, et il n'existe donc dans le relevé que
+  // pour regrouper.
+  return {
+    identites: [...identites.values()],
+    ressources: [...projets.values(), ...ressources],
+    acces,
+  };
 }
 
 export async function collecter(
