@@ -22,6 +22,7 @@ const LIBELLE_ACTION: Record<string, string> = {
   "dossier.recalcul": "Recalcul d'un plan",
   "dossier.annulation": "Annulation d'un dossier d'accès",
   "dossier.validation": "Validation d'une étape",
+  "geste.ouverture": "Ouverture d'un geste hors dossier",
   "participation.octroi": "Octroi d'un droit de participation",
   "participation.revocation": "Révocation d'un droit de participation",
   "participation.abandon": "Droit de participation abandonné à une fusion de fiches",

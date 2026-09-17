@@ -154,10 +154,23 @@ faire, et il faudrait scinder encore au deuxième cas.
   supprimer la source**, sous peine de lever une violation de clé étrangère au milieu de la
   transaction. `Cascade` était pourtant la règle partout ailleurs : ici, effacer le plan avec la
   fiche laisserait l'accès ouvert et l'outil muet.
+- **Une étape de geste déclarée faite n'est jamais confrontée à la collecte.** Le
+  rapprochement des constats saute toute étape dont le plan n'a pas de dossier
+  (`src/lib/sync/constats.ts:503`), le sens d'un rapprochement se lisant sur le dossier et non
+  sur `PlanKind`. Le commentaire y était déjà, mais il avait été écrit pour un cas résiduel,
+  celui d'un plan dont le dossier a disparu ; ce lot en fait un cas nominal. Un octroi hors
+  dossier n'a donc, comme contrôle, que le second regard porté sur sa déclaration, y compris
+  quand la collecte du système saurait le démentir dès le lendemain.
 - **Un brouillon de geste obsolète n'a pas d'issue.** `recalculerPlan`
   (`src/app/dossiers/[id]/actions.ts:833-835`) refuse tout plan sans dossier, et aucune action
-  n'annule un plan seul. Il faut reposer le geste. C'est un trou du découpage, acté et non
-  résolu.
+  n'annule un plan seul. Il faut reposer le geste, ce que `ouvrirGeste` permet en passant les
+  brouillons précédents à `STALE`. C'est un trou du découpage, acté et non résolu.
+- **Un geste confirmé, lui, n'a aucune sortie du tout.** Le recalcul lui reste fermé pour la
+  même raison, aucune action n'annule un plan seul, rien ne balaie vers `EXPIRED`, et la repose
+  d'un geste ne périme que les brouillons. Un geste confirmé dont l'empreinte a bougé, ce
+  qu'une adresse de communication modifiée suffit à faire, reste donc `EXECUTING`
+  indéfiniment : son exécution refuse par l'écart, et rien ne le referme. Acté et non résolu,
+  au même titre que le précédent et pour la même raison.
 - **Le plafond de masse ne mord pas** sur un plan d'une étape. Il passe toujours, et c'est la
   confirmation avec son empreinte qui porte réellement.
 - La liste des connecteurs interrogés au départ ne peut plus se limiter aux systèmes où la

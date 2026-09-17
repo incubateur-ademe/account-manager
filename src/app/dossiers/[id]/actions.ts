@@ -20,6 +20,7 @@ import {
   REGARD_D_UN_OPERATEUR,
   validationApresPointage,
 } from "@/core/dossier";
+import { ancrageLu, intentionDUnGeste, SENS_D_UN_GESTE } from "@/core/geste";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 import { origineFigeeSchema } from "@/core/modele-plan";
 import { peremptionDuPlan } from "@/core/plan";
@@ -28,6 +29,12 @@ import { profilDeLaPolitique } from "@/lib/arrivee";
 import { prisma } from "@/lib/db";
 import { calculerPlan, enregistrerPlan, messageDeRefus, reposerLEtatDuPlan } from "@/lib/dossier";
 import { executerPlan, type ResultatDExecution } from "@/lib/execution";
+import {
+  calculerGeste,
+  conditionDAncrage,
+  departOuvertSur,
+  REFUS_DEPART_OUVERT,
+} from "@/lib/geste";
 import { droitDeParticiper } from "@/lib/participation";
 import { requireOperateur, requireUtilisateur, type Utilisateur } from "@/lib/session";
 
@@ -139,6 +146,21 @@ function refusDEtape(utilisateur: Utilisateur): string {
   return utilisateur.operateur ? "Cette étape n'existe plus." : REFUS_HORS_DOSSIER;
 }
 
+/**
+ * Les écrans dont l'affichage dépend d'une écriture sur une étape, depuis l'ancrage de
+ * son plan.
+ *
+ * Un geste n'a pas de dossier, et deux chemins vers `/dossiers/null` ne rafraîchissent
+ * rien tout en laissant périmée la seule page qui le montre, celle de la personne visée.
+ * Un plan dont le dossier a été supprimé n'a plus d'écran du tout, et n'en nomme aucun.
+ */
+function ecransDeLEtape(accessCaseId: string | null, sujet: PorteurDuDossier | null): string[] {
+  if (accessCaseId !== null) {
+    return [`/dossiers/${accessCaseId}`, `/moi/dossiers/${accessCaseId}`];
+  }
+  return sujet === null ? [] : [`/personnes/${sujet.username}`];
+}
+
 async function planDuDossier(planId: string) {
   return prisma.plan.findUnique({
     where: { id: planId },
@@ -156,6 +178,8 @@ async function planDuDossier(planId: string) {
           person: { select: { id: true, username: true } },
         },
       },
+      intent: true,
+      subject: { select: { id: true, username: true } },
       steps: {
         select: {
           id: true,
@@ -188,25 +212,40 @@ export async function confirmerPlan(
 
   const planId = String(formData.get("planId") ?? "").trim();
   const plan = await planDuDossier(planId);
+  const ancrage = plan === null ? null : ancrageLu(plan.accessCase, plan.subject);
 
-  if (!plan?.accessCase) {
+  if (plan === null || ancrage === null) {
     return { erreur: "Ce plan n'existe plus." };
   }
 
-  const sens = plan.accessCase.kind;
   const maintenant = new Date();
-  const actuel = await calculerPlan(
-    sens,
-    plan.accessCase.person.id,
-    plan.accessCase.person.username,
-    maintenant,
-    profilDeLaPolitique(plan.accessCase.profileKey),
-  );
+  const actuel =
+    ancrage.sorte === "dossier"
+      ? await calculerPlan(
+          ancrage.dossier.kind,
+          ancrage.dossier.person.id,
+          ancrage.dossier.person.username,
+          maintenant,
+          profilDeLaPolitique(ancrage.dossier.profileKey),
+        )
+      : await calculerGeste(
+          intentionDUnGeste.parse(plan.intent),
+          ancrage.sujet.id,
+          ancrage.sujet.username,
+          maintenant,
+        );
+  const sens = actuel.sens;
 
   // L'état du dossier d'abord : sa garde ne portait que sur le plan, si bien qu'un
-  // dossier annulé entre deux clics laissait son brouillon confirmable.
-  if (!dossierVivant(plan.accessCase.state)) {
-    return { erreur: "Ce dossier n'est plus ouvert." };
+  // dossier annulé entre deux clics laissait son brouillon confirmable. Pour un geste,
+  // ce qui tient cette place est le départ ouvert : confirmer pendant qu'un départ court
+  // déplacerait l'empreinte du plan de ce départ.
+  if (ancrage.sorte === "dossier") {
+    if (!dossierVivant(ancrage.dossier.state)) {
+      return { erreur: "Ce dossier n'est plus ouvert." };
+    }
+  } else if (await departOuvertSur(ancrage.sujet.id)) {
+    return { erreur: REFUS_DEPART_OUVERT };
   }
 
   const verdict = peutConfirmer(
@@ -224,16 +263,22 @@ export async function confirmerPlan(
     targetType: "plan",
     targetId: plan.id,
     after: { sens, etapes: plan.steps.length, empreinte: plan.planDigest },
-    revalider: [`/dossiers/${plan.accessCaseId}`],
+    revalider: [
+      ancrage.sorte === "dossier"
+        ? `/dossiers/${plan.accessCaseId}`
+        : `/personnes/${ancrage.sujet.username}`,
+    ],
     ecrire: async (operateur) => {
-      // Conditionnée sur ce qui a été lu, plan et dossier : la garde seule laisse
+      // Conditionnée sur ce qui a été lu, plan et ancrage : la garde seule laisse
       // passer une annulation arrivée entre la lecture et l'écriture, et un plan
-      // confirmé sous un dossier annulé n'a plus personne pour le contredire.
+      // confirmé sous un dossier annulé n'a plus personne pour le contredire. Le filtre
+      // sur la relation `accessCase` ne s'évalue jamais à vrai quand elle est nulle, si
+      // bien qu'un geste rendait `count === 0` et levait sans qu'aucun état n'ait changé.
       const { count } = await prisma.plan.updateMany({
         where: {
           id: plan.id,
           state: "DRAFT",
-          accessCase: { state: { in: [...ETATS_VIVANTS] } },
+          ...conditionDAncrage(plan.accessCaseId),
         },
         data: {
           state: "EXECUTING",
@@ -244,7 +289,7 @@ export async function confirmerPlan(
       });
 
       if (count === 0) {
-        throw new Error("Ce plan ou son dossier a changé d'état pendant la confirmation.");
+        throw new Error("Ce plan ou son ancrage a changé d'état pendant la confirmation.");
       }
     },
   });
@@ -305,6 +350,7 @@ export async function pointerEtape(
               person: { select: { id: true, username: true } },
             },
           },
+          subject: { select: { id: true, username: true } },
         },
       },
     },
@@ -330,12 +376,26 @@ export async function pointerEtape(
 
   // L'état du dossier avant celui du plan, comme la confirmation et le recalcul le
   // font déjà : cette action était la seule des trois à ne regarder que le plan, et
-  // consignait donc un geste sur un dossier que quelqu'un venait d'abandonner.
-  if (etape.plan.accessCase && !dossierVivant(etape.plan.accessCase.state)) {
-    return { erreur: "Ce dossier n'est plus ouvert." };
+  // consignait donc un geste sur un dossier que quelqu'un venait d'abandonner. Ce qui
+  // tient cette place pour un geste est le départ ouvert, et il faut qu'elle le tienne
+  // ici aussi : un geste en tier `manual` n'appelle aucun connecteur, si bien que ce
+  // pointage est le seul endroit qui pose son `executedAt`, donc le seul qui fasse
+  // naître un engagement pendant qu'un départ confirmé court déjà.
+  if (etape.plan.accessCase) {
+    if (!dossierVivant(etape.plan.accessCase.state)) {
+      return { erreur: "Ce dossier n'est plus ouvert." };
+    }
+  } else if (etape.plan.subject && (await departOuvertSur(etape.plan.subject.id))) {
+    return { erreur: REFUS_DEPART_OUVERT };
   }
 
-  const sens = etape.plan.accessCase?.kind ?? null;
+  // Un geste est un octroi par construction, donc son sens existe sans dossier : le
+  // laisser nul y désactivait le refus, et « déjà absent » se consignait sous une étape
+  // qui ouvre un accès. Portant une clé d'engagement, elle déclarait alors cet accès
+  // ouvert de la main même qui venait d'affirmer qu'il n'existe pas.
+  const sens: SensDossier | null =
+    etape.plan.accessCase?.kind ?? (etape.plan.subject === null ? null : SENS_D_UN_GESTE);
+
   if (
     sens !== null &&
     (nouvelEtat === "ALREADY_ABSENT" || nouvelEtat === "ALREADY_PRESENT") &&
@@ -437,7 +497,7 @@ export async function pointerEtape(
     // La route du participant autant que celle de l'opérateur : elle est celle
     // depuis laquelle il vient de pointer, et sans elle son écran garderait
     // l'affichage d'avant son propre geste.
-    revalider: [`/dossiers/${etape.plan.accessCaseId}`, `/moi/dossiers/${etape.plan.accessCaseId}`],
+    revalider: ecransDeLEtape(etape.plan.accessCaseId, etape.plan.subject),
     utilisateur,
     ecrire: async () => {
       // Conditionnée sur la déclaration lue, comme celle du verdict : entre la lecture
@@ -531,6 +591,7 @@ export async function validerEtape(
               person: { select: { id: true, username: true } },
             },
           },
+          subject: { select: { id: true, username: true } },
         },
       },
     },
@@ -549,8 +610,16 @@ export async function validerEtape(
     return { erreur: REFUS_HORS_DOSSIER };
   }
 
-  if (etape.plan.accessCase && !dossierVivant(etape.plan.accessCase.state)) {
-    return { erreur: "Ce dossier n'est plus ouvert." };
+  // Même garde qu'au pointage, et pour la même raison : un verdict est ce qui solde
+  // réellement une étape que son plan confie au regard d'un autre, donc ce qui fait
+  // naître son engagement. Le poser pendant qu'un départ court déplacerait l'empreinte
+  // de ce départ, que rien ne peut plus recalculer une fois confirmé.
+  if (etape.plan.accessCase) {
+    if (!dossierVivant(etape.plan.accessCase.state)) {
+      return { erreur: "Ce dossier n'est plus ouvert." };
+    }
+  } else if (etape.plan.subject && (await departOuvertSur(etape.plan.subject.id))) {
+    return { erreur: REFUS_DEPART_OUVERT };
   }
 
   const pointable = planPointable(etape.plan.state);
@@ -604,12 +673,12 @@ export async function validerEtape(
     targetId: `${etape.systemKey}:${etape.label}`,
     before: { etat: etape.state, validation: etape.validation, declarePar: etape.declaredBy },
     after: {
-      sens: etape.plan.accessCase?.kind ?? null,
+      sens: etape.plan.accessCase?.kind ?? (etape.plan.subject === null ? null : SENS_D_UN_GESTE),
       etat: etatApres,
       validation: avis,
       ...(note ? { note } : {}),
     },
-    revalider: [`/dossiers/${etape.plan.accessCaseId}`, `/moi/dossiers/${etape.plan.accessCaseId}`],
+    revalider: ecransDeLEtape(etape.plan.accessCaseId, etape.plan.subject),
     utilisateur,
     ecrire: async () => {
       // Conditionnée sur la déclaration lue, et pas seulement sur l'identifiant :
@@ -830,6 +899,11 @@ export async function recalculerPlan(
   const planId = String(formData.get("planId") ?? "").trim();
   const plan = await planDuDossier(planId);
 
+  // Fermée sur un plan sans dossier, et délibérément : le recalcul relit la politique et
+  // les modèles, dont un geste n'a que faire, et l'ouvrir doublerait la surface pour un cas
+  // qui a une issue plus simple. Un brouillon de geste devenu obsolète ne se recalcule donc
+  // pas, il se repose, l'ouverture d'un geste passant tout brouillon du même sujet à
+  // `STALE` dans la transaction qui écrit le nouveau.
   if (!plan?.accessCase || !plan.accessCaseId) {
     return { erreur: "Ce plan n'existe plus." };
   }
@@ -891,7 +965,13 @@ export async function recalculerPlan(
           throw new Error("Ce plan ou son dossier a changé d'état pendant le recalcul.");
         }
 
-        await enregistrerPlan(dossierId, actuel, operateur.username, maintenant, transaction);
+        await enregistrerPlan(
+          { kind: sens, accessCaseId: dossierId },
+          actuel,
+          operateur.username,
+          maintenant,
+          transaction,
+        );
       });
     },
   });

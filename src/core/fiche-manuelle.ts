@@ -249,6 +249,15 @@ export interface FicheAFusionner {
   references: readonly ReferenceDeFiche[];
   rattachements: readonly RattachementDeFiche[];
   surcharge: SurchargeDeFiche | null;
+  /**
+   * Les plans hors dossier que cette fiche porte comme sujet, par identifiant.
+   *
+   * Sa relation est en `Restrict` et non en `Cascade`, seule exception de ce schéma :
+   * effacer un geste avec la fiche laisserait l'accès ouvert et l'outil muet. La base
+   * refuse donc la suppression finale tant qu'ils n'ont pas bougé, et elle la refuserait au
+   * milieu de la transaction, sans qu'aucune ligne de l'aperçu ne l'ait annoncé.
+   */
+  gestes: readonly string[];
 }
 
 /**
@@ -278,6 +287,7 @@ export type EtapeFusion =
   | { type: "supprimer-surcharge"; id: string }
   | { type: "deplacer-references"; ids: readonly string[] }
   | { type: "supprimer-references"; ids: readonly string[] }
+  | { type: "deplacer-gestes"; ids: readonly string[] }
   | { type: "supprimer-fiche"; username: string };
 
 export interface DoublonDeFournisseur {
@@ -324,6 +334,8 @@ export interface PlanFusion {
   prolongation: { avant: Date | null; apres: Date } | null;
   references: readonly ReferenceDeFiche[];
   referencesSupprimees: readonly ReferenceDeFiche[];
+  /** Les gestes hors dossier qui suivent la personne, sans quoi la base refuserait tout. */
+  gestes: readonly string[];
   etapes: readonly EtapeFusion[];
 }
 
@@ -473,6 +485,7 @@ export function planifierFusion(
     surchargeAbandonnee: surchargeSuit ? null : source.surcharge,
     references,
     referencesSupprimees,
+    gestes: source.gestes,
   };
 
   // Un seul dossier vivant par personne est une règle du socle : en faire migrer un
@@ -541,6 +554,9 @@ export function planifierFusion(
       type: "supprimer-references",
       ids: referencesSupprimees.map((reference) => reference.id),
     });
+  }
+  if (source.gestes.length > 0) {
+    etapes.push({ type: "deplacer-gestes", ids: source.gestes });
   }
   etapes.push({ type: "supprimer-fiche", username: source.username });
 

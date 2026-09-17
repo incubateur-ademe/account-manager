@@ -282,6 +282,24 @@ export interface ObservedAccess {
   role: string;
 }
 
+/**
+ * Un accès qu'une étape de plan a ouvert et qu'aucune collecte ne rendra jamais, tel que
+ * le socle l'a retrouvé sur cette étape.
+ *
+ * Le socle ne sait pas ce que `key` désigne : il la transporte, la stocke et la compare à
+ * elle-même. Rédiger ce qui la solde appartient au connecteur qui l'a écrite.
+ */
+export interface OpenEngagement {
+  key: string;
+  /** Le libellé de l'étape qui l'a ouvert, figé ce jour-là. */
+  label: string;
+  /** Les paramètres de cette étape, tels qu'ils ont été approuvés. */
+  params: Record<string, unknown>;
+  /** Le terme décidé, quand il y en a un. */
+  expiresAt?: Date;
+  openedAt: Date;
+}
+
 export type SubjectRef =
   | {
       kind: "person";
@@ -309,6 +327,13 @@ export type SubjectRef =
        * un credential, donc ce n'est pas à `resolveCapability` de le dire.
        */
       handles?: Readonly<Record<string, string>>;
+      /**
+       * Les engagements ouverts sur ce système, tels que le socle les a retrouvés sur les
+       * étapes qui les ont ouverts. Ils n'existent dans aucun `CollectResult`, et c'est
+       * leur définition : sans eux, le départ se tairait sur ce que personne ne peut plus
+       * observer.
+       */
+      engagements?: readonly OpenEngagement[];
     }
   | { kind: "service"; key: string };
 
@@ -373,6 +398,22 @@ export interface PlannedStep {
    */
   expectedActor?: Acteur;
   validationBy?: Acteur;
+  /**
+   * Ce que cette étape ouvre et qu'aucune collecte ne rendra jamais, sous la forme que le
+   * connecteur émetteur a choisie. Le socle la transporte, la stocke et la compare à
+   * elle-même : il ne l'interprète jamais, ce qu'elle désigne n'ayant de sens que pour le
+   * connecteur qui l'a écrite.
+   *
+   * Présente si et seulement si ce que l'étape ouvre ne reparaîtra pas dans le
+   * `CollectResult` de ce connecteur. Une clé de trop fait proposer deux fois la même
+   * coupure au départ, sous deux clés d'idempotence que le dédoublonnage ne rapproche pas ;
+   * une clé qui manque laisse un accès que plus rien ne nomme.
+   *
+   * Hors de l'empreinte, comme `grantExpiresAt` : elle ne dit rien de plus que
+   * l'`idempotencyKey` de l'étape qui la porte, et l'y mettre déclarerait obsolète tout
+   * plan en vol le jour où un connecteur reformule ses clés.
+   */
+  engagementKey?: string;
 }
 
 /**

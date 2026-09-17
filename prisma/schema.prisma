@@ -147,6 +147,7 @@ model Person {
   identities         ExternalIdentity[]
   references         Reference[]
   accessCases        AccessCase[]
+  gestes             Plan[]
   participations     CaseParticipation[]
   findings           Finding[]
   startupAssignments StartupAssignment[]
@@ -567,8 +568,26 @@ model Plan {
   id String @id @default(cuid())
 
   accessCaseId String?
-  kind         PlanKind
-  state        PlanState @default(DRAFT)
+
+  /// La personne que vise un plan qui n'a pas de dossier. Nulle sur un plan de dossier,
+  /// dont le sujet est celui de son dossier : un plan porte un ancrage, et un seul.
+  ///
+  /// Restrict et non Cascade, a la difference de tout le reste de ce schema. Cette ligne
+  /// est la seule trace d'un acces qu'aucune collecte ne rendra jamais : une cascade
+  /// l'effacerait avec la fiche pendant que l'acces, lui, court jusqu'a son echeance.
+  /// SetNull ne vaut pas mieux, un geste sans sujet ne se recalculant plus et sortant de
+  /// la requete du depart. Supprimer une fiche qui en porte un est donc refuse par la
+  /// base, et la fusion doit les deplacer avant.
+  subjectId String?
+
+  /// L'intention gelee d'un geste hors dossier : le systeme vise, le scope, le terme et
+  /// la justification. Elle est a son recalcul ce que AccessCase.profileKey est a celui
+  /// d'une arrivee, c'est-a-dire la seule entree dont son empreinte redecoule. Nulle sur
+  /// un plan de dossier.
+  intent Json?
+
+  kind  PlanKind
+  state PlanState @default(DRAFT)
 
   planDigest      String
   confirmedDigest String?
@@ -580,6 +599,7 @@ model Plan {
   expiresAt   DateTime
 
   accessCase AccessCase? @relation(fields: [accessCaseId], references: [id], onDelete: SetNull)
+  subject    Person?     @relation(fields: [subjectId], references: [id], onDelete: Restrict)
   steps      PlanStep[]
 
   /// Un index unique partiel sur ("accessCaseId"), qui exclut les etats d'un plan
@@ -591,6 +611,7 @@ model Plan {
 
   @@index([state])
   @@index([accessCaseId])
+  @@index([subjectId])
 }
 
 enum RiskLevel {
@@ -670,6 +691,12 @@ model PlanStep {
   /// la premiere nuit.
   grantExpiresAt DateTime?
 
+  /// La cle d'un engagement, telle que le connecteur emetteur l'a ecrite. Elle vit ici et
+  /// pas sur AccessGrant, pour la meme raison que l'echeance juste au-dessus : cette
+  /// table-la est reconstruite par la collecte, et ce que cette colonne designe est
+  /// justement ce qu'aucune collecte ne rend.
+  engagementKey String?
+
   /// Pourquoi cet acces a ete accorde, quand il ne vient d'aucun profil. Jamais
   /// remplie automatiquement depuis un profil : le profil est la justification, et la
   /// recopier ferait naitre la file des acces a justifier deja pleine de faux.
@@ -717,6 +744,7 @@ model PlanStep {
   @@index([planId])
   @@index([state])
   @@index([grantExpiresAt])
+  @@index([engagementKey])
   /// Sert la file « ce qui attend quelqu'un », que #13 et #14 liront par dossier et
   /// par personne.
   @@index([validation])

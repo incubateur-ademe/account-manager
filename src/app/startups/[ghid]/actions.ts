@@ -272,7 +272,12 @@ export async function ouvrirDepartsEnLot(_etat: EtatLot, formData: FormData): Pr
             personne.username,
             maintenant,
           );
-          await enregistrerPlanDOuverture(dossier.id, calcule, operateur.username, maintenant);
+          await enregistrerPlanDOuverture(
+            { kind: "OFFBOARDING", accessCaseId: dossier.id },
+            calcule,
+            operateur.username,
+            maintenant,
+          );
           return dossier.id;
         },
       });

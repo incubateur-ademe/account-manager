@@ -14,6 +14,7 @@ import {
   refusDEcart,
   refusDePeremption,
 } from "@/core/execution";
+import { ancrageLu, intentionDUnGeste } from "@/core/geste";
 import type { Voie } from "@/core/participation";
 import { estExecutable, type Masse, masseDuPlan, refusDeMasse } from "@/core/plan";
 import type { Prisma } from "@/generated/prisma/client";
@@ -22,6 +23,7 @@ import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { calculerPlan, reposerLEtatDuPlan } from "@/lib/dossier";
 import { env } from "@/lib/env";
+import { calculerGeste, departOuvertSur, REFUS_DEPART_OUVERT } from "@/lib/geste";
 import { policy } from "@/lib/policy";
 
 const RISQUE_LU: Record<string, RiskLevel> = { LOW: "low", MEDIUM: "medium", HIGH: "high" };
@@ -117,6 +119,9 @@ async function planEnBase(planId: string) {
           person: { select: { id: true, username: true } },
         },
       },
+      subjectId: true,
+      intent: true,
+      subject: { select: { id: true, username: true } },
       steps: {
         select: {
           id: true,
@@ -129,6 +134,7 @@ async function planEnBase(planId: string) {
           riskLevel: true,
           idempotencyKey: true,
           grantExpiresAt: true,
+          engagementKey: true,
         },
       },
     },
@@ -143,9 +149,10 @@ async function planEnBase(planId: string) {
  * par l'identifiant du plan, ce qui la rend unique en base sans changer ce qu'elle
  * désigne.
  *
- * Ce que le connecteur reçoit est l'étape recalculée, à deux valeurs près qui viennent
- * du plan figé : sa clé, qui est celle qui vaut en base, et son échéance d'octroi, qui
- * est hors empreinte et donc libre d'avoir bougé depuis la confirmation. Prendre celle
+ * Ce que le connecteur reçoit est l'étape recalculée, à trois valeurs près qui viennent
+ * du plan figé : sa clé, qui est celle qui vaut en base, son échéance d'octroi et sa clé
+ * d'engagement, toutes deux hors empreinte et donc libres d'avoir bougé depuis la
+ * confirmation. Prendre celle
  * du recalcul reviendrait à repousser le terme d'un accès élevé du simple fait de
  * l'exécuter plus tard, c'est-à-dire à le reconduire sans que personne ne l'ait décidé.
  */
@@ -161,6 +168,7 @@ function rapprocher(
     riskLevel: string;
     idempotencyKey: string;
     grantExpiresAt: Date | null;
+    engagementKey: string | null;
   }[],
   recalculees: readonly { etape: PlannedStep }[],
   planId: string,
@@ -183,6 +191,7 @@ function rapprocher(
       ...nue,
       idempotencyKey: stockee.idempotencyKey,
       ...(stockee.grantExpiresAt ? { grantExpiresAt: stockee.grantExpiresAt } : {}),
+      ...(stockee.engagementKey ? { engagementKey: stockee.engagementKey } : {}),
     };
 
     return [
@@ -282,11 +291,24 @@ export async function executerPlan(
 
   const plan = await planEnBase(planId);
 
-  if (!plan?.accessCase) {
+  // Un plan disparu et un plan sans dossier ne sont pas la même situation, et la garde qui
+  // les confondait rendait la même phrase pour les deux.
+  const ancrage = plan === null ? null : ancrageLu(plan.accessCase, plan.subject);
+
+  if (plan === null || ancrage === null) {
     return refuser("Ce plan n'existe plus.");
   }
-  if (!dossierVivant(plan.accessCase.state)) {
-    return refuser("Ce dossier n'est plus ouvert.");
+
+  if (ancrage.sorte === "dossier") {
+    if (!dossierVivant(ancrage.dossier.state)) {
+      return refuser("Ce dossier n'est plus ouvert.");
+    }
+    // Le pendant de cette garde pour un plan qui n'a pas de dossier : ce qui doit être vrai
+    // au démarrage est qu'aucun départ ne soit ouvert sur le sujet. Ouvrir un accès pendant
+    // qu'un départ court déplace l'empreinte de son plan, et un départ déjà confirmé n'a
+    // plus de recalcul pour rattraper cet écart.
+  } else if (await departOuvertSur(ancrage.sujet.id)) {
+    return refuser(REFUS_DEPART_OUVERT);
   }
 
   const verdict = peutExecuter(plan.state);
@@ -312,18 +334,42 @@ export async function executerPlan(
     );
   }
 
-  const sens = plan.accessCase.kind;
-  const actuel = await calculerPlan(
-    sens,
-    plan.accessCase.person.id,
-    plan.accessCase.person.username,
-    maintenant,
-    profilDeLaPolitique(plan.accessCase.profileKey),
-    // Les tolérances telles qu'elles étaient à la confirmation, et non celles du jour :
-    // une pose ou une expiration survenue depuis déplacerait l'empreinte, et ce plan
-    // deviendrait inexécutable sans issue, le recalcul n'étant ouvert qu'à un brouillon.
-    plan.confirmedAt,
-  );
+  /**
+   * Ce que le recalcul d'un geste rejoue, et ce qu'il ne rejoue pas.
+   *
+   * Gelés, donc immobiles : la clé du système, le scope et le terme, tous trois lus dans
+   * l'intention. Relus en base à chaque calcul : l'adresse dont le socle répond, et les
+   * identifiants sûrs de la personne.
+   *
+   * La garde d'écart mord donc sur un geste dont le connecteur tire un paramètre de la
+   * base, ce qui est le cas d'une collaboration Scalingo, dont le bénéficiaire est
+   * l'adresse de la fiche. Elle est **tautologique** sur un geste dont tout vient de
+   * l'intention, ce qui est le cas d'un jeton restreint : l'empreinte recalculée y est
+   * égale à la confirmée par construction. Elle n'est pas fausse, elle ne dit rien, et ce
+   * geste-là est protégé par le refus pendant un départ ouvert et par l'échéance
+   * obligatoire, pas par l'empreinte.
+   */
+  const actuel =
+    ancrage.sorte === "dossier"
+      ? await calculerPlan(
+          ancrage.dossier.kind,
+          ancrage.dossier.person.id,
+          ancrage.dossier.person.username,
+          maintenant,
+          profilDeLaPolitique(ancrage.dossier.profileKey),
+          // Les tolérances telles qu'elles étaient à la confirmation, et non celles du jour :
+          // une pose ou une expiration survenue depuis déplacerait l'empreinte, et ce plan
+          // deviendrait inexécutable sans issue, le recalcul n'étant ouvert qu'à un brouillon.
+          plan.confirmedAt,
+        )
+      : await calculerGeste(
+          intentionDUnGeste.parse(plan.intent),
+          ancrage.sujet.id,
+          ancrage.sujet.username,
+          maintenant,
+        );
+
+  const sens = actuel.sens;
 
   const ecart = refusDEcart(plan.confirmedDigest, actuel.empreinte);
   if (ecart) {
