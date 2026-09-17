@@ -69,6 +69,18 @@ export async function calculerGeste(
 export const REFUS_DEPART_OUVERT =
   "Un départ est ouvert sur cette personne. Ouvrir un accès maintenant déplacerait l'empreinte de son plan, et un plan de départ déjà confirmé n'a plus de recalcul pour rattraper cet écart. Soldez ce départ, ou annulez-le, puis reprenez ce geste.";
 
+/**
+ * Le message d'une intention gelée qu'on ne sait plus relire.
+ *
+ * `intentionDUnGeste` est un `strictObject`, et l'ouverture d'un geste l'y valide déjà :
+ * une intention illisible ne peut donc venir que d'une écriture faite hors de cet outil,
+ * ou d'un champ ajouté au schéma après coup, qui rend d'un coup illisible chaque ligne
+ * déjà écrite. Lever laisserait l'écran sans issue, comme pour l'origine gelée d'une
+ * étape : le geste se refuse, et le dit.
+ */
+export const REFUS_INTENTION_ILLISIBLE =
+  "L'intention gelée de ce geste est illisible : elle n'a pas pu être écrite par cet outil. Reprenez le geste depuis l'écran du système.";
+
 export async function departOuvertSur(personId: string): Promise<boolean> {
   const ouvert = await prisma.accessCase.findFirst({
     where: { personId, kind: "OFFBOARDING", state: { in: [...ETATS_VIVANTS] } },

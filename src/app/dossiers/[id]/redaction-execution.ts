@@ -102,6 +102,15 @@ export const LIBELLE_REMISE = {
   perdue:
     "Perdue, elle ne se retrouve pas. Il faut alors émettre un nouveau jeton : celui-ci restera vivant jusqu'à son terme, et rien ne sait ni le révoquer ni l'interrompre.",
   cle: "La clé à remettre",
+  /**
+   * Le bloc est remplacé et non effacé : une disparition muette ferait chercher où la clé
+   * est passée, et conclure qu'elle est ailleurs.
+   */
+  disparue: {
+    titre: "Cette clé a été quittée, donc perdue",
+    texte:
+      "Cette page a été quittée, et la clé n'existait nulle part ailleurs : elle ne se retrouve pas. Émettez un nouveau jeton. Le précédent restera vivant jusqu'à son terme, et rien ne sait ni le révoquer ni l'interrompre.",
+  },
   registre: (identifiant: string) =>
     `Ce jeton est inscrit sous « ${identifiant} » dans les comptes de service, sans sa clé.`,
   echec: {

@@ -15,6 +15,7 @@ import {
   conditionDAncrage,
   engagementsOuverts,
   REFUS_DEPART_OUVERT,
+  REFUS_INTENTION_ILLISIBLE,
 } from "@/lib/geste";
 
 /**
@@ -220,6 +221,30 @@ describe("un geste hors dossier naît, se confirme, s'exécute, et se refuse", (
     });
     expect(enEcart.refus).toBeDefined();
     expect(enEcart.refus).toContain("ne décrit plus ce qui a été approuvé");
+    expect(
+      await prisma.planStep.findFirstOrThrow({
+        where: { planId },
+        select: { state: true, lastError: true },
+      }),
+    ).toEqual(avant);
+
+    // When l'intention gelée cesse de se relire, ce qu'une écriture faite hors de cet
+    // outil ou un champ ajouté au schéma produisent : elle est un `strictObject`, et
+    // `intent` est l'instantané fait pour survivre au code qui l'a écrit
+    await prisma.plan.update({
+      where: { id: planId },
+      data: { intent: { systeme: "scalingo", scope: {}, champDUneAutreVersion: true } },
+    });
+
+    // Then le lancement refuse et le dit, au lieu de lever : `lancerExecution` n'attrape
+    // rien, et une levée ici sortait en erreur de serveur. Le refus passe par le même
+    // chemin tracé que les autres, donc avant la garde d'écart qui mordait juste avant.
+    const intentionIllisible = await executerPlan(planId, {
+      operateur: OPERATRICE,
+      masseConfirmee: false,
+      maintenant: APRES,
+    });
+    expect(intentionIllisible.refus).toBe(REFUS_INTENTION_ILLISIBLE);
     expect(
       await prisma.planStep.findFirstOrThrow({
         where: { planId },

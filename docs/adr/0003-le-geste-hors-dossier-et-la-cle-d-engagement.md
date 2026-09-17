@@ -165,12 +165,14 @@ faire, et il faudrait scinder encore au deuxième cas.
   (`src/app/dossiers/[id]/actions.ts:833-835`) refuse tout plan sans dossier, et aucune action
   n'annule un plan seul. Il faut reposer le geste, ce que `ouvrirGeste` permet en passant les
   brouillons précédents à `STALE`. C'est un trou du découpage, acté et non résolu.
-- **Un geste confirmé, lui, n'a aucune sortie du tout.** Le recalcul lui reste fermé pour la
-  même raison, aucune action n'annule un plan seul, rien ne balaie vers `EXPIRED`, et la repose
-  d'un geste ne périme que les brouillons. Un geste confirmé dont l'empreinte a bougé, ce
-  qu'une adresse de communication modifiée suffit à faire, reste donc `EXECUTING`
-  indéfiniment : son exécution refuse par l'écart, et rien ne le referme. Acté et non résolu,
-  au même titre que le précédent et pour la même raison.
+- **Un geste confirmé sort par le pointage, et par lui seul.** Son exécution peut refuser pour
+  toujours dès que l'empreinte a bougé, ce qu'une adresse de communication modifiée suffit à
+  faire, et ni le recalcul ni l'annulation ne s'ouvrent à un plan sans dossier. Ce qui reste
+  est d'écarter ses étapes avec une raison : `SKIPPED` solde, donc `etatApresPointage` rend le
+  plan `EXECUTED`, avec son motif et son entrée au journal. Rien n'empêche par ailleurs
+  d'ouvrir un geste de remplacement, l'unicité du plan courant ne portant que sur un dossier.
+  La sortie est donc étroite et manuelle, pas absente, et elle suppose l'écran qui rend un
+  plan sans dossier, lequel n'existe pas encore.
 - **Le plafond de masse ne mord pas** sur un plan d'une étape. Il passe toujours, et c'est la
   confirmation avec son empreinte qui porte réellement.
 - La liste des connecteurs interrogés au départ ne peut plus se limiter aux systèmes où la

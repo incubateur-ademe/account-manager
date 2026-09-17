@@ -72,9 +72,15 @@ export const emettreUnJeton: EmissionDeJeton = async (demande) => {
     throw new ErreurFgp(null, true, "un jeton sans terme ne se reprend par aucun moyen");
   }
 
+  // Le slash final est la coquille qu'un champ de formulaire invite à faire, et
+  // `//api/generate` rend 404 sur un routeur qui ne normalise pas, sans que le message le
+  // nomme. Coupé plutôt que remplacé par `new URL("/api/generate", base)`, qui avalerait en
+  // silence un chemin configuré dans la variable.
+  const racine = base.replace(/\/+$/, "");
+
   let reponse: Response;
   try {
-    reponse = await fetch(`${base}/api/generate`, {
+    reponse = await fetch(`${racine}/api/generate`, {
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify({

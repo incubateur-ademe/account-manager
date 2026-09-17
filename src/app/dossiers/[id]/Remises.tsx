@@ -1,5 +1,7 @@
 import { fr } from "@codegouvfr/react-dsfr";
 import { Alert } from "@codegouvfr/react-dsfr/Alert";
+import { useEffect, useState } from "react";
+import { flushSync } from "react-dom";
 
 import type { RemiseDeCredential } from "@/lib/execution";
 
@@ -27,7 +29,44 @@ function ValeurARecopier({ intitule, valeur }: { intitule: string; valeur: strin
   );
 }
 
+/**
+ * L'écran promet qu'en quittant la page, plus personne ne pourra relire la clé. Le
+ * bfcache est le dernier trou de cette promesse : la remise vit dans l'état de
+ * `useActionState`, donc dans le tas JavaScript, que le navigateur restaure tel quel au
+ * retour arrière après une navigation de document.
+ *
+ * Au retour et jamais au départ. `pagehide` part aussi quand un navigateur mobile gèle
+ * l'onglet, et `visibilitychange` au moindre changement d'onglet : effacer là détruirait
+ * la seule copie d'une clé qu'aucune route ne relit et dont le jeton ne se révoque pas,
+ * pendant qu'on la recopie dans le coffre. Effacer ici ne détruit que ce que le départ de
+ * la page avait déjà perdu. `flushSync` parce que le commit doit être synchrone : la mise à
+ * jour ne vient d'aucun gestionnaire React, et l'ordonnanceur la poserait sinon dans une
+ * tâche que rien ne borne.
+ */
 function Remise({ remise }: { remise: RemiseDeCredential }) {
+  const [caduque, setCaduque] = useState(false);
+
+  useEffect(() => {
+    const auRetour = (evenement: PageTransitionEvent) => {
+      if (evenement.persisted) {
+        flushSync(() => setCaduque(true));
+      }
+    };
+    window.addEventListener("pageshow", auRetour);
+    return () => window.removeEventListener("pageshow", auRetour);
+  }, []);
+
+  if (caduque) {
+    return (
+      <Alert
+        className={fr.cx("fr-mt-2w")}
+        severity="info"
+        title={LIBELLE_REMISE.disparue.titre}
+        description={LIBELLE_REMISE.disparue.texte}
+      />
+    );
+  }
+
   return (
     <>
       <Alert

@@ -852,4 +852,71 @@ describe("contenance des ressources", () => {
     // ayant été écartées.
     expect(compte).toBe(8);
   });
+
+  it("retient la dernière déclaration d'une clé répétée, une fois, et le dit", () => {
+    // Given un connecteur qui se répète de deux façons : une clé redéclarée telle quelle,
+    // et une clé dont la seconde déclaration porte une contenance qu'un refus écarte.
+    const releve: ObservedResource[] = [
+      { externalId: "regroupement", label: "Regroupement" },
+      { externalId: "service-double", label: "Première", parentExternalId: "regroupement" },
+      {
+        externalId: "service-double",
+        label: "Dernière",
+        url: "https://exemple.invalid/derniere",
+        parentExternalId: "regroupement",
+      },
+      { externalId: "service-boucle", label: "Autre première", parentExternalId: "regroupement" },
+      {
+        externalId: "service-boucle",
+        label: "Autre dernière",
+        parentExternalId: "service-boucle",
+      },
+    ];
+
+    const { ressources, erreurs, releve: compte } = verifierContenances(releve);
+
+    // Then chaque clé ne ressort qu'une fois, et c'est la dernière déclaration entière qui
+    // la porte, libellé et adresse comprises : la boucle d'upsert garde déjà la dernière
+    // écriture, et cette fonction ne disait cette règle qu'à moitié, en l'appliquant à la
+    // seule table des contenances.
+    expect(ressources.map(({ externalId }) => externalId)).toEqual([
+      "regroupement",
+      "service-double",
+      "service-boucle",
+    ]);
+    expect(ressources[1]).toEqual({
+      externalId: "service-double",
+      label: "Dernière",
+      url: "https://exemple.invalid/derniere",
+      parentExternalId: "regroupement",
+    });
+
+    // Then c'est bien la contenance de la dernière déclaration qui est jugée, et son refus
+    // la nomme : sans le dédoublonnage, la base gardait le parent écrit par la première
+    // occurrence, la boucle d'écriture comparant à une valeur relue avant le passage.
+    expect(ressources[2]).toEqual({ externalId: "service-boucle", label: "Autre dernière" });
+
+    // Then le relevé compte deux lignes, le contenant retiré : conservées en double, les
+    // deux clés en ajoutaient chacune une, quand la référence à laquelle le garde-fou de
+    // chute les compare compte des lignes distinctes. Le plateau observé s'alourdissait,
+    // donc une chute réelle passait et une datation refusée s'autorisait.
+    expect(compte).toBe(2);
+
+    // Then chaque répétition est dite, en plus du refus de contenance : c'est une
+    // contradiction du connecteur, et cette fonction existe pour qu'aucune ne sorte du
+    // relevé sans un mot. Le passage tombe donc en `PARTIAL`, et rien ne s'y date comme
+    // disparu.
+    expect(erreurs).toHaveLength(3);
+    expect(erreurs.map(({ itemRef }) => itemRef)).toEqual([
+      "service-double",
+      "service-boucle",
+      "service-boucle",
+    ]);
+    expect(erreurs[0]).toEqual({
+      scope: "ressources",
+      itemRef: "service-double",
+      message: "déclarée plusieurs fois dans le même relevé : la dernière déclaration est retenue",
+    });
+    expect(erreurs[2]?.message).toBe("se contient elle-même");
+  });
 });

@@ -27,13 +27,20 @@ import { peremptionDuPlan } from "@/core/plan";
 import { actionTracee } from "@/lib/actions";
 import { profilDeLaPolitique } from "@/lib/arrivee";
 import { prisma } from "@/lib/db";
-import { calculerPlan, enregistrerPlan, messageDeRefus, reposerLEtatDuPlan } from "@/lib/dossier";
+import {
+  calculerPlan,
+  enregistrerPlan,
+  messageDeRefus,
+  type PlanCalcule,
+  reposerLEtatDuPlan,
+} from "@/lib/dossier";
 import { executerPlan, type ResultatDExecution } from "@/lib/execution";
 import {
   calculerGeste,
   conditionDAncrage,
   departOuvertSur,
   REFUS_DEPART_OUVERT,
+  REFUS_INTENTION_ILLISIBLE,
 } from "@/lib/geste";
 import { droitDeParticiper } from "@/lib/participation";
 import { requireOperateur, requireUtilisateur, type Utilisateur } from "@/lib/session";
@@ -219,21 +226,32 @@ export async function confirmerPlan(
   }
 
   const maintenant = new Date();
-  const actuel =
-    ancrage.sorte === "dossier"
-      ? await calculerPlan(
-          ancrage.dossier.kind,
-          ancrage.dossier.person.id,
-          ancrage.dossier.person.username,
-          maintenant,
-          profilDeLaPolitique(ancrage.dossier.profileKey),
-        )
-      : await calculerGeste(
-          intentionDUnGeste.parse(plan.intent),
-          ancrage.sujet.id,
-          ancrage.sujet.username,
-          maintenant,
-        );
+  let actuel: PlanCalcule;
+
+  if (ancrage.sorte === "dossier") {
+    actuel = await calculerPlan(
+      ancrage.dossier.kind,
+      ancrage.dossier.person.id,
+      ancrage.dossier.person.username,
+      maintenant,
+      profilDeLaPolitique(ancrage.dossier.profileKey),
+    );
+  } else {
+    // Lue avant le calcul et non dedans : `parse` y levait, et la lecture d'une colonne
+    // JSON gelée est exactement ce que l'origine figée d'une étape refuse déjà plus bas.
+    const intention = intentionDUnGeste.safeParse(plan.intent);
+    if (!intention.success) {
+      return { erreur: REFUS_INTENTION_ILLISIBLE };
+    }
+
+    actuel = await calculerGeste(
+      intention.data,
+      ancrage.sujet.id,
+      ancrage.sujet.username,
+      maintenant,
+    );
+  }
+
   const sens = actuel.sens;
 
   // L'état du dossier d'abord : sa garde ne portait que sur le plan, si bien qu'un
@@ -510,6 +528,18 @@ export async function pointerEtape(
           state: etape.state,
           validation: etape.validation,
           declaredBy: etape.declaredBy,
+          // L'ancrage avec l'étape, comme à la confirmation : la garde lue plus haut
+          // laisse passer un départ ouvert entre la lecture et l'écriture, et ce
+          // pointage est le seul endroit qui pose l'`executedAt` d'un geste manuel.
+          // L'engagement né après la confirmation du départ sort de son plan, donc
+          // l'accès que ce pointage ouvre n'est repris par personne.
+          //
+          // Sauté sur un plan sans dossier et sans sujet, que `SetNull` sur
+          // `accessCase` peut produire : le filtre sur la relation `subject` ne s'y
+          // évalue jamais à vrai, et l'écriture lèverait là où la garde laisse passer.
+          ...(etape.plan.accessCaseId === null && etape.plan.subject === null
+            ? {}
+            : { plan: conditionDAncrage(etape.plan.accessCaseId) }),
         },
         data: {
           state: nouvelEtat,
@@ -698,6 +728,12 @@ export async function validerEtape(
           state: etape.state,
           declaredBy: etape.declaredBy,
           attempts: etape.attempts,
+          // Même raison qu'au pointage : le verdict est ce qui solde réellement une
+          // étape que son plan confie au regard d'un autre, donc ce qui fait naître son
+          // engagement, et la garde lue ne tient pas la fenêtre jusqu'à l'écriture.
+          ...(etape.plan.accessCaseId === null && etape.plan.subject === null
+            ? {}
+            : { plan: conditionDAncrage(etape.plan.accessCaseId) }),
         },
         data: {
           validation: avis,

@@ -440,6 +440,12 @@ describe("un jeton restreint s'émet, se range, et ne laisse qu'une moitié derr
     // ne peut éteindre, faute de révocation chez le proxy qui l'a émise
     const { declarerUnCompteDeService } = await import("@/app/comptes-de-service/actions");
 
+    // Le terme se compte depuis maintenant, et la collecte se joue un jour après lui : la
+    // saisie refuse un terme déjà passé, et une date en dur finirait par en devenir un.
+    const JOUR_MS = 24 * 60 * 60 * 1000;
+    const jourDuTerme = new Date(Date.now() + 180 * JOUR_MS).toISOString().slice(0, 10);
+    const terme = new Date(`${jourDuTerme}T00:00:00Z`);
+
     const saisie = (champs: Record<string, string>): FormData => {
       const formulaire = new FormData();
       for (const [nom, valeur] of Object.entries(champs)) {
@@ -458,7 +464,7 @@ describe("un jeton restreint s'émet, se range, et ne laisse qu'une moitié derr
           purpose: "Inventaire ponctuel du parc pour la revue trimestrielle",
           ownerUsername: USERNAME,
           reviewEveryDays: "7",
-          expiresAt: "2026-09-17",
+          expiresAt: jourDuTerme,
         }),
       ),
     ).toBeNull();
@@ -466,7 +472,7 @@ describe("un jeton restreint s'émet, se range, et ne laisse qu'une moitié derr
     const avecTerme = await prisma.serviceAccount.findUniqueOrThrow({
       where: { key: "scalingo-jeton-inventaire" },
     });
-    expect(avecTerme.expiresAt).toEqual(new Date("2026-09-17T00:00:00Z"));
+    expect(avecTerme.expiresAt).toEqual(terme);
 
     // Given la fiche d'un compte machine ordinaire, qui n'a pas de terme et dont la revue
     // finira par être due : c'est le signal que la file existe pour porter
@@ -494,7 +500,7 @@ describe("un jeton restreint s'émet, se range, et ne laisse qu'une moitié derr
     // When la collecte relève, bien après les deux échéances, lesquels comptes attendent
     // d'être revus
     const { comptesEnRetardDeRevue } = await import("@/lib/sync/comptes-service");
-    const enRetard = await comptesEnRetardDeRevue(new Date("2027-06-01T02:00:00Z"));
+    const enRetard = await comptesEnRetardDeRevue(new Date(terme.getTime() + JOUR_MS));
 
     // Then le jeton mort n'y figure pas, et le compte sans terme y figure. Compter le premier
     // rallumerait un signal que plus aucun geste ne peut éteindre, et un signal qui ne

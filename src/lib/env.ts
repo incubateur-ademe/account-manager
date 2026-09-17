@@ -21,64 +21,84 @@ const jetonFacultatif = z
   .optional()
   .transform((valeur) => (valeur === "" ? undefined : valeur));
 
-const coreSchema = z.object({
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+const coreSchema = z
+  .object({
+    NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 
-  DATABASE_URL: z.string().min(1),
+    DATABASE_URL: z.string().min(1),
 
-  ESPACE_MEMBRE_URL: z.url().default("https://espace-membre.incubateur.net"),
-  ESPACE_MEMBRE_API_KEY: z.string().min(1),
+    ESPACE_MEMBRE_URL: z.url().default("https://espace-membre.incubateur.net"),
+    ESPACE_MEMBRE_API_KEY: z.string().min(1),
 
-  /** Faux par défaut : toute exécution est une simulation tant que rien ne l'autorise explicitement. */
-  ACTIONS_ENABLED: z
-    .string()
-    .default("false")
-    .transform((value) => value === "true"),
+    /** Faux par défaut : toute exécution est une simulation tant que rien ne l'autorise explicitement. */
+    ACTIONS_ENABLED: z
+      .string()
+      .default("false")
+      .transform((value) => value === "true"),
 
-  OPERATORS: csv,
-  BREAK_GLASS_USERNAMES: csv,
+    OPERATORS: csv,
+    BREAK_GLASS_USERNAMES: csv,
 
-  /**
-   * Facultatif, et c'est délibéré : un connecteur dont le credential manque se
-   * résout au tier `none` et le dit, là où un démarrage refusé rendrait toute la
-   * collecte otage d'un système parmi d'autres.
-   */
-  GITHUB_TOKEN: jetonFacultatif,
+    /**
+     * Facultatif, et c'est délibéré : un connecteur dont le credential manque se
+     * résout au tier `none` et le dit, là où un démarrage refusé rendrait toute la
+     * collecte otage d'un système parmi d'autres.
+     */
+    GITHUB_TOKEN: jetonFacultatif,
 
-  /**
-   * Facultatif pour la même raison, et il porte l'écriture là où le précédent ne
-   * porte que la lecture. Son absence dégrade l'octroi GitHub en manuel, elle
-   * n'empêche ni le démarrage ni la collecte.
-   */
-  GITHUB_ADMIN_TOKEN: jetonFacultatif,
+    /**
+     * Facultatif pour la même raison, et il porte l'écriture là où le précédent ne
+     * porte que la lecture. Son absence dégrade l'octroi GitHub en manuel, elle
+     * n'empêche ni le démarrage ni la collecte.
+     */
+    GITHUB_ADMIN_TOKEN: jetonFacultatif,
 
-  /**
-   * Facultatif pour la même raison. Nominatif malgré les apparences : Notion le
-   * révoque au départ de la personne qui l'a créé comme à son changement de rôle,
-   * et il porte l'écriture sur le workspace entier.
-   */
-  NOTION_SCIM_TOKEN: jetonFacultatif,
+    /**
+     * Facultatif pour la même raison. Nominatif malgré les apparences : Notion le
+     * révoque au départ de la personne qui l'a créé comme à son changement de rôle,
+     * et il porte l'écriture sur le workspace entier.
+     */
+    NOTION_SCIM_TOKEN: jetonFacultatif,
 
-  /**
-   * Facultatif pour la même raison. Sa portée est le compte entier : un jeton
-   * Scalingo hérite de tous les droits du compte qui l'a créé, sur chaque
-   * application et chaque base, et le fournisseur ne sait pas le restreindre.
-   * D'où un seul jeton là où GitHub en porte deux, séparer lecture et écriture ne
-   * cloisonnant rien quand les deux héritent du même compte.
-   */
-  SCALINGO_API_TOKEN: jetonFacultatif,
+    /**
+     * Facultatif pour la même raison. Sa portée est le compte entier : un jeton
+     * Scalingo hérite de tous les droits du compte qui l'a créé, sur chaque
+     * application et chaque base, et le fournisseur ne sait pas le restreindre.
+     * D'où un seul jeton là où GitHub en porte deux, séparer lecture et écriture ne
+     * cloisonnant rien quand les deux héritent du même compte.
+     */
+    SCALINGO_API_TOKEN: jetonFacultatif,
 
-  /**
-   * Facultative, et pour la raison qui rend `SCALINGO_API_TOKEN` facultatif : son absence
-   * dégrade l'émission de jetons en manuel, elle n'empêche ni le démarrage ni la collecte.
-   *
-   * Sans valeur par défaut, contrairement à `ESPACE_MEMBRE_URL` : une adresse de production
-   * posée par le schéma est exactement ce que `vitest.config.ts` décrit comme le piège qui
-   * fait sortir un appel réel d'un test ayant oublié de doubler son transport, et l'oubli
-   * coûterait ici une émission que rien ne saurait reprendre.
-   */
-  FGP_URL: jetonFacultatif.pipe(z.url().optional()),
-});
+    /**
+     * Facultative, et pour la raison qui rend `SCALINGO_API_TOKEN` facultatif : son absence
+     * dégrade l'émission de jetons en manuel, elle n'empêche ni le démarrage ni la collecte.
+     *
+     * Sans valeur par défaut, contrairement à `ESPACE_MEMBRE_URL` : une adresse de production
+     * posée par le schéma est exactement ce que `vitest.config.ts` décrit comme le piège qui
+     * fait sortir un appel réel d'un test ayant oublié de doubler son transport, et l'oubli
+     * coûterait ici une émission que rien ne saurait reprendre.
+     */
+    FGP_URL: jetonFacultatif.pipe(z.url().optional()),
+  })
+  .superRefine((valeurs, ctx) => {
+    // L'émission poste le jeton de compte Scalingo, à portée compte entier, dans le corps
+    // de la requête : en clair sur une adresse http. La documentation de déploiement
+    // prescrit déjà https, mais c'est ce schéma qui fait foi sur l'environnement. Aucune
+    // dérogation nommée pour la boucle locale : l'étage d'intégration tourne sous
+    // `NODE_ENV=test`, que cette condition ne concerne pas.
+    if (
+      valeurs.NODE_ENV === "production" &&
+      valeurs.FGP_URL !== undefined &&
+      !valeurs.FGP_URL.startsWith("https://")
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["FGP_URL"],
+        message:
+          "https obligatoire en production : le jeton de compte voyage dans le corps de la requête d'émission",
+      });
+    }
+  });
 
 /**
  * Ce que seule l'application web exige. Le séparer évite qu'une collecte nocturne

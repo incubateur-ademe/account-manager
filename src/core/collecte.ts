@@ -116,14 +116,34 @@ function refusDeContenance(
  */
 export function verifierContenances(ressources: readonly ObservedResource[]): ContenancesVerifiees {
   // La dernière déclaration d'une clé répétée gagne, exactement comme la boucle d'upsert
-  // garde la dernière écriture.
-  const declarees = new Map<string, string | undefined>();
+  // garde la dernière écriture. Appliquée à la liste entière et non à la seule table des
+  // contenances : conservées en double, une clé se comptait deux fois dans le relevé que
+  // le garde-fou de chute compare à des lignes distinctes, donc gonflait un seul des deux
+  // plateaux, et la boucle d'écriture laissait en base le parent de la première
+  // occurrence, comparé à une valeur relue avant le passage.
+  const repetees = new Set<string>();
+  const uniques = new Map<string, ObservedResource>();
   for (const ressource of ressources) {
-    declarees.set(ressource.externalId, ressource.parentExternalId);
+    if (uniques.has(ressource.externalId)) {
+      repetees.add(ressource.externalId);
+    }
+    uniques.set(ressource.externalId, ressource);
   }
 
-  const erreurs: CollectError[] = [];
-  const retenues: ObservedResource[] = ressources.map((ressource) => {
+  const declarees = new Map<string, string | undefined>(
+    [...uniques].map(([cle, { parentExternalId }]) => [cle, parentExternalId]),
+  );
+
+  // Dite, et non tue : c'est une contradiction du connecteur, et cette fonction existe
+  // pour qu'aucune ne sorte du relevé sans un mot. Le passage tombe donc en `PARTIAL`, et
+  // aucune disparition ne se date sur un relevé qui se contredit.
+  const erreurs: CollectError[] = [...repetees].map((cle) => ({
+    scope: "ressources",
+    itemRef: cle,
+    message: "déclarée plusieurs fois dans le même relevé : la dernière déclaration est retenue",
+  }));
+
+  const retenues: ObservedResource[] = [...uniques.values()].map((ressource) => {
     const parent = ressource.parentExternalId;
     if (parent === undefined) {
       return ressource;

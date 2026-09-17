@@ -17,7 +17,7 @@ import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 import { empreinteDuPlan } from "@/core/plan";
 import { calculerPlan, enregistrerPlan } from "@/lib/dossier";
 import type { ResultatDExecution } from "@/lib/execution";
-import { REFUS_DEPART_OUVERT } from "@/lib/geste";
+import { REFUS_DEPART_OUVERT, REFUS_INTENTION_ILLISIBLE } from "@/lib/geste";
 import { operatrice } from "@/test/doubles/session";
 
 import {
@@ -769,6 +769,34 @@ describe("le geste qui engage : confirmer un plan", () => {
     expect((await confirmerPlan(null, formulaire({ planId: "inconnu" }))).erreur).toBe(
       "Ce plan n'existe plus.",
     );
+  });
+
+  it("refuse le geste dont l'intention gelée ne se relit plus, au lieu de lever", async () => {
+    // Given un geste encore brouillon, dont la colonne d'intention porte une forme que
+    // le schéma ne reconnaît pas. Elle est gelée, faite pour survivre au code qui l'a
+    // écrite : une écriture faite hors de cet outil, ou un champ ajouté au schéma,
+    // rendrait d'un coup illisible chaque ligne déjà posée.
+    const plan = await gesteAvecPlan();
+    plan.state = "DRAFT";
+    Object.assign(plan, {
+      intent: {
+        systeme: "atelier",
+        scope: { usage: "astreinte" },
+        justification: "renfort",
+        champDUneAutreVersion: true,
+      },
+    });
+
+    // When on confirme
+    const illisible = await confirmerPlan(null, formulaire({ planId: plan.id }));
+
+    // Then l'écran reçoit un refus qui dit quoi faire, et non une erreur de serveur :
+    // lever ici lui ôterait toute issue, ce que le même fichier refuse déjà sur
+    // l'origine figée d'une étape. Rien n'est écrit, et rien n'est journalisé.
+    expect(illisible.erreur).toBe(REFUS_INTENTION_ILLISIBLE);
+    expect(plan.state).toBe("DRAFT");
+    expect(plan.confirmedDigest).toBeNull();
+    expect(base.journal).toEqual([]);
   });
 });
 

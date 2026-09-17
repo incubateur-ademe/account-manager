@@ -31,6 +31,20 @@ export type LectureDeclaration = { erreur: string } | { declaration: Declaration
 
 export const REVUE_PAR_DEFAUT = 180;
 
+/**
+ * Le plus loin qu'un terme puisse être posé.
+ *
+ * Un terme non nul éteint la revue périodique : le calcul rend « à jour » et ne la réclame
+ * plus, et aucun écran n'édite cette colonne. Une date lointaine tapée de travers sort donc
+ * la fiche de la revue pour toujours, sans plus aucun geste pour la ramener, ce qui est
+ * exactement le signal qu'on ne peut plus éteindre que la périodicité zéro se voit refuser
+ * juste à côté. Un peu plus d'un an : au-delà, la date ne décrit plus un jeton qui meurt de
+ * lui-même.
+ */
+const PLAFOND_JOURS = 400;
+
+const JOUR_MS = 24 * 60 * 60 * 1000;
+
 export function lireDeclaration(
   brut: {
     key: string;
@@ -43,6 +57,7 @@ export function lireDeclaration(
     expiresAt?: string;
   },
   systemesConnus: readonly string[],
+  maintenant: Date,
 ): LectureDeclaration {
   const terme = (brut.expiresAt ?? "").trim();
   // Refusée plutôt que repliée sur « aucun terme » : une date illisible posée sur la fiche
@@ -52,6 +67,14 @@ export function lireDeclaration(
   const lu = terme === "" ? undefined : new Date(terme);
   if (lu !== undefined && Number.isNaN(lu.getTime())) {
     return { erreur: "Le terme ne se lit pas comme une date." };
+  }
+  if (lu !== undefined && lu.getTime() <= maintenant.getTime()) {
+    return { erreur: "Le terme est déjà passé : un jeton mort n'a pas de fiche à ouvrir." };
+  }
+  if (lu !== undefined && lu.getTime() - maintenant.getTime() > PLAFOND_JOURS * JOUR_MS) {
+    return {
+      erreur: `Le terme ne dépasse pas ${PLAFOND_JOURS} jours : au-delà, il ne décrit plus un jeton qui meurt de lui-même, il éteint la revue pour toujours.`,
+    };
   }
 
   const declaration: Declaration = {

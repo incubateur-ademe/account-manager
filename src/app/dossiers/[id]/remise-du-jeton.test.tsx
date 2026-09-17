@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -61,6 +61,10 @@ async function lancer(resultat: ResultatDExecution): Promise<void> {
   const utilisateur = userEvent.setup();
   render(<BoutonExecuter planId={PLAN} masse={MASSE} raisonDeMasse={null} simulation={false} />);
   await utilisateur.click(screen.getByRole("button", { name: LIBELLE_LANCEMENT.bouton.reel }));
+  // Le compte rendu vient d'un état que React pose dans une transition, et le clic ne
+  // garantit pas qu'elle soit commitée quand il rend la main : l'attendre, sinon le
+  // scénario passe au repos et tombe sur une machine occupée.
+  await screen.findByRole("status");
 }
 
 /** Ce que le formulaire monté a réellement envoyé à l'action. */
@@ -151,6 +155,21 @@ describe("la clé qu'un passage remet, et qui ne se relira jamais", () => {
     // caché
     expect([...document.querySelectorAll("input, textarea")]).toHaveLength(1);
     expect(document.querySelector("input")?.getAttribute("name")).toBe("planId");
+
+    // When la page est quittée puis retrouvée par un retour arrière, ce que le bfcache
+    // restaure avec le tas JavaScript entier, l'état de l'action comprise
+    act(() => {
+      window.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: true }));
+    });
+
+    // Then la clé a quitté le DOM : l'écran promet qu'en quittant cette page plus
+    // personne ne pourra la relire, et une page restaurée la rendait de nouveau lisible
+    expect(screen.queryByText(CLE)).toBeNull();
+    expect(screen.queryByText(LIBELLE_REMISE.cle)).toBeNull();
+
+    // Then le bloc est remplacé et non effacé : une disparition muette ferait chercher
+    // où la clé est passée au lieu de faire réémettre
+    expect(screen.getByText(LIBELLE_REMISE.disparue.texte)).toBeDefined();
   });
 
   it("remet aussi le jeton chiffré quand sa fiche n'a pas pu s'écrire, parce que la page en est alors la seule copie", async () => {

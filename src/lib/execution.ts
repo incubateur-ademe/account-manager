@@ -28,9 +28,14 @@ import type { Prisma } from "@/generated/prisma/client";
 import { profilDeLaPolitique } from "@/lib/arrivee";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
-import { calculerPlan, reposerLEtatDuPlan } from "@/lib/dossier";
+import { calculerPlan, type PlanCalcule, reposerLEtatDuPlan } from "@/lib/dossier";
 import { env } from "@/lib/env";
-import { calculerGeste, departOuvertSur, REFUS_DEPART_OUVERT } from "@/lib/geste";
+import {
+  calculerGeste,
+  departOuvertSur,
+  REFUS_DEPART_OUVERT,
+  REFUS_INTENTION_ILLISIBLE,
+} from "@/lib/geste";
 import { policy } from "@/lib/policy";
 
 const RISQUE_LU: Record<string, RiskLevel> = { LOW: "low", MEDIUM: "medium", HIGH: "high" };
@@ -399,25 +404,35 @@ export async function executerPlan(
    * geste-là est protégé par le refus pendant un départ ouvert et par l'échéance
    * obligatoire, pas par l'empreinte.
    */
-  const actuel =
-    ancrage.sorte === "dossier"
-      ? await calculerPlan(
-          ancrage.dossier.kind,
-          ancrage.dossier.person.id,
-          ancrage.dossier.person.username,
-          maintenant,
-          profilDeLaPolitique(ancrage.dossier.profileKey),
-          // Les tolérances telles qu'elles étaient à la confirmation, et non celles du jour :
-          // une pose ou une expiration survenue depuis déplacerait l'empreinte, et ce plan
-          // deviendrait inexécutable sans issue, le recalcul n'étant ouvert qu'à un brouillon.
-          plan.confirmedAt,
-        )
-      : await calculerGeste(
-          intentionDUnGeste.parse(plan.intent),
-          ancrage.sujet.id,
-          ancrage.sujet.username,
-          maintenant,
-        );
+  let actuel: PlanCalcule;
+
+  if (ancrage.sorte === "dossier") {
+    actuel = await calculerPlan(
+      ancrage.dossier.kind,
+      ancrage.dossier.person.id,
+      ancrage.dossier.person.username,
+      maintenant,
+      profilDeLaPolitique(ancrage.dossier.profileKey),
+      // Les tolérances telles qu'elles étaient à la confirmation, et non celles du jour :
+      // une pose ou une expiration survenue depuis déplacerait l'empreinte, et ce plan
+      // deviendrait inexécutable sans issue, le recalcul n'étant ouvert qu'à un brouillon.
+      plan.confirmedAt,
+    );
+  } else {
+    // Par le refus tracé et non par une levée : `lancerExecution` n'attrape rien, et une
+    // intention gelée illisible y sortait en erreur de serveur au lieu de se dire.
+    const intention = intentionDUnGeste.safeParse(plan.intent);
+    if (!intention.success) {
+      return refuser(REFUS_INTENTION_ILLISIBLE);
+    }
+
+    actuel = await calculerGeste(
+      intention.data,
+      ancrage.sujet.id,
+      ancrage.sujet.username,
+      maintenant,
+    );
+  }
 
   const sens = actuel.sens;
 
