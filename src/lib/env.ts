@@ -67,6 +67,17 @@ const coreSchema = z.object({
    * cloisonnant rien quand les deux héritent du même compte.
    */
   SCALINGO_API_TOKEN: jetonFacultatif,
+
+  /**
+   * Facultative, et pour la raison qui rend `SCALINGO_API_TOKEN` facultatif : son absence
+   * dégrade l'émission de jetons en manuel, elle n'empêche ni le démarrage ni la collecte.
+   *
+   * Sans valeur par défaut, contrairement à `ESPACE_MEMBRE_URL` : une adresse de production
+   * posée par le schéma est exactement ce que `vitest.config.ts` décrit comme le piège qui
+   * fait sortir un appel réel d'un test ayant oublié de doubler son transport, et l'oubli
+   * coûterait ici une émission que rien ne saurait reprendre.
+   */
+  FGP_URL: jetonFacultatif.pipe(z.url().optional()),
 });
 
 /**

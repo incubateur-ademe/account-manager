@@ -1,9 +1,23 @@
 import { describe, expect, it } from "vitest";
 
 import { catalogueDOctroi } from "@/connectors";
-import type { Intent, ObservedResource, RunContext } from "@/core/connector";
-import { verifierProfils } from "@/core/octroi";
+import type {
+  Intent,
+  ObservedResource,
+  PlannedStep,
+  RunContext,
+  SubjectRef,
+} from "@/core/connector";
+import { assemblerOctrois, echeanceDOctroi, verifierProfils } from "@/core/octroi";
 import type { Profil } from "@/core/policy";
+import { catalogueOctroyeur } from "@/lib/arrivee";
+import {
+  type DemandeDeJeton,
+  type EmissionDeJeton,
+  ErreurFgp,
+  emettreUnJeton,
+  type JetonEmis,
+} from "@/lib/fgp";
 import {
   avecReprise,
   CONTRAT_SCALINGO,
@@ -12,14 +26,18 @@ import {
   type EcritureScalingo,
   ErreurDeLecture,
   examinerScopeScalingo,
+  executerEmissionScalingo,
   executerScalingo,
   interpreterChangementDeRole,
   interpreterOctroi,
   interpreterRetrait,
   type LecteurScalingo,
   type Pause,
+  planifierDepartScalingo,
+  planifierJetonScalingo,
   planifierOctroiScalingo,
   type ReponseScalingo,
+  type ScopeJeton,
   scalingo,
 } from "./scalingo";
 
@@ -1095,6 +1113,68 @@ describe("ce que le connecteur Scalingo propose à un départ", () => {
       }).refus,
     ).toEqual([]);
 
+    // Then une application réduite à l'étoile est refusée par le schéma, avant tout examen.
+    // C'est la forme et rien d'autre qui le tient : le périmètre d'un geste accepte du JSON
+    // brut, `examinerJeton` ne regarde que la présence du champ, et le catalogue interpole
+    // ce qu'on lui donne. Acceptée, elle mettait l'étoile en place du nom dans les quatre
+    // chemins des collaborateurs, c'est-à-dire le joker de préfixe que le catalogue déclare
+    // refuser en toutes lettres, et de quoi s'inviter collaborateur de n'importe quelle
+    // application du compte puis se porter au rôle plein
+    for (const nom of ["*", "mon-application/*", "../autre", "MonApplication", "-tiret", ""]) {
+      expect(
+        CONTRAT_SCALINGO.scopeSchema.safeParse({
+          nature: "jeton",
+          usage: "collaborateurs-d-une-application",
+          region: "osc-fr1",
+          application: nom,
+        }).success,
+      ).toBe(false);
+    }
+
+    // Then une région tordue l'est aussi, et le tort y est d'une autre nature : la région
+    // devient l'hôte de la cible du blob, donc l'unique destination vers laquelle le proxy
+    // relaiera le jeton de compte entier. `x.exemple.invalid/` rendait la cible
+    // `https://api.x.exemple.invalid/.scalingo.com`, dont l'hôte effectif n'est pas
+    // Scalingo : un credential durable et irrévocable lié à un tiers
+    for (const region of ["x.exemple.invalid/", "*", "osc fr1", "osc-fr1.exemple", ""]) {
+      expect(
+        CONTRAT_SCALINGO.scopeSchema.safeParse({
+          nature: "jeton",
+          usage: "inventaire-d-une-region",
+          region,
+        }).success,
+      ).toBe(false);
+      expect(
+        CONTRAT_SCALINGO.scopeSchema.safeParse({
+          nature: "collaboration",
+          region,
+          application: "mon-application",
+          role: "limited",
+        }).success,
+      ).toBe(false);
+    }
+
+    // Then la branche collaboration porte la même borne sur son application, où le nom entre
+    // dans l'adresse du tableau de bord et dans le chemin que l'écriture appelle
+    expect(
+      CONTRAT_SCALINGO.scopeSchema.safeParse({
+        nature: "collaboration",
+        region: "osc-fr1",
+        application: "*",
+        role: "limited",
+      }).success,
+    ).toBe(false);
+
+    // Then ce que Scalingo nomme réellement passe : minuscules, chiffres et tirets
+    expect(
+      CONTRAT_SCALINGO.scopeSchema.safeParse({
+        nature: "jeton",
+        usage: "collaborateurs-d-une-application",
+        region: "osc-secnum-fr1",
+        application: "service-annuaire-2",
+      }).success,
+    ).toBe(true);
+
     // Then une collaboration reste pesée par son rôle, et sa cible ignore ce rôle : deux
     // rôles sur une même application ne s'ajoutent pas, le second remplace le premier
     const collaboration = {
@@ -1307,7 +1387,21 @@ describe("ce que le connecteur Scalingo écrit, et ce qu'il refuse d'écrire", (
       retryable: false,
     });
 
-    // Then aucun de ces trois refus n'a laissé partir le moindre appel
+    // Given une étape dont la région n'est pas une région, telle qu'une étape figée en base
+    // peut la porter sans repasser par le schéma qui borne sa forme
+    const detournee = {
+      ...ETAPE,
+      params: { ...ETAPE.params, region: "x.exemple.invalid/" },
+    };
+
+    // Then elle est refusée avant toute lecture et avant toute écriture : le porteur employé
+    // ici porte le compte entier, et il n'a rien à dire à un hôte qui n'est pas Scalingo
+    expect(await executerScalingo(lire, ecrire, true, detournee, reel)).toMatchObject({
+      state: "FAILED",
+      retryable: false,
+    });
+
+    // Then aucun de ces refus n'a laissé partir le moindre appel
     expect(appels).toEqual([]);
   });
 
@@ -1484,5 +1578,383 @@ describe("ce que le connecteur Scalingo écrit, et ce qu'il refuse d'écrire", (
       retryable: true,
     });
     expect(interpreterChangementDeRole(403, undefined)).toMatchObject({ retryable: false });
+  });
+});
+
+describe("ce qu'un jeton restreint ouvre, et ce qu'il n'ouvre jamais", () => {
+  const LE_10 = new Date("2026-09-10T09:00:00Z");
+  const SEPT_JOURS = new Date("2026-09-17T09:00:00Z");
+
+  /** La moitié qui ne repasse jamais, telle que le proxy la rendrait. */
+  const CLE_CLIENTE = "cle-cliente-de-test-qui-ne-doit-nulle-part-se-lire";
+
+  function emetteur(reponse: JetonEmis | ErreurFgp): {
+    emettre: EmissionDeJeton;
+    demandes: DemandeDeJeton[];
+  } {
+    const demandes: DemandeDeJeton[] = [];
+    return {
+      emettre: (demande) => {
+        demandes.push(demande);
+        return reponse instanceof ErreurFgp ? Promise.reject(reponse) : Promise.resolve(reponse);
+      },
+      demandes,
+    };
+  }
+
+  const SUJET: SubjectRef = {
+    kind: "person",
+    username: "nour.exemple",
+    email: "nour.exemple@exemple.invalid",
+  };
+
+  const etapeDeJeton = (
+    scope: Omit<ScopeJeton, "nature">,
+    terme: Date | undefined,
+  ): PlannedStep => {
+    const [etape] = planifierJetonScalingo({ nature: "jeton", ...scope }, SUJET);
+    if (!etape) {
+      throw new Error("le connecteur devrait proposer une étape d'émission");
+    }
+    // Ce que le socle recolle avant l'appel, et lui seul : l'échéance vient du profil, pas
+    // du connecteur, et la clé stockée porte l'identifiant du plan.
+    return {
+      ...etape,
+      idempotencyKey: `${etape.idempotencyKey}:plan-0001`,
+      ...(terme === undefined ? {} : { grantExpiresAt: terme }),
+    };
+  };
+
+  it("n'émet que borné, sur une seule cible, et range ce qui est émis en deux moitiés", async () => {
+    // Given une étape d'émission pour les collaborateurs d'une seule application, un terme
+    // à sept jours porté par le socle, et un proxy doublé qui rend un blob et une clé
+    const etape = etapeDeJeton(
+      {
+        usage: "collaborateurs-d-une-application",
+        region: "osc-fr1",
+        application: "mon-application",
+      },
+      SEPT_JOURS,
+    );
+    const { emettre, demandes } = emetteur({ blob: "blob-opaque", cle: CLE_CLIENTE });
+
+    // When on exécute
+    const issue = await executerEmissionScalingo(emettre, "jeton-de-compte", etape, {
+      ...CONTEXTE,
+      now: LE_10,
+      dryRun: false,
+    });
+
+    // Then une seule demande est partie, vers l'API de la région et non vers l'hôte
+    // d'authentification : un blob ne porte qu'une cible, et se tromper d'hôte donnerait un
+    // jeton qui n'ouvre rien
+    expect(demandes).toHaveLength(1);
+    expect(demandes[0]?.cible).toBe("https://api.osc-fr1.scalingo.com");
+    expect(demandes[0]?.cible).not.toBe(AUTH);
+
+    // Then ses scopes sont exactement les quatre chemins de l'usage, tous sous les
+    // collaborateurs de l'application nommée
+    expect(demandes[0]?.scopes).toEqual([
+      "GET:/v1/apps/mon-application/collaborators",
+      "POST:/v1/apps/mon-application/collaborators",
+      "PATCH:/v1/apps/mon-application/collaborators/*",
+      "DELETE:/v1/apps/mon-application/collaborators/*",
+    ]);
+
+    // Then aucun joker de préfixe sur `/v1/apps` : le motif y matcherait tout ce qui pend
+    // sous une application, à commencer par ses variables d'environnement, c'est-à-dire
+    // exactement ce que le rôle limité ne voit pas
+    for (const chemin of demandes[0]?.scopes ?? []) {
+      // Le seul joker admis porte sur l'identifiant de collaboration, dernier segment sous
+      // `collaborators` : tout autre élargissement ouvrirait ce qui pend sous l'application
+      expect(chemin).toMatch(
+        /^(?:GET|POST|PATCH|DELETE):\/v1\/apps\/mon-application\/collaborators(?:\/\*)?$/u,
+      );
+    }
+
+    // Then le terme se compte en secondes, et n'est jamais nul : le proxy traite zéro comme
+    // « pas d'expiration », et rien ne saurait reprendre un jeton qui n'expire pas
+    expect(demandes[0]?.secondes).toBe(7 * 24 * 60 * 60);
+    expect(demandes[0]?.secondes).toBeGreaterThan(0);
+
+    // Then l'étape réussit et remet un credential dont la moitié à garder est celle que le
+    // proxy a rendue, et la moitié à remettre est la clé cliente
+    expect(issue.state).toBe("SUCCEEDED");
+    const remis = issue.state === "SUCCEEDED" ? issue.credential : undefined;
+    expect(remis).toMatchObject({
+      provider: "scalingo",
+      ownerUsername: "nour.exemple",
+      blob: "blob-opaque",
+      target: "https://api.osc-fr1.scalingo.com",
+      expiresAt: SEPT_JOURS,
+      aRemettre: CLE_CLIENTE,
+    });
+    expect(remis?.scopes).toEqual(demandes[0]?.scopes);
+    // Dérivée de la clé d'idempotence stockée, qui porte l'identifiant du plan : une
+    // réémission après un échec ambigu écrit une seconde fiche au lieu d'écraser la première
+    expect(remis?.key).toContain("plan-0001");
+
+    // Then la clé cliente n'entre dans rien qui parte au journal : `evidence` en devient le
+    // motif, dans un journal en écriture seule à rétention indéfinie
+    const versLeJournal = JSON.stringify({ ...issue, credential: undefined });
+    expect(versLeJournal).not.toContain(CLE_CLIENTE);
+    expect(issue.state === "SUCCEEDED" ? issue.evidence : "").not.toContain(CLE_CLIENTE);
+
+    // When la même étape ne porte aucun terme
+    const sansTerme = emetteur({ blob: "jamais", cle: "jamais" });
+    const refus = await executerEmissionScalingo(
+      sansTerme.emettre,
+      "jeton-de-compte",
+      etapeDeJeton(
+        {
+          usage: "collaborateurs-d-une-application",
+          region: "osc-fr1",
+          application: "mon-application",
+        },
+        undefined,
+      ),
+      { ...CONTEXTE, now: LE_10, dryRun: false },
+    );
+
+    // Then rien n'est parti, et le refus dit que rien n'a été émis : c'est la garde de
+    // dernier ressort, celle que le geste hors dossier rejoue faute de passer par le socle
+    expect(sansTerme.demandes).toEqual([]);
+    expect(refus).toMatchObject({ state: "FAILED", retryable: false });
+    expect(refus.state === "FAILED" ? refus.error : "").toContain("Rien n'a été émis");
+  });
+
+  it("dit ce qui n'a pas pu s'émettre sans jamais réessayer", async () => {
+    const reel = { ...CONTEXTE, now: LE_10, dryRun: false };
+    const etape = etapeDeJeton({ usage: "catalogue-des-regions" }, SEPT_JOURS);
+
+    // Then l'hôte d'un usage global est celui de l'authentification, et il ne porte pas de
+    // région : deux usages, deux émissions, deux termes
+    expect(etape.params["cible"]).toBe(AUTH);
+    expect(etape.params["scopes"]).toEqual(["GET:/v1/regions", "GET:/v1/users/self"]);
+
+    // Given un proxy qui refuse le corps avant d'avoir chiffré quoi que ce soit
+    const refuse = emetteur(new ErreurFgp(400, true, "400 Bad Request"));
+    const rejet = await executerEmissionScalingo(refuse.emettre, "jeton-de-compte", etape, reel);
+
+    // Then l'échec ne se reprend pas, et il affirme que rien n'a été émis
+    expect(rejet).toMatchObject({ state: "FAILED", retryable: false });
+    expect(rejet.state === "FAILED" ? rejet.error : "").toContain("Rien n'a été émis");
+
+    // Given un proxy qui expire au lieu de répondre : le doute ne se lèvera jamais, aucune
+    // route d'introspection n'existant
+    const muet = emetteur(new ErreurFgp(null, false, "The operation was aborted due to timeout"));
+    const perdu = await executerEmissionScalingo(muet.emettre, "jeton-de-compte", etape, reel);
+
+    // Then l'échec ne se reprend pas davantage, et il dit ce qu'il ne sait pas : un jeton a
+    // pu naître, rien ne le liste, rien ne le révoque
+    expect(perdu).toMatchObject({ state: "FAILED", retryable: false });
+    const dit = perdu.state === "FAILED" ? perdu.error : "";
+    expect(dit).toContain("Un jeton a pu naître");
+    expect(dit).toContain("rien ne le révoque");
+    expect(dit).not.toContain("Rien n'a été émis");
+
+    // When la simulation est le régime, ce qui est le défaut du produit
+    const enSimulation = emetteur({ blob: "jamais", cle: "jamais" });
+    await expect(
+      executerEmissionScalingo(enSimulation.emettre, "jeton-de-compte", etape, CONTEXTE),
+    ).rejects.toThrow(/ACTIONS_ENABLED/u);
+
+    // Then l'émetteur n'a rien reçu : le refus précède la lecture de ce que l'étape demande,
+    // parce que ce qui ne part pas ne peut pas partir par erreur
+    expect(enSimulation.demandes).toEqual([]);
+
+    // Given une étape dont la cible n'est pas un hôte Scalingo, telle qu'une étape figée en
+    // base pourrait la porter sans repasser par le schéma qui borne la forme d'une région
+    const detournee = emetteur({ blob: "jamais", cle: "jamais" });
+    const versUnTiers = await executerEmissionScalingo(
+      detournee.emettre,
+      "jeton-de-compte",
+      {
+        ...etape,
+        params: { ...etape.params, cible: "https://api.x.exemple.invalid/.scalingo.com" },
+      },
+      reel,
+    );
+
+    // Then rien ne part, et le refus est définitif : ce qu'un blob porte est l'unique
+    // destination vers laquelle le proxy relaiera le jeton de compte entier, et cette
+    // liaison survit à la session sans qu'aucune route ne sache la reprendre
+    expect(versUnTiers).toMatchObject({ state: "FAILED", retryable: false });
+    expect(versUnTiers.state === "FAILED" ? versUnTiers.error : "").toContain(
+      "aucun hôte Scalingo",
+    );
+    expect(detournee.demandes).toEqual([]);
+
+    // When le jeton de compte manque, qui est ce que le proxy échange
+    const sansJeton = emetteur({ blob: "jamais", cle: "jamais" });
+    expect(await executerEmissionScalingo(sansJeton.emettre, undefined, etape, reel)).toMatchObject(
+      { state: "FAILED", retryable: false },
+    );
+    expect(sansJeton.demandes).toEqual([]);
+
+    // Then l'étape sort manuelle, et son critère de complétion nomme le blob à rapporter, la
+    // fiche à saisir et le terme à y poser : il reste une marche à suivre, pas un trou
+    expect(etape.tier).toBe("manual");
+    expect(etape.manual?.doneWhen).toContain("blob");
+    expect(etape.manual?.doneWhen).toContain("Comptes de service");
+    expect(etape.manual?.doneWhen).toContain("terme");
+
+    // Then l'émission elle-même refuse sans appeler personne, la génération n'existant pas
+    // hors ligne : le sel du serveur n'est exposé par aucune route
+    await expect(
+      emettreUnJeton({
+        jeton: "jeton-de-compte",
+        cible: AUTH,
+        scopes: ["GET:/v1/regions"],
+        secondes: 60,
+        nom: "essai",
+      }),
+    ).rejects.toMatchObject({ statut: null, aucunBlob: true });
+  });
+
+  it("exige une échéance sans une ligne de règle nouvelle, et la pose sur l'étape", async () => {
+    // Given le catalogue d'octroi tel que le socle l'assemble, avec le vrai connecteur
+    const catalogue = await catalogueOctroyeur();
+    const scalingoOctroyeur = catalogue.find(({ key }) => key === "scalingo");
+    if (!scalingoOctroyeur) {
+      throw new Error("le catalogue devrait porter scalingo");
+    }
+
+    const JETON = { nature: "jeton", usage: "inventaire-d-une-region", region: "osc-fr1" };
+    const profil = (expiresInDays?: number): Profil => ({
+      key: "intendance",
+      label: "Intendance du parc",
+      accesses: [
+        {
+          system: "scalingo",
+          scope: JETON,
+          ...(expiresInDays === undefined ? {} : { expiresInDays }),
+        },
+      ],
+    });
+
+    // Then l'étape que le connecteur propose porte un risque élevé sans condition : c'est
+    // d'elle que l'échéance obligatoire découle, et non d'une règle écrite pour les jetons
+    const proposees = scalingoOctroyeur.planifier(JETON, SUJET);
+    expect(proposees).toHaveLength(1);
+    expect(proposees[0]?.riskLevel).toBe("high");
+    expect(proposees[0]?.capability).toBe("grant");
+
+    // When un profil demande ce jeton sans échéance
+    const sansTerme = assemblerOctrois(profil(), catalogue, SUJET, LE_10);
+
+    // Then rien ne sort, et le refus nomme le champ à écrire : la règle existante sur les
+    // accès à risque élevé suffit, elle n'a rien appris de neuf
+    expect(sansTerme.etapes).toEqual([]);
+    expect(sansTerme.refus).toHaveLength(1);
+    expect(sansTerme.refus[0]?.motif).toContain("expiresInDays");
+
+    // When le profil borne l'accès à sept jours
+    const borne = assemblerOctrois(profil(7), catalogue, SUJET, LE_10);
+
+    // Then l'étape sort, et c'est le socle qui pose son terme, jamais le connecteur
+    expect(borne.refus).toEqual([]);
+    expect(borne.etapes).toHaveLength(1);
+    expect(borne.etapes[0]?.grantExpiresAt).toEqual(echeanceDOctroi(7, LE_10));
+
+    // Then elle porte une clé d'engagement, parce que ce qu'elle ouvre ne reparaîtra dans
+    // aucun relevé : aucune API de Scalingo ne liste les blobs d'un proxy qui n'en garde
+    // aucun. Une étape de collaboration, que la collecte relit, n'en porte pas
+    expect(borne.etapes[0]?.engagementKey).toBe(
+      "scalingo:jeton:inventaire-d-une-region:osc-fr1:nour.exemple",
+    );
+    const collaboration = assemblerOctrois(
+      {
+        key: "developpeuse",
+        label: "Développeuse",
+        accesses: [
+          {
+            system: "scalingo",
+            scope: {
+              nature: "collaboration",
+              region: "osc-fr1",
+              application: "mon-application",
+              role: "limited",
+            },
+            expiresInDays: 90,
+          },
+        ],
+      },
+      catalogue,
+      SUJET,
+      LE_10,
+    );
+    expect(collaboration.refus).toEqual([]);
+    expect(collaboration.etapes[0]?.engagementKey).toBeUndefined();
+  });
+
+  it("propose au départ la reprise de chaque jeton, et interdit de tourner le jeton de compte", () => {
+    // Given un engagement ouvert par une émission, tel que le socle le rend au connecteur
+    const engagement = {
+      key: "scalingo:jeton:inventaire-d-une-region:osc-fr1:nour.exemple",
+      label: "Émettre un jeton restreint pour nour.exemple",
+      params: { usage: "inventaire-d-une-region" },
+      expiresAt: SEPT_JOURS,
+      openedAt: LE_10,
+    };
+
+    // When le départ se calcule sans aucun accès constaté : un engagement peut exister sans
+    // qu'aucun compte ne soit observé, et c'est le trou muet que la clé existe pour boucher
+    const etapes = planifierDepartScalingo("nour.exemple", [], undefined, true, [engagement]);
+
+    const reprise = etapes.find(({ action }) => action === "reprendre-un-jeton-restreint");
+    if (!reprise) {
+      throw new Error("le départ devrait proposer la reprise du jeton");
+    }
+
+    // Then elle est manuelle et porte le second regard : aucune lecture ne peut démentir ce
+    // qui en sera déclaré, le proxy n'offrant ni révocation ni introspection
+    expect(reprise.tier).toBe("manual");
+    expect(reprise.riskLevel).toBe("high");
+    expect(reprise.expectedActor).toBe("OPERATOR");
+    expect(reprise.validationBy).toBe("OPERATOR");
+    expect(reprise.idempotencyKey).toBe(
+      `scalingo:reprise:${engagement.key}:${LE_10.toISOString()}`,
+    );
+
+    // Then deux émissions sous la même clé d'engagement donnent deux reprises distinctes, et
+    // c'est l'instant d'ouverture qui les sépare : une émission n'est pas idempotente, deux
+    // blobs vivent alors là-bas avec chacun son terme, et une seule étape ne nommerait qu'un
+    // des deux termes en soldant l'autre avant l'heure
+    const deuxJetons = planifierDepartScalingo("nour.exemple", [], undefined, true, [
+      engagement,
+      {
+        ...engagement,
+        openedAt: new Date("2026-09-01T09:00:00Z"),
+        expiresAt: new Date("2026-11-30T09:00:00Z"),
+      },
+    ]).filter(({ action }) => action === "reprendre-un-jeton-restreint");
+    expect(deuxJetons).toHaveLength(2);
+    expect(new Set(deuxJetons.map(({ idempotencyKey }) => idempotencyKey)).size).toBe(2);
+    expect(deuxJetons[1]?.manual?.doneWhen).toContain("2026-11-30");
+
+    // Then son critère de complétion ne peut être que le terme, et il le dit
+    expect(reprise.manual?.doneWhen).toContain("2026-09-17");
+    expect(reprise.manual?.doneWhen).toContain("aucune émission nouvelle");
+    expect(reprise.manual?.doneWhen).toContain("ni révocation ni introspection");
+
+    // Then son runbook porte l'interdiction, parce que c'est le premier réflexe de qui
+    // découvre qu'un jeton ne se révoque pas
+    expect(reprise.manual?.runbook).toContain("Ne pas faire tourner le jeton d'API Scalingo");
+    expect(reprise.manual?.runbook).toContain("la lecture nocturne");
+
+    // Then un engagement d'un autre connecteur ne lui appartient pas : la clé n'a de sens
+    // que pour celui qui l'a écrite, et il est le seul à la relire
+    expect(
+      planifierDepartScalingo("nour.exemple", [], undefined, true, [
+        { ...engagement, key: "github:jeton:organisation:nour.exemple" },
+      ]).some(({ action }) => action === "reprendre-un-jeton-restreint"),
+    ).toBe(false);
+
+    // Then sans engagement, le départ ne change pas : les jetons sont la seule chose qu'il
+    // gagne ici
+    expect(
+      planifierDepartScalingo("nour.exemple", [], undefined, true).map(({ action }) => action),
+    ).toEqual(["retirer-des-collaborateurs", "renouveler-les-secrets"]);
   });
 });

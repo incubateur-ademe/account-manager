@@ -2,7 +2,13 @@ import { randomUUID } from "node:crypto";
 
 import { connecteur } from "@/connectors";
 import type { AuditInput } from "@/core/audit";
-import type { PlannedStep, PrecheckResult, RiskLevel, RunContext } from "@/core/connector";
+import type {
+  CredentialRemis,
+  PlannedStep,
+  PrecheckResult,
+  RiskLevel,
+  RunContext,
+} from "@/core/connector";
 import { dossierVivant, type EtatEtape, type EtatValidation, estSoldee } from "@/core/dossier";
 import {
   decider,
@@ -17,6 +23,7 @@ import {
 import { ancrageLu, intentionDUnGeste } from "@/core/geste";
 import type { Voie } from "@/core/participation";
 import { estExecutable, type Masse, masseDuPlan, refusDeMasse } from "@/core/plan";
+import { periodiciteDUnTerme } from "@/core/revue";
 import type { Prisma } from "@/generated/prisma/client";
 import { profilDeLaPolitique } from "@/lib/arrivee";
 import { audit } from "@/lib/audit";
@@ -60,6 +67,30 @@ export interface Operateur {
   voie: Voie;
 }
 
+/**
+ * La moitié périssable d'un credential qu'une étape vient d'émettre, remontée jusqu'à
+ * l'écran.
+ *
+ * Elle ne s'écrit nulle part : ni en base, où l'ADR-0001 a refusé de faire de cette base le
+ * coffre des credentials du parc, ni dans `evidence`, qui devient le motif journalisé de
+ * l'étape dans un journal en écriture seule à rétention indéfinie, ni dans aucune valeur de
+ * formulaire que la revalidation rejouerait. Elle se lit, elle se recopie, elle disparaît au
+ * rechargement.
+ */
+export interface RemiseDeCredential {
+  key: string;
+  label: string;
+  /** Ce qui ne se garde pas. Sans lui, la moitié conservée ne vaut rien, et c'est voulu. */
+  aRemettre: string;
+  /**
+   * Ce que le rangement n'a pas pu faire. Non nul, la fiche du compte machine n'existe pas,
+   * et il n'y a alors aucun registre au monde de ce qui vient d'être émis.
+   */
+  echecDeRangement?: string;
+  /** Rendu avec l'autre moitié, et seulement quand le rangement a échoué : c'est la seule copie. */
+  blob?: string;
+}
+
 export interface ResultatDExecution {
   /** Ce qui a empêché de partir. Non nul, rien n'a été ni lu ni écrit sur un système. */
   refus?: string;
@@ -71,6 +102,11 @@ export interface ResultatDExecution {
   /** Étapes que ce passage a soldées, précheck compris. */
   soldees: number;
   echecs: number;
+  /**
+   * Ce que ce passage a émis et qui ne se relira jamais. Vide sur la quasi-totalité des
+   * passages : seule une étape qui fabrique un credential en remet.
+   */
+  remises: readonly RemiseDeCredential[];
 }
 
 /**
@@ -135,6 +171,7 @@ async function planEnBase(planId: string) {
           idempotencyKey: true,
           grantExpiresAt: true,
           engagementKey: true,
+          retryable: true,
         },
       },
     },
@@ -169,6 +206,7 @@ function rapprocher(
     idempotencyKey: string;
     grantExpiresAt: Date | null;
     engagementKey: string | null;
+    retryable: boolean | null;
   }[],
   recalculees: readonly { etape: PlannedStep }[],
   planId: string,
@@ -179,6 +217,17 @@ function rapprocher(
 
   return stockees.flatMap((stockee) => {
     if (!ETATS_REPRIS.includes(stockee.state as EtatEtape)) {
+      return [];
+    }
+
+    // Une étape dont le connecteur a dit que l'échec ne se reprend pas ne se représente
+    // pas d'elle-même. `FAILED` est repris parce qu'une reprise sert précisément à
+    // retenter ce qui a échoué, mais « retenter » suppose qu'un second appel puisse
+    // aboutir là où le premier a manqué : une émission de jeton dont on ignore si un blob
+    // est né en ajouterait un second, que rien ne liste et que rien ne révoque. Ce qui
+    // reste ouvert à une telle étape est la main d'un opérateur, qui la pointe ou l'écarte
+    // en ayant lu la cause. Nul se lit « rien n'a été dit », et l'étape est reprise.
+    if (stockee.state === "FAILED" && stockee.retryable === false) {
       return [];
     }
 
@@ -285,6 +334,7 @@ export async function executerPlan(
       executees: 0,
       soldees: 0,
       echecs: 0,
+      remises: [],
       ...(masse ? { masse } : {}),
     };
   };
@@ -411,6 +461,7 @@ export async function executerPlan(
   let executees = 0;
   let soldees = 0;
   let echecs = 0;
+  const remises: RemiseDeCredential[] = [];
 
   for (const { id, label, etape, lue } of aTraiter) {
     const systeme = connecteur(etape.systemKey);
@@ -474,7 +525,17 @@ export async function executerPlan(
     if (decision.geste === "executer" && systeme?.execute) {
       executees += 1;
       try {
-        issue = issueDeLEtape(await systeme.execute(etape, ctx));
+        const rendu = await systeme.execute(etape, ctx);
+        issue = issueDeLEtape(rendu);
+
+        // Le rangement revient au socle et jamais au connecteur : aucun fichier de
+        // `src/connectors/` n'importe `@/lib/db`, et leur en ouvrir l'accès ferait du
+        // contrat une façade. Après l'appel, parce qu'il n'y a rien à ranger avant.
+        if (rendu.state === "SUCCEEDED" && rendu.credential) {
+          remises.push(
+            await rangerLeCredential(rendu.credential, operateur.username, maintenant, journaliser),
+          );
+        }
       } catch (cause) {
         issue = issueDUneException(cause);
       }
@@ -507,6 +568,10 @@ export async function executerPlan(
               attempts: { increment: 1 },
               executedAt: maintenant,
               lastError: issue?.erreur ?? null,
+              // Ce que le connecteur a dit de la reprise, et non ce qu'on en déduirait :
+              // sans cette colonne, `retryable` ne formulait qu'un motif au journal, et
+              // l'étape se représentait quand même au clic suivant.
+              retryable: issue?.reprenable ?? null,
             }
           : // L'état bouge sans qu'aucun appel ait eu lieu : le motif de la décision est
             // tout ce que l'opérateur aura pour comprendre, et une étape retenue en écart
@@ -620,5 +685,80 @@ export async function executerPlan(
   // ou valider une étape que cette boucle ne verrait pas.
   await reposerLEtatDuPlan(plan.id);
 
-  return { masse, simulation: dryRun, executees, soldees, echecs };
+  return { masse, simulation: dryRun, executees, soldees, echecs, remises };
+}
+
+/**
+ * Le compte machine d'un credential qu'une étape vient d'émettre.
+ *
+ * Une ligne de plus et jamais une ligne remplacée : la clé se dérive de la clé d'idempotence
+ * stockée, qui porte l'identifiant du plan. Une réémission après un échec ambigu produit donc
+ * une seconde fiche, et c'est voulu, deux blobs pouvant vivre là-bas sans que ni l'un ni
+ * l'autre ne se révoque.
+ *
+ * La moitié à remettre ne descend pas jusqu'ici : elle ne traverse ni la base ni le journal.
+ */
+async function rangerLeCredential(
+  remis: CredentialRemis,
+  operateur: string,
+  maintenant: Date,
+  journaliser: (
+    evenement: Omit<AuditInput, "after"> & {
+      after: Record<string, unknown> & { voie?: never };
+    },
+  ) => void,
+): Promise<RemiseDeCredential> {
+  const rendu = { key: remis.key, label: remis.label, aRemettre: remis.aRemettre };
+  const trace = {
+    actorKind: "HUMAN" as const,
+    actorUsername: operateur,
+    action: "compte-de-service.emission",
+    targetType: "service-account",
+    targetId: remis.key,
+  };
+
+  try {
+    await prisma.serviceAccount.create({
+      data: {
+        key: remis.key,
+        label: remis.label,
+        purpose: remis.purpose,
+        provider: remis.provider,
+        ownerUsername: remis.ownerUsername,
+        // La périodicité vaut la durée du terme, si bien qu'aucune revue ne tombe avant que
+        // le credential ne meure : demander de se prononcer sur un jeton qu'on ne peut ni
+        // reprendre ni prolonger ne demande rien à personne.
+        reviewEveryDays: periodiciteDUnTerme(maintenant, remis.expiresAt),
+        expiresAt: remis.expiresAt,
+        fgpBlob: remis.blob,
+        fgpTarget: remis.target,
+        fgpScopes: [...remis.scopes],
+        issuedBy: operateur,
+      },
+    });
+
+    journaliser({
+      ...trace,
+      after: {
+        systeme: remis.provider,
+        detenteur: remis.ownerUsername,
+        cible: remis.target,
+        scopes: [...remis.scopes],
+        terme: remis.expiresAt.toISOString(),
+      },
+      result: "SUCCESS",
+    });
+
+    return rendu;
+  } catch (cause: unknown) {
+    const erreur = cause instanceof Error ? cause.message : String(cause);
+
+    journaliser({ ...trace, after: { echec: erreur, cible: remis.target }, result: "FAILURE" });
+
+    // L'étape reste réussie, parce qu'elle l'est : le credential existe là-bas, et le dire
+    // échoué serait faux. Mais son registre n'existe pas, et le blob n'a alors aucune autre
+    // copie au monde, le proxy n'en gardant rien et aucune route ne sachant le relire. Il se
+    // rend donc avec l'autre moitié, faute de quoi il disparaît avec cette page.
+    return { ...rendu, echecDeRangement: erreur, blob: remis.blob };
+  }
 }

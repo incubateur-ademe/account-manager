@@ -15,6 +15,16 @@ export interface Declaration {
   ownerUsername: string;
   reviewEveryDays: number;
   provider: string;
+  /**
+   * Le terme, pour les comptes machine qui en ont un, et il n'y a que les jetons émis.
+   *
+   * Sans lui, la saisie ne pouvait pas décrire ce que la marche à suivre de l'émission lui
+   * demandait de recopier : la fiche naissait sans terme, la branche du terme passé ne
+   * pouvait jamais la concerner, et elle réclamait une revue que personne ne pouvait
+   * éteindre. C'est le seul mécanisme de reprise d'un jeton restreint, faute de révocation
+   * chez le proxy qui l'a émis, et c'est pourquoi il monte jusqu'ici.
+   */
+  expiresAt?: Date;
 }
 
 export type LectureDeclaration = { erreur: string } | { declaration: Declaration };
@@ -29,9 +39,21 @@ export function lireDeclaration(
     ownerUsername: string;
     reviewEveryDays: number;
     provider: string;
+    /** Vide ou absent pour un compte machine sans terme, ce qui est le cas ordinaire. */
+    expiresAt?: string;
   },
   systemesConnus: readonly string[],
 ): LectureDeclaration {
+  const terme = (brut.expiresAt ?? "").trim();
+  // Refusée plutôt que repliée sur « aucun terme » : une date illisible posée sur la fiche
+  // d'un jeton restreint en ferait un compte qu'aucun terme n'éteint, donc une revue que
+  // personne ne peut plus solder, et le silence est exactement ce qui la rendrait
+  // indétectable.
+  const lu = terme === "" ? undefined : new Date(terme);
+  if (lu !== undefined && Number.isNaN(lu.getTime())) {
+    return { erreur: "Le terme ne se lit pas comme une date." };
+  }
+
   const declaration: Declaration = {
     key: brut.key.trim(),
     label: brut.label.trim(),
@@ -39,6 +61,7 @@ export function lireDeclaration(
     ownerUsername: brut.ownerUsername.trim(),
     reviewEveryDays: brut.reviewEveryDays,
     provider: brut.provider.trim(),
+    ...(lu === undefined ? {} : { expiresAt: lu }),
   };
 
   if (!declaration.key || !declaration.label || !declaration.purpose) {

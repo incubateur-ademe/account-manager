@@ -130,7 +130,7 @@ const ligne = (over: Partial<LigneDEngagement>): LigneDEngagement => ({
   ...over,
 });
 
-describe("le dernier geste soldé gagne", () => {
+describe("ce qui reste ouvert, et ce qu'une coupure ferme", () => {
   it("garde ouvert ce qui a été rouvert, et laisse tomber ce dont le terme est passé", () => {
     // Given trois clés : la première ouverte, fermée, puis rouverte ; la deuxième ouverte
     // puis fermée ; la troisième ouverte avec un terme déjà passé. Plus une ligne en
@@ -212,5 +212,53 @@ describe("le dernier geste soldé gagne", () => {
     // échu est repris, puisque c'est la seule reprise qui existe.
     const avantLEcheance = dernierGesteSolde(lignes, new Date("2026-09-14T09:00:00Z"));
     expect(avantLEcheance.map(({ key }) => key)).toEqual(["scalingo:jeton:1", "scalingo:jeton:3"]);
+  });
+
+  it("ne perd pas le plus long de deux jetons vivants sous la même clé", () => {
+    // Given deux émissions du même usage pour la même personne, donc sous la même clé
+    // d'engagement : une le 1er septembre bornée à quatre-vingt-dix jours, une le 2 bornée à
+    // sept. Une émission n'est pas idempotente, et ces deux blobs vivent là-bas sans que ni
+    // l'un ni l'autre ne se révoque.
+    const lignes: readonly LigneDEngagement[] = [
+      ligne({
+        executedAt: new Date("2026-09-02T09:00:00Z"),
+        grantExpiresAt: new Date("2026-09-09T09:00:00Z"),
+      }),
+      ligne({
+        executedAt: new Date("2026-09-01T09:00:00Z"),
+        grantExpiresAt: new Date("2026-11-30T09:00:00Z"),
+      }),
+    ];
+
+    // When on regarde le 10 septembre, c'est-à-dire après le terme du plus court et bien
+    // avant celui du plus long
+    const ouverts = dernierGesteSolde(lignes, new Date("2026-09-10T09:00:00Z"));
+
+    // Then le jeton de quatre-vingt-dix jours ressort ouvert. Ne garder qu'une ligne par
+    // clé le faisait disparaître en silence : la plus récente gagnait la clé, puis son terme
+    // passé l'écartait, et un jeton vivant, irrévocable jusqu'à fin novembre, n'était plus
+    // nommé par rien. Le départ se taisait alors sur ce que plus aucune collecte ne rend.
+    expect(ouverts).toHaveLength(1);
+    expect(ouverts[0]).toMatchObject({
+      key: "scalingo:jeton:1",
+      openedAt: new Date("2026-09-01T09:00:00Z"),
+      expiresAt: new Date("2026-11-30T09:00:00Z"),
+    });
+
+    // Then avant les deux termes, les deux ressortent, chacun avec le sien : c'est ce qu'il
+    // y a réellement à reprendre, et l'émetteur en tire deux étapes distinctes.
+    const lesDeux = dernierGesteSolde(lignes, new Date("2026-09-05T09:00:00Z"));
+    expect(lesDeux.map(({ expiresAt }) => expiresAt)).toEqual([
+      new Date("2026-09-09T09:00:00Z"),
+      new Date("2026-11-30T09:00:00Z"),
+    ]);
+
+    // Then une coupure ferme ce qui la précède sous sa clé, et rien de ce qui la suit : sans
+    // cette règle, le pli retiré rendrait ouvert pour toujours ce qu'une reprise a fermé.
+    const apresUneCoupure = dernierGesteSolde(
+      [ligne({ capability: "revoke", executedAt: new Date("2026-09-03T09:00:00Z") }), ...lignes],
+      new Date("2026-09-05T09:00:00Z"),
+    );
+    expect(apresUneCoupure).toEqual([]);
   });
 });

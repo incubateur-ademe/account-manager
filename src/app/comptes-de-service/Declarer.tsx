@@ -70,6 +70,15 @@ export function Declarer({ systemes }: { systemes: readonly { key: string; label
             min: 1,
           }}
         />
+        {/* Facultatif, parce que la plupart des comptes machine n'ont pas de terme. Il est
+            en revanche la seule reprise qui existe pour un jeton restreint émis derrière le
+            proxy, qui n'offre aucune révocation : sans lui, une telle fiche réclame une
+            revue que personne ne peut éteindre. */}
+        <Input
+          label="Terme"
+          hintText="Facultatif. Pour un jeton émis, la date à laquelle il meurt de lui-même : c'est la seule reprise qui existe."
+          nativeInputProps={{ name: "expiresAt", type: "date" }}
+        />
 
         {/* Au formulaire et non à un champ : une clé déjà prise ou un libellé manquant ne
             concernent pas la revue, et l'y accrocher désignerait le mauvais endroit, aux

@@ -90,7 +90,12 @@ export async function chargerInventaire(
     prisma.externalIdentity.count({ where: OU_SANS_DETENTEUR }),
     prisma.externalIdentity.count({ where: OU_RESSEMBLANCE_A_CONFIRMER }),
     prisma.serviceAccount.findMany({
-      select: { reviewEveryDays: true, lastReviewedAt: true, createdAt: true },
+      select: {
+        reviewEveryDays: true,
+        lastReviewedAt: true,
+        createdAt: true,
+        expiresAt: true,
+      },
     }),
     prisma.startup.findMany({
       where: { vanishedAt: null },

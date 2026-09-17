@@ -426,8 +426,42 @@ export type PrecheckResult =
   | { state: "ALREADY_PRESENT" }
   | { state: "STALE"; expected: unknown; actual: unknown };
 
+/**
+ * Ce qu'une étape remet et que le socle doit ranger : un credential émis pour quelqu'un,
+ * dont une moitié se garde et l'autre se rend une seule fois.
+ *
+ * Il passe par le socle plutôt que par le connecteur qui l'a obtenu, et ce n'est pas un
+ * détour : aucun fichier de `src/connectors/` n'importe `@/lib/db`, et leur en ouvrir
+ * l'accès ferait du contrat une façade. Un connecteur dit ce qu'il a obtenu, le socle
+ * décide de ce qui s'écrit et de ce qui se rend.
+ */
+export interface CredentialRemis {
+  key: string;
+  label: string;
+  purpose: string;
+  provider: string;
+  /** Qui le détient et qui en répond : la personne que l'étape vise. */
+  ownerUsername: string;
+  blob: string;
+  target: string;
+  scopes: NonEmptyArray<string>;
+  expiresAt: Date;
+  /** Ce qui ne se garde pas : rendu une fois à l'écran, jamais écrit, jamais journalisé. */
+  aRemettre: string;
+}
+
 export type StepOutcome =
-  | { state: "SUCCEEDED"; reversibleUntil?: Date; evidence?: string }
+  | {
+      state: "SUCCEEDED";
+      reversibleUntil?: Date;
+      evidence?: string;
+      /**
+       * Absent sur la quasi-totalité des étapes, et c'est la forme voulue : une étape qui
+       * ouvre un accès sur un compte existant n'a rien à ranger, seule celle qui fabrique
+       * un credential en a.
+       */
+      credential?: CredentialRemis;
+    }
   | { state: "ALREADY_ABSENT" }
   | { state: "ALREADY_PRESENT" }
   | { state: "FAILED"; error: string; retryable: boolean };

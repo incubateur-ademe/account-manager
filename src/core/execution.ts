@@ -207,6 +207,13 @@ export interface IssueDEtape {
   resultat: ResultatJournalise;
   reversibleUntil?: Date;
   erreur?: string;
+  /**
+   * Si l'échec se reprend tel quel, tel que le connecteur l'a dit, ou `null` quand rien ne
+   * l'a dit. C'est la seule chose que `retryable` n'apprenait à personne : il ne servait
+   * qu'à formuler un motif, si bien qu'une étape dont l'échec ne se reprend pas se
+   * représentait quand même au clic suivant.
+   */
+  reprenable: boolean | null;
 }
 
 /** Ce qu'un retour de connecteur devient dans le dossier, sans que la boucle ait à le relire. */
@@ -217,12 +224,18 @@ export function issueDeLEtape(issue: StepOutcome): IssueDEtape {
         etat: "SUCCEEDED",
         motif: issue.evidence ?? "Le connecteur rend l'étape exécutée.",
         resultat: "SUCCESS",
+        reprenable: null,
         ...(issue.reversibleUntil ? { reversibleUntil: issue.reversibleUntil } : {}),
       };
     case "ALREADY_PRESENT":
-      return { etat: "ALREADY_PRESENT", motif: DEJA_OUVERT, resultat: "SUCCESS" };
+      return {
+        etat: "ALREADY_PRESENT",
+        motif: DEJA_OUVERT,
+        resultat: "SUCCESS",
+        reprenable: null,
+      };
     case "ALREADY_ABSENT":
-      return { etat: "ALREADY_ABSENT", motif: DEJA_FERME, resultat: "SUCCESS" };
+      return { etat: "ALREADY_ABSENT", motif: DEJA_FERME, resultat: "SUCCESS", reprenable: null };
     default:
       return {
         etat: "FAILED",
@@ -231,6 +244,7 @@ export function issueDeLEtape(issue: StepOutcome): IssueDEtape {
           : `L'appel a échoué, et le reprendre tel quel échouera de la même façon : ${issue.error}`,
         resultat: "FAILURE",
         erreur: issue.error,
+        reprenable: issue.retryable,
       };
   }
 }
@@ -248,5 +262,8 @@ export function issueDUneException(cause: unknown): IssueDEtape {
     motif: `L'appel a levé une exception : ${erreur}`,
     resultat: "FAILURE",
     erreur,
+    // Rien n'a été dit de la reprise, et l'inventer serait reformuler en verdict ce qu'on
+    // n'a pas : l'étape reste donc reprise au passage suivant.
+    reprenable: null,
   };
 }

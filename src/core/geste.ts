@@ -104,49 +104,63 @@ function parametres(params: unknown): Record<string, unknown> {
 }
 
 /**
- * Le dernier geste soldé de chaque clé gagne, et rien d'autre ne décide.
+ * Ce qui reste ouvert : chaque octroi soldé qu'aucune coupure plus récente n'a fermé et
+ * dont le terme n'est pas passé.
  *
  * Les lignes arrivent de la plus récente à la plus ancienne, et c'est l'appelant qui en
- * répond : la première rencontrée pour une clé est celle qui dit son état, les suivantes
- * sont son passé. Une différence d'ensembles, les clés jamais fermées moins les clés
- * fermées, dirait le contraire : un accès ouvert, repris, puis rouvert en ressortirait
- * fermé.
+ * répond. Une coupure ferme tout ce qui la précède sous sa clé, et rien de ce qui la suit :
+ * c'est ce qui fait qu'un accès ouvert, repris, puis rouvert ressort ouvert, là où une
+ * différence d'ensembles le dirait fermé.
+ *
+ * **Une clé peut rendre plusieurs lignes ouvertes, et c'est le point.** Ne garder que la
+ * plus récente supposait l'idempotence de ce qu'ouvre l'étape, ce qui est vrai d'une
+ * collaboration, laquelle ne porte de toute façon aucune clé d'engagement, et faux de
+ * l'émission d'un jeton, qui est la seule chose qui en porte une : deux émissions sous la
+ * même clé produisent deux blobs vivants, chacun avec son terme, dont aucun ne révoque
+ * l'autre. Le pli faisait alors gagner la plus récente, puis l'écartait parce que son terme
+ * était passé, et le plus long des deux disparaissait en silence : un jeton vivant,
+ * irrévocable, que l'outil avait oublié. C'est à l'émetteur de distinguer ses lignes en aval
+ * s'il en tire des étapes, et c'est ce que fait la clé d'idempotence de la reprise.
  *
  * À égalité exacte de date, l'octroi l'emporte sur la coupure, et c'est l'ordre secondaire
- * de la requête qui le pose : deux étapes du même passage d'exécution qui touchent la même
- * clé signent la faute de la clé de trop, et conclure « encore ouvert » fait apparaître une
- * ligne de plus au départ, là où conclure « fermé » ferait disparaître un accès sans bruit.
+ * de la requête qui le pose : conclure « encore ouvert » fait apparaître une ligne de plus
+ * au départ, là où conclure « fermé » ferait disparaître un accès sans bruit.
  */
 export function dernierGesteSolde(
   lignes: readonly LigneDEngagement[],
   maintenant: Date,
 ): readonly EngagementOuvert[] {
-  const vues = new Map<string, LigneDEngagement & { engagementKey: string; executedAt: Date }>();
+  const fermees = new Set<string>();
+  const ouverts: EngagementOuvert[] = [];
 
   for (const ligne of lignes) {
     const { engagementKey, executedAt } = ligne;
-    // Une étape que rien n'a exécutée est écartée avant le pli, et non après : la laisser
-    // prendre la place de sa clé la ferait disparaître du résultat, c'est-à-dire déclarer
-    // fermé un accès qu'une étape antérieure a ouvert. Le tri de la requête range bien ces
-    // lignes en dernier, mais une garde qui ne tient que chez l'appelant n'en est pas une.
-    if (engagementKey === null || executedAt === null || vues.has(engagementKey)) {
+    // Une étape que rien n'a exécutée ne dit rien de sa clé : elle ne l'ouvre pas, et elle
+    // ne la ferme pas davantage. Le tri de la requête range bien ces lignes en dernier,
+    // mais une garde qui ne tient que chez l'appelant n'en est pas une.
+    if (engagementKey === null || executedAt === null) {
       continue;
     }
-    vues.set(engagementKey, { ...ligne, engagementKey, executedAt });
-  }
+    if (ligne.capability !== "grant") {
+      fermees.add(engagementKey);
+      continue;
+    }
+    if (fermees.has(engagementKey)) {
+      continue;
+    }
+    if (ligne.grantExpiresAt !== null && ligne.grantExpiresAt.getTime() <= maintenant.getTime()) {
+      continue;
+    }
 
-  return [...vues.values()]
-    .filter((ligne) => ligne.capability === "grant")
-    .filter(
-      (ligne) =>
-        ligne.grantExpiresAt === null || ligne.grantExpiresAt.getTime() > maintenant.getTime(),
-    )
-    .map((ligne) => ({
-      key: ligne.engagementKey,
+    ouverts.push({
+      key: engagementKey,
       systemKey: ligne.systemKey,
       label: ligne.label,
       params: parametres(ligne.params),
-      openedAt: ligne.executedAt,
+      openedAt: executedAt,
       ...(ligne.grantExpiresAt === null ? {} : { expiresAt: ligne.grantExpiresAt }),
-    }));
+    });
+  }
+
+  return ouverts;
 }

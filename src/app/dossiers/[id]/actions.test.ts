@@ -664,7 +664,13 @@ beforeEach(() => {
   base.gestes.length = 0;
   base.pendantLEcritureDeLEtape = null;
   base.lancements.length = 0;
-  base.resultatDExecution = { simulation: true, executees: 0, soldees: 0, echecs: 0 };
+  base.resultatDExecution = {
+    simulation: true,
+    executees: 0,
+    soldees: 0,
+    echecs: 0,
+    remises: [],
+  };
   base.modeles.length = 0;
   base.revalidations.length = 0;
   base.connecteurs.length = 0;
@@ -2594,6 +2600,7 @@ describe("lancer l'exécution d'un plan, et ce que l'opérateur emporte avec lui
       executees: 0,
       soldees: 0,
       echecs: 0,
+      remises: [],
     };
 
     // When on relance

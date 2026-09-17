@@ -29,8 +29,8 @@ const TOUTE_LA_COPIE = [
   LIBELLE_LANCEMENT.masse.quelques(1, 20),
   LIBELLE_LANCEMENT.masse.quelques(7, 20),
   LIBELLE_LANCEMENT.relecture(41),
-  compteRendu({ simulation: true, executees: 0, soldees: 2, echecs: 0 }),
-  compteRendu({ simulation: false, executees: 3, soldees: 5, echecs: 1 }),
+  compteRendu({ simulation: true, executees: 0, soldees: 2, echecs: 0, remises: [] }),
+  compteRendu({ simulation: false, executees: 3, soldees: 5, echecs: 1, remises: [] }),
   refusDeMasse(
     masseDuPlan(
       Array.from({ length: 41 }, () => etapeAuto()),
@@ -102,7 +102,13 @@ describe("ce que le bloc de lancement dit à qui s'apprête à cliquer", () => {
   it("ne range pas sous la vérification ce qu'un appel vient de faire", () => {
     // Given une simulation : aucun appel n'est parti, et les seules étapes terminées
     // sont celles que la vérification a trouvées déjà en place
-    const simulee = compteRendu({ simulation: true, executees: 0, soldees: 2, echecs: 0 });
+    const simulee = compteRendu({
+      simulation: true,
+      executees: 0,
+      soldees: 2,
+      echecs: 0,
+      remises: [],
+    });
 
     // Then le compte rendu peut affirmer qu'aucune écriture n'a eu lieu, et le dit
     expect(simulee).toContain("rien n'a été écrit");
@@ -119,7 +125,13 @@ describe("ce que le bloc de lancement dit à qui s'apprête à cliquer", () => {
     // Given un lancement réel où trois appels sont partis et cinq étapes se sont
     // terminées : le décompte réunit celles que la vérification a soldées et celles
     // que ces appels viennent de faire, et rien ne les sépare
-    const reelle = compteRendu({ simulation: false, executees: 3, soldees: 5, echecs: 1 });
+    const reelle = compteRendu({
+      simulation: false,
+      executees: 3,
+      soldees: 5,
+      echecs: 1,
+      remises: [],
+    });
 
     // Then il ne dit pas de ces cinq qu'aucune écriture ne les a faites, ce qui
     // démentait les trois appels annoncés dans la même phrase
@@ -132,7 +144,9 @@ describe("ce que le bloc de lancement dit à qui s'apprête à cliquer", () => {
 
     // Then les accords suivent les nombres des deux côtés, un compte rendu au pluriel
     // sous un seul appel se lisant comme une faute
-    expect(compteRendu({ simulation: false, executees: 1, soldees: 1, echecs: 2 })).toBe(
+    expect(
+      compteRendu({ simulation: false, executees: 1, soldees: 1, echecs: 2, remises: [] }),
+    ).toBe(
       "1 appel parti vers les systèmes couverts. 1 étape terminée en tout, celles que la vérification a trouvées déjà en place comprises. 2 étapes en échec.",
     );
   });
