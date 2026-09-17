@@ -17,6 +17,11 @@ vers lui.
 Si le code s'écarte du document, le défaut est dans le code jusqu'à preuve du contraire. Le document
 ne se modifie pas sans validation explicite de l'utilisateur.
 
+**Les arbitrages datés vivent dans `docs/adr/`**, et ce qu'ils ont refusé compte autant que ce qu'ils
+ont retenu : la configuration à trois niveaux (0001), les trois rangements de ce qu'un connecteur
+stocke (0002), le geste hors dossier et la clé d'engagement (0003). Relis celui qui porte sur ta
+décision avant de la reprendre : elle a peut-être déjà été tranchée dans l'autre sens.
+
 ## Stack
 
 Next 16.3.5 (App Router, `output: "standalone"`), React 19.2.8, TypeScript 7.0.2, Node 24 (`.nvmrc`),
@@ -24,11 +29,11 @@ pnpm 11.22.0. Le `tsconfig.json` étend `@tsconfig/strictest` et `@tsconfig/next
 `exactOptionalPropertyTypes` est désactivée en surcharge, Prisma et NextAuth ne la respectent pas dans
 leurs propres types.
 
-Prisma 7.9.1 avec le générateur `prisma-client` (sortie dans `src/generated/prisma`, gitignoré) et
+Prisma 7.10 avec le générateur `prisma-client` (sortie dans `src/generated/prisma`, gitignoré) et
 `@prisma/adapter-pg` sur PostgreSQL. **L'URL de la base vit dans `prisma.config.ts`, pas dans
 `schema.prisma`.**
 
-NextAuth 5.0.0-beta.32 avec `@incubateur-ademe/next-auth-espace-membre-provider` et nodemailer 8.
+NextAuth 5.0.0-beta.32 avec `@incubateur-ademe/next-auth-espace-membre-provider` et nodemailer 9.
 `react-dsfr` 1.32.4 (nécessite `sass`, et `react-dsfr update-icons` en `predev`/`prebuild`).
 
 **Biome 2.5.7 remplace ESLint et Prettier.** Il n'y a ni `.eslintrc` ni `.prettierrc`, n'en crée pas.

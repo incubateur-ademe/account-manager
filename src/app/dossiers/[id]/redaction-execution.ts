@@ -83,3 +83,33 @@ export function compteRendu({
 
   return `${executees} ${pluriel(executees, "appel parti", "appels partis")} vers les systèmes couverts. ${soldees} ${pluriel(soldees, "étape terminée", "étapes terminées")} en tout, celles que la vérification a trouvées déjà en place comprises.${echec}`;
 }
+
+/**
+ * Les phrases de la clé remise, qui ne se lira qu'une fois.
+ *
+ * Elles portent la promesse la plus dangereuse de cet écran, et c'est la seule fois où
+ * l'écran est le dernier endroit au monde à dire quelque chose : ni cette base, ni le
+ * journal, ni le service qui l'a émise ne gardent la clé. Une phrase qui laisserait
+ * croire qu'on la retrouvera ailleurs, ou qu'un jeton se reprend, enverrait quelqu'un
+ * chercher ce qui n'existe pas au lieu de recopier ce qu'il a sous les yeux.
+ */
+export const LIBELLE_REMISE = {
+  titre: "Une clé vient d'être émise, et elle ne se lira qu'ici",
+  unSeulAffichage:
+    "Cette clé s'affiche une fois et une seule. Rien ne la conserve : ni cet outil, ni son journal, ni le service qui l'a émise. En quittant cette page, plus personne ne pourra la relire.",
+  aRemettre:
+    "Recopiez-la maintenant, puis remettez-la à son détenteur par un canal qui ne la garde pas. Elle n'a rien à faire dans un ticket, dans une discussion d'équipe ni dans un fichier partagé.",
+  perdue:
+    "Perdue, elle ne se retrouve pas. Il faut alors émettre un nouveau jeton : celui-ci restera vivant jusqu'à son terme, et rien ne sait ni le révoquer ni l'interrompre.",
+  cle: "La clé à remettre",
+  registre: (identifiant: string) =>
+    `Ce jeton est inscrit sous « ${identifiant} » dans les comptes de service, sans sa clé.`,
+  echec: {
+    titre: "Ce jeton n'a pas d'entrée dans les comptes de service",
+    raison: (erreur: string) =>
+      `Le jeton a bien été émis, et il vivra jusqu'à son terme. Mais sa fiche n'a pas pu s'écrire ici : ${erreur}`,
+    seuleCopie:
+      "Ce qui suit est la seule copie du jeton lui-même, et cette page est le seul endroit où elle existe. Recopiez-le avec la clé, dans le coffre de l'équipe : sans lui, plus rien ne dira qu'un jeton a été émis, ni pour qui, ni jusqu'à quand.",
+    jeton: "Le jeton chiffré, à recopier lui aussi",
+  },
+} as const;

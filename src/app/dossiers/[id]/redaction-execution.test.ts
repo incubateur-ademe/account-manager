@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { PlannedStep } from "@/core/connector";
 import { masseDuPlan, refusDeMasse } from "@/core/plan";
 
-import { compteRendu, LIBELLE_LANCEMENT } from "./redaction-execution";
+import { compteRendu, LIBELLE_LANCEMENT, LIBELLE_REMISE } from "./redaction-execution";
 
 /**
  * Le bloc de lancement n'est rendu par aucun harnais, et c'est celui qui promet le plus :
@@ -26,6 +26,9 @@ function phrases(valeur: unknown): string[] {
 /** Les phrases composées entrent à la main : une fonction ne se parcourt pas. */
 const TOUTE_LA_COPIE = [
   ...phrases(LIBELLE_LANCEMENT),
+  ...phrases(LIBELLE_REMISE),
+  LIBELLE_REMISE.registre("scalingo:jeton:plan-du-depart"),
+  LIBELLE_REMISE.echec.raison("Unique constraint failed on the fields: (`key`)"),
   LIBELLE_LANCEMENT.masse.quelques(1, 20),
   LIBELLE_LANCEMENT.masse.quelques(7, 20),
   LIBELLE_LANCEMENT.relecture(41),
@@ -224,5 +227,56 @@ describe("ce que le bloc de lancement dit à qui s'apprête à cliquer", () => {
       expect(TOUTE_LA_COPIE.toLowerCase()).not.toContain(mot);
     }
     expect(TOUTE_LA_COPIE).not.toMatch(/\bvoies?\b/u);
+  });
+});
+
+describe("ce que l'écran promet d'une clé qu'il ne montrera qu'une fois", () => {
+  it("dit où elle n'est pas, ce qu'il faut en faire, et ne promet ni de la retrouver ni de reprendre le jeton", () => {
+    // Given le bloc qui s'affiche après un passage ayant émis un jeton. Il est le seul
+    // endroit au monde où cette clé existe : le service qui l'a émise n'en garde rien,
+    // cette base ne la stocke pas, et le journal ne la verra jamais
+    const deLaRemise = [
+      ...phrases(LIBELLE_REMISE),
+      LIBELLE_REMISE.registre("scalingo:jeton:plan-du-depart"),
+      LIBELLE_REMISE.echec.raison("Unique constraint failed on the fields: (`key`)"),
+    ];
+
+    // Then l'affichage unique se dit sans nuance, et il nomme les endroits qui ne la
+    // gardent pas : un opérateur qui croirait pouvoir la relire ailleurs ne la
+    // recopierait pas maintenant, seul moment où c'est possible
+    expect(LIBELLE_REMISE.unSeulAffichage).toContain("une fois et une seule");
+    expect(LIBELLE_REMISE.unSeulAffichage).toContain("ni son journal");
+    expect(LIBELLE_REMISE.unSeulAffichage).toContain("plus personne ne pourra la relire");
+
+    // Then la perte a une suite, et c'est celle que le code tient : réémettre, en
+    // sachant que le jeton d'aujourd'hui vivra jusqu'à son terme
+    expect(LIBELLE_REMISE.perdue).toContain("ne se retrouve pas");
+    expect(LIBELLE_REMISE.perdue).toContain("émettre un nouveau jeton");
+    expect(LIBELLE_REMISE.perdue).toContain("jusqu'à son terme");
+
+    // Then toute phrase qui parle de relire la clé ou de la retrouver dit que c'est
+    // impossible. C'est la promesse la plus facile à trahir de ce bloc, et la seule
+    // dont personne ne pourra constater la fausseté avant d'en avoir besoin
+    for (const phrase of deLaRemise.filter((une) => /relire|retrouve/u.test(une))) {
+      expect(phrase).toMatch(/plus personne ne pourra la relire|ne se retrouve pas/u);
+    }
+
+    // Then toute phrase qui parle de révocation la nie : rien, ni ici ni là-bas, ne
+    // reprend un jeton émis avant son terme
+    for (const phrase of deLaRemise.filter((une) => /révoqu/u.test(une))) {
+      expect(phrase).toMatch(/rien ne sait ni le révoquer/u);
+    }
+
+    // Given une émission réussie dont la fiche n'a pas pu s'écrire ici
+    // Then l'écran ne dit pas l'émission échouée, parce qu'elle ne l'est pas : le
+    // jeton vit là-bas, et le croire absent ferait réémettre par-dessus
+    expect(LIBELLE_REMISE.echec.raison("colonne absente")).toContain("Le jeton a bien été émis");
+    expect(LIBELLE_REMISE.echec.raison("colonne absente")).toContain("colonne absente");
+    expect(LIBELLE_REMISE.echec.titre).not.toMatch(/échou|émission a échoué/u);
+
+    // Then il dit que la page porte la seule copie du jeton, et ce qu'on perd en
+    // fermant l'onglet : non pas un accès, mais la trace qu'un accès existe
+    expect(LIBELLE_REMISE.echec.seuleCopie).toContain("la seule copie du jeton lui-même");
+    expect(LIBELLE_REMISE.echec.seuleCopie).toContain("plus rien ne dira qu'un jeton a été émis");
   });
 });

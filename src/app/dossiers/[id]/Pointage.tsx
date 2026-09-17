@@ -22,6 +22,7 @@ import {
   recalculerPlan,
   validerEtape,
 } from "./actions";
+import { Remises } from "./Remises";
 import { compteRendu, LIBELLE_LANCEMENT } from "./redaction-execution";
 
 // Hors du composant, comme partout ailleurs dans ce dépôt : `createModal` enregistre
@@ -417,9 +418,12 @@ export function BoutonExecuter({
       </Button>
 
       {etat?.execution ? (
-        <p className={fr.cx("fr-text--sm", "fr-mt-1w")} role="status">
-          {compteRendu(etat.execution)}
-        </p>
+        <>
+          <p className={fr.cx("fr-text--sm", "fr-mt-1w")} role="status">
+            {compteRendu(etat.execution)}
+          </p>
+          <Remises remises={etat.execution.remises} />
+        </>
       ) : null}
 
       {etat?.erreur ? (

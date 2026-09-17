@@ -11,7 +11,7 @@ import { type EtatRevue, LIBELLE_REVUE, revueDe } from "@/core/revue";
 import { configurationDe } from "@/lib/configuration-connecteur";
 import { prisma } from "@/lib/db";
 import { requireOperateur } from "@/lib/session";
-import { aUnePage, ecranDe } from "@/ui/connecteurs/registre";
+import { aUnePage, ecranDe, mentionDeLecture } from "@/ui/connecteurs/registre";
 import { dateFr } from "@/ui/dates";
 
 export const dynamic = "force-dynamic";
@@ -70,7 +70,9 @@ export default async function ConnecteurPage({ params }: Props) {
     .sort((a, b) => ORDRE[a.revue.etat] - ORDRE[b.revue.etat] || a.key.localeCompare(b.key));
 
   const chargeur = ecranDe(cle);
-  const Ecran = chargeur ? (await chargeur()).default : undefined;
+  const ecran = chargeur ? await chargeur() : undefined;
+  const Ecran = ecran?.default;
+  const mention = mentionDeLecture(ecran);
 
   return (
     <main className={fr.cx("fr-container", "fr-my-6w")}>
@@ -215,12 +217,9 @@ export default async function ConnecteurPage({ params }: Props) {
 
       {Ecran ? <Ecran contrat={contrat} configuration={configuration} /> : null}
 
-      <Alert
-        severity="info"
-        className={fr.cx("fr-mt-4w")}
-        small
-        description="Cet écran ne modifie rien. Ce qui s'y règle vit dans le dépôt de configuration, où le changement se relit avant d'être appliqué."
-      />
+      {mention === null ? null : (
+        <Alert severity="info" className={fr.cx("fr-mt-4w")} small description={mention} />
+      )}
     </main>
   );
 }
