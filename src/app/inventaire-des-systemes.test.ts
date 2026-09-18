@@ -78,6 +78,7 @@ const base = vi.hoisted(() => ({
   comptesDeService: [] as CompteDeServiceEnBase[],
   startups: [] as { ghid: string; currentPhase: string | null }[],
   operationsTracees: 0,
+  dossiersOuverts: 0,
 }));
 
 vi.mock("@/lib/session", async () => (await import("@/test/doubles/session")).sessionDe());
@@ -149,6 +150,7 @@ vi.mock("@/lib/db", () => ({
     serviceAccount: { findMany: () => Promise.resolve(base.comptesDeService) },
     startup: { findMany: () => Promise.resolve(base.startups) },
     auditEvent: { count: () => Promise.resolve(base.operationsTracees) },
+    accessCase: { count: () => Promise.resolve(base.dossiersOuverts) },
   },
 }));
 
@@ -319,6 +321,7 @@ beforeEach(() => {
   base.constats = { ouverts: 0, sorties: 0, arrivees: 0 };
   base.nonRevocables = { sansDetenteur: 0, ressemblance: 0 };
   base.operationsTracees = 0;
+  base.dossiersOuverts = 0;
   base.seuilHeures = 24;
   base.perimetre = null;
 });
@@ -605,6 +608,7 @@ describe("ce que l'inventaire dit d'un système, et ce qu'il refuse d'en dire", 
     base.constats = { ouverts: 9, sorties: 4, arrivees: 2 };
     base.nonRevocables = { sansDetenteur: 11, ressemblance: 8 };
     base.operationsTracees = 21;
+    base.dossiersOuverts = 3;
     base.personnes.push(
       personneDe(dansJours(-60)),
       personneDe(dansJours(-60)),
@@ -685,6 +689,11 @@ describe("ce que l'inventaire dit d'un système, et ce qu'il refuse d'en dire", 
         titre: "14 personnes suivies",
         description: "Dont 6 sans échéance connue.",
         cible: "/personnes",
+      },
+      {
+        titre: "3 dossiers ouverts",
+        description: "Arrivées et départs sur lesquels un geste reste dû.",
+        cible: "/dossiers",
       },
       {
         titre: "19 comptes non révocables",

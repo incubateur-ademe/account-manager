@@ -286,6 +286,17 @@ export default async function AccueilPage() {
             />
           </div>
           <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
+            {/* Le dossier est l'objet central du produit, et rien n'y menait : /dossiers n'avait
+                aucun lien entrant dans tout le dépôt, pas même depuis ici. */}
+            <Tile
+              titleAs="h3"
+              title={`${inventaire.dossiers.ouverts} dossier${inventaire.dossiers.ouverts > 1 ? "s" : ""} ouvert${inventaire.dossiers.ouverts > 1 ? "s" : ""}`}
+              desc="Arrivées et départs sur lesquels un geste reste dû."
+              linkProps={{ href: "/dossiers" }}
+              orientation="horizontal"
+            />
+          </div>
+          <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
             <Tile
               titleAs="h3"
               title={`${inventaire.nonRevocables.total} compte${inventaire.nonRevocables.total > 1 ? "s" : ""} non révocable${inventaire.nonRevocables.total > 1 ? "s" : ""}`}

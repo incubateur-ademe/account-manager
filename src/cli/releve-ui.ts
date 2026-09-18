@@ -672,6 +672,45 @@ const MESURES: readonly Mesure[] = [
     },
   },
   {
+    id: "fils-d-ariane-qui-renomment-leur-parent",
+    libelle: "Segments de fil d'Ariane qui ne reprennent pas le titre de leur parent",
+    cible:
+      "Un écran porte un nom, et c'est celui de son h1. Le menu a le droit d'être plus court, parce qu'il doit tenir sur une ligne ; le fil d'Ariane, lui, ramène vers un écran et doit l'appeler par son nom.",
+    compter: (sources) => {
+      const titreDe = new Map(
+        sources.filter(estEcran).map((source) => {
+          const trouve = /<h1[^>]*>\s*([^<>{}]+?)\s*<\/h1>/.exec(source.contenu);
+          const chemin = `/${source.chemin.split(/[\\/]/).slice(2, -1).join("/")}`;
+          return [chemin, (trouve?.[1] ?? "").trim()];
+        }),
+      );
+
+      const sites: Site[] = [];
+      for (const source of sources) {
+        const motif = /label:\s*"([^"]+)"\s*,\s*linkProps:\s*\{\s*href:\s*"([^"]+)"/g;
+        let trouve = motif.exec(source.contenu);
+        while (trouve !== null) {
+          const [, etiquette, cible] = trouve;
+          const titre = titreDe.get(cible ?? "");
+          if (
+            etiquette !== undefined &&
+            titre !== undefined &&
+            titre !== "" &&
+            titre !== etiquette
+          ) {
+            sites.push({
+              chemin: source.chemin,
+              ligne: source.contenu.slice(0, trouve.index).split("\n").length,
+              extrait: `« ${etiquette} » mène à un écran titré « ${titre} »`,
+            });
+          }
+          trouve = motif.exec(source.contenu);
+        }
+      }
+      return resultat(sites);
+    },
+  },
+  {
     id: "titres-de-modale-en-h1",
     libelle: "Modales laissant leur titre en h1",
     cible:

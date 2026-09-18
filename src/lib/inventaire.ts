@@ -17,6 +17,8 @@ export interface Inventaire {
    */
   nonRevocables: { sansDetenteur: number; ressemblance: number; total: number };
   comptesDeService: { suivis: number; enRetard: number };
+  /* Ouverts, c'est-à-dire ni clos ni annulés : ce sont ceux sur lesquels un geste reste dû. */
+  dossiers: { ouverts: number };
   startups: { suivies: number; terminales: number };
   /**
    * Approximatif par construction : le journal s'écrit sans attendre, avec capture
@@ -67,6 +69,7 @@ export async function chargerInventaire(
     comptes,
     startups,
     operations,
+    dossiersOuverts,
   ] = await Promise.all([
     prisma.externalIdentity.groupBy({
       by: ["provider"],
@@ -102,6 +105,7 @@ export async function chargerInventaire(
       select: { ghid: true, currentPhase: true },
     }),
     prisma.auditEvent.count({ where: { at: { gte: depuis } } }),
+    prisma.accessCase.count({ where: { state: { notIn: ["DONE", "CANCELLED"] } } }),
   ]);
 
   const providerDeLaRessource = new Map(ressources.map((une) => [une.id, une.provider]));
@@ -135,6 +139,7 @@ export async function chargerInventaire(
       ressemblance,
       total: sansDetenteur + ressemblance,
     },
+    dossiers: { ouverts: dossiersOuverts },
     comptesDeService: {
       suivis: comptes.length,
       // Sans seuil de politique : l'écran des comptes de service appelle `revueDe`
