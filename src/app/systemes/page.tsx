@@ -1,4 +1,5 @@
 import { fr } from "@codegouvfr/react-dsfr";
+import { Accordion } from "@codegouvfr/react-dsfr/Accordion";
 import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import { Table } from "@codegouvfr/react-dsfr/Table";
@@ -274,12 +275,7 @@ export default async function SystemesPage() {
           <Table
             fixed
             caption={`Capacités sur ${contrat.label}`}
-            headers={[
-              "Capacité",
-              "Aujourd'hui",
-              "Ce qui manque pour faire mieux",
-              "Marche à suivre",
-            ]}
+            headers={["Capacité", "Aujourd'hui", "Ce qui manque pour faire mieux"]}
             data={capacites.map(({ libelle, quoi, resolue }) => [
               <span key="c">
                 <strong>{libelle}</strong>
@@ -299,19 +295,24 @@ export default async function SystemesPage() {
                   sans objet
                 </span>
               ),
-              <span key="r" className={fr.cx("fr-text--sm")}>
-                {/* Une capacité qu'aucune voie ne déclare n'a pas de marche à suivre : le
-                    socle retombe alors sur le runbook du contrat, qui dit comment retirer
-                    quelqu'un, et l'afficher là ferait répondre à une question que personne
-                    n'a posée. Déclarée mais hors d'atteinte, c'est l'inverse : il y a
-                    justement quelque chose à faire, et c'est celle de la voie qu'on ne
-                    peut pas emprunter aujourd'hui. */}
-                {resolue.decl || resolue.degradedFrom
-                  ? resolue.runbook
-                  : "aucune, ce système ne le fait pas"}
-              </span>,
             ])}
           />
+
+          {/* Hors du tableau, et replié : ces marches à suivre font plus de cent mots chacune,
+              et les porter en cellule donnait des lignes de 233 pixels pour un écran de cinq
+              mille. On les lit une fois, le jour où l'on branche le système. Le DSFR n'autorise
+              pas l'accordéon en cellule, et le journal donne déjà cette forme à sa charge utile. */}
+          {capacites
+            .filter(({ resolue }) => resolue.decl || resolue.degradedFrom)
+            .map(({ libelle, resolue }) => (
+              <Accordion
+                key={libelle}
+                titleAs="h3"
+                label={`Comment faire « ${libelle.toLowerCase()} » sur ${contrat.label}`}
+              >
+                <p className={fr.cx("fr-text--sm", "fr-mb-0")}>{resolue.runbook}</p>
+              </Accordion>
+            ))}
 
           <Scope systeme={contrat.label} octroiDeclare={octroiDeclare} scope={scope} />
 
