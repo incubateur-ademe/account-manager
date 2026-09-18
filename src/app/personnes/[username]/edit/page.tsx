@@ -27,7 +27,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     select: { fullname: true },
   });
 
-  return { title: personne ? `Éditer ${personne.fullname}` : "Personne introuvable" };
+  return { title: personne ? `Éditer la fiche de ${personne.fullname}` : "Personne introuvable" };
 }
 
 export default async function EditionFichePage({ params }: Props) {
@@ -80,7 +80,7 @@ export default async function EditionFichePage({ params }: Props) {
           <p className={fr.cx("fr-text--sm", "fr-mb-0")}>{personne.username}</p>
         </div>
         <Button priority="tertiary" size="small" linkProps={{ href: retour }}>
-          Retour à la fiche
+          Revenir à la fiche
         </Button>
       </div>
 

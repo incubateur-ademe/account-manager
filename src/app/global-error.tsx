@@ -84,7 +84,7 @@ export default function ErreurGlobale({
               Réessayer
             </button>
             <a className="action action--secondaire" href="/">
-              Retour à l'accueil
+              Revenir à l'accueil
             </a>
           </div>
         </main>

@@ -2,6 +2,7 @@ import { fr } from "@codegouvfr/react-dsfr";
 import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import { Table } from "@codegouvfr/react-dsfr/Table";
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { systemesQuiAccueillentUnCompteMachine } from "@/connectors";
 import { type EtatRevue, LIBELLE_REVUE, revueDe } from "@/core/revue";
@@ -108,7 +109,9 @@ export default async function ComptesDeServicePage() {
               // système donnerait à croire qu'ils n'en ont jamais eu.
               libelleDuSysteme.get(compte.provider) ?? compte.provider,
               compte.purpose,
-              compte.ownerUsername,
+              <Link key="o" href={`/personnes/${compte.ownerUsername}`}>
+                {compte.ownerUsername}
+              </Link>,
               // La périodicité ne dit rien d'un compte dont un terme porte la péremption :
               // elle vaut la durée de ce terme, et l'afficher ferait lire une cadence là où
               // il n'y a qu'une date de mort.

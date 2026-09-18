@@ -63,7 +63,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     select: { fullname: true },
   });
 
-  return { title: personne ? `${personne.fullname} (${username})` : "Personne introuvable" };
+  return { title: personne ? personne.fullname : "Personne introuvable" };
 }
 
 export default async function FichePersonnePage({ params, searchParams }: Props) {

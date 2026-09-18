@@ -52,7 +52,7 @@ export default function ErreurApplication({
             buttons={[
               { children: "Réessayer", iconId: "fr-icon-refresh-line", onClick: () => retry() },
               {
-                children: "Retour à l'accueil",
+                children: "Revenir à l'accueil",
                 priority: "secondary",
                 linkProps: { href: "/" },
               },

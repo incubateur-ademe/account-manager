@@ -34,7 +34,7 @@ export default function PageNonTrouvee() {
           <ButtonsGroup
             inlineLayoutWhen="md and up"
             buttons={[
-              { children: "Retour à l'accueil", linkProps: { href: "/" } },
+              { children: "Revenir à l'accueil", linkProps: { href: "/" } },
               {
                 children: "Personnes suivies",
                 priority: "secondary",
