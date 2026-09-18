@@ -619,6 +619,29 @@ const MESURES: readonly Mesure[] = [
     },
   },
   {
+    id: "controles-desactives",
+    libelle: "Contrôles rendus inertes plutôt que retirés",
+    cible:
+      "Un contrôle sans effet se retire. Grisé, il occupe la place et le regard sans rien offrir. Seule l'attente d'une soumission le justifie.",
+    compter: (sources) => {
+      const sites: Site[] = [];
+      for (const source of sources) {
+        source.lignes.forEach((ligne, index) => {
+          if (estLigneDeCommentaire(ligne)) return;
+          if (!/\bdisabled(?:=|\s|$)/.test(ligne)) return;
+          /* Le temps d'une soumission, l'inertie dit que le geste est parti. */
+          if (/isPending|pending|soumission|useFormStatus|\ben[A-Z]\w+/.test(ligne)) return;
+          sites.push({
+            chemin: source.chemin,
+            ligne: index + 1,
+            extrait: ligne.trim().slice(0, 110),
+          });
+        });
+      }
+      return resultat(sites);
+    },
+  },
+  {
     id: "titres-de-modale-en-h1",
     libelle: "Modales laissant leur titre en h1",
     cible:

@@ -1,6 +1,6 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
-import { test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 import { OPERATRICE } from "../playwright.config";
 import { anatomieDe, rendreAnatomie } from "./anatomie";
@@ -81,10 +81,38 @@ test("relever ce qui ne se lit pas dans le code", async ({ browser }) => {
   const rapport: string[] = ["# Anatomie des écrans, mesurée dans le navigateur", ""];
   const modalesVues: string[] = [];
 
+  /*
+   * Les règles de forme que seul le navigateur sait tenir : elles portent sur ce qu'un écran rend,
+   * pas sur ce que son source déclare. Le contenu d'une modale vit dans des composants enfants, et
+   * la hauteur d'une ligne dépend de ce qu'on y a mis.
+   */
+  const manquements: Record<string, string[]> = {
+    "modales-sans-champ": [],
+    "modales-au-dela-de-60-mots-par-champ": [],
+    "ecrans-a-plus-d-un-bouton-primaire": [],
+    "lignes-de-tableau-au-dela-de-120px": [],
+    "colonnes-au-contenu-identique-partout": [],
+    "contenus-repetes-dans-un-ecran": [],
+  };
+
   for (const ecran of ECRANS) {
     await page.goto(ecran.chemin, { waitUntil: "networkidle" });
     await page.screenshot({ path: `${SORTIE}/${ecran.nom}.png`, fullPage: true });
-    rapport.push(...rendreAnatomie(ecran.nom, ecran.chemin, await anatomieDe(page)));
+    const vue = await anatomieDe(page);
+    rapport.push(...rendreAnatomie(ecran.nom, ecran.chemin, vue));
+
+    if (vue.primaires > 1) {
+      manquements["ecrans-a-plus-d-un-bouton-primaire"]?.push(`${ecran.nom} : ${vue.primaires}`);
+    }
+    for (const ligne of vue.lignesTropHautes) {
+      manquements["lignes-de-tableau-au-dela-de-120px"]?.push(`${ecran.nom} : ${ligne}`);
+    }
+    for (let i = 0; i < vue.colonnesConstantes; i += 1) {
+      manquements["colonnes-au-contenu-identique-partout"]?.push(ecran.nom);
+    }
+    for (const repetition of vue.repetitions) {
+      manquements["contenus-repetes-dans-un-ecran"]?.push(`${ecran.nom} : ${repetition}`);
+    }
 
     /*
      * Chaque bouton qui commande une boîte de dialogue, ouvert puis refermé. Le contenu d'une modale
@@ -133,6 +161,15 @@ test("relever ce qui ne se lit pas dans le code", async ({ browser }) => {
             titre: (noeud.querySelector("h1,h2,h3")?.textContent ?? "").trim(),
           };
         });
+        if (mesure.champs === 0) {
+          manquements["modales-sans-champ"]?.push(
+            `${ecran.nom} : ${mesure.titre} (${mesure.mots} mots)`,
+          );
+        } else if (mesure.mots / mesure.champs > 60) {
+          manquements["modales-au-dela-de-60-mots-par-champ"]?.push(
+            `${ecran.nom} : ${mesure.titre} (${mesure.mots} mots / ${mesure.champs})`,
+          );
+        }
         modalesVues.push(
           `  ${ecran.nom.padEnd(26)} « ${cible.libelle.slice(0, 30).padEnd(30)} » ouvre « ${mesure.titre.slice(0, 30).padEnd(30)} » ${String(mesure.hauteur).padStart(4)}px, ${mesure.champs} champ(s), ${mesure.boutons} bouton(s), ${mesure.mots} mots`,
         );
@@ -174,6 +211,35 @@ test("relever ce qui ne se lit pas dans le code", async ({ browser }) => {
     ...debordent,
   );
 
+  const FICHIER = "e2e/seuils-visuels.json";
+  const plafonds: Record<string, number> = existsSync(FICHIER)
+    ? (JSON.parse(readFileSync(FICHIER, "utf8")) as Record<string, number>)
+    : {};
+
+  const bilan: string[] = ["\n# Les règles de forme, tenues par des plafonds", ""];
+  const depassements: string[] = [];
+  for (const [regle, cas] of Object.entries(manquements)) {
+    const plafond = plafonds[regle];
+    bilan.push(`  ${regle.padEnd(40)} ${String(cas.length).padStart(4)} / ${plafond ?? "?"}`);
+    for (const cas_ of cas) bilan.push(`      ${cas_}`);
+    if (plafond !== undefined && cas.length > plafond) {
+      depassements.push(`${regle} : ${cas.length} au lieu de ${plafond}`);
+    }
+  }
+  rapport.push(...bilan);
+
   writeFileSync(`${SORTIE}/anatomie.md`, rapport.join("\n"), "utf8");
   await contexte.close();
+
+  if (process.env["POSER_LES_PLAFONDS"] === "1") {
+    const poses = Object.fromEntries(
+      Object.entries(manquements).map(([regle, cas]) => [
+        regle,
+        Math.min(cas.length, plafonds[regle] ?? cas.length),
+      ]),
+    );
+    writeFileSync(FICHIER, `${JSON.stringify(poses, null, 2)}\n`, "utf8");
+  }
+
+  expect(depassements, `Relevé complet dans ${SORTIE}/anatomie.md`).toEqual([]);
 });

@@ -143,6 +143,17 @@ react-dsfr, l'ordre de lecture réel, la densité, le débordement en étroit. C
 que chaque écran portait deux `h1`, dont un venu des modales et un du sélecteur de thème du DSFR, que
 rien dans le code ne laissait voir.
 
+**Six règles de forme ne se tiennent que dans le navigateur**, et leurs plafonds vivent dans
+`e2e/seuils-visuels.json` : modales sans champ, modales au-delà de soixante mots par champ, écrans à
+plus d'un bouton primaire, lignes de tableau au-delà de 120 px, colonnes au contenu identique partout,
+contenus répétés dans un écran. Un dépassement fait échouer le relevé visuel. `POSER_LES_PLAFONDS=1`
+les fige, et comme ceux de `pnpm cadre`, ils ne remontent jamais.
+
+Ces six-là ne peuvent pas descendre dans `pnpm cadre`, et la raison vaut d'être connue avant d'essayer :
+le contenu d'une modale vit dans des composants enfants qu'aucune lecture du source ne suit, et la
+hauteur d'une ligne dépend de ce qu'on y a mis. Une première version les mesurait en statique et
+comptait douze modales sans champ là où le navigateur en voit sept.
+
 **Les deux étages du bas ne partent pas d'un clone.** Une fois pour toutes :
 
 ```bash

@@ -20,6 +20,11 @@ export interface Bloc {
 
 export interface Anatomie {
   readonly hauteur: number;
+  readonly primaires: number;
+  readonly modalesSansChamp: readonly string[];
+  readonly modalesBavardes: readonly string[];
+  readonly lignesTropHautes: readonly string[];
+  readonly colonnesConstantes: number;
   readonly sousLaLigne: number;
   readonly titres: readonly string[];
   readonly blocs: readonly Bloc[];
@@ -137,8 +142,61 @@ export async function anatomieDe(page: Page): Promise<Anatomie> {
       phrases.set(texte, (phrases.get(texte) ?? 0) + 1);
     }
 
+    /*
+     * Une modale ouverte se mesure ici, et nulle part ailleurs : son contenu vit dans des composants
+     * enfants qu'aucune lecture du source ne suit, et ses champs ne se comptent qu'une fois rendus.
+     */
+    const modalesSansChamp: string[] = [];
+    const modalesBavardes: string[] = [];
+    for (const boite of document.querySelectorAll("dialog[open]")) {
+      const titre = (boite.querySelector("h1,h2,h3")?.textContent ?? "").trim().slice(0, 50);
+      const champs = boite.querySelectorAll("input:not([type=hidden]), select, textarea").length;
+      const mots = texteDe(boite).split(" ").length;
+      if (champs === 0) modalesSansChamp.push(`${titre} (${mots} mots)`);
+      else if (mots / champs > 60) {
+        modalesBavardes.push(`${titre} (${mots} mots / ${champs} champ(s))`);
+      }
+    }
+
+    const lignesTropHautes: string[] = [];
+    let colonnesConstantes = 0;
+    for (const table of document.querySelectorAll("table")) {
+      if (!seVoit(table)) continue;
+      const lignes = [...table.querySelectorAll("tbody tr")].filter(seVoit);
+      if (lignes.length === 0) continue;
+      const haute = Math.round(
+        lignes.reduce((n, l) => n + l.getBoundingClientRect().height, 0) / lignes.length,
+      );
+      if (haute > 120) {
+        lignesTropHautes.push(
+          `${haute}px sur ${lignes.length} ligne(s) : « ${texteDe(table.querySelector("thead") ?? table).slice(0, 60)} »`,
+        );
+      }
+      const parColonne: string[][] = [];
+      for (const ligne of lignes) {
+        [...ligne.querySelectorAll("td")].forEach((cellule, index) => {
+          const colonne = parColonne[index] ?? [];
+          colonne.push(texteDe(cellule));
+          parColonne[index] = colonne;
+        });
+      }
+      colonnesConstantes += parColonne.filter(
+        (v) => v.length > 1 && new Set(v).size === 1 && (v[0] ?? "").length > 20,
+      ).length;
+    }
+
     return {
       hauteur: hauteurPage,
+      primaires: [...document.querySelectorAll("main .fr-btn")].filter(
+        (b) =>
+          seVoit(b) &&
+          !b.className.includes("fr-btn--secondary") &&
+          !b.className.includes("fr-btn--tertiary"),
+      ).length,
+      modalesSansChamp,
+      modalesBavardes,
+      lignesTropHautes,
+      colonnesConstantes,
       sousLaLigne: Math.max(0, hauteurPage - window.innerHeight),
       titres: [...document.querySelectorAll("h1,h2,h3,h4,h5,h6")].map(
         (t) => `${t.tagName.toLowerCase()}  ${texteDe(t).slice(0, 70)}`,

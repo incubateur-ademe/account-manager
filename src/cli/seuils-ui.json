@@ -12,6 +12,7 @@
   "ecrans-profonds-sans-fil-d-ariane": 0,
   "titres-injectes-sans-niveau": 0,
   "sauts-de-niveau-de-titre": 0,
+  "controles-desactives": 7,
   "titres-de-modale-en-h1": 0,
   "composants-dsfr-reecrits-a-la-main": 3,
   "suppressions-de-diagnostic-de-plugin": 0
