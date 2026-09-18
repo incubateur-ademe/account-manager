@@ -49,6 +49,13 @@ export async function anatomieDe(page: Page): Promise<Anatomie> {
     const seVoit = (noeud: Element): boolean => {
       const boite = noeud.closest("dialog");
       if (boite !== null && !boite.hasAttribute("open")) return false;
+      /*
+       * Un accordéon replié garde son contenu dans le document, sous un fr-collapse que rien
+       * n'a déplié. Sa hauteur n'est pas nulle pour autant, donc le mesurer ferait compter ce
+       * que personne ne lit tant qu'il n'a pas cliqué.
+       */
+      const pliant = noeud.closest(".fr-collapse");
+      if (pliant !== null && !pliant.classList.contains("fr-collapse--expanded")) return false;
       const rect = noeud.getBoundingClientRect();
       return rect.height > 0 && rect.width > 0;
     };
@@ -133,12 +140,17 @@ export async function anatomieDe(page: Page): Promise<Anatomie> {
       });
     }
 
-    /* Un même paragraphe rendu à plusieurs endroits du même écran. */
+    /*
+     * Une même consigne rendue à plusieurs endroits du même écran. Les cellules de tableau en sont
+     * exclues : une valeur qui revient à chaque ligne est ce qu'un tableau fait, et « à faire à la
+     * main » répété douze fois dit l'état de douze capacités, pas une consigne recopiée. Le seuil
+     * de dix mots écarte de même les libellés d'état, qui tiennent en quatre ou cinq.
+     */
     const phrases = new Map<string, number>();
-    for (const noeud of document.querySelectorAll("main p, main li, main td, main dd")) {
-      if (!seVoit(noeud)) continue;
+    for (const noeud of document.querySelectorAll("main p, main li, main dd")) {
+      if (!seVoit(noeud) || noeud.closest("table") !== null) continue;
       const texte = texteDe(noeud);
-      if (texte.split(" ").length < 5) continue;
+      if (texte.split(" ").length < 10) continue;
       phrases.set(texte, (phrases.get(texte) ?? 0) + 1);
     }
 

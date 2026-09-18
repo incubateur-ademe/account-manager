@@ -554,8 +554,12 @@ export function Editeur({
         </ol>
       )}
 
-      <h3 className={fr.cx("fr-h6")}>Ajouter une étape</h3>
-      <FormulaireDAjout proprietaire={proprietaire} moment={moment} />
+      {/* Replié : l'écran monte cet éditeur une fois par moment, donc le formulaire s'y rendait
+          deux ou trois fois, à 628 pixels pièce, sur une page qui ne déclare parfois aucune
+          étape. Ajouter est un geste, la liste est ce qu'on vient lire. */}
+      <Accordion titleAs="h3" label="Ajouter une étape">
+        <FormulaireDAjout proprietaire={proprietaire} moment={moment} />
+      </Accordion>
     </>
   );
 }
