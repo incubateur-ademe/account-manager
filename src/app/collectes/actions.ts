@@ -135,10 +135,10 @@ export async function autoriserDatation(
   const datables = entierPoste(formData, "datables");
 
   if (!estFamilleDeChute(famille)) {
-    return { erreur: "Famille de garde-fou non reconnue." };
+    return { erreur: "Cette famille de garde-fou n'est pas dans la liste. Rechargez la page." };
   }
   if (!provider) {
-    return { erreur: "Système introuvable." };
+    return { erreur: "Aucun système n'a été choisi. Rechargez la page." };
   }
   if (raison.length < 3) {
     return {

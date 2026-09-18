@@ -21,7 +21,7 @@ export async function enregistrerRevue(_etat: EtatRevue, formData: FormData): Pr
   const key = String(formData.get("key") ?? "").trim();
 
   if (!key) {
-    return { erreur: "Compte introuvable." };
+    return { erreur: "Aucun compte n'a été choisi. Rechargez la page." };
   }
 
   const compte = await prisma.serviceAccount.findUnique({

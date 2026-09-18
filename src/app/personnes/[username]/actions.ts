@@ -32,7 +32,7 @@ export async function detacherIdentite(
   const id = String(formData.get("id") ?? "").trim();
 
   if (!id) {
-    return { erreur: "Compte introuvable." };
+    return { erreur: "Aucun compte n'a été choisi. Rechargez la page." };
   }
 
   const identite = await prisma.externalIdentity.findUnique({
@@ -324,7 +324,7 @@ export async function forcerAppartenance(
   const raison = String(formData.get("raison") ?? "").trim();
 
   if (sens !== "INCLUDE" && sens !== "EXCLUDE") {
-    return { erreur: "Sens de la décision non reconnu." };
+    return { erreur: "Ce sens de décision n'est pas dans la liste. Rechargez la page." };
   }
   if (raison.length < 3) {
     return {

@@ -237,6 +237,34 @@ function tousLesTextes(sources: readonly Source[]): Litteral[] {
   return sources.flatMap((source) => [...litterauxDe(source), ...textesNusDe(source)]);
 }
 
+/*
+ * Un refus rendu à l'opérateur. `erreur` est la clé des actions serveur ; `raison` porte la même chose
+ * dans un verdict, mais sert ailleurs de libellé de champ et de code machine, d'où la condition sur le
+ * `possible: false` qui l'accompagne.
+ */
+function refusDe(source: Source): Litteral[] {
+  const trouves: Litteral[] = [];
+  source.lignes.forEach((ligne, index) => {
+    if (estLigneDeCommentaire(ligne)) return;
+    const verdict = /possible:\s*false/;
+    const cles =
+      verdict.test(ligne) || verdict.test(source.lignes[index - 1] ?? "")
+        ? /\b(?:erreur|raison):\s*"([^"\\]{8,400})"/
+        : /\berreur:\s*"([^"\\]{8,400})"/;
+    const texte = cles.exec(ligne)?.[1];
+    if (texte !== undefined && estTexteOperateur(texte)) {
+      trouves.push({ chemin: source.chemin, ligne: index + 1, extrait: texte, texte });
+    }
+  });
+  return trouves;
+}
+
+/*
+ * Une étiquette de non-existence, en fin de message et sans rien après elle. Le mot ne suffit pas :
+ * « Acteur inconnu. Dites qui doit faire cette étape. » emploie le même, et dit la suite.
+ */
+const FINIT_EN_ETIQUETTE = /^[^.!?]*\b(?:introuvable|inconnue?s?|non reconnue?s?|invalide)\.?$/;
+
 // ---------------------------------------------------------------------------
 // Extraction des éléments d'interface
 // ---------------------------------------------------------------------------
@@ -776,6 +804,18 @@ export const MESURES: readonly Mesure[] = [
       }
       return resultat(sites);
     },
+  },
+  {
+    id: "refus-en-forme-d-etiquette",
+    libelle: "Refus écrits en étiquette plutôt qu'en phrase",
+    cible:
+      "Un refus nomme un objet et s'arrête, là où l'opérateur attend ce qui s'est passé et quoi faire. Zéro.",
+    compter: (sources) =>
+      resultat(
+        sources
+          .flatMap(refusDe)
+          .filter((r) => compterMots(r.texte) < 4 || FINIT_EN_ETIQUETTE.test(r.texte.trim())),
+      ),
   },
   {
     id: "suppressions-de-diagnostic-de-plugin",

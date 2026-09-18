@@ -334,7 +334,7 @@ export async function pointerEtape(
 
   const nouvelEtat = POINTAGES[choix];
   if (!nouvelEtat) {
-    return { erreur: "Pointage inconnu." };
+    return { erreur: "Ce pointage n'est pas dans la liste. Rechargez la page." };
   }
 
   // Écarter une étape n'est pas déclarer un geste, c'est décider qu'un geste prévu
@@ -595,7 +595,7 @@ export async function validerEtape(
 
   const avis = VERDICTS[choix];
   if (!avis) {
-    return { erreur: "Verdict inconnu." };
+    return { erreur: "Ce verdict n'est pas dans la liste. Rechargez la page." };
   }
 
   const etape = await prisma.planStep.findUnique({

@@ -147,7 +147,7 @@ export async function basculerAutorisationDesStartups(
 
   const moment = lireMoment(formData);
   if (moment === null) {
-    return { erreur: "Moment inconnu." };
+    return { erreur: "Aucun moment n'a été choisi. Rechargez la page." };
   }
 
   return rendu(await basculerAutorisation(moment, formData.get("autorise") === "oui"));
@@ -162,7 +162,7 @@ export async function ajouterEtapeAuModele(
   const moment = lireMoment(formData);
   const proprietaire = texte(formData, "proprietaire");
   if (moment === null || !proprietaire) {
-    return { erreur: "Modèle inconnu." };
+    return { erreur: "Aucun modèle n'a été choisi. Rechargez la page." };
   }
 
   const etape = lireEtape(formData);
@@ -181,7 +181,7 @@ export async function modifierEtapeDuModele(
 
   const etapeId = texte(formData, "etapeId");
   if (!etapeId) {
-    return { erreur: "Étape inconnue." };
+    return { erreur: "Aucune étape n'a été choisie. Rechargez la page." };
   }
 
   const etape = lireEtape(formData);
@@ -200,7 +200,7 @@ export async function retirerEtapeDuModele(
 
   const etapeId = texte(formData, "etapeId");
   if (!etapeId) {
-    return { erreur: "Étape inconnue." };
+    return { erreur: "Aucune étape n'a été choisie. Rechargez la page." };
   }
 
   return rendu(await retirerEtape(etapeId));

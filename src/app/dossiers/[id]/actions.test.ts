@@ -1703,7 +1703,7 @@ describe("le contrôle d'une déclaration, étape par étape", () => {
       null,
       formulaire({ etapeId: etape.id, verdict: "peut-etre" }),
     );
-    expect(inconnu.erreur).toBe("Verdict inconnu.");
+    expect(inconnu.erreur).toBe("Ce verdict n'est pas dans la liste. Rechargez la page.");
   });
 });
 

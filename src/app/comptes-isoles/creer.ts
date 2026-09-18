@@ -48,7 +48,7 @@ const cleDejaPrise = (cle: string) =>
  */
 async function identiteATraiter(id: string): Promise<IdentiteIsolee | { erreur: string }> {
   if (!id) {
-    return { erreur: "Compte introuvable." };
+    return { erreur: "Aucun compte n'a été choisi. Rechargez la page." };
   }
 
   const identite = await prisma.externalIdentity.findUnique({

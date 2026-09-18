@@ -62,7 +62,7 @@ function lireEntree(formData: FormData, raisonRequise: boolean): Entree | { erre
   const ghid = String(formData.get("startup") ?? "").trim();
 
   if (!ghid) {
-    return { erreur: "Startup introuvable." };
+    return { erreur: "Aucune startup n'a été choisie. Rechargez la page." };
   }
   if (usernames.length === 0) {
     return { erreur: "Sélectionnez au moins une personne." };

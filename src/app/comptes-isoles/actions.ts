@@ -40,7 +40,7 @@ export async function rattacherIdentite(
   const cible = String(formData.get("cible") ?? "").trim();
 
   if (!id) {
-    return { erreur: "Compte introuvable." };
+    return { erreur: "Aucun compte n'a été choisi. Rechargez la page." };
   }
   if (!cible) {
     return { erreur: "Indiquez un identifiant beta.gouv ou une clé de compte de service." };

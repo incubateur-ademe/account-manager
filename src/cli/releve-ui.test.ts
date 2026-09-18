@@ -158,6 +158,58 @@ describe("ce que le relevé compte, et ce qu'il refuse de compter", () => {
     expect(mesure.compter([page, corrige]).valeur).toBe(0);
   });
 
+  it("distingue un refus qui étiquette d'un refus qui dit ce qui s'est passé", () => {
+    const ACTION = "src/app/constats/actions.ts";
+
+    // Given les deux formes qu'un même refus prenait dans ce dépôt.
+    expect(
+      compter("refus-en-forme-d-etiquette", ACTION, `return { erreur: "Constat introuvable." };`),
+    ).toBe(1);
+    expect(
+      compter(
+        "refus-en-forme-d-etiquette",
+        ACTION,
+        `return { erreur: "Aucun constat n'a été choisi. Rechargez la page." };`,
+      ),
+    ).toBe(0);
+
+    // Then le mot seul ne condamne pas : celui qui dit la suite passe, et c'est la forme
+    // qu'on demande. Compter le mot ferait de la mesure un interdit de vocabulaire.
+    expect(
+      compter(
+        "refus-en-forme-d-etiquette",
+        ACTION,
+        `return { erreur: "Acteur inconnu. Dites qui doit faire cette étape." };`,
+      ),
+    ).toBe(0);
+
+    // Then une étiquette plus longue que quatre mots se voit quand même, la longueur seule
+    // ne séparant pas « Sens de la décision non reconnu » d'une vraie phrase.
+    expect(
+      compter(
+        "refus-en-forme-d-etiquette",
+        ACTION,
+        `return { erreur: "Sens de la décision non reconnu." };`,
+      ),
+    ).toBe(1);
+  });
+
+  it("ne lit comme refus que ce qui en est un", () => {
+    const VERDICT = "src/core/derogation.ts";
+
+    // Given un verdict, dont le motif vit sous `raison` et non sous `erreur`.
+    const surDeuxLignes = `return {\n  possible: false,\n  raison: "Tolérance introuvable.",\n};`;
+    expect(compter("refus-en-forme-d-etiquette", VERDICT, surDeuxLignes)).toBe(1);
+
+    // Then `raison` sert aussi de libellé de champ et de code machine. Les lire comme des
+    // refus ferait monter la mesure sur du texte qu'aucun refus n'affiche.
+    const libelle = `const champ = { raison: "Pourquoi ce retrait (facultatif)" };`;
+    expect(compter("refus-en-forme-d-etiquette", "src/app/dossiers/redaction.ts", libelle)).toBe(0);
+    expect(
+      compter("refus-en-forme-d-etiquette", "src/core/collecte.ts", `{ raison: "non-lu" }`),
+    ).toBe(0);
+  });
+
   it("n'exonère que la ligne qui emploie un composant, jamais le fichier entier", () => {
     // Given un fichier qui emploie CallOut et qui, ailleurs, en réécrit la classe à la main.
     const melange = `<CallOut title="X">y</CallOut>\n<div className={fr.cx("fr-callout")}>z</div>`;

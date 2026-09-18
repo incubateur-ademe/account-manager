@@ -304,7 +304,9 @@ describe("ce que l'action de sortie accepte de l'écran qui l'appelle", () => {
 
     // Then l'action refuse sans rien écrire, et sans rien journaliser non plus : une
     // intention refusée n'est pas une décision.
-    expect(inconnue).toEqual({ erreur: "Famille de garde-fou non reconnue." });
+    expect(inconnue).toEqual({
+      erreur: "Cette famille de garde-fou n'est pas dans la liste. Rechargez la page.",
+    });
     expect(base.autorisations).toHaveLength(3);
     expect(base.journal).toHaveLength(3);
   });

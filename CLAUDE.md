@@ -242,6 +242,19 @@ autres demandent de lire l'écran à côté du texte, et `pnpm cadre` ne sait pa
   son `h1` ou annonce les `h2` qui suivent, il se supprime.
 - **Pas de personnification.** Un système n'a ni intention ni voix.
 
+**Un refus dit ce qui s'est passé, puis ce qui reste à faire.** « Compte introuvable » nomme un objet
+et s'arrête. Les dix-huit refus écrits ainsi refusaient tous un formulaire, jamais une recherche. Un
+champ caché manquait, ou portait une valeur hors liste. Les dix qui disaient « introuvable » étaient
+donc faux, rien n'ayant été cherché. Deux tournures couvrent les deux causes, « Aucun compte n'a été
+choisi. Rechargez la page. » et « Ce verdict n'est pas dans la liste. Rechargez la page. ». Le mot
+« inconnu » reste bon quand une suite l'accompagne, la mesure `refus-en-forme-d-etiquette` ne visant
+pas le vocabulaire.
+
+**Le registre se choisit sur une question : après avoir lu, quelqu'un doit-il agir ?** Si oui, la
+phrase s'adresse à lui et nomme le geste, à l'impératif. Sinon elle constate ou pose une règle, à
+l'indicatif, et l'impersonnel y est juste : « Un bot et une personne ne se déclarent pas au même
+endroit » n'escamote personne. Il ne l'est que dans une consigne, où il masque à qui l'on parle.
+
 Les règles de forme viennent du DSFR et se tiennent sans discussion : verbe à l'infinitif en tête de
 libellé de bouton, impératif pour l'aide et les messages d'erreur, jamais les deux dans un même
 composant, majuscule initiale seule, aucune ponctuation finale sur un titre ni sur un en-tête de

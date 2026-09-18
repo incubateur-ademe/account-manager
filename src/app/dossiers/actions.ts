@@ -30,7 +30,7 @@ async function ouvrir(sens: SensDossier, formData: FormData): Promise<EtatDossie
 
   const username = String(formData.get("username") ?? "").trim();
   if (!username) {
-    return { erreur: "Personne introuvable." };
+    return { erreur: "Aucune personne n'a été choisie. Rechargez la page." };
   }
 
   // Le profil ne vaut que pour une arrivée : un départ retire ce qui est observé, il
