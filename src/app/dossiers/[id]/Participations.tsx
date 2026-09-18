@@ -202,7 +202,7 @@ function FormulaireOctroi({
           }}
         />
 
-        <Button type="submit" disabled={pending}>
+        <Button priority="primary" type="submit" disabled={pending}>
           {pending ? LIBELLE_OCTROI.enCours : LIBELLE_OCTROI.soumettre}
         </Button>
 

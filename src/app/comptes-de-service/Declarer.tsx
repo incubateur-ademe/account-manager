@@ -101,7 +101,9 @@ export function Declarer({ systemes }: { systemes: readonly { key: string; label
           {etat?.erreur ? (
             <Alert severity="error" small description={etat.erreur} className={fr.cx("fr-mb-2w")} />
           ) : null}
-          <Button type="submit">Déclarer</Button>
+          <Button priority="primary" type="submit">
+            Déclarer
+          </Button>
         </form>
       </modale.Component>
     </>

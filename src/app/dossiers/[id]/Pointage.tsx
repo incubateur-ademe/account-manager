@@ -104,7 +104,7 @@ export function BoutonConfirmer({ planId }: { planId: string }) {
   return (
     <form action={formAction}>
       <input type="hidden" name="planId" value={planId} />
-      <Button type="submit" disabled={pending}>
+      <Button priority="primary" type="submit" disabled={pending}>
         {pending ? "Confirmation…" : "Confirmer ce plan"}
       </Button>
       {etat?.erreur ? (
@@ -405,7 +405,7 @@ export function BoutonExecuter({
         </>
       ) : null}
 
-      <Button type="submit" disabled={pending || bloque}>
+      <Button priority="primary" type="submit" disabled={pending || bloque}>
         {pending
           ? simulation
             ? LIBELLE_LANCEMENT.bouton.enCours.simulation
@@ -433,24 +433,44 @@ export function BoutonExecuter({
   );
 }
 
+/*
+ * Le seul geste de cet écran que l'outil ne sait pas défaire : aucun chemin ne rouvre un dossier
+ * clos. C'est le critère qui décide d'une confirmation ici, et non la gravité ressentie : détacher
+ * une identité ou retirer un rattachement se refont en trois clics et partent donc au clic unique.
+ */
+const modaleCloture = createModal({ id: "clore-le-dossier", isOpenedByDefault: false });
+
 export function BoutonClore({ dossierId }: { dossierId: string }) {
   const [etat, formAction, pending] = useActionState<EtatAction | null, FormData>(
     cloreDossier,
     null,
   );
+  const ouverture = useCleDOuverture(modaleCloture);
 
   return (
-    <form action={formAction}>
-      <input type="hidden" name="dossierId" value={dossierId} />
-      <Button type="submit" disabled={pending}>
-        {pending ? "Clôture…" : "Clore le dossier"}
+    <>
+      <Button priority="primary" nativeButtonProps={modaleCloture.buttonProps}>
+        Clore le dossier
       </Button>
-      {etat?.erreur ? (
-        <p className={fr.cx("fr-error-text", "fr-mt-1v")} role="alert">
-          {etat.erreur}
+
+      <modaleCloture.Component titleAs="h2" title="Clore ce dossier ?">
+        <p className={fr.cx("fr-text--sm")}>
+          Un dossier clos ne se rouvre pas. Ce qui reste à faire devra passer par un nouveau
+          dossier.
         </p>
-      ) : null}
-    </form>
+        <form action={formAction} key={ouverture}>
+          <input type="hidden" name="dossierId" value={dossierId} />
+          <Button priority="primary" type="submit" disabled={pending}>
+            {pending ? "Clôture…" : "Clore le dossier"}
+          </Button>
+          {etat?.erreur ? (
+            <p className={fr.cx("fr-error-text", "fr-mt-1v")} role="alert">
+              {etat.erreur}
+            </p>
+          ) : null}
+        </form>
+      </modaleCloture.Component>
+    </>
   );
 }
 

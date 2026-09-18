@@ -13,6 +13,7 @@
   "titres-injectes-sans-niveau": 0,
   "sauts-de-niveau-de-titre": 0,
   "controles-desactives": 6,
+  "boutons-de-priorite-implicite": 0,
   "fils-d-ariane-qui-renomment-leur-parent": 0,
   "titres-de-modale-en-h1": 0,
   "composants-dsfr-reecrits-a-la-main": 1,

@@ -86,7 +86,9 @@ export function Reglages({ lignes }: { lignes: readonly LigneDeReglage[] }) {
                 state={erreur ? "error" : "default"}
                 stateRelatedMessage={erreur}
               />
-              <Button type="submit">Régler</Button>
+              <Button priority="primary" type="submit">
+                Régler
+              </Button>
             </form>
 
             {/* Le bouton de levée seulement là où quelque chose se lève : proposer de lever

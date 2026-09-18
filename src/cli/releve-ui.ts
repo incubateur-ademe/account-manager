@@ -672,6 +672,20 @@ const MESURES: readonly Mesure[] = [
     },
   },
   {
+    id: "boutons-de-priorite-implicite",
+    libelle: "Boutons dont la priorité n'est pas déclarée",
+    cible:
+      "react-dsfr rend un bouton en primaire quand rien ne le dit. Le niveau le plus fort s'obtient donc en n'écrivant rien, et aucune relecture ne le voit passer.",
+    compter: (sources) =>
+      resultat(
+        sources.flatMap((source) =>
+          balisesOuvrantes(source, "Button")
+            .filter(({ texte }) => !/\bpriority=/.test(texte))
+            .map(({ site }) => site),
+        ),
+      ),
+  },
+  {
     id: "fils-d-ariane-qui-renomment-leur-parent",
     libelle: "Segments de fil d'Ariane qui ne reprennent pas le titre de leur parent",
     cible:

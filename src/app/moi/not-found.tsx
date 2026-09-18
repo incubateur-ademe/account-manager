@@ -37,7 +37,9 @@ export default function PageNonTrouveeDuParticipant() {
             Si vous avez saisi l'adresse à la main, vérifiez-la. Votre espace liste les dossiers qui
             vous sont ouverts, avec la date à laquelle chaque accès s'arrête.
           </p>
-          <Button linkProps={{ href: "/moi" }}>Revenir à mon espace</Button>
+          <Button priority="primary" linkProps={{ href: "/moi" }}>
+            Revenir à mon espace
+          </Button>
         </div>
         <div
           className={fr.cx(

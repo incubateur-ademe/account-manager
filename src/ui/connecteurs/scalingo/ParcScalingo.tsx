@@ -286,7 +286,7 @@ function FormulaireDeRole({ cible }: { cible: CibleDuGeste }) {
         </p>
       )}
 
-      <Button type="submit" disabled={envoiEnCours}>
+      <Button priority="primary" type="submit" disabled={envoiEnCours}>
         {envoiEnCours ? MOTS_DE_SCALINGO.role.attente : MOTS_DE_SCALINGO.role.envoi}
       </Button>
     </form>
