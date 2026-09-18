@@ -2,6 +2,7 @@ import { fr } from "@codegouvfr/react-dsfr";
 import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import { Table } from "@codegouvfr/react-dsfr/Table";
+import type { Metadata } from "next";
 
 import { LIBELLE_ETAT_COLLECTE } from "@/core/lexique";
 import { prisma } from "@/lib/db";
@@ -10,6 +11,8 @@ import { collecteEnCours } from "@/lib/sync/executer";
 import { BoutonCollecte } from "./BoutonCollecte";
 import { blocagesDuMoment, PASSAGES_AFFICHES } from "./blocages";
 import { GardeFouBloque } from "./GardeFouBloque";
+
+export const metadata: Metadata = { title: "Collectes" };
 
 export const dynamic = "force-dynamic";
 
@@ -79,6 +82,7 @@ export default async function CollectesPage() {
 
       {enCours ? (
         <Alert
+          as="h2"
           severity="info"
           className={fr.cx("fr-mb-3w")}
           title="Une collecte est en cours"

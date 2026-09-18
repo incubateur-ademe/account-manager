@@ -1,6 +1,8 @@
 import { fr } from "@codegouvfr/react-dsfr";
 import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Badge } from "@codegouvfr/react-dsfr/Badge";
+import { Breadcrumb } from "@codegouvfr/react-dsfr/Breadcrumb";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -441,6 +443,26 @@ function EtapeOperateur({
   );
 }
 
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  await requireOperateur();
+
+  const { id } = await params;
+  const dossier = await prisma.accessCase.findUnique({
+    where: { id },
+    select: { kind: true, person: { select: { fullname: true } } },
+  });
+
+  return {
+    title: dossier
+      ? `${LIBELLE_DOSSIER[dossier.kind].nom} de ${dossier.person.fullname}`
+      : "Dossier introuvable",
+  };
+}
+
 export default async function DossierPage({
   params,
   searchParams,
@@ -721,6 +743,12 @@ export default async function DossierPage({
 
   return (
     <main className={fr.cx("fr-container", "fr-my-6w")}>
+      <Breadcrumb
+        currentPageLabel={`${mots.nom} de ${dossier.person.fullname}`}
+        homeLinkProps={{ href: "/" }}
+        segments={[{ label: "Dossiers", linkProps: { href: "/dossiers" } }]}
+      />
+
       <h1 className={fr.cx("fr-mb-1v")}>
         {mots.nom} de {dossier.person.fullname}{" "}
         {clos ? (
@@ -756,6 +784,7 @@ export default async function DossierPage({
 
       {etat?.obsolete && (brouillon || confirme) ? (
         <Alert
+          as="h2"
           severity="warning"
           className={fr.cx("fr-mb-3w")}
           title="Ce plan ne décrit plus la situation"
@@ -810,6 +839,7 @@ export default async function DossierPage({
 
       {etat?.perime && (brouillon || confirme) ? (
         <Alert
+          as="h2"
           severity="warning"
           className={fr.cx("fr-mb-3w")}
           title="Ce plan a dépassé sa date de validité"
@@ -842,6 +872,7 @@ export default async function DossierPage({
 
       {actuel && actuel.nonConfirmes.length > 0 ? (
         <Alert
+          as="h2"
           severity="warning"
           className={fr.cx("fr-mb-3w")}
           title="Des comptes ne peuvent pas entrer dans ce plan"
@@ -864,6 +895,7 @@ export default async function DossierPage({
 
       {actuel && actuel.refus.length > 0 ? (
         <Alert
+          as="h2"
           severity="error"
           className={fr.cx("fr-mb-3w")}
           title="Ce plan ne peut pas être construit"
@@ -894,6 +926,7 @@ export default async function DossierPage({
 
       {actuel && actuel.sansConnecteur.length > 0 ? (
         <Alert
+          as="h2"
           severity="warning"
           className={fr.cx("fr-mb-3w")}
           title="Des comptes sont hors des systèmes couverts"
@@ -903,6 +936,7 @@ export default async function DossierPage({
 
       {annule ? (
         <Alert
+          as="h2"
           severity="info"
           className={fr.cx("fr-mb-3w")}
           title={mots.annulationTitre}
@@ -988,6 +1022,7 @@ export default async function DossierPage({
 
           {plan.state === "PARTIALLY_EXECUTED" ? (
             <Alert
+              as="h3"
               severity="warning"
               className={fr.cx("fr-mt-2w")}
               title={mots.echecTitre}
@@ -1008,6 +1043,7 @@ export default async function DossierPage({
               clic fera avant de le faire. */}
           {simulation ? (
             <Alert
+              as="h3"
               severity="info"
               className={fr.cx("fr-mb-2w")}
               small
@@ -1016,6 +1052,7 @@ export default async function DossierPage({
             />
           ) : (
             <Alert
+              as="h3"
               severity="warning"
               className={fr.cx("fr-mb-2w")}
               small

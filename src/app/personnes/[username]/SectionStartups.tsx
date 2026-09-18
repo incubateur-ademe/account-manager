@@ -5,10 +5,9 @@ import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import Link from "next/link";
 
 import { LIBELLE_PHASE } from "@/core/libelle-startup";
+import { Absent } from "@/ui/Absent";
 import { dateFr } from "@/ui/dates";
 import { TableCustom } from "@/ui/TableCustom";
-
-import { Absent } from "./Champs";
 import { ModaleRattacherStartup } from "./ModaleRattacherStartup";
 import type { StartupProposable } from "./RattacherStartup";
 import { RetirerRattachement } from "./RetirerRattachement";

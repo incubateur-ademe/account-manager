@@ -51,11 +51,26 @@ Zod 4 pour la validation.
 | `pnpm test:integration` | étage d'intégration, sur cette base dédiée |
 | `pnpm test:contrat` | étage de contrat, contre les vraies API distantes |
 | `pnpm test:e2e` | étage de bout en bout, à la main avant une livraison |
-| `pnpm verify` | lint + typecheck + test |
+| `pnpm cadre` | mesure les dispersions d'interface et refuse un plafond dépassé |
+| `pnpm cadre:poser` | fige les mesures actuelles comme nouveaux plafonds |
+| `pnpm verify` | lint + cadre + typecheck + test |
 | `pnpm sync` | collecte sur les systèmes cibles |
 | `pnpm db:generate` / `db:migrate` / `db:deploy` / `db:studio` | Prisma |
 
 `pnpm verify` ne fait pas le build. Lance `/verif` pour la vérification complète.
+
+**Le cadre d'interface se tient par des plafonds, pas par des règles écrites.** `src/cli/releve-ui.ts`
+compte des dispersions : combien de façons différentes de faire un geste identique. Chaque compteur a
+un plafond dans `src/cli/seuils-ui.json`, qui **ne remonte jamais**. Un dépassement fait échouer
+`pnpm verify`, et une valeur descendue sous son plafond est signalée pour qu'on la fige avec
+`pnpm cadre:poser`. Sans ce second geste, une reprise gagnée se reperd au lot suivant sans que rien ne
+le dise.
+
+Une mesure se pose avec ses exclusions, jamais sans. Un compteur qui ne peut pas atteindre zéro à
+cause d'un cas légitime finit désactivé, ce qui coûte plus cher que son absence. Les exclusions déjà
+posées portent leur raison en commentaire : `src/cli` n'affiche rien à un opérateur, une route qui
+retourne `Promise<never>` ne rend aucun écran, l'accueil hérite du titre du gabarit racine, et
+`fr-search-bar` s'écrit à la main faute de composant `SearchBar` dans react-dsfr.
 
 **Après toute modification du schéma Prisma, lance `pnpm db:generate` puis redémarre `pnpm dev`.**
 Deux caches se cumulent. `prisma migrate dev` applique bien la migration en base mais **ne régénère
@@ -186,6 +201,31 @@ défauts ou de décisions s'écrit en puces, pas en paragraphes. Le cheminement 
 ce qui a été essayé puis abandonné n'apprend rien à qui relit, seul le résultat compte. Une
 description qu'on ne lit pas en entier ne protège de rien. Les deux endroits qui méritent d'être
 longs sont ce qui n'a pas été vérifié, et ce qui reste ouvert.
+
+**Un texte d'écran dit quoi faire, jamais pourquoi la règle existe.** La règle « aucun commentaire sauf
+le POURQUOI non évident » vaut pour le code, pas pour l'interface. Un texte d'aide dit quoi saisir et ce
+qui va arriver ; un libellé de bouton dit ce que le clic fait, du point de vue de qui clique. Cinq
+interdits, tous mesurés sur ce dépôt :
+
+- **Pas de deux-points suivis d'une explication.** Sur 144 emplois, 142 ouvrent une justification et 2
+  une consigne. Les deux-points introduisent une consigne ou une donnée, rien d'autre.
+- **Pas de clause qui revient sur ce qu'on vient d'affirmer** : « ce qui ne dit rien de », « ce qui
+  n'est pas la même chose que », « et ce silence n'est pas une réponse ». Annoncer le fait, s'arrêter.
+- **Pas de phrase qui redit ce que l'écran montre déjà.** Un tableau n'a pas besoin qu'on le résume
+  au-dessus, un bouton n'a pas besoin qu'on annonce son existence.
+- **Un chapeau porte un fait**, un chiffre, une date, un mécanisme invisible ailleurs. S'il paraphrase
+  son `h1` ou annonce les `h2` qui suivent, il se supprime.
+- **Pas de personnification.** Un système n'a ni intention ni voix.
+
+Les règles de forme viennent du DSFR et se tiennent sans discussion : verbe à l'infinitif en tête de
+libellé de bouton, impératif pour l'aide et les messages d'erreur, jamais les deux dans un même
+composant, majuscule initiale seule, aucune ponctuation finale sur un titre ni sur un en-tête de
+colonne, vouvoiement.
+
+**Une réécriture ne promet jamais plus que l'originale.** En resserrant, on remplace une observation
+prudente par une garantie qui sonne mieux. C'est arrivé ici : sept phrases fausses en une passe, dont
+trois introduites par la passe, et deux épinglées par ses propres tests neufs. Se méfier de tout absolu
+qu'on ajoute, « chaque », « aucun », « le seul », « toujours ».
 
 **Jamais de tiret cadratin (U+2014) ni de tiret demi-cadratin (U+2013)**, nulle part : ni prose, ni
 commentaire, ni code, ni message de commit. Virgule, deux-points, parenthèses ou point à la place. Le

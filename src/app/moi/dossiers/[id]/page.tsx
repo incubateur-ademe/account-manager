@@ -218,6 +218,9 @@ export default async function DossierDuParticipantPage({
       <h1 className={fr.cx("fr-mb-1v")}>
         {mots.nom} de {dossier.person.fullname}
       </h1>
+      {/* Pas de fil d'Ariane ici : react-dsfr nomme « Accueil » le lien de tête, quand la barre de
+          navigation appelle la même destination « Mon espace ». Deux noms pour un endroit, sur le
+          même écran, coûtent plus que l'absence de fil. */}
       <p className={fr.cx("fr-text--sm")}>
         <Link href="/moi">Revenir à mon espace</Link>
       </p>

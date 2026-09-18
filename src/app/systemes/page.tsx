@@ -2,6 +2,7 @@ import { fr } from "@codegouvfr/react-dsfr";
 import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import { Table } from "@codegouvfr/react-dsfr/Table";
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import { CONNECTEURS, catalogueDOctroi } from "@/connectors";
@@ -13,6 +14,8 @@ import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
 import { aUnePage } from "@/ui/connecteurs/registre";
 import { type ScopeAttendu, scopeAttendu } from "@/ui/connecteurs/scope-attendu";
+
+export const metadata: Metadata = { title: "Systèmes couverts" };
 
 export const dynamic = "force-dynamic";
 

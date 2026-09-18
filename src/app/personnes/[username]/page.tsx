@@ -33,6 +33,7 @@ import { env } from "@/lib/env";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
 import { dernierPassageComplet } from "@/lib/sync/perimetre";
+import { Absent } from "@/ui/Absent";
 import { dateFr } from "@/ui/dates";
 import { SEVERITE_STATUT } from "@/ui/severites";
 import { TableCustom } from "@/ui/TableCustom";
@@ -40,7 +41,7 @@ import { tolerance } from "@/ui/tolerance";
 
 import { ActionsDePage } from "./ActionsDePage";
 import { CeQuiAppelleUneAction } from "./CeQuiAppelleUneAction";
-import { Absent, Champ } from "./Champs";
+import { Champ } from "./Champs";
 import { expliquerStatut, SEVERITE_APPARTENANCE, SOURCE, STATUT_A_TRAITER } from "./libelles";
 import { motifsDAction } from "./motifs";
 import { SectionComptesExternes } from "./SectionComptesExternes";

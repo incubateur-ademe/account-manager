@@ -111,6 +111,7 @@ export function Identifiant({ username }: { username: string }) {
 
       {fusion === null ? null : fusion.blocage !== null ? (
         <Alert
+          as="h3"
           className={fr.cx("fr-mb-2w")}
           severity="error"
           small
@@ -120,6 +121,7 @@ export function Identifiant({ username }: { username: string }) {
       ) : (
         <>
           <Alert
+            as="h3"
             className={fr.cx("fr-mb-2w")}
             severity="warning"
             title={`« ${fusion.cible} » existe déjà`}

@@ -2,6 +2,7 @@ import { fr } from "@codegouvfr/react-dsfr";
 import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Table } from "@codegouvfr/react-dsfr/Table";
 import { Tile } from "@codegouvfr/react-dsfr/Tile";
+
 import { CONNECTEURS } from "@/connectors";
 import { FOURNISSEUR_PERIMETRE, fraicheurDe, refusDArrivees, systemesMuets } from "@/core/collecte";
 import type { LigneDInventaire } from "@/core/inventaire";
@@ -145,6 +146,7 @@ export default async function AccueilPage() {
 
       {fraicheur.perimee ? (
         <Alert
+          as="h2"
           severity="warning"
           className={fr.cx("fr-mb-3w")}
           title="Ce que montre cet outil n'est plus à jour"
@@ -158,6 +160,7 @@ export default async function AccueilPage() {
 
       {muets.length > 0 ? (
         <Alert
+          as="h2"
           severity="warning"
           className={fr.cx("fr-mb-3w")}
           title={
@@ -204,6 +207,7 @@ export default async function AccueilPage() {
       <div className={fr.cx("fr-grid-row", "fr-grid-row--gutters", "fr-mt-4w")}>
         <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
           <Tile
+            titleAs="h2"
             title={`${constatsOuverts} constat${constatsOuverts > 1 ? "s" : ""}`}
             desc={
               `Dont ${sorties} sortie${sorties > 1 ? "s" : ""} du référentiel des personnes ` +
@@ -216,6 +220,7 @@ export default async function AccueilPage() {
         </div>
         <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
           <Tile
+            titleAs="h2"
             title={`${aTraiter} à traiter`}
             desc="Échéance dépassée au-delà du délai de grâce."
             linkProps={{ href: "/personnes?vue=a-traiter" }}
@@ -224,6 +229,7 @@ export default async function AccueilPage() {
         </div>
         <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
           <Tile
+            titleAs="h2"
             title={`${enSursis + bientot} à surveiller`}
             desc={`Échéance dans les ${thresholds.soonDays} jours, ou dépassée depuis peu.`}
             linkProps={{ href: "/personnes?vue=a-surveiller" }}
@@ -275,6 +281,7 @@ export default async function AccueilPage() {
         <div className={fr.cx("fr-grid-row", "fr-grid-row--gutters", "fr-mt-2w")}>
           <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
             <Tile
+              titleAs="h3"
               title={`${suivies.length} personne${suivies.length > 1 ? "s" : ""} suivie${suivies.length > 1 ? "s" : ""}`}
               desc={`Dont ${sansEcheance} sans échéance connue.`}
               linkProps={{ href: "/personnes" }}
@@ -283,6 +290,7 @@ export default async function AccueilPage() {
           </div>
           <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
             <Tile
+              titleAs="h3"
               title={`${inventaire.nonRevocables.total} compte${inventaire.nonRevocables.total > 1 ? "s" : ""} non révocable${inventaire.nonRevocables.total > 1 ? "s" : ""}`}
               desc={`${inventaire.nonRevocables.sansDetenteur} sans détenteur, ${inventaire.nonRevocables.ressemblance} rattaché${inventaire.nonRevocables.ressemblance > 1 ? "s" : ""} par ressemblance à confirmer.`}
               linkProps={{ href: "/comptes-isoles" }}
@@ -291,6 +299,7 @@ export default async function AccueilPage() {
           </div>
           <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
             <Tile
+              titleAs="h3"
               title={`${inventaire.comptesDeService.suivis} compte${inventaire.comptesDeService.suivis > 1 ? "s" : ""} de service`}
               desc={`Dont ${inventaire.comptesDeService.enRetard} en retard de revue.`}
               linkProps={{ href: "/comptes-de-service" }}
@@ -299,6 +308,7 @@ export default async function AccueilPage() {
           </div>
           <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
             <Tile
+              titleAs="h3"
               title={`${inventaire.startups.suivies} startup${inventaire.startups.suivies > 1 ? "s" : ""}`}
               desc={`Dont ${inventaire.startups.terminales} en phase terminale et portant encore quelqu'un, ce qui ne justifie plus aucun accès.`}
               linkProps={{ href: "/startups" }}
@@ -307,6 +317,7 @@ export default async function AccueilPage() {
           </div>
           <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
             <Tile
+              titleAs="h3"
               title={`${inventaire.operationsTracees} opération${inventaire.operationsTracees > 1 ? "s" : ""} tracée${inventaire.operationsTracees > 1 ? "s" : ""}`}
               desc={`Sur ${FENETRE_JOURNAL_JOURS} jours. Compteur approximatif : c'est une preuve d'activité, pas une mesure de couverture. L'écran du journal, lui, montre tout l'historique.`}
               linkProps={{ href: "/journal" }}

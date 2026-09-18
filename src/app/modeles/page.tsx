@@ -148,6 +148,7 @@ export default async function ModelesPage() {
 
       {orphelins.length > 0 ? (
         <Alert
+          as="h2"
           className={fr.cx("fr-mt-4w")}
           severity="warning"
           title={`${orphelins.length} modèle${orphelins.length > 1 ? "s" : ""} ne correspond${orphelins.length > 1 ? "ent" : ""} plus à aucune startup connue`}

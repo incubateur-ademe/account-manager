@@ -84,6 +84,7 @@ export default async function ModeleDeStartupPage({ params }: Props) {
 
       {startup ? null : (
         <Alert
+          as="h2"
           className={fr.cx("fr-mt-3w")}
           severity="warning"
           title="Cet identifiant ne correspond à aucune startup connue"
@@ -107,6 +108,7 @@ export default async function ModeleDeStartupPage({ params }: Props) {
 
             {autorise[moment] ? null : (
               <Alert
+                as="h3"
                 className={fr.cx("fr-mb-3w")}
                 severity="warning"
                 title={`Le modèle ${moment === "ONBOARDING" ? "d'arrivée" : "de départ"} de l'incubateur n'autorise pas les startups à le compléter`}

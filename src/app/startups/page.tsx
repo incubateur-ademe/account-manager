@@ -16,6 +16,7 @@ import {
 import { prisma } from "@/lib/db";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
+import { Absent } from "@/ui/Absent";
 import { dateFr } from "@/ui/dates";
 import { TableCustom } from "@/ui/TableCustom";
 
@@ -100,6 +101,7 @@ export default async function StartupsPage(props: {
   const inconnus =
     ghidsInconnus.length === 0 ? null : (
       <Alert
+        as="h2"
         severity="info"
         className={fr.cx("fr-mt-4w")}
         title={
@@ -134,6 +136,7 @@ export default async function StartupsPage(props: {
 
       {fraicheur.perimee ? (
         <Alert
+          as="h2"
           severity="warning"
           className={fr.cx("fr-mb-3w")}
           title="Ce que montre cet écran n'est plus à jour"
@@ -148,6 +151,7 @@ export default async function StartupsPage(props: {
       <div className={fr.cx("fr-grid-row", "fr-grid-row--gutters", "fr-mb-4w")}>
         <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
           <Tile
+            titleAs="h2"
             title={`${actives} active${actives > 1 ? "s" : ""}`}
             desc="Ni en phase terminale, ni sorties de l'incubateur. Une phase inconnue reste comptée ici."
             linkProps={{ href: "/startups?vue=actives" }}
@@ -156,6 +160,7 @@ export default async function StartupsPage(props: {
         </div>
         <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
           <Tile
+            titleAs="h2"
             title={`${terminalesPeuplees} en phase terminale`}
             desc="Seulement celles qui ont encore des membres : une startup terminée sans personne dessus est un fait d'archive, pas un travail à faire."
             linkProps={{ href: "/startups?vue=terminales" }}
@@ -164,6 +169,7 @@ export default async function StartupsPage(props: {
         </div>
         <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
           <Tile
+            titleAs="h2"
             title={`${sortiesPeuplees} sortie${sortiesPeuplees > 1 ? "s" : ""}`}
             desc="Plus rendues par l'incubateur, et portant encore quelqu'un : des personnes elles-mêmes sorties du référentiel des personnes, ou rattachées à cette startup à la main."
             linkProps={{ href: "/startups?vue=sorties" }}
@@ -231,7 +237,7 @@ export default async function StartupsPage(props: {
                   {
                     children:
                       ligne.currentPhase === null ? (
-                        <span className={fr.cx("fr-hint-text")}>inconnue</span>
+                        <Absent mention="inconnue" />
                       ) : (
                         (LIBELLE_PHASE[ligne.currentPhase] ?? ligne.currentPhase)
                       ),
@@ -240,7 +246,7 @@ export default async function StartupsPage(props: {
                     children: ligne.phaseStart ? (
                       dateFr.format(ligne.phaseStart)
                     ) : (
-                      <span className={fr.cx("fr-hint-text")}>inconnue</span>
+                      <Absent mention="inconnue" />
                     ),
                   },
                   {

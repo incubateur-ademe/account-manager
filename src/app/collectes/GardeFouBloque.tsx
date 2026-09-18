@@ -38,6 +38,7 @@ export function GardeFouBloque({ blocage }: { blocage: BlocageInstalle }) {
 
   return (
     <Alert
+      as="h2"
       className={fr.cx("fr-mb-3w")}
       severity="warning"
       title={`Sur ${blocage.provider}, plus aucune disparition ${redaction.quoi} n'est datée`}

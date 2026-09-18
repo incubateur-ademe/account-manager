@@ -3,6 +3,7 @@ import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import { Breadcrumb } from "@codegouvfr/react-dsfr/Breadcrumb";
 import { Table } from "@codegouvfr/react-dsfr/Table";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { connecteur } from "@/connectors";
@@ -27,6 +28,17 @@ const SEVERITE: Record<EtatRevue, "success" | "warning" | "error"> = {
 };
 
 const ORDRE: Record<EtatRevue, number> = { EN_RETARD: 0, BIENTOT: 1, A_JOUR: 2 };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  await requireOperateur();
+
+  const { cle } = await params;
+  const systeme = connecteur(cle);
+
+  return {
+    title: systeme && aUnePage(systeme.contract) ? systeme.contract.label : "Système introuvable",
+  };
+}
 
 export default async function ConnecteurPage({ params }: Props) {
   await requireOperateur();

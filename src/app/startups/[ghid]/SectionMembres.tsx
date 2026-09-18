@@ -8,6 +8,7 @@ import { RetirerRattachement } from "@/app/personnes/[username]/RetirerRattachem
 import type { MembreDeStartup, RattachementEchu } from "@/core/startups";
 import { LIBELLE_STATUT } from "@/core/statut";
 import type { MatchMethod } from "@/generated/prisma/enums";
+import { Absent } from "@/ui/Absent";
 import { dateFr } from "@/ui/dates";
 import { RATTACHEMENT_IDENTITE, SEVERITE_STATUT } from "@/ui/severites";
 import { TableCustom } from "@/ui/TableCustom";
@@ -116,11 +117,7 @@ export function SectionMembres({
                   ),
                 },
                 {
-                  children: membre.echeance ? (
-                    dateFr.format(membre.echeance)
-                  ) : (
-                    <span className={fr.cx("fr-hint-text")}>-</span>
-                  ),
+                  children: membre.echeance ? dateFr.format(membre.echeance) : <Absent />,
                 },
                 {
                   children: (
@@ -159,7 +156,7 @@ export function SectionMembres({
                 {
                   children:
                     membre.comptes.length === 0 ? (
-                      <span className={fr.cx("fr-hint-text")}>aucun</span>
+                      <Absent mention="aucun" />
                     ) : (
                       <span>
                         {membre.comptes.map((compte, rang) => (

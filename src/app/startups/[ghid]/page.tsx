@@ -19,6 +19,7 @@ import { phasesDesStartups } from "@/lib/appartenance";
 import { prisma } from "@/lib/db";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
+import { Absent } from "@/ui/Absent";
 import { dateFr } from "@/ui/dates";
 import { RATTACHEMENT_IDENTITE } from "@/ui/severites";
 
@@ -288,6 +289,7 @@ export default async function FicheStartupPage({ params }: Props) {
 
       {fraicheur.perimee ? (
         <Alert
+          as="h2"
           className={fr.cx("fr-mt-3w")}
           severity="warning"
           title="Ce que montre cet écran n'est plus à jour"
@@ -313,6 +315,7 @@ export default async function FicheStartupPage({ params }: Props) {
 
       {startup.vanishedAt ? (
         <Alert
+          as="h2"
           className={fr.cx("fr-mt-2w")}
           severity="warning"
           title="Cette startup n'est plus rendue par l'incubateur"
@@ -327,15 +330,9 @@ export default async function FicheStartupPage({ params }: Props) {
       <section className={fr.cx("fr-mt-4w")}>
         <h2 className={fr.cx("fr-h5")}>Situation</h2>
         <dl className={fr.cx("fr-grid-row", "fr-grid-row--gutters")}>
-          <Champ libelle="Phase">
-            {libellePhase ?? <span className={fr.cx("fr-hint-text")}>inconnue</span>}
-          </Champ>
+          <Champ libelle="Phase">{libellePhase ?? <Absent mention="inconnue" />}</Champ>
           <Champ libelle="Depuis">
-            {startup.phaseStart ? (
-              dateFr.format(startup.phaseStart)
-            ) : (
-              <span className={fr.cx("fr-hint-text")}>inconnu</span>
-            )}
+            {startup.phaseStart ? dateFr.format(startup.phaseStart) : <Absent mention="inconnue" />}
           </Champ>
           <Champ libelle="Première observation">{dateFr.format(startup.firstSeenAt)}</Champ>
           <Champ libelle="Dernière observation">{dateFr.format(startup.lastSeenAt)}</Champ>
