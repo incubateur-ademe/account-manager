@@ -86,6 +86,12 @@ test("relever ce qui ne se lit pas dans le code", async ({ browser }) => {
    * Les règles de forme que seul le navigateur sait tenir : elles portent sur ce qu'un écran rend,
    * pas sur ce que son source déclare. Le contenu d'une modale vit dans des composants enfants, et
    * la hauteur d'une ligne dépend de ce qu'on y a mis.
+   *
+   * « modales-sans-champ » ne vise pas zéro, et c'est délibéré. Les sept relevées sont deux modales
+   * répétées sur quatre écrans, toutes deux assumées : ouvrir un dossier ne se défait pas, donc le
+   * geste se confirme, et le menu de profils de l'arrivée ne s'affiche que si la politique en
+   * déclare. Une modale qui ne demande rien reste suspecte, mais elle est légitime quand elle
+   * confirme l'irréversible. Le plafond empêche d'en ajouter sans y penser.
    */
   const manquements: Record<string, string[]> = {
     "modales-sans-champ": [],

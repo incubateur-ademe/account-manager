@@ -70,6 +70,10 @@ export default async function ComptesDeServicePage() {
         titre qu'un accès expiré.
       </p>
 
+      <div className={fr.cx("fr-mb-4w")}>
+        <Declarer systemes={systemes} />
+      </div>
+
       {avecRevue.length === 0 ? (
         <p>
           Aucun compte de service. Un compte machine ne se découvre pas : il se déclare ici, et son
@@ -133,8 +137,6 @@ export default async function ComptesDeServicePage() {
           />
         </>
       )}
-
-      <Declarer systemes={systemes} />
     </main>
   );
 }
