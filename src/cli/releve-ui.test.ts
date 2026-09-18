@@ -195,6 +195,63 @@ describe("ce que le relevé compte, et ce qu'il refuse de compter", () => {
     );
     expect(mesure.compter([pageAFrontiere, frontiere]).valeur).toBe(1);
 
+    // Then le corps rendu par l'enveloppe est celui de son argument, jamais celui de son fichier.
+    // Prendre le fichier entier faisait entrer dans la séquence le h4 d'un voisin de déclaration que
+    // rien ne monte, et ce titre fantôme fabriquait un saut à lui seul.
+    const frontiereAVoisin = sourceDeTest(
+      "src/app/collectes/Frontiere.tsx",
+      `function Repli() {\n  return <Alert as="h2" title="Panne" />;\n}\n\nexport const Frontiere = catchError(Repli);\n\nfunction Voisin() {\n  return <Alert as="h4" title="Voisin" />;\n}`,
+    );
+    expect(mesure.compter([pageAFrontiere, frontiereAVoisin]).valeur).toBe(0);
+
+    // Then une enveloppe qui reçoit deux composants ne se devine pas, et le fichier entier reprend
+    // la main : retenir le premier argument ferait dépendre le chiffre de leur ordre.
+    const enveloppeADeux = sourceDeTest(
+      "src/app/collectes/Frontiere.tsx",
+      `function Repli() {\n  return <Alert as="h2" title="Panne" />;\n}\n\nfunction Autre() {\n  return <Alert as="h4" title="Autre" />;\n}\n\nexport const Frontiere = deux(Repli, Autre);`,
+    );
+    expect(mesure.compter([pageAFrontiere, enveloppeADeux]).valeur).toBe(1);
+
+    // Then deux enveloppes qui se passent l'une à l'autre rendent un chiffre au lieu de faire
+    // déborder la pile. Sans le garde, « pnpm cadre » ne mesure plus rien, il casse.
+    const mutuelles = sourceDeTest(
+      "src/app/collectes/Frontiere.tsx",
+      `const Frontiere = enveloppe(Autre);\nconst Autre = enveloppe(Frontiere);\nexport { Frontiere };`,
+    );
+    expect(mesure.compter([pageAFrontiere, mutuelles]).valeur).toBe(0);
+
+    // Then un import renommé garde ses titres. La déclaration s'appelle Bloc dans le fichier enfant
+    // et la balise montée s'appelle Section : ne retenir que le nom exporté rendait le composant
+    // introuvable dans le parent, et tous ses titres disparaissaient du relevé. Le dépôt n'écrit
+    // aucun import renommé aujourd'hui, donc rien d'autre que ce cas ne ferme l'angle mort.
+    const blocRenomme = sourceDeTest(
+      "src/app/collectes/Bloc.tsx",
+      `export function Bloc() {\n  return <Alert as="h3" title="Bloc" />;\n}\n\nfunction Autre() {\n  return <Alert as="h5" title="Autre" />;\n}`,
+    );
+    const pageQuiRenomme = sourceDeTest(
+      "src/app/collectes/page.tsx",
+      `import { Bloc as Section } from "./Bloc";\nexport default function Page() {\n  return <main><h1>Collectes</h1><Section /></main>;\n}`,
+    );
+    expect(mesure.compter([pageQuiRenomme, blocRenomme]).valeur).toBe(1);
+
+    // Then un écran est ce que rend son export par défaut, jamais ce que contient son fichier. Un
+    // composant déclaré à côté et monté nulle part y glissait ses titres, et cette page comptait un
+    // saut de h1 à h3 que personne ne voit.
+    const voisinNonMonte = sourceDeTest(
+      "src/app/collectes/page.tsx",
+      `export default function Page() {\n  return <main><h1>Collectes</h1></main>;\n}\n\nfunction Voisin() {\n  return <h3>Voisin</h3>;\n}`,
+    );
+    expect(mesure.compter([voisinNonMonte]).valeur).toBe(0);
+
+    // Then une ligne en colonne zéro dans un gabarit multi-ligne ne rend pas l'écran muet. Elle
+    // coupe la plage de l'export par défaut avant son return, et sans repli sur le fichier entier
+    // les deux titres disparaissaient, le compteur affichant un gain là où il perdait la vue.
+    const gabaritCoupe = sourceDeTest(
+      "src/app/collectes/page.tsx",
+      "export default function Page() {\n  const aide = `une ligne\nexport const x = 1;\nfin`;\n  return <main><h1>Collectes</h1><h3>Suite</h3></main>;\n}",
+    );
+    expect(mesure.compter([gabaritCoupe]).valeur).toBe(1);
+
     // Then un composant monté deux fois rend ses titres deux fois, et son second montage peut créer
     // un saut. Ne retenir que le premier montage insérait ici un h2 de moins, et le saut de h2 à h4
     // disparaissait du compteur.

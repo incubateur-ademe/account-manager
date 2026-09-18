@@ -506,18 +506,50 @@ function titresDuFichier(source: Source, plage: Plage): TitreRendu[] {
 }
 
 /*
- * Le corps d'un symbole exporté, borné par la déclaration de premier niveau qui le suit. Sans cette
- * borne, la récursion donne à un SYMBOLE les titres de tout le FICHIER d'où il vient : page.tsx
- * importe six symboles de Pointage.tsx, et le bouton de recalcul, qui ne rend aucun titre, héritait
- * des trois Alert que seul Pointage atteint.
- *
- * Retourne null quand la déclaration ne se laisse pas reconnaître, une réexportation par exemple. Le
- * fichier entier sert alors de plage, ce qui est le comportement d'avant plutôt qu'une devinette.
+ * La borne d'un corps, commune au symbole importé et à l'export par défaut de l'écran. Sans elle, la
+ * récursion donne à un SYMBOLE les titres de tout le FICHIER d'où il vient : page.tsx importe six
+ * symboles de Pointage.tsx, et le bouton de recalcul, qui ne rend aucun titre, héritait des trois
+ * Alert que seul Pointage atteint.
  */
 const DEBUT_DE_DECLARATION =
   "^(?:export|const|let|var|function|async|class|interface|type|enum)\\b";
 
-function corpsDuSymbole(source: Source, nom: string): Plage | null {
+function jusquALaDeclarationSuivante(source: Source, debut: number): Plage {
+  const finDeLaLigne = source.contenu.indexOf("\n", debut);
+  const suivante = new RegExp(DEBUT_DE_DECLARATION, "gm");
+  suivante.lastIndex = finDeLaLigne === -1 ? source.contenu.length : finDeLaLigne + 1;
+  const borne = suivante.exec(source.contenu);
+  return { debut, fin: borne === null ? source.contenu.length : borne.index };
+}
+
+/*
+ * Les identifiants passés nus en argument d'un appel. Une propriété, un littéral ou une fonction
+ * écrite sur place n'en sont pas : ils ne nomment aucune déclaration à aller lire.
+ */
+function identifiantsPassesEnArgument(texte: string): string[] {
+  const noms: string[] = [];
+  const appels = /[A-Za-z_$][\w$]*\s*\(([^()]*)\)/g;
+  let trouve = appels.exec(texte);
+  while (trouve !== null) {
+    for (const brut of (trouve[1] ?? "").split(",")) {
+      const nom = brut.trim();
+      if (/^[A-Za-z_$][\w$]*$/.test(nom)) noms.push(nom);
+    }
+    trouve = appels.exec(texte);
+  }
+  return noms;
+}
+
+/*
+ * Retourne null pour deux formes seulement : la déclaration introuvable, une réexportation par
+ * exemple, et l'enveloppe dont l'argument ne se résout pas ici. L'appelant prend alors le fichier
+ * entier, repli assumé qui attribue au symbole les titres de ses voisins.
+ */
+function corpsDuSymbole(
+  source: Source,
+  nom: string,
+  deja: ReadonlySet<string> = new Set(),
+): Plage | null {
   const echappe = nom.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
   const declaration = new RegExp(
     `^(?:export\\s+)?(?:default\\s+)?(?:async\\s+)?(?:function|const|let|var|class)\\s+${echappe}\\b`,
@@ -525,17 +557,23 @@ function corpsDuSymbole(source: Source, nom: string): Plage | null {
   );
   const trouve = declaration.exec(source.contenu);
   if (trouve === null) return null;
-  const finDeLaLigne = source.contenu.indexOf("\n", trouve.index);
-  const suivante = new RegExp(DEBUT_DE_DECLARATION, "gm");
-  suivante.lastIndex = finDeLaLigne === -1 ? source.contenu.length : finDeLaLigne + 1;
-  const borne = suivante.exec(source.contenu);
-  const plage = { debut: trouve.index, fin: borne === null ? source.contenu.length : borne.index };
+  const plage = jusquALaDeclarationSuivante(source, trouve.index);
+  if (/<[A-Za-z]/.test(source.contenu.slice(plage.debut, plage.fin))) return plage;
+
   /*
-   * Un export enveloppé, `export const X = catchError(Repli)`, donne une plage d'une ligne sans
-   * JSX : le corps vit dans l'argument, que rien ne monte en balise. Rendre cette plage-là couperait
-   * la mesure de l'écran sans qu'aucun compteur ne bouge, là où le fichier entier reste le repli.
+   * Un export enveloppé, `export const Frontiere = catchError(Repli)`, ne porte aucun JSX dans sa
+   * propre déclaration : le corps rendu est celui de l'argument. Le fichier entier, seul repli
+   * possible ici, donnerait à Frontiere les titres de ses voisins de fichier, que rien ne monte.
    */
-  return /<[A-Za-z]/.test(source.contenu.slice(plage.debut, plage.fin)) ? plage : null;
+  /*
+   * Une seule enveloppe se résout, celle qui ne reçoit qu'un composant. Au-delà, rien ne dit lequel
+   * est rendu, et retenir le premier ferait dépendre la mesure de l'ordre des arguments. Le repli
+   * sur le fichier entier sur-compte, ce qui se voit ; se tromper de corps ne se voit pas.
+   */
+  const arguments_ = identifiantsPassesEnArgument(source.contenu.slice(plage.debut, plage.fin));
+  const seul = arguments_.length === 1 ? arguments_[0] : undefined;
+  if (seul === undefined || seul === nom || deja.has(seul)) return null;
+  return corpsDuSymbole(source, seul, new Set([...deja, nom]));
 }
 
 function nomsMontes(source: Source, plage: Plage): string[] {
@@ -548,6 +586,26 @@ function nomsMontes(source: Source, plage: Plage): string[] {
     trouve = balises.exec(source.contenu);
   }
   return [...noms];
+}
+
+/*
+ * Un import renomme : `import { Bloc as Section }` déclare `Bloc` dans le fichier enfant et monte
+ * `<Section>` dans le parent. Ne garder que l'un des deux noms fait disparaître du relevé tous les
+ * titres de ce composant.
+ */
+function specificateursImportes(
+  liste: string,
+): { readonly exporte: string; readonly local: string }[] {
+  const trouves: { exporte: string; local: string }[] = [];
+  for (const brut of liste.split(",")) {
+    const decoupe = /^(?:type\s+)?([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?$/.exec(
+      brut.trim(),
+    );
+    const exporte = decoupe?.[1];
+    if (exporte === undefined) continue;
+    trouves.push({ exporte, local: decoupe?.[2] ?? exporte });
+  }
+  return trouves;
 }
 
 function titresRendus(
@@ -584,15 +642,14 @@ function titresRendus(
   while (trouve !== null) {
     const chemin = cheminImporte(source, trouve[2] ?? "");
     const enfant = chemin === null ? undefined : parChemin.get(chemin);
-    for (const nom of (trouve[1] ?? "").split(",").map((m) => m.trim().split(" ")[0])) {
-      if (nom === undefined || nom.length === 0) continue;
-      importes.add(nom);
+    for (const { exporte, local } of specificateursImportes(trouve[1] ?? "")) {
+      importes.add(local);
       if (enfant === undefined || vus.has(enfant.chemin)) continue;
       inserer(
-        nom,
+        local,
         titresRendus(
           enfant,
-          corpsDuSymbole(enfant, nom) ?? { debut: 0, fin: enfant.contenu.length },
+          corpsDuSymbole(enfant, exporte) ?? { debut: 0, fin: enfant.contenu.length },
           parChemin,
           new Set([...vus, source.chemin]),
           new Set(),
@@ -617,10 +674,39 @@ function titresRendus(
   return titres.sort((a, b) => a.position - b.position);
 }
 
+/*
+ * Le corps de ce qu'une route rend. Trois formes se reconnaissent : la fonction nommée, la fonction
+ * anonyme, et le renvoi d'un symbole déclaré plus haut.
+ */
+const porteDuJsx = (source: Source, plage: Plage): boolean =>
+  /<[A-Za-z]/.test(source.contenu.slice(plage.debut, plage.fin));
+
+function corpsDeLExportParDefaut(source: Source): Plage | null {
+  const fonction = /^export\s+default\s+(?:async\s+)?(?:function|class)\b/m.exec(source.contenu);
+  if (fonction !== null) {
+    const plage = jusquALaDeclarationSuivante(source, fonction.index);
+    /*
+     * Même filet que pour un symbole, et il compte davantage ici : une ligne en colonne zéro dans un
+     * gabarit multi-ligne coupe la plage avant le return, et c'est l'écran entier qui devient muet.
+     * Le compteur affiche alors un gain, et le cadre invite à figer la perte.
+     */
+    return porteDuJsx(source, plage) ? plage : null;
+  }
+  const renvoi = /^export\s+default\s+([A-Za-z_$][\w$]*)\s*;/m.exec(source.contenu);
+  const nom = renvoi?.[1];
+  return nom === undefined ? null : corpsDuSymbole(source, nom);
+}
+
+/*
+ * Un écran est ce que rend son export par défaut, jamais ce que contient son fichier. Partir du
+ * fichier entier faisait entrer dans la séquence les titres des déclarations voisines : une page qui
+ * rend un h1 et déclare à côté un composant à h3 que rien ne monte comptait un saut que personne ne
+ * voit. Le repli, quand aucun export par défaut ne se reconnaît, reste le fichier entier.
+ */
 function titresDeLEcran(source: Source, parChemin: ReadonlyMap<string, Source>): TitreRendu[] {
   return titresRendus(
     source,
-    { debut: 0, fin: source.contenu.length },
+    corpsDeLExportParDefaut(source) ?? { debut: 0, fin: source.contenu.length },
     parChemin,
     new Set(),
     new Set(),
@@ -827,7 +913,7 @@ export const MESURES: readonly Mesure[] = [
     id: "sauts-de-niveau-de-titre",
     libelle: "Ruptures dans la hiérarchie des titres d'un écran",
     cible:
-      "Le RGAA veut une hiérarchie sans saut. Un h3 posé après un h1 en est un, une remontée de h3 à h2 aussi.",
+      "Le RGAA veut une hiérarchie sans saut. Un h3 posé après un h1 en est un. Une remontée de h3 à h2 n'en est pas un, et ne se compte pas.",
     compter: (sources) => {
       const parChemin = new Map(sources.map((source) => [source.chemin, source]));
       const sites: Site[] = [];
