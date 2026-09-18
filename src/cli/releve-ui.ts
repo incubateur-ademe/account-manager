@@ -619,6 +619,20 @@ const MESURES: readonly Mesure[] = [
     },
   },
   {
+    id: "titres-de-modale-en-h1",
+    libelle: "Modales laissant leur titre en h1",
+    cible:
+      "react-dsfr rend un titre de modale en h1. Chaque modale déclarée ajoute donc un second h1 au document, quoi qu'en dise le code de la page.",
+    compter: (sources) =>
+      resultat(
+        sources.flatMap((source) =>
+          balisesOuvrantes(source, "[A-Za-z][\\w]*\\.Component")
+            .filter(({ texte }) => !/\btitleAs=/.test(texte))
+            .map(({ site }) => site),
+        ),
+      ),
+  },
+  {
     id: "composants-dsfr-reecrits-a-la-main",
     libelle: "Classes racines de composants react-dsfr écrites à la main",
     cible: "Le composant existe et il est typé. Sa classe n'a aucune raison d'être écrite ici.",

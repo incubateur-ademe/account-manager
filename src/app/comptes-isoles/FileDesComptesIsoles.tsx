@@ -136,7 +136,7 @@ export function FileDesComptesIsoles({
         }))}
       />
 
-      <modale.Component title="À qui appartient ce compte" size="large">
+      <modale.Component titleAs="h2" title="À qui appartient ce compte" size="large">
         {choisi === null ? null : (
           <>
             {/* Un `div` et non un `p` : le badge du système de design rend lui-même un

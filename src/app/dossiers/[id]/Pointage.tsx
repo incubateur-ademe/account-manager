@@ -64,7 +64,7 @@ export function BoutonAnnuler({
         </Button>
       ) : null}
 
-      <modaleAnnulation.Component title={mots.annuler}>
+      <modaleAnnulation.Component titleAs="h2" title={mots.annuler}>
         {/* Le formulaire reste monté quoi qu'il arrive : l'annulation fait basculer
             `annulable` à faux avant que son effet de fermeture n'ait eu son tour, et
             un formulaire démonté à cet instant emporte le dialogue ouvert avec lui,

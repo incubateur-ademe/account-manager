@@ -199,6 +199,7 @@ export function RattacherPersonne({
       </span>
 
       <modaleRattacherPersonne.Component
+        titleAs="h2"
         title={`Rattacher une personne à ${nomStartup}`}
         size="large"
       >

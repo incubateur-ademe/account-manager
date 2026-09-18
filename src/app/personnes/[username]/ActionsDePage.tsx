@@ -91,6 +91,7 @@ export function ActionsDePage({
       </div>
 
       <modaleAppartenance.Component
+        titleAs="h2"
         title={surcharge ? "Changer son appartenance" : "Forcer son appartenance"}
       >
         <p className={fr.cx("fr-text--sm")}>

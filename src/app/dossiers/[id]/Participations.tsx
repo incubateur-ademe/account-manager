@@ -246,7 +246,7 @@ function Octroi({
         {LIBELLE_OCTROI.declencheur}
       </Button>
 
-      <modaleOctroi.Component title={LIBELLE_OCTROI.titre}>
+      <modaleOctroi.Component titleAs="h2" title={LIBELLE_OCTROI.titre}>
         <FormulaireOctroi key={ouverture} dossierId={dossierId} domainesMenaces={domainesMenaces} />
       </modaleOctroi.Component>
     </>

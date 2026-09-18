@@ -56,7 +56,7 @@ export function BoutonDossier(
         <Aide>{mots.aideOuverture}</Aide>
       </span>
 
-      <modale.Component title={mots.ouvrir}>
+      <modale.Component titleAs="h2" title={mots.ouvrir}>
         {proprietes.sens === "ONBOARDING" ? (
           <FormulaireOuverture
             key={ouverture}
