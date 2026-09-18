@@ -334,7 +334,7 @@ describe("ce que l'action de sortie accepte de l'écran qui l'appelle", () => {
     // la sienne.
     expect(autres).toEqual({
       erreur:
-        "La chute a changé depuis l'affichage de cette page. Rechargez-la et décidez sur les nombres du jour : une décision porte l'ampleur qu'on avait sous les yeux, et rien de plus profond ne sera daté sur elle.",
+        "La chute a changé depuis l'affichage de cette page. Rechargez-la et décidez sur les nombres du jour.",
     });
     expect(base.autorisations).toEqual([]);
     expect(base.journal).toEqual([]);
@@ -456,7 +456,7 @@ describe("ce que l'action de sortie accepte de l'écran qui l'appelle", () => {
     // fermé la seule sortie du garde-fou.
     expect(sansMesure).toEqual({
       erreur:
-        "La dernière collecte n'a pas pu compter combien de personnes une datation ferait partir. Une décision posée maintenant resterait sans effet et ne daterait rien : reprenez-la quand ce nombre sera de nouveau annoncé.",
+        "La dernière collecte n'a pas pu compter combien de personnes une datation ferait partir. Reprenez quand ce nombre sera de nouveau annoncé.",
     });
     expect(base.autorisations).toEqual([]);
     expect(base.journal).toEqual([]);

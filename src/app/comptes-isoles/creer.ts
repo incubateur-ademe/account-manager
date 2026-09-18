@@ -317,7 +317,7 @@ export async function declarerCompteDeServicePourCompte(
     }
     if (cause instanceof CompteDejaTranche) {
       return {
-        erreur: "Ce compte vient d'être traité ailleurs : rouvrez la file pour voir où il en est.",
+        erreur: "Ce compte vient d'être traité ailleurs. Rouvrez la file pour voir où il en est.",
       };
     }
     throw cause;

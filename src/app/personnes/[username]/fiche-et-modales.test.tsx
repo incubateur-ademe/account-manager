@@ -111,8 +111,7 @@ describe("la fiche d'une personne et ses deux modales", () => {
     // When on motive la décision en deux caractères et qu'on force l'inclusion
     await utilisateur.type(raison(), "ok");
     repond(forcer, {
-      erreur:
-        "Indiquez la raison de cette décision : une appartenance sans motif est une décision qu'on ne saura pas réexaminer.",
+      erreur: "Indiquez la raison de cette décision, en trois caractères au moins.",
     });
     await utilisateur.click(screen.getByRole("button", { name: "Forcer dans l'incubateur" }));
 
@@ -128,7 +127,7 @@ describe("la fiche d'une personne et ses deux modales", () => {
     // Then le refus se lit à sa place, c'est-à-dire décrit par le champ fautif et non
     // dans un coin du formulaire : un message que le champ ne désigne pas laisse
     // chercher ce qu'il faut corriger.
-    const message = await screen.findByText(/une appartenance sans motif/);
+    const message = await screen.findByText(/en trois caractères au moins/);
     expect(raison().getAttribute("aria-describedby")).toBe(message.id);
     expect(message.className).toContain("fr-error-text");
 
@@ -154,7 +153,7 @@ describe("la fiche d'une personne et ses deux modales", () => {
     await vi.waitFor(() => {
       expect(fermer).toHaveBeenCalledTimes(1);
     });
-    expect(screen.queryByText(/une appartenance sans motif/)).toBeNull();
+    expect(screen.queryByText(/en trois caractères au moins/)).toBeNull();
     expect(raison().value).toBe("");
   });
 
@@ -218,7 +217,7 @@ describe("la fiche d'une personne et ses deux modales", () => {
     // When le serveur refuse tant que la prolongation n'est pas confirmée
     repond(rattacher, {
       erreur:
-        "Cette date dépasse la fin de mission connue : le rattachement prolongera ses accès d'autant. Confirmez pour continuer.",
+        "Cette date dépasse la fin de mission connue. Le rattachement prolongera ses accès d'autant. Confirmez pour continuer.",
       confirmationRequise: true,
     });
     await utilisateur.click(boutonRattacher());
@@ -254,7 +253,7 @@ describe("la fiche d'une personne et ses deux modales", () => {
     await utilisateur.type(jusquAu(), "2027-12-31");
     repond(rattacher, {
       erreur:
-        "Cette date dépasse la fin de mission connue : le rattachement prolongera ses accès d'autant. Confirmez pour continuer.",
+        "Cette date dépasse la fin de mission connue. Le rattachement prolongera ses accès d'autant. Confirmez pour continuer.",
       confirmationRequise: true,
     });
     await utilisateur.click(boutonRattacher());

@@ -94,7 +94,7 @@ export function RattacherStartup({
           className={fr.cx("fr-mb-2w")}
           severity="warning"
           small
-          description={`Cette date dépasse la fin de mission connue (${missionEnd}) : le rattachement fera courir ses accès au-delà.`}
+          description={`Cette date dépasse la fin de mission connue (${missionEnd}). Le rattachement fera courir ses accès au-delà.`}
         />
       ) : null}
 
@@ -135,8 +135,7 @@ export function RattacherStartup({
       </Button>
 
       <p className={fr.cx("fr-text--sm", "fr-mt-2w")}>
-        Le constat de startups terminées ne se lève ni ne se ferme sur ce geste : il est revu à la
-        prochaine collecte.
+        Le constat de startups terminées est revu à la prochaine collecte, pas sur ce geste.
       </p>
     </form>
   );

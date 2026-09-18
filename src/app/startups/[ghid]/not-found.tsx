@@ -9,10 +9,7 @@ export default function StartupIntrouvable() {
         Aucune startup connue ne porte cet identifiant. Elle n'a peut-être jamais été collectée pour
         cet incubateur, ou son ghid a changé côté beta.gouv.
       </p>
-      <p>
-        Les identifiants sont en minuscules, et cette adresse est sensible à la casse : une
-        majuscule de trop suffit à ne rien trouver, sans que rien ne soit en panne.
-      </p>
+      <p>Les identifiants sont en minuscules, et cette adresse est sensible à la casse.</p>
       <Link className={fr.cx("fr-link")} href="/startups">
         Revenir à la liste des startups
       </Link>

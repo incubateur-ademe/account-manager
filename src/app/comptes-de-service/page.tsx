@@ -65,9 +65,8 @@ export default async function ComptesDeServicePage() {
       <h1>Comptes de service</h1>
 
       <p className={fr.cx("fr-text--lead")}>
-        Bots, jetons d'intégration continue et clés d'API. Ils n'ont pas de fin de mission : c'est
-        la revue périodique qui les remet en question, et une revue en retard est un constat au même
-        titre qu'un accès expiré.
+        Bots, jetons d'intégration continue et clés d'API. Sans fin de mission, c'est la revue
+        périodique qui les remet en question, et une revue en retard vaut constat.
       </p>
 
       <div className={fr.cx("fr-mb-4w")}>
@@ -76,8 +75,8 @@ export default async function ComptesDeServicePage() {
 
       {avecRevue.length === 0 ? (
         <p>
-          Aucun compte de service. Un compte machine ne se découvre pas : il se déclare ici, et son
-          compte constaté s'y rattache depuis la file des comptes isolés.
+          Aucun compte de service. Un compte machine se déclare ici, et son compte constaté s'y
+          rattache depuis la file des comptes isolés.
         </p>
       ) : (
         <>

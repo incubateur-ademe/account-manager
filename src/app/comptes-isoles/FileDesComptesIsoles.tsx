@@ -183,9 +183,9 @@ export function FileDesComptesIsoles({
               </ul>
             ) : null}
             <p className={fr.cx("fr-text--sm")}>
-              Un compte rattaché à la main l'est de façon sûre, et pourra donc justifier une
-              révocation : c'est un jugement, il est journalisé avec votre nom. Le plus souvent il
-              manque une fiche, plutôt qu'il ne faut retirer un accès.
+              Un compte rattaché à la main pourra justifier une révocation, et le rattachement est
+              journalisé avec votre nom. Le plus souvent il manque une fiche, plutôt qu'un accès à
+              retirer.
             </p>
             <Rattacher
               key={`${ouverture}:${choisi.id}`}

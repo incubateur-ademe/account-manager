@@ -91,7 +91,7 @@ export function Declarer({ systemes }: { systemes: readonly { key: string; label
               revue que personne ne peut éteindre. */}
           <Input
             label="Terme"
-            hintText="Facultatif. Pour un jeton émis, la date à laquelle il meurt de lui-même : c'est la seule reprise qui existe."
+            hintText="Facultatif. Pour un jeton émis, la date à laquelle il meurt de lui-même, et la seule reprise qui existe."
             nativeInputProps={{ name: "expiresAt", type: "date" }}
           />
 

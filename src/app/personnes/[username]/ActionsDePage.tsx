@@ -95,9 +95,8 @@ export function ActionsDePage({
         title={surcharge ? "Changer son appartenance" : "Forcer son appartenance"}
       >
         <p className={fr.cx("fr-text--sm")}>
-          Une décision d'appartenance dit à quel titre la personne relève de l'incubateur. Elle
-          n'ordonne rien : aucun accès n'est coupé, ses comptes continuent d'être examinés, et un
-          départ reste à instruire par un dossier.
+          Cette décision ne coupe aucun accès. Ses comptes continuent d'être examinés, et un départ
+          reste à instruire par un dossier.
         </p>
         <Appartenance
           key={ouverture}

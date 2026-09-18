@@ -327,5 +327,5 @@ export function refusDeMasse(masse: Masse, confirmee: boolean): string | null {
     return null;
   }
 
-  return `Ce plan ferait exécuter ${masse.executables} étapes d'un coup, au-delà du plafond de ${masse.seuil}. Un plan de cette taille est le plus souvent le signe d'un calcul qui a dérapé : relisez la liste étape par étape, écartez ce qui n'a rien à y faire, puis confirmez explicitement pour l'exécuter quand même.`;
+  return `Ce plan ferait exécuter ${masse.executables} étapes d'un coup, au-delà du plafond de ${masse.seuil} : relisez la liste étape par étape, écartez ce qui n'a rien à y faire, puis confirmez explicitement pour l'exécuter quand même.`;
 }

@@ -111,8 +111,7 @@ function Scope({
   if (!octroiDeclare) {
     return (
       <p className={fr.cx("fr-text--sm", "fr-mt-2w")}>
-        Aucun scope attendu : ce système ne déclare pas d'octroi, un profil ne peut donc pas encore
-        le viser.
+        Aucun scope attendu. Un profil ne peut pas encore viser ce système.
       </p>
     );
   }
@@ -120,7 +119,7 @@ function Scope({
   if (scope.etat === "illisible") {
     return (
       <p className={fr.cx("fr-text--sm", "fr-mt-2w")}>
-        Le scope attendu n'a pas pu être rendu : le schéma de ce connecteur n'est pas déclaratif.
+        Le scope attendu n'a pas pu être rendu, le schéma de ce connecteur n'étant pas déclaratif.
         C'est un défaut du connecteur, à corriger dans le code.
       </p>
     );
@@ -129,8 +128,8 @@ function Scope({
   if (scope.champs.length === 0) {
     return (
       <p className={fr.cx("fr-text--sm", "fr-mt-2w")}>
-        Aucun champ de scope : sur ce système, un accès ne se découpe pas, et un profil y laisse{" "}
-        <code>scope</code> vide.
+        Aucun champ de scope. Un accès ne s'y découpe pas, et un profil y laisse <code>scope</code>{" "}
+        vide.
       </p>
     );
   }
@@ -139,11 +138,8 @@ function Scope({
     <>
       <p className={fr.cx("fr-text--sm", "fr-mt-2w", "fr-mb-1w")}>
         Ce qu'un profil de la politique écrit sous <code>accesses[].scope</code> pour viser ce
-        système. C'est le schéma du connecteur lui-même, celui qui refusera la saisie, et non une
-        copie tenue à côté.{" "}
-        {scope.clesInconnuesRefusees
-          ? "Toute clé absente de ce tableau est refusée : dans un fichier écrit à la main, une clé inconnue est une faute de frappe."
-          : ""}
+        système. C'est le schéma du connecteur lui-même, pas une copie tenue à côté.{" "}
+        {scope.clesInconnuesRefusees ? "Toute clé absente de ce tableau est refusée." : ""}
       </p>
 
       <Table
@@ -245,15 +241,13 @@ export default async function SystemesPage() {
 
       <p className={fr.cx("fr-text--sm")}>
         Ce que l'outil sait faire sur chaque système, tel que ses credentials le permettent
-        aujourd'hui et non tel que le code l'espère. Un octroi ou un retrait automatique qui tombe
-        redevient un geste à faire à la main ; une lecture qui tombe, elle, s'arrête, et la marche à
-        suivre dit alors quoi vérifier pour qu'elle reparte.
+        aujourd'hui et non tel que le code l'espère.
       </p>
 
       {profils.etat === "illisible" ? (
         <p className={fr.cx("fr-text--sm")}>
-          La politique n'a pas pu être lue : les profils déclarés ne sont pas affichés. Le reste de
-          cet écran n'en dépend pas, et le détail est consigné dans les journaux du serveur.
+          La politique n'a pas pu être lue. Les profils déclarés ne sont pas affichés, le reste de
+          cet écran n'en dépend pas.
         </p>
       ) : null}
 
@@ -350,8 +344,7 @@ export default async function SystemesPage() {
         <section className={fr.cx("fr-mt-4w")}>
           <h2 className={fr.cx("fr-h5")}>Des profils visent un système que rien ne porte</h2>
           <p className={fr.cx("fr-text--sm")}>
-            Ces accès ne s'ouvriront jamais : aucun connecteur ne déclare ces clés. Ils se corrigent
-            dans <code>profiles</code>.
+            Ces accès ne s'ouvriront jamais. Ils se corrigent dans <code>profiles</code>.
           </p>
           {profils.horsCatalogue.map(({ systeme, acces }) => (
             <div key={systeme} className={fr.cx("fr-mt-2w")}>
@@ -368,7 +361,7 @@ export default async function SystemesPage() {
         severity="info"
         className={fr.cx("fr-mt-4w")}
         small
-        description="Un système absent de cette page n'est pas couvert : ni lu, ni signalé. Le catalogue systems[] de la politique, lui, ne sert encore à rien, aucun code ne le lit ; la clé connectors, elle, est lue par la collecte et par chaque connecteur qui s'en sert."
+        description="Un système absent de cette page n'est pas couvert, ni lu ni signalé. Dans la politique, c'est la clé connectors qui le déclare."
       />
     </main>
   );

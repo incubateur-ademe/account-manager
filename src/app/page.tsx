@@ -153,7 +153,7 @@ export default async function AccueilPage() {
           description={
             fraicheur.heures === null
               ? "Aucune collecte n'a jamais eu lieu. Ces écrans ne disent rien des accès réels."
-              : `La dernière collecte lancée remonte à ${fraicheur.heures} heures, au-delà des ${thresholds.collectStaleHours} heures admises. Les échéances et les constats affichés sont ceux de ce moment-là : quelqu'un a pu partir depuis sans que rien ici ne le signale.`
+              : `La dernière collecte lancée remonte à ${fraicheur.heures} heures, au-delà des ${thresholds.collectStaleHours} heures admises. Les échéances et les constats affichés datent de ce moment-là.`
           }
         />
       ) : null}
@@ -171,8 +171,7 @@ export default async function AccueilPage() {
           description={
             <>
               <p className={fr.cx("fr-mb-1w")}>
-                Une fiche qui ne montre aucun compte sur ces systèmes ne dit pas qu'il n'y en a pas
-                : elle dit qu'on n'a pas regardé.
+                Une fiche sans compte sur ces systèmes ne dit rien des accès réels.
               </p>
               <ul className={fr.cx("fr-mb-0")}>
                 {muets.map((muet) => (
@@ -199,7 +198,7 @@ export default async function AccueilPage() {
         </p>
       ) : (
         <p className={fr.cx("fr-text--sm")}>
-          Aucune collecte n'a encore été faite : les écrans se rempliront à la première collecte du
+          Aucune collecte n'a encore été faite. Les écrans se rempliront à la première collecte du
           traitement quotidien.
         </p>
       )}
@@ -241,10 +240,8 @@ export default async function AccueilPage() {
         <h2>Inventaire</h2>
 
         <p className={fr.cx("fr-text--sm")}>
-          Le tableau et les chiffres qui suivent sortent de la base, donc de la dernière collecte :
-          ils disent le dernier état constaté, jamais l'état du jour, et aucun n'est demandé à un
-          système au moment où vous lisez cette page. Les tuiles du bas, elles, disent chacune d'où
-          elles tiennent leur chiffre.
+          Le tableau et les chiffres qui suivent sortent de la dernière collecte, jamais de l'état
+          du jour.
         </p>
 
         <p className={fr.cx("fr-text--sm")}>
@@ -319,7 +316,7 @@ export default async function AccueilPage() {
             <Tile
               titleAs="h3"
               title={`${inventaire.operationsTracees} opération${inventaire.operationsTracees > 1 ? "s" : ""} tracée${inventaire.operationsTracees > 1 ? "s" : ""}`}
-              desc={`Sur ${FENETRE_JOURNAL_JOURS} jours. Compteur approximatif : c'est une preuve d'activité, pas une mesure de couverture. L'écran du journal, lui, montre tout l'historique.`}
+              desc={`Sur ${FENETRE_JOURNAL_JOURS} jours. Compteur approximatif. Le journal montre tout l'historique.`}
               linkProps={{ href: "/journal" }}
               orientation="horizontal"
             />

@@ -70,7 +70,7 @@ function lireEntree(formData: FormData, raisonRequise: boolean): Entree | { erre
   if (raisonRequise && raison.length < 3) {
     return {
       erreur:
-        "Indiquez la raison de ce traitement : elle sera recopiée sur la trace de chaque personne.",
+        "Indiquez la raison de ce traitement. Elle sera recopiée sur la trace de chaque personne.",
     };
   }
 

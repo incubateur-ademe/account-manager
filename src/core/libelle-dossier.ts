@@ -62,20 +62,20 @@ export const LIBELLE_DOSSIER: Record<SensDossier, LibelleDossier> = {
     aideOuverture:
       "Ouvrir un dossier d'arrivée et calculer la liste de ce qu'il faudra donner, système par système. Rien n'est exécuté et aucun accès n'est ouvert.",
     ouvertureExplication:
-      "Un dossier est ouvert et la liste de ce qu'il faut donner est calculée : ce que les modèles d'arrivée déclarent, et ce que le profil choisi ouvre sur les systèmes couverts. Rien n'est exécuté et aucun accès n'est ouvert : le plan reste à confirmer avant que le moindre appel ne soit possible.",
+      "Un dossier est ouvert et la liste de ce qu'il faut donner est calculée. Rien n'est exécuté et aucun accès n'est ouvert. Le plan reste à confirmer avant que le moindre appel ne soit possible.",
     dejaOuvert:
-      "Ce dossier était déjà ouvert : vous êtes revenu dessus, aucun second dossier n'a été créé. Une arrivée ne s'ouvre qu'une fois par personne tant qu'elle n'est pas close.",
+      "Ce dossier était déjà ouvert, aucun second dossier n'a été créé. Une arrivée ne s'ouvre qu'une fois par personne tant qu'elle n'est pas close.",
     cocher:
-      "Cocher une étape n'exécute rien : l'outil consigne ce que vous déclarez avoir fait, il n'ouvre aucun accès lui-même. La collecte suivante dira si le compte est réellement apparu.",
+      "Cocher une étape n'exécute rien. L'outil consigne ce que vous déclarez avoir fait. La collecte suivante dira si le compte est réellement apparu.",
     droitPossibleSur: "une arrivée décidée et pas encore close",
     aFaire: "Ce qu'il faudra donner",
     restant: "Ce qu'il reste à donner",
     propose: "Ce que ce plan proposait de donner",
     planVide:
-      "Aucune étape : aucun profil n'a été retenu à l'ouverture, ou celui qui l'a été n'ouvre rien sur les systèmes couverts, et aucun modèle d'arrivée ne concerne cette personne. Le dossier est bien ouvert, sa liste viendra de l'un ou de l'autre.",
+      "Aucune étape. Aucun profil n'a été retenu à l'ouverture, ou celui qui l'a été n'ouvre rien sur les systèmes couverts, et aucun modèle d'arrivée ne concerne cette personne. Le dossier est ouvert, sa liste viendra de l'un ou de l'autre.",
     sansPlanIssue: " L'annuler est la seule issue, une nouvelle arrivée restant ouvrable ensuite.",
     derive:
-      "Ce que les systèmes savent donner a changé depuis son calcul : il ne peut plus être confirmé en l'état.",
+      "Ce que les systèmes savent donner a changé depuis son calcul. Il ne peut plus être confirmé en l'état.",
     echecTitre: "Des accès n'ont pas été donnés",
     constat: {
       valeur: "deja-present",
@@ -88,7 +88,7 @@ export const LIBELLE_DOSSIER: Record<SensDossier, LibelleDossier> = {
     annulationConsequence:
       "Aucun accès n'a été ouvert par ce dossier, et une nouvelle arrivée reste ouvrable.",
     annulationEffet:
-      "Aucun accès n'est ouvert ni retiré par ce geste : l'outil n'a rien exécuté, il a seulement dit ce qu'il faudrait faire.",
+      "Aucun accès n'est ouvert ni retiré par ce geste. L'outil a seulement dit ce qu'il faudrait faire.",
     annulationSuite:
       "Une nouvelle arrivée restera ouvrable ensuite, et la fiche de la personne cessera d'annoncer celle-ci.",
     motif: "Pourquoi cette arrivée n'aura pas lieu",
@@ -101,23 +101,23 @@ export const LIBELLE_DOSSIER: Record<SensDossier, LibelleDossier> = {
     aideOuverture:
       "Ouvrir un dossier de départ et calculer la liste de ce qu'il faudra retirer, système par système. Rien n'est exécuté et aucun accès n'est coupé.",
     ouvertureExplication:
-      "Un dossier est ouvert et la liste de ce qu'il faut retirer est calculée à partir des comptes observés, système par système. Rien n'est exécuté et aucun accès n'est coupé : le plan reste à confirmer, puis à cocher à la main.",
+      "Un dossier est ouvert et la liste de ce qu'il faut retirer est calculée à partir des comptes observés. Rien n'est exécuté et aucun accès n'est coupé. Le plan reste à confirmer, puis à cocher à la main.",
     dejaOuvert:
-      "Ce dossier était déjà ouvert : vous êtes revenu dessus, aucun second dossier n'a été créé. Un départ ne s'ouvre qu'une fois par personne tant qu'il n'est pas clos.",
+      "Ce dossier était déjà ouvert, aucun second dossier n'a été créé. Un départ ne s'ouvre qu'une fois par personne tant qu'il n'est pas clos.",
     cocher:
-      "Cocher une étape n'exécute rien : l'outil consigne ce que vous déclarez avoir fait, il ne coupe aucun accès lui-même. La collecte suivante dira si le compte a réellement disparu.",
+      "Cocher une étape n'exécute rien. L'outil consigne ce que vous déclarez avoir fait. La collecte suivante dira si le compte a réellement disparu.",
     droitPossibleSur: "un départ décidé et pas encore clos",
     aFaire: "Ce qu'il faudra retirer",
     restant: "Ce qu'il reste à retirer",
     propose: "Ce que ce plan proposait de retirer",
     planVide:
-      "Aucune étape : aucun compte rattaché de façon sûre n'a été trouvé sur les systèmes couverts.",
+      "Aucune étape. Aucun compte rattaché de façon sûre n'a été trouvé sur les systèmes couverts.",
     sansPlanIssue: " L'annuler est la seule issue, un nouveau départ restant ouvrable ensuite.",
     // Sans nommer de cause, depuis qu'une tolérance peut écarter un système du calcul :
     // l'écart vient alors d'une décision humaine datée, et accuser les accès observés
     // enverrait chercher du côté de la collecte une différence que personne n'y trouvera.
     derive:
-      "Ce plan ne décrit plus ce que l'outil calculerait aujourd'hui : il ne peut plus être confirmé en l'état.",
+      "Ce plan ne décrit plus ce que l'outil calculerait aujourd'hui. Il ne peut plus être confirmé en l'état.",
     echecTitre: "Des accès sont restés ouverts",
     constat: {
       valeur: "deja-absent",
@@ -130,7 +130,7 @@ export const LIBELLE_DOSSIER: Record<SensDossier, LibelleDossier> = {
     annulationConsequence:
       "Aucun accès n'a été coupé par ce dossier, et un nouveau départ reste ouvrable.",
     annulationEffet:
-      "Aucun accès n'est coupé ni rouvert par ce geste : l'outil n'a rien exécuté, il a seulement dit ce qu'il faudrait faire.",
+      "Aucun accès n'est coupé ni rouvert par ce geste. L'outil a seulement dit ce qu'il faudrait faire.",
     annulationSuite:
       "Un nouveau départ restera ouvrable ensuite, et la fiche de la personne cessera d'annoncer celui-ci.",
     motif: "Pourquoi ce départ n'aura pas lieu",

@@ -16,7 +16,7 @@ const CAUSE_ORPHELIN =
 export const MODELE = {
   /** Ce qu'une modification fait, et ce qu'elle ne fait pas, aux plans qui existent. */
   effetSurLesPlans:
-    "Modifier un modèle ne change aucun plan déjà calculé : ses étapes ont été figées au moment où il a été créé. Un brouillon en cours se découvrira obsolète et se réparera par un recalcul ; un plan confirmé gardera les siennes et dira ce qui n'y figure pas.",
+    "Modifier un modèle ne change aucun plan déjà calculé. Ses étapes sont figées à sa création. Un brouillon se découvrira obsolète, et un recalcul le répare. Un plan confirmé gardera les siennes et dira ce qui n'y figure pas.",
 
   /**
    * Ce que devient une étape de startup quand l'incubateur ferme le moment. Le nombre
@@ -27,7 +27,7 @@ export const MODELE = {
     const pluriel = nombre > 1;
     return (
       `${nombre} étape${pluriel ? "s" : ""} déclarée${pluriel ? "s" : ""} ${ou} ` +
-      `${pluriel ? "sont neutralisées" : "est neutralisée"} : ` +
+      `${pluriel ? "sont neutralisées" : "est neutralisée"} ; ` +
       `${pluriel ? "elles restent" : "elle reste"} en base et ` +
       `${pluriel ? "n'entrent" : "n'entre"} dans aucun plan. ` +
       `Rouvrir l'autorisation ${pluriel ? "les rend" : "la rend"} à l'identique.`
@@ -35,20 +35,18 @@ export const MODELE = {
   },
 
   orphelins: {
-    plusieurs: `Les plans déjà calculés gardent leurs étapes, aucun nouveau ne les reprendra : leur identifiant n'est plus rendu par le référentiel des startups. ${CAUSE_ORPHELIN} Rien d'autre que cette liste ne mène plus à eux.`,
-    seul: `Aucun plan ne portera ses étapes : cet identifiant n'est plus rendu par le référentiel des startups. ${CAUSE_ORPHELIN} Redéclarez ces étapes sous le bon identifiant, puis retirez celles-ci.`,
+    plusieurs: `Les plans déjà calculés gardent leurs étapes, aucun nouveau ne les reprendra. Leur identifiant n'est plus rendu par le référentiel des startups. ${CAUSE_ORPHELIN} Rien d'autre que cette liste ne mène plus à eux.`,
+    seul: `Aucun plan ne portera ses étapes. Cet identifiant n'est plus rendu par le référentiel des startups. ${CAUSE_ORPHELIN} Redéclarez ces étapes sous le bon identifiant, puis retirez celles-ci.`,
   },
 
   champs: {
     titre:
-      "Le titre de l'étape. Deux modèles qui écrivent le même titre demandent le même geste : il n'entrera qu'une fois dans un plan.",
-    critere:
-      "Ce qu'il faut constater pour cocher. Obligatoire : sans lui, « fait » ne veut rien dire.",
-    acteur:
-      "Quel que soit ce choix, un opérateur pourra toujours cocher à sa place : aucune étape ne devient impossible à cocher.",
+      "Deux modèles qui écrivent le même titre demandent le même geste, qui n'entrera qu'une fois dans un plan.",
+    critere: "Ce qu'il faut constater pour cocher. Obligatoire.",
+    acteur: "Quel que soit ce choix, un opérateur pourra toujours cocher à sa place.",
     controleur: (memeRole: boolean): string =>
       memeRole
-        ? "Tant que ce regard n'a pas eu lieu, l'étape n'est pas terminée et le dossier ne se clôt pas. Vous avez choisi le même rôle des deux côtés : il faudra deux opérateurs différents pour la terminer, sur n'importe quel dossier."
+        ? "Tant que ce regard n'a pas eu lieu, l'étape n'est pas terminée et le dossier ne se clôt pas. Le même rôle des deux côtés exigera deux opérateurs différents, sur n'importe quel dossier."
         : "Tant que ce regard n'a pas eu lieu, l'étape n'est pas terminée et le dossier ne se clôt pas.",
     /**
      * Le contrôle qu'un changement d'acteur vient de rendre impossible, et que le
@@ -57,7 +55,7 @@ export const MODELE = {
      * croyait lui avoir posé.
      */
     controleurRetire: (controleur: Acteur, acteur: Acteur): string =>
-      `Le contrôle par ${LIBELLE_ACTEUR[controleur]} a été retiré : il ne s'applique pas à ce que fait ${LIBELLE_ACTEUR[acteur]}. Choisissez-en un autre, ou laissez cette étape se croire sur parole.`,
+      `Le contrôle par ${LIBELLE_ACTEUR[controleur]} a été retiré. Il ne s'applique pas à ce que fait ${LIBELLE_ACTEUR[acteur]}. Choisissez-en un autre, ou laissez cette étape se croire sur parole.`,
 
     /**
      * Ce qui remplace la case « sans cette valeur » tant qu'aucun libellé n'est saisi.
@@ -66,7 +64,7 @@ export const MODELE = {
      * rechargement, ce qui est exactement le geste d'un réglage qui ne prend pas.
      */
     saisieSansValeur:
-      "Aucune valeur n'est demandée au moment de cocher : la case suffira à déclarer cette étape faite. Donnez un libellé à gauche pour en attendre une.",
+      "Aucune valeur n'est demandée au moment de cocher ; la case suffira à déclarer cette étape faite. Donnez un libellé à gauche pour en attendre une.",
 
     saisieLibelle: "Valeur demandée au moment de cocher",
     saisie:
@@ -74,5 +72,5 @@ export const MODELE = {
   },
 
   saisieIllisible:
-    "La valeur demandée est illisible en base : aucun plan calculé aujourd'hui ne retiendrait cette étape. Réécrivez-la ci-dessous, ou videz son libellé.",
+    "La valeur demandée est illisible en base. Aucun plan calculé aujourd'hui ne retiendrait cette étape. Réécrivez-la ci-dessous, ou videz son libellé.",
 } as const;

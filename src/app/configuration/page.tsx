@@ -72,7 +72,7 @@ export default async function Configuration() {
           as="h2"
           severity="warning"
           title="Aucune politique nulle part"
-          description="Ni fichier, ni variable CONFIG_, ni réglage ici : tout ce qui suit vient des défauts du schéma, et le périmètre ne suit personne. C'est ce qu'un POLICY_DIR mal pointé produit."
+          description="Ni fichier, ni variable CONFIG_, ni réglage ici. Tout ce qui suit vient des défauts du schéma, et le périmètre ne suit personne. C'est ce qu'un POLICY_DIR mal pointé produit."
           className={fr.cx("fr-mb-4w")}
         />
       ) : null}
@@ -82,7 +82,7 @@ export default async function Configuration() {
           as="h2"
           severity="warning"
           title="Des variables d'environnement ne règlent rien"
-          description={`${inconnues.join(", ")} : aucun réglage ne porte ce nom. Une faute de frappe ne se voit nulle part ailleurs, la valeur ne prenant pas en silence.`}
+          description={`${inconnues.join(", ")} : aucun réglage ne porte ce nom.`}
           className={fr.cx("fr-mb-4w")}
         />
       ) : null}

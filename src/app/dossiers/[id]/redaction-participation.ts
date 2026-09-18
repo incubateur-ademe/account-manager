@@ -117,7 +117,7 @@ export const LIBELLE_OCTROI = {
    * titulaire entre par sa propre porte et n'a besoin d'aucun lien.
    */
   sansCanal:
-    "Le droit est accordé, mais personne ne peut lui envoyer de lien de connexion : sa fiche n'offre aucune adresse que l'outil puisse servir, et son identifiant n'existe que dans cet outil. Redonnez ce droit en déclarant une adresse.",
+    "Le droit est accordé, mais personne ne peut lui envoyer de lien de connexion. Redonnez ce droit en déclarant une adresse.",
 } as const;
 
 /** L'aide du champ d'adresse, la phrase des domaines en moins quand aucun n'est déclaré. */

@@ -158,7 +158,7 @@ export function SectionStartups({
               className={fr.cx("fr-mt-2w")}
               severity="info"
               small
-              description="Toutes ses startups sont dans une phase terminale. Son rattachement à l'incubateur passe par une équipe : il ne dépend d'aucune d'elles."
+              description="Toutes ses startups sont dans une phase terminale. Son rattachement à l'incubateur passe par une équipe."
             />
           ) : null}
 
@@ -167,7 +167,7 @@ export function SectionStartups({
               className={fr.cx("fr-mt-2w")}
               severity="info"
               small
-              description={`La phase de ${inconnues} startup${inconnues > 1 ? "s" : ""} n'est pas connue. Tant qu'elle le reste, on ne peut pas conclure que toutes ses startups sont terminées.`}
+              description={`La phase de ${inconnues} startup${inconnues > 1 ? "s" : ""} est inconnue. On ne peut donc pas conclure que toutes ses startups sont terminées.`}
             />
           ) : null}
         </>

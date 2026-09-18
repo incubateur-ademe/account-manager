@@ -46,7 +46,7 @@ const PORTEE =
  */
 const SYSTEME_CIBLE = {
   constat: (blocage: BlocageInstalle) =>
-    `La dernière lecture en a rendu ${blocage.observe} là où ${blocage.reference} sont tenues pour vivantes, une chute que le garde-fou juge trop forte pour conclure. Il refuse à l'identique depuis ${blocage.passages} collectes : ce n'est plus un incident, et il ne se dénouera pas seul, puisque ce qu'il refuse de dater est justement ce qui provoque la chute.`,
+    `La dernière lecture en a rendu ${blocage.observe} là où ${blocage.reference} sont tenues pour vivantes, une chute que le garde-fou juge trop forte pour conclure. Il refuse à l'identique depuis ${blocage.passages} collectes, et il ne se dénouera pas seul.`,
   consequence:
     "Tant que cela dure, une disparition réelle sur ce système ne sera pas constatée, et les accès qu'elle emporte resteront tenus pour vivants.",
   suite:
@@ -73,7 +73,7 @@ const SYSTEME_CIBLE = {
  */
 function ampleur(blocage: BlocageInstalle): string {
   if (blocage.datables === undefined) {
-    return "Combien de personnes seraient constatées parties n'a pas pu être compté cette nuit-là : une décision posée maintenant restera sans effet faute d'ampleur à mesurer, et c'est la collecte suivante qui donnera ce nombre.";
+    return "Combien de personnes seraient constatées parties n'a pas pu être compté cette nuit-là. Une décision posée maintenant restera sans effet faute d'ampleur à mesurer.";
   }
 
   const personnes = `${blocage.datables} ${blocage.datables > 1 ? "personnes" : "personne"}`;
@@ -101,7 +101,7 @@ function ampleur(blocage: BlocageInstalle): string {
  * où l'on tranche.
  */
 const GEL_DU_RELEVE = (passages: number, boucle: string) =>
-  `Aucune collecte ne s'est dite complète depuis ${passages} collectes, et aucune ne le deviendra d'elle-même : le refus dégrade la collecte qui le prononce, et une collecte dégradée ne devient pas la collecte complète suivante. Ce qui a dégradé les autres n'y change rien, aucune ne s'est dite complète non plus. ${boucle}`;
+  `Aucune collecte complète depuis ${passages} collectes, et aucune ne le sera sans intervention. ${boucle}`;
 
 /**
  * Les deux déclencheurs du plancher du périmètre, chacun dans les termes de son monde.
@@ -116,9 +116,9 @@ const GEL_DU_RELEVE = (passages: number, boucle: string) =>
  */
 const COTE: Record<CoteDeChute, (blocage: BlocageInstalle) => string> = {
   releve: (blocage) =>
-    `La dernière collecte complète comptait ${blocage.reference} personnes suivies, la plus récente n'en a résolu que ${blocage.observe}, une chute que le garde-fou juge trop forte pour conclure. ${ampleur(blocage)} ${GEL_DU_RELEVE(blocage.passages, "Or c'est la dernière collecte complète qui sert de référence à ce refus : le garde-fou compare donc chaque nuit à celle d'avant la chute, et y retrouve la même chute.")}`,
+    `La dernière collecte complète comptait ${blocage.reference} personnes suivies, la plus récente n'en a résolu que ${blocage.observe}, une chute que le garde-fou juge trop forte pour conclure. ${ampleur(blocage)} ${GEL_DU_RELEVE(blocage.passages, "Or c'est la dernière collecte complète qui sert de référence à ce refus, si bien que le garde-fou compare chaque nuit à celle d'avant la chute, et y retrouve la même chute.")}`,
   population: (blocage) =>
-    `Ce n'est pas la liste rendue ce soir qui a fait parler le garde-fou, c'est la base : ${blocage.reference} personnes y sont tenues pour présentes, comptes de service exclus, et il n'en resterait que ${blocage.observe} après la datation de ce soir, une chute que le garde-fou juge trop forte pour conclure. ${ampleur(blocage)} Ce déclencheur-là ne compare pas deux collectes, il compare ce qui est en base à ce qu'il en resterait, et c'est ce qui lui fait voir ce que l'autre ne voit pas : la résolution amont tourne avant qu'une collecte ne sache si elle est complète, si bien qu'une nuit dégradée fait naître des fiches que plus aucune liste ne réclame, et le fossé se creuse là sans que la comparaison des listes en dise rien. ${GEL_DU_RELEVE(blocage.passages, "La référence de ce refus-ci, elle, se corrigerait d'elle-même dès qu'une collecte daterait, et c'est justement la datation que le refus retient.")}`,
+    `Ce n'est pas la liste rendue ce soir qui a fait parler le garde-fou, c'est la base : ${blocage.reference} personnes y sont tenues pour présentes, comptes de service exclus, et il n'en resterait que ${blocage.observe} après la datation de ce soir, une chute que le garde-fou juge trop forte pour conclure. ${ampleur(blocage)} Ce déclencheur compare ce qui est en base à ce qu'il en resterait, et non deux collectes. ${GEL_DU_RELEVE(blocage.passages, "La référence de ce refus-ci, elle, se corrigerait d'elle-même dès qu'une collecte daterait, et c'est justement la datation que le refus retient.")}`,
 };
 
 /**
@@ -136,7 +136,7 @@ export const REDACTION: Record<FamilleDeChute, Redaction> = {
     quoi: "des personnes suivies",
     constat: (blocage) => COTE[blocage.cote ?? "releve"](blocage),
     consequence:
-      "Tant que cela dure, un départ réel n'est pas constaté et les accès qu'il emporte restent tenus pour vivants. Et comme aucune collecte ne se dit complète, tout ce qui s'adosse à la dernière collecte complète continue de décider contre un état qui n'est pas celui du jour : la durée d'une absence, le sursis d'une fiche que la source n'a pas rendue, les sorties de startups, le verdict des arrivées.",
+      "Tant que cela dure, un départ réel n'est pas constaté et les accès qu'il emporte restent tenus pour vivants. Faute de collecte complète, la durée d'une absence, le sursis d'une fiche que la source n'a pas rendue, les sorties de startups et le verdict des arrivées décident contre un état périmé.",
     suite: `Recopié au journal avec votre nom. La prochaine collecte datera les disparitions, une fois, et servira ensuite de référence aux suivantes.${PORTEE}`,
   },
 };

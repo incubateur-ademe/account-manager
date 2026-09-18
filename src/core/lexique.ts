@@ -27,7 +27,7 @@ export const LIBELLE_ETAT_COLLECTE: Record<
 > = {
   OK: {
     libelle: "complète",
-    explication: "Collecte complète : les disparitions ont pu être datées.",
+    explication: "Les disparitions ont pu être datées.",
     severite: "success",
   },
   PARTIAL: {

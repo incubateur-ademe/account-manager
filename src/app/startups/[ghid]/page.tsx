@@ -295,8 +295,8 @@ export default async function FicheStartupPage({ params }: Props) {
           title="Ce que montre cet écran n'est plus à jour"
           description={
             fraicheur.heures === null
-              ? "Aucune collecte n'a jamais eu lieu : ce que cette page affiche ne vient d'aucune observation."
-              : `La dernière collecte remonte à ${fraicheur.heures} heures, au-delà des ${thresholds.collectStaleHours} heures admises. La phase, les membres et leurs échéances sont gelés ensemble : rien ici ne signale ce qui a pu changer depuis.`
+              ? "Aucune collecte n'a jamais eu lieu. Rien de ce qu'affiche cette page ne vient d'une observation."
+              : `La dernière collecte remonte à ${fraicheur.heures} heures, au-delà des ${thresholds.collectStaleHours} heures admises. La phase, les membres et leurs échéances sont gelés depuis.`
           }
         />
       ) : null}
@@ -308,9 +308,7 @@ export default async function FicheStartupPage({ params }: Props) {
       <p className={fr.cx("fr-text--sm", "fr-mt-3w")}>
         Sa phase a été constatée le {dateFr.format(startup.lastSeenAt)}, la dernière fois que la
         liste de l'incubateur a rendu cette startup. Si cette date n'avance plus alors que le reste
-        de l'écran paraît frais, deux causes : ou bien la liste ne rend plus cette startup, ou bien
-        elle n'est plus lue du tout. La première se voit en comparant cette date à celle des autres
-        startups.
+        de l'écran paraît frais, comparez-la à celle des autres startups.
       </p>
 
       {startup.vanishedAt ? (
@@ -319,11 +317,7 @@ export default async function FicheStartupPage({ params }: Props) {
           className={fr.cx("fr-mt-2w")}
           severity="warning"
           title="Cette startup n'est plus rendue par l'incubateur"
-          // Deux dates et non une : la disparition se constate au passage qui ne revoit
-          // plus la startup, et une collecte partielle interdit de la dater, si bien que
-          // le constat peut tomber des mois après le fait. Les confondre ferait croire
-          // que les accès ne survivent que depuis le jour du constat.
-          description={`La liste de l'incubateur l'a rendue pour la dernière fois le ${dateFr.format(startup.lastSeenAt)}, et la collecte a constaté sa disparition le ${dateFr.format(startup.vanishedAt)}. La phase affichée est la dernière connue, pas un fait d'aujourd'hui : une co-incubation retirée, un identifiant renommé et un abandon donnent ici le même symptôme.${lignes.length > 0 ? " Les personnes ci-dessous, elles, gardent leurs accès." : ""}`}
+          description={`La phase affichée est la dernière connue, pas un fait d'aujourd'hui. Une co-incubation retirée, un identifiant renommé et un abandon donnent ici le même symptôme.${lignes.length > 0 ? " Les personnes ci-dessous gardent leurs accès." : ""}`}
         />
       ) : null}
 
@@ -336,6 +330,10 @@ export default async function FicheStartupPage({ params }: Props) {
           </Champ>
           <Champ libelle="Première observation">{dateFr.format(startup.firstSeenAt)}</Champ>
           <Champ libelle="Dernière observation">{dateFr.format(startup.lastSeenAt)}</Champ>
+          {/* Deux dates et non une : la disparition se constate au passage qui ne revoit
+              plus la startup, et une collecte partielle interdit de la dater, si bien que
+              le constat peut tomber des mois après le fait. Les confondre ferait croire
+              que les accès ne survivent que depuis le jour du constat. */}
           {startup.vanishedAt ? (
             <Champ libelle="Disparition constatée le">{dateFr.format(startup.vanishedAt)}</Champ>
           ) : null}

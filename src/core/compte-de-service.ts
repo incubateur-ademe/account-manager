@@ -69,11 +69,11 @@ export function lireDeclaration(
     return { erreur: "Le terme ne se lit pas comme une date." };
   }
   if (lu !== undefined && lu.getTime() <= maintenant.getTime()) {
-    return { erreur: "Le terme est déjà passé : un jeton mort n'a pas de fiche à ouvrir." };
+    return { erreur: "Le terme est déjà passé." };
   }
   if (lu !== undefined && lu.getTime() - maintenant.getTime() > PLAFOND_JOURS * JOUR_MS) {
     return {
-      erreur: `Le terme ne dépasse pas ${PLAFOND_JOURS} jours : au-delà, il ne décrit plus un jeton qui meurt de lui-même, il éteint la revue pour toujours.`,
+      erreur: `Indiquez un terme dans les ${PLAFOND_JOURS} jours.`,
     };
   }
 
@@ -101,8 +101,7 @@ export function lireDeclaration(
   }
   if (!declaration.ownerUsername) {
     return {
-      erreur:
-        "Indiquez qui répond de ce compte : un compte machine sans propriétaire ne se revoit jamais.",
+      erreur: "Indiquez qui répond de ce compte.",
     };
   }
   if (!Number.isInteger(declaration.reviewEveryDays) || declaration.reviewEveryDays < 1) {

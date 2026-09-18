@@ -508,7 +508,7 @@ describe("ce qu'un droit vivant ouvre, et ce qu'il n'ouvre plus", () => {
     // entier
     const texteNominal = texteRendu(await rendre("dossier-1"));
     expect(texteNominal).not.toContain("rien ne s'y coche");
-    expect(texteNominal).not.toContain("ne vous est pas montré");
+    expect(texteNominal).not.toContain("Cette page ne montre que ce qui vous revient");
     expect(texteNominal).toContain("Cocher une étape n'exécute rien");
 
     // Then la requête n'a demandé que ces colonnes-là, et c'est cette liste qui garde la
@@ -605,7 +605,9 @@ describe("ce qu'un droit vivant ouvre, et ce qu'il n'ouvre plus", () => {
 
     // Then rien ne lui est dit de ce qui n'est pas montré : il ne contrôle rien, mais
     // quatre étapes lui reviennent, et une seule liste vide ne fait pas un dossier vide
-    expect(texteRendu(await rendre("dossier-1"))).not.toContain("ne vous est pas montré");
+    expect(texteRendu(await rendre("dossier-1"))).not.toContain(
+      "Cette page ne montre que ce qui vous revient",
+    );
 
     // Given une de ses étapes que le contrôle vient de refuser
     dossier.etapes = [
@@ -651,7 +653,7 @@ describe("ce qu'un droit vivant ouvre, et ce qu'il n'ouvre plus", () => {
     expect(idsRendus(await rendre("dossier-1"))).toEqual([]);
     expect(texteAVide).toContain("Aucune étape de ce dossier ne vous revient.");
     expect(texteAVide).toContain(
-      "Rien n'attend non plus votre regard. Cette page ne montre que ce qui vous revient et ce que vous avez à signer : le reste de ce dossier ne vous est pas montré.",
+      "Rien n'attend non plus votre regard. Cette page ne montre que ce qui vous revient et ce que vous avez à signer.",
     );
     expect(texteAVide).not.toContain("entre les mains de l'équipe transverse");
     expect(texteAVide).not.toContain("n'attend de geste de votre part");
@@ -676,7 +678,7 @@ describe("ce qu'un droit vivant ouvre, et ce qu'il n'ouvre plus", () => {
     const texteDUneSeuleListe = texteRendu(await rendre("dossier-1"));
     expect(idsRendus(await rendre("dossier-1"))).toEqual(["charte"]);
     expect(texteDUneSeuleListe).toContain("Aucune étape de ce dossier ne vous revient.");
-    expect(texteDUneSeuleListe).not.toContain("ne vous est pas montré");
+    expect(texteDUneSeuleListe).not.toContain("Cette page ne montre que ce qui vous revient");
   });
 
   it("refuse sans jamais dire si le dossier existe, et ne renvoie que là où le lecteur peut aller", async () => {

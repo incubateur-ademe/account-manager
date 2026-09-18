@@ -75,7 +75,7 @@ async function deuxFacteurs(contexte: ContexteTuile) {
   if (!jeton) {
     return (
       <p className={fr.cx("fr-mb-0")}>
-        Jeton GitHub absent de l'environnement : ce chiffre ne peut pas être demandé.
+        Jeton GitHub absent de l'environnement. Ce chiffre ne peut pas être demandé.
       </p>
     );
   }
@@ -116,8 +116,9 @@ async function deuxFacteurs(contexte: ContexteTuile) {
       ) : null}
       {interdites.length > 0 ? (
         <p className={fr.cx("fr-mb-0", "fr-mt-1w")}>
-          Non lisible avec ce jeton sur {interdites.map((compte) => compte.organisation).join(", ")}{" "}
-          : le filtre demande un droit de propriétaire de l'organisation. Ce n'est pas un zéro.
+          Non lisible avec ce jeton sur{" "}
+          {`${interdites.map((compte) => compte.organisation).join(", ")}.`} Le filtre demande un
+          droit de propriétaire de l'organisation. Ce n'est pas un zéro.
         </p>
       ) : null}
     </>

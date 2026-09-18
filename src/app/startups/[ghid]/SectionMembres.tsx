@@ -78,7 +78,7 @@ export function SectionMembres({
             className={fr.cx("fr-mt-2w")}
             severity="warning"
             small
-            description="Cette startup a quitté l'incubateur, et la collecte a cessé de lui rattacher qui que ce soit. Cette liste ne contient plus que les personnes sorties du référentiel et celles rattachées à la main. Pour les accès qui survivent sur ce produit, passez par la file des constats ou par les fiches concernées."
+            description="Cette startup a quitté l'incubateur, et la collecte ne lui rattache plus personne. Ne restent ici que les personnes sorties du référentiel et celles rattachées à la main. Pour les accès qui survivent, voyez la file des constats."
           />
         ) : (
           <p className={fr.cx("fr-mt-2w")}>Aucune personne n'est rattachée à cette startup.</p>
@@ -134,7 +134,7 @@ export function SectionMembres({
                         <>
                           <br />
                           <span className={fr.cx("fr-text--sm")}>
-                            La collecte la rattache déjà : ce rattachement manuel ne change que son
+                            La collecte la rattache déjà. Ce rattachement manuel ne change que son
                             échéance.
                           </span>
                         </>
@@ -188,14 +188,14 @@ export function SectionMembres({
           />
 
           <p className={fr.cx("fr-text--sm", "fr-mt-2w")}>
-            Les comptes sont ceux qu'aucune collecte n'a encore datés disparus, repliés par système
-            : la fiche de la personne les détaille un par un. Une collecte incomplète ne date rien
-            de ce qu'elle n'a pas pu lire, si bien qu'un compte déjà fermé peut figurer ici.
-            Systèmes couverts lus à ce jour :{" "}
+            Les comptes qu'aucune collecte n'a encore datés disparus, repliés par système. Un compte
+            déjà fermé peut figurer ici. Un compte rattaché sur une ressemblance de nom, ou sans
+            preuve, ne fera jamais couper d'accès.
+          </p>
+          <p className={fr.cx("fr-text--sm")}>
+            Systèmes lus à ce jour :{" "}
             {systemesCollectes.length === 0 ? "aucun" : systemesCollectes.join(", ")}. Un système
-            absent de cette liste n'a jamais été lu : une colonne vide n'y dit pas qu'il n'y a pas
-            de compte, elle dit qu'on n'a pas regardé. Un compte rattaché sur une ressemblance de
-            nom, ou sans preuve, ne fera jamais couper d'accès.
+            absent n'a jamais été lu, et sa colonne vide ne dit pas qu'il n'y a pas de compte.
           </p>
         </>
       )}
@@ -204,10 +204,9 @@ export function SectionMembres({
           ne travaille pas ici, alors que la collecte ne rend que ce que l'espace-membre
           range sous cette startup. */}
       <p className={fr.cx("fr-text--sm")}>
-        Cette liste dit qui l'espace-membre rattache à cette startup, plus qui y a été rattaché à la
-        main. Une personne que seule une équipe transverse rattache à l'incubateur n'a aucune
-        startup collectée : elle ne figure ici que si quelqu'un l'y a rattachée à la main, même si
-        elle travaille sur cette startup. Ce n'est donc pas la liste de qui y travaille.
+        Cette liste dit qui l'espace-membre rattache à cette startup, plus les rattachements posés à
+        la main. Ce n'est pas la liste de qui y travaille. Une personne que seule une équipe
+        transverse rattache à l'incubateur n'y figure que si quelqu'un l'y a rattachée à la main.
       </p>
 
       {/* Un rattachement que le temps a rattrapé ne se retrouve nulle part ailleurs :

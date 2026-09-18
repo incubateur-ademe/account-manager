@@ -205,7 +205,7 @@ export function poseAdmissible(
   if (demande.cible === null) {
     return {
       possible: false,
-      raison: "Cet écart ne se tolère pas : il porte sur ce qui a été déclaré, pas sur un accès.",
+      raison: "Cet écart ne se tolère pas. Il porte sur ce qui a été déclaré, pas sur un accès.",
     };
   }
   if (demande.raison.trim().length < 3) {
@@ -242,7 +242,7 @@ export function leveeAdmissible(derogation: Derogation, maintenant: Date): Verdi
   if (derogation.provenance === "politique") {
     return {
       possible: false,
-      raison: "Cette tolérance est déclarée dans la politique : elle se retire de son fichier.",
+      raison: "Cette tolérance est déclarée dans la politique. Elle se retire de son fichier.",
     };
   }
   if (derogation.leveeLe !== null) {

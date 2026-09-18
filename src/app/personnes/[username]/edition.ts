@@ -102,7 +102,7 @@ export async function modifierFiche(_etat: EtatEdition, formData: FormData): Pro
     return { erreur: "Cette personne n'est plus en base." };
   }
   if (!ficheEditable(personne, declaresLocaux()).editable) {
-    return { erreur: "Cette fiche n'est pas modifiable ici : une collecte la réécrit." };
+    return { erreur: "Une collecte réécrit cette fiche, elle n'est pas modifiable ici." };
   }
 
   const validation = validerChamps({
@@ -339,7 +339,7 @@ export async function renommerFiche(
   if (!renommable(personne, declaresLocaux())) {
     return {
       erreur:
-        "Cet identifiant n'a pas été fabriqué ici : c'est un pivot d'identité, et aucun code ne le met à jour.",
+        "Cet identifiant n'a pas été fabriqué ici. C'est un pivot d'identité, qu'aucun code ne met à jour.",
     };
   }
 

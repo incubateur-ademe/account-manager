@@ -71,7 +71,7 @@ function lireActeur(formData: FormData): Acteur | Refus {
   const valeur = texte(formData, "acteur");
   return estActeur(valeur)
     ? valeur
-    : { erreur: "Acteur inconnu : dites qui doit faire cette étape." };
+    : { erreur: "Acteur inconnu. Dites qui doit faire cette étape." };
 }
 
 function lireControleur(formData: FormData): Acteur | null | Refus {
@@ -81,7 +81,7 @@ function lireControleur(formData: FormData): Acteur | null | Refus {
   }
   return estActeur(valeur)
     ? valeur
-    : { erreur: "Contrôleur inconnu : dites qui doit relire cette étape, ou personne." };
+    : { erreur: "Contrôleur inconnu. Dites qui doit relire cette étape, ou personne." };
 }
 
 /**

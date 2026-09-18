@@ -74,7 +74,7 @@ export function BoutonAnnuler({
           <>
             <p className={fr.cx("fr-text--sm")}>
               {etapes === 0
-                ? "Ce dossier n'a aucune étape : rien n'a été proposé, et rien ne sera abandonné."
+                ? "Ce dossier n'a aucune étape, rien ne sera abandonné."
                 : `${etapes} étape${etapes > 1 ? "s" : ""} proposée${etapes > 1 ? "s" : ""} ${etapes > 1 ? "seront abandonnées" : "sera abandonnée"}.`}{" "}
               {mots.annulationEffet}
             </p>
@@ -199,7 +199,7 @@ export function Pointage({
               aria-label="Raison"
               {...messageObligatoire(
                 choix === "ignoree"
-                  ? "Dites pourquoi cette étape est écartée : sans raison, elle deviendra un accès oublié."
+                  ? "Dites pourquoi cette étape est écartée."
                   : "Dites ce qui a échoué, sinon personne ne saura quoi reprendre.",
               )}
             />
@@ -332,9 +332,7 @@ export function Validation({
               disabled={!possible}
               placeholder="Qu'est-ce qui manque ?"
               aria-label="Motif du refus"
-              {...messageObligatoire(
-                "Dites ce qui manque : sans motif, le refus renvoie l'étape à faire sans dire quoi.",
-              )}
+              {...messageObligatoire("Dites ce qui manque.")}
             />
           </div>
         ) : null}

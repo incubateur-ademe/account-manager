@@ -91,8 +91,8 @@ export function Rattacher({
               lit comme une étiquette ou un filtre, pas comme une action, et rien dans
               sa forme ne dit qu'un clic tranche pour de bon. */}
           <p className={fr.cx("fr-text--sm", "fr-mb-1w")}>
-            Un clic vaut décision : elle est journalisée à votre nom, et le compte pourra dès lors
-            justifier une révocation.
+            Un clic vaut décision, journalisée à votre nom. Le compte pourra dès lors justifier une
+            révocation.
           </p>
           {groupes.map((groupe) => (
             <div className={fr.cx("fr-mb-1w")} key={groupe.motif}>
@@ -191,7 +191,7 @@ export function Rattacher({
             <input type="hidden" name="id" value={id} />
             <Input
               label="Nom de la personne"
-              hintText="En dernier recours : pour qui n'a aucune fiche beta.gouv."
+              hintText="En dernier recours, pour qui n'a aucune fiche beta.gouv."
               nativeInputProps={{ name: "nom", autoComplete: "off", required: true }}
               state={creation ? "error" : "default"}
               stateRelatedMessage={creation?.erreur}

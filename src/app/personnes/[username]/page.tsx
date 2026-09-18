@@ -417,8 +417,8 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
         {prolongee ? (
           <p className={fr.cx("fr-text--sm")}>
             Sa fin de mission connue est{" "}
-            {personne.missionEnd ? `le ${dateFr.format(personne.missionEnd)}` : "inexistante"} :
-            l'échéance affichée vient d'un rattachement manuel à une startup.
+            {personne.missionEnd ? `le ${dateFr.format(personne.missionEnd)}` : "inexistante"}.
+            L'échéance affichée vient d'un rattachement manuel à une startup.
           </p>
         ) : null}
 
@@ -482,7 +482,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
                     reste ici que ce qu'elle seule sait, qui l'a prise et quand, plus
                     l'invitation à la retirer le jour où elle ne sert plus. */}
                 {surchargeSuperflue(appartenance)
-                  ? "Ses rattachements en cours disent désormais la même chose : cette décision est devenue superflue et peut être retirée. Aucune collecte ne la retirera à votre place."
+                  ? "Ses rattachements en cours disent désormais la même chose. Cette décision peut être retirée, aucune collecte ne la retirera à votre place."
                   : null}
               </>
             }

@@ -94,8 +94,8 @@ export default async function ModeleDeStartupPage({ params }: Props) {
 
       <p className={fr.cx("fr-text--lead", "fr-mt-3w")}>
         Ce que cette startup demande en propre, en plus de ce que l'incubateur demande à tout le
-        monde. Un geste que l'incubateur demande déjà ne se demande pas une seconde fois : c'est son
-        exemplaire qui est retenu.
+        monde. Un geste que l'incubateur demande déjà ne se demande pas une seconde fois, et c'est
+        son exemplaire qui est retenu.
       </p>
 
       {MOMENTS.map(({ moment, titre, quoi }) => {

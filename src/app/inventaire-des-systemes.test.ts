@@ -434,9 +434,7 @@ describe("ce que l'inventaire dit d'un système, et ce qu'il refuse d'en dire", 
     // annonce, et il les énumère un par un plutôt que de laisser chercher lesquels.
     const texte = texteRendu(page);
     expect(texte).toContain("2 systèmes couverts ne sont pas observés");
-    expect(texte).toContain(
-      "Une fiche qui ne montre aucun compte sur ces systèmes ne dit pas qu'il n'y en a pas : elle dit qu'on n'a pas regardé.",
-    );
+    expect(texte).toContain("Une fiche sans compte sur ces systèmes ne dit rien des accès réels.");
     expect(pucesRendues(page)).toEqual([
       "messagerie a échoué à la dernière collecte",
       "archives n'a jamais été lu : aucune collecte, ou aucun accès configuré pour lui",
@@ -501,7 +499,7 @@ describe("ce que l'inventaire dit d'un système, et ce qu'il refuse d'en dire", 
     // dire quelque chose : un système lu qui ne porte aucun compte
     expect(texteObserve).toContain("4 systèmes sur 4 lus dans les délais.");
     expect(texteObserve).not.toContain("non observé");
-    expect(texteObserve).not.toContain("elle dit qu'on n'a pas regardé");
+    expect(texteObserve).not.toContain("Une fiche sans compte sur ces systèmes");
     expect(pucesRendues(observe)).toEqual([]);
     expect(lignesDuTableau(observe, "Comptes observés sur chaque système")[3]).toEqual([
       "archives",
@@ -660,7 +658,7 @@ describe("ce que l'inventaire dit d'un système, et ce qu'il refuse d'en dire", 
     // tableau de nombres se lit comme l'état du jour alors qu'il date de la dernière
     // collecte, et c'est la première chose que cet écran a à dire.
     expect(texteRendu(page)).toContain(
-      "Le tableau et les chiffres qui suivent sortent de la base, donc de la dernière collecte : ils disent le dernier état constaté, jamais l'état du jour, et aucun n'est demandé à un système au moment où vous lisez cette page. Les tuiles du bas, elles, disent chacune d'où elles tiennent leur chiffre.",
+      "Le tableau et les chiffres qui suivent sortent de la dernière collecte, jamais de l'état du jour.",
     );
 
     // Then chaque tuile porte son chiffre sous son propre libellé et mène à l'écran qui
@@ -705,8 +703,7 @@ describe("ce que l'inventaire dit d'un système, et ce qu'il refuse d'en dire", 
       },
       {
         titre: "21 opérations tracées",
-        description:
-          "Sur 30 jours. Compteur approximatif : c'est une preuve d'activité, pas une mesure de couverture. L'écran du journal, lui, montre tout l'historique.",
+        description: "Sur 30 jours. Compteur approximatif. Le journal montre tout l'historique.",
         cible: "/journal",
       },
     ]);

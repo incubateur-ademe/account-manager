@@ -93,7 +93,7 @@ export function peutConfirmer(etat: EtatPlan, peremption: Peremption, etapes: nu
     return {
       possible: false,
       raison:
-        "Ce plan a dépassé sa date de validité : ce qu'il décrit a été constaté il y a trop longtemps.",
+        "Ce plan a dépassé sa date de validité. Ce qu'il décrit a été constaté il y a trop longtemps.",
     };
   }
   if (peremption.obsolete) {
@@ -377,7 +377,7 @@ export function peutValider(etape: EtapeAValider, valideur: ActeurNomme): Verdic
     return {
       possible: false,
       raison:
-        "Cette déclaration ne porte le nom de personne : elle est à refaire avant d'être validée.",
+        "Cette déclaration ne porte le nom de personne. Elle est à refaire avant d'être validée.",
     };
   }
   if (etape.declaredBy === valideur.username) {
@@ -504,7 +504,7 @@ export function peutOuvrir(sens: SensDossier, etat: EtatDossier): Verdict {
       possible: false,
       raison:
         sens === "ONBOARDING"
-          ? "Une arrivée ne se met ni en veille ni en soupçon : elle se prépare ou elle n'existe pas."
+          ? "Une arrivée ne se met ni en veille ni en soupçon. Elle se prépare ou elle n'existe pas."
           : "Cet état n'existe pas pour un départ.",
     };
   }
@@ -567,7 +567,7 @@ export function peutAnnuler(dossier: EtatDossier, plan: EtatPlan | null): Verdic
     return { possible: false, raison: "Ce dossier est déjà annulé." };
   }
   if (dossier === "DONE") {
-    return { possible: false, raison: "Ce dossier est clos : il ne s'annule plus." };
+    return { possible: false, raison: "Ce dossier est clos. Il ne s'annule plus." };
   }
   if (plan !== null && planEngage(plan)) {
     // La phrase dit ce que l'annulation ne fait pas, et n'envoie nulle part : la
@@ -575,7 +575,7 @@ export function peutAnnuler(dossier: EtatDossier, plan: EtatPlan | null): Verdic
     // ce que l'écran offre, et le redire ici en ferait la deuxième fois.
     return {
       possible: false,
-      raison: "Ce plan est engagé : l'annulation ne défait pas ce qui a été déclaré fait.",
+      raison: "Ce plan est engagé. L'annulation ne défait pas ce qui a été déclaré fait.",
     };
   }
   return { possible: true };
@@ -601,12 +601,12 @@ export function peutClore(
     return { possible: false, raison: "Ce dossier est déjà clos." };
   }
   if (dossier === "CANCELLED") {
-    return { possible: false, raison: "Ce dossier est annulé : il n'y a rien à clore." };
+    return { possible: false, raison: "Ce dossier est annulé. Il n'y a rien à clore." };
   }
   if (plan === null) {
     return {
       possible: false,
-      raison: "Aucun plan n'a été enregistré pour ce dossier : il n'y a rien à solder.",
+      raison: "Aucun plan n'a été enregistré pour ce dossier. Il n'y a rien à solder.",
     };
   }
 
@@ -683,13 +683,13 @@ export function peutRecalculer(etat: EtatPlan, peremption: Peremption): Verdict 
   if (etat !== "DRAFT") {
     return {
       possible: false,
-      raison: "Seul un brouillon se recalcule : ce plan n'en est plus un.",
+      raison: "Seul un brouillon se recalcule. Ce plan n'en est plus un.",
     };
   }
   if (!peremption.perime && !peremption.obsolete) {
     return {
       possible: false,
-      raison: "Ce plan décrit encore la situation observée : il n'y a rien à recalculer.",
+      raison: "Ce plan décrit encore la situation observée. Il n'y a rien à recalculer.",
     };
   }
   return { possible: true };
