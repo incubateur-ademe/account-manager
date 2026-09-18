@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { expect, test } from "@playwright/test";
 
@@ -25,7 +26,12 @@ import { ouvrirUneSession, semer } from "./session";
  * arbitrages de forme, à commencer par celui du formulaire déplié contre la modale.
  */
 
-const SORTIE = "/tmp/releve-visuel";
+/*
+ * Sous le dossier que Playwright ignore déjà, et non dans le répertoire temporaire du système :
+ * celui-ci est partagé et son chemin est devinable, donc n'importe quel processus peut y poser un
+ * lien symbolique avant nous.
+ */
+const SORTIE = join(process.cwd(), "test-results", "releve-visuel");
 
 const ECRANS = [
   { nom: "01-accueil", chemin: "/" },
@@ -281,9 +287,14 @@ test("relever ce qui ne se lit pas dans le code", async ({ browser }) => {
   );
 
   const FICHIER = "e2e/seuils-visuels.json";
-  const plafonds: Record<string, number> = existsSync(FICHIER)
-    ? (JSON.parse(readFileSync(FICHIER, "utf8")) as Record<string, number>)
-    : {};
+  /* Lire, et prendre l'absence pour réponse : tester puis lire laisse le fichier changer entre les
+     deux. */
+  let plafonds: Record<string, number> = {};
+  try {
+    plafonds = JSON.parse(readFileSync(FICHIER, "utf8")) as Record<string, number>;
+  } catch {
+    plafonds = {};
+  }
 
   const bilan: string[] = ["\n# Les règles de forme, tenues par des plafonds", ""];
   const depassements: string[] = [];

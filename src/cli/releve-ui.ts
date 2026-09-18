@@ -154,10 +154,14 @@ function litterauxDe(source: Source): Litteral[] {
    * Les descriptions de schéma Zod documentent le fichier de politique, que personne ne lit dans
    * l'outil : elles s'écrivent pour qui édite du YAML, pas pour un opérateur devant un écran.
    */
-  const dansUnSchema = /\.meta\(|description:\s*$/;
+  const ouvreUnSchema = /\.meta\(/;
+  const finitParUneDescription = /description:\s*$/;
   source.lignes.forEach((ligne, index) => {
     if (estLigneDeCommentaire(ligne)) return;
-    if (index > 0 && dansUnSchema.test(source.lignes[index - 1] ?? "")) return;
+    const precedente = source.lignes[index - 1] ?? "";
+    if (index > 0 && (ouvreUnSchema.test(precedente) || finitParUneDescription.test(precedente))) {
+      return;
+    }
     // Les gabarits porteurs d'une interpolation sont écartés : leur texte rendu n'est pas celui-ci.
     const motifs = [/"([^"\\]{8,400})"/g, /`([^`\\$]{8,400})`/g];
     for (const motif of motifs) {

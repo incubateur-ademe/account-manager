@@ -142,7 +142,7 @@ nécessaire.
 
 **Un quatrième fichier vit dans `e2e/` sans rien prouver.** `releve-visuel.spec.ts` ouvre les écrans,
 capture chacun en 1440 et en 375, et écrit l'arbre de titres tel que le DOM le porte. Il ne tourne que
-sur demande, `RELEVE_VISUEL=1 pnpm test:e2e`, et ne compte donc pas parmi les trois garanties
+sur demande, `RELEVE_VISUEL=1 pnpm test:e2e`, écrit sous `test-results/releve-visuel/`, et ne compte donc pas parmi les trois garanties
 ci-dessus. Il existe pour ce que `pnpm cadre` ne peut pas voir en lisant du code : un titre injecté par
 react-dsfr, l'ordre de lecture réel, la densité, le débordement en étroit. C'est ainsi qu'on a constaté
 que chaque écran portait deux `h1`, dont un venu des modales et un du sélecteur de thème du DSFR, que
