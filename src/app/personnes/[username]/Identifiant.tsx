@@ -150,7 +150,9 @@ export function Identifiant({ username }: { username: string }) {
 
       <Button type="submit" priority="secondary" disabled={pending}>
         {pending
-          ? "En cours…"
+          ? fusion !== null && fusion.blocage === null
+            ? "Fusion…"
+            : "Correction…"
           : fusion !== null && fusion.blocage === null
             ? "Fusionner"
             : "Corriger l'identifiant"}

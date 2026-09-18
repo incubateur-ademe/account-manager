@@ -142,7 +142,7 @@ export default async function StartupsPage(props: {
           title="Ce que montre cet écran n'est plus à jour"
           description={
             fraicheur.heures === null
-              ? "Aucune collecte n'a jamais eu lieu : le référentiel des startups est vide faute d'observation, ce qui ne dit rien des startups réellement en cours."
+              ? "Aucune collecte n'a jamais eu lieu. Le référentiel des startups ne dit rien des startups en cours."
               : `La dernière collecte remonte à ${fraicheur.heures} heures, au-delà des ${thresholds.collectStaleHours} heures admises. Le référentiel des startups est gelé en même temps que celui des personnes : une phase a pu changer, une startup sortir de l'incubateur, sans que rien ici ne le signale.`
           }
         />
@@ -187,7 +187,7 @@ export default async function StartupsPage(props: {
       {lignes.length === 0 ? (
         <p className={fr.cx("fr-text--lead")}>
           {dernierRun === null
-            ? "Aucune collecte n'a jamais eu lieu : la liste est vide faute d'observation, ce qui ne dit rien des startups réellement en cours."
+            ? "Aucune collecte n'a jamais eu lieu. Cette liste ne dit rien des startups en cours."
             : `La dernière collecte remonte au ${dateFr.format(dernierRun.startedAt)} et n'a rendu aucune startup pour cet incubateur. C'est le référentiel des startups qu'il faut regarder, pas le déclenchement de la collecte.`}
         </p>
       ) : (

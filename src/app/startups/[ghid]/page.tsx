@@ -383,8 +383,8 @@ export default async function FicheStartupPage({ params }: Props) {
 
           {lignes.length === 0 ? (
             <p>
-              Aucun membre à interroger : la question n'a pas été posée, et ce silence n'est pas une
-              absence de constat.{" "}
+              Aucun membre à interroger. La question n'a pas été posée, donc aucun constat n'a pu
+              naître.{" "}
               <Link className={fr.cx("fr-link")} href="/constats">
                 Voir la file des constats
               </Link>

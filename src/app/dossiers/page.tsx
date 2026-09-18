@@ -106,10 +106,7 @@ export default async function DossiersPage() {
       </p>
 
       {ouverts.length === 0 ? (
-        <p>
-          Aucun dossier ouvert. Rien n'est en préparation, ce qui n'est pas la même chose que rien à
-          faire : la fiche d'une personne dit ce qui l'attend.
-        </p>
+        <p>Aucun dossier ouvert. Ce qui attend chaque personne est sur sa fiche.</p>
       ) : (
         <>
           <h2 className={fr.cx("fr-h5")}>

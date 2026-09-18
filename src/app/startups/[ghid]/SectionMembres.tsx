@@ -65,7 +65,7 @@ export function SectionMembres({
             className={fr.cx("fr-mt-2w")}
             severity="info"
             small
-            description="Aucune collecte du référentiel des personnes n'a jamais eu lieu : cette liste est vide faute d'observation, ce qui ne dit rien des personnes réellement rattachées à cette startup."
+            description="Aucune collecte du référentiel des personnes n'a jamais eu lieu. Cette liste ne dit rien des personnes rattachées à cette startup."
           />
         ) : sortieLe ? (
           // Le vide d'une startup sortie ne prouve rien, et c'est arithmétique : la
@@ -78,7 +78,7 @@ export function SectionMembres({
             className={fr.cx("fr-mt-2w")}
             severity="warning"
             small
-            description="Cette startup a quitté l'incubateur, et la collecte a du même coup cessé de rattacher qui que ce soit à elle. Cette liste ne peut donc plus contenir que les personnes elles-mêmes sorties du référentiel des personnes et celles rattachées à la main : son silence ne dit rien des accès qui survivent sur ce produit. Passez par la file des constats ou par les fiches des personnes concernées."
+            description="Cette startup a quitté l'incubateur, et la collecte a cessé de lui rattacher qui que ce soit. Cette liste ne contient plus que les personnes sorties du référentiel et celles rattachées à la main. Pour les accès qui survivent sur ce produit, passez par la file des constats ou par les fiches concernées."
           />
         ) : (
           <p className={fr.cx("fr-mt-2w")}>Aucune personne n'est rattachée à cette startup.</p>

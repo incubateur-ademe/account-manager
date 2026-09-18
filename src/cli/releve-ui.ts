@@ -150,8 +150,14 @@ const estLigneDeCommentaire = (ligne: string): boolean => /^\s*(\/\/|\*|\/\*)/.t
 
 function litterauxDe(source: Source): Litteral[] {
   const trouves: Litteral[] = [];
+  /*
+   * Les descriptions de schéma Zod documentent le fichier de politique, que personne ne lit dans
+   * l'outil : elles s'écrivent pour qui édite du YAML, pas pour un opérateur devant un écran.
+   */
+  const dansUnSchema = /\.meta\(|description:\s*$/;
   source.lignes.forEach((ligne, index) => {
     if (estLigneDeCommentaire(ligne)) return;
+    if (index > 0 && dansUnSchema.test(source.lignes[index - 1] ?? "")) return;
     // Les gabarits porteurs d'une interpolation sont écartés : leur texte rendu n'est pas celui-ci.
     const motifs = [/"([^"\\]{8,400})"/g, /`([^`\\$]{8,400})`/g];
     for (const motif of motifs) {
@@ -453,7 +459,12 @@ const MESURES: readonly Mesure[] = [
     compter: (sources) =>
       resultat(
         tousLesTextes(sources).filter((t) =>
-          /ne dit rien (de|des|du|d')|, ce qui ne (dit|veut)|son silence ne|faute d'observation|n'est pas la même chose/.test(
+          /*
+           * Le défaut n'est pas de dire ce qu'une absence ne prouve pas, c'est d'y revenir après
+           * coup : « la liste ne dit rien du parc » affirme, « la liste est vide, ce qui ne dit
+           * rien du parc » se reprend. Seule la seconde forme se compte.
+           */
+          /, ce qui ne |, ce qui n'|son silence ne |faute d'observation|n'est pas la même chose|, et ce silence/.test(
             t.texte,
           ),
         ),
@@ -466,20 +477,23 @@ const MESURES: readonly Mesure[] = [
     compter: (sources) => resultat(tousLesTextes(sources).filter((t) => compterMots(t.texte) > 40)),
   },
   {
-    id: "libelles-d-attente",
-    libelle: "Rédactions distinctes d'un libellé d'attente",
+    id: "libelles-d-attente-muets",
+    libelle: "Libellés d'attente qui ne nomment pas leur geste",
     cible:
-      "Un libellé d'attente se dérive du verbe de son bouton. Une forme par action, pas dix-sept.",
+      "Un libellé d'attente se dérive du verbe de son bouton. Il y en a donc un par action, et compter les formes distinctes punirait justement le fait de les nommer. Ce qui se compte est le générique, qui laisse l'opérateur devant un bouton muet.",
     compter: (sources) => {
       const vus = new Map<string, Site>();
       for (const source of sources) {
         source.lignes.forEach((ligne, index) => {
-          if (/placeholder/.test(ligne)) return;
+          /* Un exemple de saisie finit par des points de suspension sans rien faire attendre. */
+          if (/placeholder|[Ee]xemple/.test(ligne)) return;
           const motif = /"([^"\\]{3,80}…)"/g;
           let trouve = motif.exec(ligne);
           while (trouve !== null) {
             const texte = trouve[1];
-            if (texte !== undefined && !vus.has(texte)) {
+            /* « Chargement », « En cours », « Patientez » : aucun ne dit ce qu'on attend. */
+            const muet = /^(en cours|chargement|patient|veuillez|traitement|envoi en cours)/i;
+            if (texte !== undefined && muet.test(texte) && !vus.has(texte)) {
               vus.set(texte, { chemin: source.chemin, ligne: index + 1, extrait: texte });
             }
             trouve = motif.exec(ligne);

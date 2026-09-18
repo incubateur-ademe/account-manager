@@ -2,10 +2,9 @@
   "titres-ponctues": 0,
   "libelles-ponctues": 0,
   "libelles-en-capitales": 0,
-  "deux-points-explicatifs": 296,
-  "clauses-de-nuance": 14,
-  "textes-de-plus-de-quarante-mots": 78,
-  "libelles-d-attente": 21,
+  "deux-points-explicatifs": 262,
+  "clauses-de-nuance": 1,
+  "textes-de-plus-de-quarante-mots": 66,
   "valeur-absente-ecrite-a-la-main": 0,
   "coquilles-de-page": 1,
   "ecrans-sans-titre-d-onglet": 0,
@@ -15,5 +14,6 @@
   "controles-desactives": 6,
   "titres-de-modale-en-h1": 0,
   "composants-dsfr-reecrits-a-la-main": 3,
-  "suppressions-de-diagnostic-de-plugin": 0
+  "suppressions-de-diagnostic-de-plugin": 0,
+  "libelles-d-attente-muets": 0
 }

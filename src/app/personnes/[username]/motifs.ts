@@ -244,7 +244,7 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
       severite: "warning",
       titre: "La dernière collecte complète n'a pas obtenu sa fiche",
       description:
-        "La source ne l'a ni rendue ni dite inconnue : la lecture de sa fiche a échoué, et une lecture qui n'aboutit pas ne dit rien de sa présence. L'outil n'en conclut donc rien et ne datera aucune sortie du référentiel des personnes tant qu'elle échouera. Ce qu'affiche cette fiche date de sa dernière observation, et ce qui débloquera la situation est en amont, dans l'espace-membre.",
+        "La lecture de sa fiche a échoué. Aucune sortie ne sera datée tant qu'elle échouera, et ce qui s'affiche ici date de la dernière observation. Le déblocage est dans l'espace-membre.",
     });
   } else if (etat.nonRendue) {
     motifs.push({

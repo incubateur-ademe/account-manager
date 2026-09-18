@@ -23,7 +23,7 @@ export function LoginForm({ suite }: { suite?: string }) {
         stateRelatedMessage={message ?? undefined}
       />
       <Button type="submit" disabled={pending} className={fr.cx("fr-mt-2w")}>
-        {pending ? "Envoi en cours…" : "Recevoir un lien de connexion"}
+        {pending ? "Envoi…" : "Recevoir un lien de connexion"}
       </Button>
     </form>
   );

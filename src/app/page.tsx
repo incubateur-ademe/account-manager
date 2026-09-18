@@ -152,7 +152,7 @@ export default async function AccueilPage() {
           title="Ce que montre cet outil n'est plus à jour"
           description={
             fraicheur.heures === null
-              ? "Aucune collecte n'a jamais eu lieu : les écrans sont vides faute d'observation, ce qui ne dit rien de l'état réel des accès."
+              ? "Aucune collecte n'a jamais eu lieu. Ces écrans ne disent rien des accès réels."
               : `La dernière collecte lancée remonte à ${fraicheur.heures} heures, au-delà des ${thresholds.collectStaleHours} heures admises. Les échéances et les constats affichés sont ceux de ce moment-là : quelqu'un a pu partir depuis sans que rien ici ne le signale.`
           }
         />
@@ -310,7 +310,7 @@ export default async function AccueilPage() {
             <Tile
               titleAs="h3"
               title={`${inventaire.startups.suivies} startup${inventaire.startups.suivies > 1 ? "s" : ""}`}
-              desc={`Dont ${inventaire.startups.terminales} en phase terminale et portant encore quelqu'un, ce qui ne justifie plus aucun accès.`}
+              desc={`Dont ${inventaire.startups.terminales} en phase terminale portent encore quelqu'un, sans accès justifié.`}
               linkProps={{ href: "/startups" }}
               orientation="horizontal"
             />

@@ -60,7 +60,7 @@ export function expliquerStatut(
     case "BIENTOT":
       return `Son échéance tombe dans les ${soonDays} prochains jours.`;
     case "ACTIF":
-      return "Aucune échéance ne la fait remonter. Cela ne dit rien de son activité réelle, que ses startups seules renseignent.";
+      return "Aucune échéance ne la fait remonter. Seules ses startups disent son activité.";
     case "SANS_ECHEANCE":
       return "Aucune date de fin de mission n'est connue : aucune échéance ne la fera remonter.";
     case "ANCIEN":

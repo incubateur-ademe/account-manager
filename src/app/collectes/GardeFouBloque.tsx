@@ -76,7 +76,7 @@ export function GardeFouBloque({ blocage }: { blocage: BlocageInstalle }) {
             ) : null}
 
             <Button type="submit" priority="secondary" disabled={pending}>
-              {pending ? "En cours…" : "Autoriser la prochaine collecte à dater"}
+              {pending ? "Autorisation…" : "Autoriser la prochaine collecte à dater"}
             </Button>
           </form>
         </>

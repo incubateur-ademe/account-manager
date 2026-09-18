@@ -700,8 +700,7 @@ describe("ce que l'inventaire dit d'un système, et ce qu'il refuse d'en dire", 
       },
       {
         titre: "4 startups",
-        description:
-          "Dont 2 en phase terminale et portant encore quelqu'un, ce qui ne justifie plus aucun accès.",
+        description: "Dont 2 en phase terminale portent encore quelqu'un, sans accès justifié.",
         cible: "/startups",
       },
       {
