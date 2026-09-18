@@ -4,5 +4,6 @@
   "ecrans-a-plus-d-un-bouton-primaire": 0,
   "lignes-de-tableau-au-dela-de-120px": 0,
   "colonnes-au-contenu-identique-partout": 0,
-  "contenus-repetes-dans-un-ecran": 1
+  "contenus-repetes-dans-un-ecran": 1,
+  "modales-qui-ne-s-ouvrent-pas": 7
 }

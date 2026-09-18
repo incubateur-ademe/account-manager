@@ -22,24 +22,24 @@ const RACINE = join(ICI, "..", "..");
 const SRC = join(RACINE, "src");
 const FICHIER_SEUILS = join(ICI, "seuils-ui.json");
 
-interface Source {
+export interface Source {
   readonly chemin: string;
   readonly contenu: string;
   readonly lignes: readonly string[];
 }
 
-interface Site {
+export interface Site {
   readonly chemin: string;
   readonly ligne: number;
   readonly extrait: string;
 }
 
-interface Resultat {
+export interface Resultat {
   readonly valeur: number;
   readonly sites: readonly Site[];
 }
 
-interface Mesure {
+export interface Mesure {
   readonly id: string;
   readonly libelle: string;
   readonly cible: string;
@@ -107,9 +107,14 @@ const horsCommentaire = (source: Source, motif: RegExp): boolean =>
 /*
  * Un objet metadata sans champ title laisse l'onglet muet tout autant qu'un écran sans metadata.
  */
-const declareUnTitreDOnglet = (source: Source): boolean =>
-  horsCommentaire(source, /\b(?:metadata|generateMetadata)\b/) &&
-  /\btitle\s*:/.test(source.contenu);
+const declareUnTitreDOnglet = (source: Source): boolean => {
+  const declaration = /\b(?:metadata|generateMetadata)\b/.exec(source.contenu);
+  if (declaration === null) return false;
+  if (!horsCommentaire(source, /\b(?:metadata|generateMetadata)\b/)) return false;
+  /* Le title doit venir APRÈS la déclaration, sans quoi un title: posé ailleurs dans le fichier
+     suffirait à faire croire que l'onglet est nommé. */
+  return /\btitle\s*:/.test(source.contenu.slice(declaration.index));
+};
 
 const estAccueil = (source: Source): boolean => source.chemin === join("src", "app", "page.tsx");
 
@@ -437,7 +442,7 @@ function titresDeLEcran(
 
 const resultat = (sites: readonly Site[]): Resultat => ({ valeur: sites.length, sites });
 
-const MESURES: readonly Mesure[] = [
+export const MESURES: readonly Mesure[] = [
   {
     id: "titres-ponctues",
     libelle: "Titres terminés par une ponctuation",
@@ -577,6 +582,8 @@ const MESURES: readonly Mesure[] = [
       resultat(
         sources
           .filter(estEcran)
+          /* Une route qui se termine par un refus ne rend aucun onglet non plus. */
+          .filter(rendUnEcran)
           .filter((source) => !estAccueil(source))
           .filter((source) => !declareUnTitreDOnglet(source))
           .map((source) => ({
@@ -789,6 +796,11 @@ const MESURES: readonly Mesure[] = [
   },
 ];
 
+/* De quoi exercer une mesure sur du code écrit à la main, sans passer par le disque. */
+export function sourceDeTest(chemin: string, contenu: string): Source {
+  return { chemin, contenu, lignes: contenu.split("\n") };
+}
+
 // ---------------------------------------------------------------------------
 // Seuils et sortie
 // ---------------------------------------------------------------------------
@@ -865,6 +877,13 @@ function principal(): number {
 
   const largeur = Math.max(...mesures.map((m) => m.mesure.id.length));
   const depassements: string[] = [];
+
+  /* Un plafond sans mesure est un reste : la mesure a été renommée ou retirée, et plus rien ne le
+     lit. Le signaler évite qu'il donne l'illusion d'une garantie. */
+  const connus = new Set(mesures.map(({ mesure }) => mesure.id));
+  for (const orphelin of Object.keys(seuils).filter((id) => !connus.has(id))) {
+    depassements.push(`${orphelin} : plafond posé sur une mesure qui n'existe plus`);
+  }
   const relachements: string[] = [];
 
   for (const { mesure, resultat: r } of mesures) {

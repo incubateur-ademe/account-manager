@@ -229,7 +229,8 @@ longs sont ce qui n'a pas été vérifié, et ce qui reste ouvert.
 **Un texte d'écran dit quoi faire, jamais pourquoi la règle existe.** La règle « aucun commentaire sauf
 le POURQUOI non évident » vaut pour le code, pas pour l'interface. Un texte d'aide dit quoi saisir et ce
 qui va arriver ; un libellé de bouton dit ce que le clic fait, du point de vue de qui clique. Cinq
-interdits, tous mesurés sur ce dépôt :
+interdits, tous constatés sur ce dépôt. Deux seulement se comptent, les deux premiers : les trois
+autres demandent de lire l'écran à côté du texte, et `pnpm cadre` ne sait pas le faire.
 
 - **Pas de deux-points suivis d'une explication.** Sur 144 emplois, 142 ouvrent une justification et 2
   une consigne. Les deux-points introduisent une consigne ou une donnée, rien d'autre.

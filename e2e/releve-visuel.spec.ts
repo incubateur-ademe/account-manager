@@ -107,6 +107,7 @@ test("relever ce qui ne se lit pas dans le code", async ({ browser }) => {
     "lignes-de-tableau-au-dela-de-120px": [],
     "colonnes-au-contenu-identique-partout": [],
     "contenus-repetes-dans-un-ecran": [],
+    "modales-qui-ne-s-ouvrent-pas": [],
   };
 
   for (const ecran of ECRANS) {
@@ -191,6 +192,9 @@ test("relever ce qui ne se lit pas dans le code", async ({ browser }) => {
         );
       } catch {
         modalesVues.push(`  ${ecran.nom.padEnd(26)} « ${cible.libelle.slice(0, 30)} » NON OUVERTE`);
+        manquements["modales-qui-ne-s-ouvrent-pas"]?.push(
+          `${ecran.nom} : « ${cible.libelle.slice(0, 40)} »`,
+        );
       }
       await page.goto(ecran.chemin, { waitUntil: "networkidle" });
     }
@@ -302,7 +306,9 @@ test("relever ce qui ne se lit pas dans le code", async ({ browser }) => {
     const plafond = plafonds[regle];
     bilan.push(`  ${regle.padEnd(40)} ${String(cas.length).padStart(4)} / ${plafond ?? "?"}`);
     for (const cas_ of cas) bilan.push(`      ${cas_}`);
-    if (plafond !== undefined && cas.length > plafond) {
+    if (plafond === undefined) {
+      depassements.push(`${regle} : aucun plafond posé, lance POSER_LES_PLAFONDS=1`);
+    } else if (cas.length > plafond) {
       depassements.push(`${regle} : ${cas.length} au lieu de ${plafond}`);
     }
   }
