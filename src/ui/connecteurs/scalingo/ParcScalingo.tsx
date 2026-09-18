@@ -178,7 +178,7 @@ export function ParcScalingo({ groupes }: { groupes: readonly GroupeAffiche[] })
         ))
       )}
 
-      <modale.Component title={MOTS_DE_SCALINGO.role.titreModale} size="large">
+      <modale.Component titleAs="h2" title={MOTS_DE_SCALINGO.role.titreModale} size="large">
         {cible === null ? null : (
           // La clé remonte le formulaire à chaque ouverture et à chaque changement de
           // ligne : sans elle, une modale rouverte rejouerait l'issue du geste précédent,

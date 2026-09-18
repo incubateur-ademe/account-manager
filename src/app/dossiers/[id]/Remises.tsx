@@ -59,6 +59,7 @@ function Remise({ remise }: { remise: RemiseDeCredential }) {
   if (caduque) {
     return (
       <Alert
+        as="h3"
         className={fr.cx("fr-mt-2w")}
         severity="info"
         title={LIBELLE_REMISE.disparue.titre}
@@ -70,6 +71,7 @@ function Remise({ remise }: { remise: RemiseDeCredential }) {
   return (
     <>
       <Alert
+        as="h3"
         className={fr.cx("fr-mt-2w")}
         severity="warning"
         title={LIBELLE_REMISE.titre}
@@ -91,6 +93,7 @@ function Remise({ remise }: { remise: RemiseDeCredential }) {
 
       {remise.echecDeRangement === undefined ? null : (
         <Alert
+          as="h3"
           className={fr.cx("fr-mt-2w")}
           severity="error"
           title={LIBELLE_REMISE.echec.titre}

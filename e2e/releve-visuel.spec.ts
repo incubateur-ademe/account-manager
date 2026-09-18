@@ -48,6 +48,7 @@ const ECRANS = [
   { nom: "18-systemes", chemin: "/systemes" },
   { nom: "19-systeme-github", chemin: "/systemes/github" },
   { nom: "20-systeme-notion", chemin: "/systemes/notion" },
+  { nom: "20b-systeme-scalingo", chemin: "/systemes/scalingo" },
   { nom: "21-collectes", chemin: "/collectes" },
   { nom: "22-modeles", chemin: "/modeles" },
   { nom: "23-modele-incubateur", chemin: "/modeles/incubateur" },

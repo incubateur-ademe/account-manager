@@ -497,7 +497,8 @@ const MESURES: readonly Mesure[] = [
       const sites: Site[] = [];
       for (const source of sources) {
         if (source.chemin === join("src", "ui", "Absent.tsx")) continue;
-        const motif = /<span[^>]*\bfr-hint-text\b[^>]*>\s*([^<{][^<]*?)\s*<\/span>/g;
+        /* Une accolade n'importe où dans le contenu dit que le texte est calculé, donc pas écrit ici. */
+        const motif = /<span[^>]*\bfr-hint-text\b[^>]*>([^<{}]+)<\/span>/g;
         let trouve = motif.exec(source.contenu);
         while (trouve !== null) {
           const texte = (trouve[1] ?? "").replace(/\s+/g, " ").trim();
@@ -628,9 +629,10 @@ const MESURES: readonly Mesure[] = [
       for (const source of sources) {
         source.lignes.forEach((ligne, index) => {
           if (estLigneDeCommentaire(ligne)) return;
-          if (!/\bdisabled(?:=|\s|$)/.test(ligne)) return;
+          /* aria-disabled marque une page courante ou une borne de pagination, pas un contrôle grisé. */
+          if (!/\bdisabled(?:=|\s|$)/.test(ligne) || /aria-disabled/.test(ligne)) return;
           /* Le temps d'une soumission, l'inertie dit que le geste est parti. */
-          if (/isPending|pending|soumission|useFormStatus|\ben[A-Z]\w+/.test(ligne)) return;
+          if (/isPending|pending|soumission|useFormStatus|\ben[A-Z]\w+|EnCours/.test(ligne)) return;
           sites.push({
             chemin: source.chemin,
             ligne: index + 1,
