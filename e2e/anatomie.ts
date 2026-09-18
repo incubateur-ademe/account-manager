@@ -36,7 +36,20 @@ export async function anatomieDe(page: Page): Promise<Anatomie> {
 
     const blocs: { quoi: string; hauteur: number; partDePage: number; detail: string }[] = [];
 
+    /*
+     * Le contenu d'une modale fermée vit dans le document et se mesure comme le reste. Le compter
+     * fait voir des blocs que personne n'a sous les yeux : une première version de ce fichier a fait
+     * conclure à six formulaires empilés sur /configuration, là où la capture montre un tableau.
+     */
+    const seVoit = (noeud: Element): boolean => {
+      const boite = noeud.closest("dialog");
+      if (boite !== null && !boite.hasAttribute("open")) return false;
+      const rect = noeud.getBoundingClientRect();
+      return rect.height > 0 && rect.width > 0;
+    };
+
     for (const formulaire of document.querySelectorAll("form")) {
+      if (!seVoit(formulaire)) continue;
       const h = Math.round(formulaire.getBoundingClientRect().height);
       const champs = formulaire.querySelectorAll(
         "input:not([type=hidden]), select, textarea",
@@ -53,6 +66,7 @@ export async function anatomieDe(page: Page): Promise<Anatomie> {
     }
 
     for (const table of document.querySelectorAll("table")) {
+      if (!seVoit(table)) continue;
       const h = Math.round(table.getBoundingClientRect().height);
       const lignes = [...table.querySelectorAll("tbody tr")];
       const colonnes = table.querySelectorAll("thead th").length;
@@ -88,6 +102,7 @@ export async function anatomieDe(page: Page): Promise<Anatomie> {
     }
 
     for (const pliant of document.querySelectorAll(".fr-accordion, details")) {
+      if (!seVoit(pliant)) continue;
       const h = Math.round(pliant.getBoundingClientRect().height);
       const ouvert =
         pliant instanceof HTMLDetailsElement
@@ -102,6 +117,7 @@ export async function anatomieDe(page: Page): Promise<Anatomie> {
     }
 
     for (const alerte of document.querySelectorAll(".fr-alert, .fr-callout")) {
+      if (!seVoit(alerte)) continue;
       const h = Math.round(alerte.getBoundingClientRect().height);
       const mots = texteDe(alerte).split(" ").length;
       blocs.push({
@@ -115,6 +131,7 @@ export async function anatomieDe(page: Page): Promise<Anatomie> {
     /* Un même paragraphe rendu à plusieurs endroits du même écran. */
     const phrases = new Map<string, number>();
     for (const noeud of document.querySelectorAll("main p, main li, main td, main dd")) {
+      if (!seVoit(noeud)) continue;
       const texte = texteDe(noeud);
       if (texte.split(" ").length < 5) continue;
       phrases.set(texte, (phrases.get(texte) ?? 0) + 1);
@@ -127,9 +144,11 @@ export async function anatomieDe(page: Page): Promise<Anatomie> {
         (t) => `${t.tagName.toLowerCase()}  ${texteDe(t).slice(0, 70)}`,
       ),
       blocs,
-      interactifs: document.querySelectorAll(
-        "main button, main a, main input:not([type=hidden]), main select, main textarea",
-      ).length,
+      interactifs: [
+        ...document.querySelectorAll(
+          "main button, main a, main input:not([type=hidden]), main select, main textarea",
+        ),
+      ].filter(seVoit).length,
       repetitions: [...phrases.entries()]
         .filter(([, n]) => n > 1)
         .map(([texte, n]) => `${n}x  ${texte.slice(0, 90)}`),
