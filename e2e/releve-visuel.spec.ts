@@ -70,6 +70,7 @@ test("relever ce qui ne se lit pas dans le code", async ({ browser }) => {
   await semer(semerLesEcransPleins);
   mkdirSync(`${SORTIE}/modales`, { recursive: true });
   mkdirSync(`${SORTIE}/etroit`, { recursive: true });
+  mkdirSync(`${SORTIE}/erreurs`, { recursive: true });
 
   const contexte = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   await ouvrirUneSession(contexte, {
@@ -188,6 +189,65 @@ test("relever ce qui ne se lit pas dans le code", async ({ browser }) => {
       await page.goto(ecran.chemin, { waitUntil: "networkidle" });
     }
   }
+
+  /*
+   * Ce qui suit un clic n'avait jamais été regardé : les captures montraient le repos. Un formulaire
+   * soumis vide est le cas le plus courant et le moins vu, et c'est là que les messages d'erreur se
+   * lisent pour de vrai. ACTIONS_ENABLED vaut false et l'espace-membre pointe sur un port mort, donc
+   * rien ne sort de la machine.
+   */
+  const erreurs: string[] = [];
+  for (const ecran of ECRANS) {
+    await page.goto(ecran.chemin, { waitUntil: "networkidle" });
+    const cibles = await page.evaluate(() =>
+      [...document.querySelectorAll("main button[aria-controls]")]
+        .filter((bouton) => bouton.closest("dialog") === null)
+        .map((bouton) => bouton.getAttribute("aria-controls") ?? "")
+        .filter((id) => id !== "" && document.getElementById(id)?.tagName === "DIALOG"),
+    );
+
+    for (const [index, id] of cibles.entries()) {
+      const dialogue = page.locator(`#${id}`);
+      try {
+        await page.locator(`main button[aria-controls="${id}"]`).first().click({ timeout: 3000 });
+        await dialogue.waitFor({ state: "visible", timeout: 3000 });
+        const soumettre = dialogue.locator('button[type="submit"]').first();
+        if ((await soumettre.count()) === 0) {
+          await page.keyboard.press("Escape");
+          continue;
+        }
+        await soumettre.click({ timeout: 3000 });
+        await page.waitForTimeout(700);
+        await page.screenshot({ path: `${SORTIE}/erreurs/${ecran.nom}-${index + 1}.png` });
+
+        const dit = await dialogue.evaluate((noeud) => {
+          const message = noeud.querySelector(".fr-error-text, [role=alert], .fr-alert--error");
+          const champ = noeud.querySelector("input:invalid, select:invalid, textarea:invalid");
+          return {
+            message: (message?.textContent ?? "").replace(/\s+/gu, " ").trim(),
+            garde: champ === null ? "aucune" : "le navigateur retient la soumission",
+          };
+        });
+        erreurs.push(
+          `  ${ecran.nom.padEnd(26)} modale ${index + 1} : ${dit.message === "" ? `aucun message, ${dit.garde}` : `« ${dit.message.slice(0, 90)} »`}`,
+        );
+      } catch {
+        erreurs.push(`  ${ecran.nom.padEnd(26)} modale ${index + 1} : non jouable`);
+      }
+      await page.goto(ecran.chemin, { waitUntil: "networkidle" });
+    }
+  }
+  const parle = erreurs.filter((ligne) => ligne.includes("«")).length;
+  rapport.push(
+    "\n# Ce qu'une soumission vide répond",
+    "",
+    `  ${parle} modale(s) sur ${erreurs.length} rendent un message de l'application. Partout ailleurs,`,
+    "  les champs required font intercepter la soumission par le navigateur, dont la bulle n'est ni",
+    "  rédigée ici ni forcément dans la langue de l'écran. La validation du serveur ne se voit donc",
+    "  qu'en remplissant partiellement, ce que ce relevé ne fait pas.",
+    "",
+    ...erreurs,
+  );
 
   const participante = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   await ouvrirUneSession(participante, {
