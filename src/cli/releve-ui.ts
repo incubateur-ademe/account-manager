@@ -314,13 +314,18 @@ function balisesOuvrantes(
  */
 const COMPOSANTS_PORTEURS_DE_TITRE = ["Alert", "Tile", "Accordion", "CallOut"] as const;
 
-const CLASSES_RACINES: readonly (readonly [string, string])[] = [
-  ["CallOut", "fr-callout"],
-  ["Pagination", "fr-pagination"],
-  ["TagsGroup", "fr-tags-group"],
-];
-// fr-search-bar n'est pas de la liste : react-dsfr 1.32.4 n'exporte aucun SearchBar, donc l'écrire à
-// la main est ici la seule voie. Une règle qui réclame un composant absent se fait désactiver.
+const CLASSES_RACINES: readonly (readonly [string, string])[] = [["CallOut", "fr-callout"]];
+/*
+ * Trois classes sont hors de cette liste, chacune pour une raison qui ne se lèvera pas :
+ *
+ * fr-search-bar, parce que react-dsfr 1.32.4 n'exporte aucun SearchBar.
+ * fr-pagination, parce que Pagination réclame getPageLinkProps, une fonction en propriété, qui ne
+ *   traverse pas la frontière serveur ; l'écran du journal se rend sans « use client ».
+ * fr-tags-group, parce que TagsGroup exige un tableau non vide, [TagProps, ...TagProps[]], qu'un
+ *   map ne garantit pas : le passer demanderait un cast, que ce dépôt refuse.
+ *
+ * Une règle qui réclame l'impossible se fait désactiver, et emporte alors les cas qu'elle tenait.
+ */
 
 /*
  * Les titres d'un écran ne vivent pas tous dans son fichier : une page monte des composants qui
@@ -637,7 +642,7 @@ const MESURES: readonly Mesure[] = [
     id: "controles-desactives",
     libelle: "Contrôles rendus inertes plutôt que retirés",
     cible:
-      "Un contrôle sans effet se retire. Grisé, il occupe la place et le regard sans rien offrir. Seule l'attente d'une soumission le justifie.",
+      "Un contrôle sans effet se retire plutôt que de se griser. Deux exceptions se tiennent : l'attente d'une soumission, et le refus qui porte sa raison à côté, parce qu'un geste absent sans explication se cherche. Le plafond empêche d'en ajouter d'autres sans y penser, il ne vise pas zéro.",
     compter: (sources) => {
       const sites: Site[] = [];
       for (const source of sources) {
