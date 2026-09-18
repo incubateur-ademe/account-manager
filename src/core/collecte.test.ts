@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import type { ObservedResource } from "@/core/connector";
+
 import {
   ageDuReleve,
   ageDuReleveDeLaTrace,
@@ -20,6 +22,7 @@ import {
   refusRepete,
   releveFige,
   systemesMuets,
+  verifierContenances,
 } from "./collecte";
 
 const SEUIL = 48;
@@ -774,5 +777,146 @@ describe("l'âge du relevé contre lequel le périmètre décide", () => {
     expect(ageDuReleveDeLaTrace(undefined)).toBeNull();
     expect(ageDuReleveDeLaTrace({ ageDuReleve: "4" })).toBeNull();
     expect(ageDuReleveDeLaTrace("relevé non renouvelé")).toBeNull();
+  });
+});
+
+describe("contenance des ressources", () => {
+  it("garde toute ressource, n'écarte que la contenance, et juge sur ce qui a été déclaré", () => {
+    // Le relevé d'un connecteur qui se contredit de cinq façons différentes. Ce qui est
+    // en jeu tient en une phrase : une contenance n'ouvre aucun droit, une ressource
+    // porte des accès. Jeter la seconde avec la première ferait tomber chacun de ses
+    // accès dans « accès sur une ressource absente de la collecte », donc cesserait de
+    // les rafraîchir, donc finirait par les couper.
+    const releve: ObservedResource[] = [
+      { externalId: "regroupement", label: "Regroupement" },
+      { externalId: "service-annuaire", label: "Annuaire", parentExternalId: "regroupement" },
+      { externalId: "service-paie", label: "Paie", parentExternalId: "jamais-emis" },
+      { externalId: "service-boucle", label: "Boucle", parentExternalId: "service-boucle" },
+      { externalId: "sous-boucle", label: "Sous-boucle", parentExternalId: "service-boucle" },
+      { externalId: "petite-fille", label: "Petite-fille", parentExternalId: "service-annuaire" },
+      { externalId: "duo-a", label: "Duo A", parentExternalId: "duo-b" },
+      { externalId: "duo-b", label: "Duo B", parentExternalId: "duo-a" },
+      { externalId: "service-isole", label: "Isolé", url: "https://exemple.invalid/isole" },
+    ];
+
+    const { ressources, erreurs, releve: compte } = verifierContenances(releve);
+
+    // Les neuf ressources ressortent, au complet et dans l'ordre : c'est la première
+    // chose à tenir, et la mutation qui la casse est de rendre une liste filtrée.
+    expect(ressources.map(({ externalId }) => externalId)).toEqual(
+      releve.map(({ externalId }) => externalId),
+    );
+    expect(ressources.find(({ externalId }) => externalId === "service-isole")).toEqual({
+      externalId: "service-isole",
+      label: "Isolé",
+      url: "https://exemple.invalid/isole",
+    });
+
+    // Une seule contenance survit, celle qui ne se contredit pas.
+    const contenances = new Map(
+      ressources.map(({ externalId, parentExternalId }) => [externalId, parentExternalId]),
+    );
+    expect(contenances.get("service-annuaire")).toBe("regroupement");
+    expect(contenances.get("service-paie")).toBeUndefined();
+    expect(contenances.get("service-boucle")).toBeUndefined();
+    expect(contenances.get("petite-fille")).toBeUndefined();
+    expect(contenances.get("duo-a")).toBeUndefined();
+    expect(contenances.get("duo-b")).toBeUndefined();
+
+    // Six refus, un par contenance fautive, chacun nommant sa ressource en itemRef et
+    // son contenant dans le message. Un cycle de deux compte pour deux, la profondeur
+    // maximale d'un et l'absence de cycle étant la même règle.
+    expect(erreurs).toHaveLength(6);
+    expect(erreurs.map(({ itemRef }) => itemRef)).toEqual([
+      "service-paie",
+      "service-boucle",
+      "sous-boucle",
+      "petite-fille",
+      "duo-a",
+      "duo-b",
+    ]);
+    expect(erreurs.every(({ scope }) => scope === "ressources")).toBe(true);
+    expect(erreurs[0]?.message).toContain("jamais-emis");
+    expect(erreurs[1]?.message).toBe("se contient elle-même");
+
+    // Le cas qui départage les deux implémentations possibles. `sous-boucle` désigne un
+    // contenant dont la contenance vient d'être refusée : juger sur la carte réparée le
+    // ferait passer, puisque `service-boucle` n'y a plus de parent. Le jugement porte sur
+    // ce que le connecteur a déclaré, faute de quoi sa contradiction sortirait du relevé
+    // sans un mot.
+    expect(erreurs[2]?.message).toContain("service-boucle");
+
+    // Le garde-fou de chute ne compte pas les contenants : la référence à laquelle il se
+    // compare ne retient que les ressources portant un accès vivant, et un contenant n'en
+    // porte souvent aucun. Seul « regroupement » en est un ici, les autres contenances
+    // ayant été écartées.
+    expect(compte).toBe(8);
+  });
+
+  it("retient la dernière déclaration d'une clé répétée, une fois, et le dit", () => {
+    // Given un connecteur qui se répète de deux façons : une clé redéclarée telle quelle,
+    // et une clé dont la seconde déclaration porte une contenance qu'un refus écarte.
+    const releve: ObservedResource[] = [
+      { externalId: "regroupement", label: "Regroupement" },
+      { externalId: "service-double", label: "Première", parentExternalId: "regroupement" },
+      {
+        externalId: "service-double",
+        label: "Dernière",
+        url: "https://exemple.invalid/derniere",
+        parentExternalId: "regroupement",
+      },
+      { externalId: "service-boucle", label: "Autre première", parentExternalId: "regroupement" },
+      {
+        externalId: "service-boucle",
+        label: "Autre dernière",
+        parentExternalId: "service-boucle",
+      },
+    ];
+
+    const { ressources, erreurs, releve: compte } = verifierContenances(releve);
+
+    // Then chaque clé ne ressort qu'une fois, et c'est la dernière déclaration entière qui
+    // la porte, libellé et adresse comprises : la boucle d'upsert garde déjà la dernière
+    // écriture, et cette fonction ne disait cette règle qu'à moitié, en l'appliquant à la
+    // seule table des contenances.
+    expect(ressources.map(({ externalId }) => externalId)).toEqual([
+      "regroupement",
+      "service-double",
+      "service-boucle",
+    ]);
+    expect(ressources[1]).toEqual({
+      externalId: "service-double",
+      label: "Dernière",
+      url: "https://exemple.invalid/derniere",
+      parentExternalId: "regroupement",
+    });
+
+    // Then c'est bien la contenance de la dernière déclaration qui est jugée, et son refus
+    // la nomme : sans le dédoublonnage, la base gardait le parent écrit par la première
+    // occurrence, la boucle d'écriture comparant à une valeur relue avant le passage.
+    expect(ressources[2]).toEqual({ externalId: "service-boucle", label: "Autre dernière" });
+
+    // Then le relevé compte deux lignes, le contenant retiré : conservées en double, les
+    // deux clés en ajoutaient chacune une, quand la référence à laquelle le garde-fou de
+    // chute les compare compte des lignes distinctes. Le plateau observé s'alourdissait,
+    // donc une chute réelle passait et une datation refusée s'autorisait.
+    expect(compte).toBe(2);
+
+    // Then chaque répétition est dite, en plus du refus de contenance : c'est une
+    // contradiction du connecteur, et cette fonction existe pour qu'aucune ne sorte du
+    // relevé sans un mot. Le passage tombe donc en `PARTIAL`, et rien ne s'y date comme
+    // disparu.
+    expect(erreurs).toHaveLength(3);
+    expect(erreurs.map(({ itemRef }) => itemRef)).toEqual([
+      "service-double",
+      "service-boucle",
+      "service-boucle",
+    ]);
+    expect(erreurs[0]).toEqual({
+      scope: "ressources",
+      itemRef: "service-double",
+      message: "déclarée plusieurs fois dans le même relevé : la dernière déclaration est retenue",
+    });
+    expect(erreurs[2]?.message).toBe("se contient elle-même");
   });
 });

@@ -416,6 +416,16 @@ export function etatQuiSolde(etat: EtatEtape): boolean {
 }
 
 /**
+ * La même liste, en tableau, pour le seul appelant qui ne peut pas appeler la fonction :
+ * un `where` SQL. Dérivée et jamais recopiée, une copie écrite à la main ayant déjà
+ * divergé en oubliant l'écart, si bien qu'une étape écartée par quelqu'un rouvrait un
+ * engagement que cette décision refermait.
+ */
+export const ETATS_QUI_SOLDENT: readonly EtatEtape[] = (
+  Object.keys(SOLDE) as readonly EtatEtape[]
+).filter(etatQuiSolde);
+
+/**
  * Une étape qu'on ne reverra plus : elle a été traitée, ou écartée en connaissance de
  * cause, et rien n'attend plus sur ce qui en a été dit.
  *

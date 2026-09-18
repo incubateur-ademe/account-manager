@@ -225,6 +225,17 @@ export interface ObservedResource {
   externalId: string;
   label: string;
   url?: string;
+  /**
+   * La clé de la ressource qui contient celle-ci, relevée dans le même passage. Absent vaut
+   * « rien ne la contient », qui est le cas de la plupart des systèmes.
+   *
+   * Déclarée par la contenue et jamais par le contenant : dire la relation dans l'autre sens
+   * obligerait le socle à réconcilier deux déclarations possibles du même fait, et rendrait la
+   * sortie d'une ressource de son contenant indiscernable d'un relevé tronqué.
+   *
+   * Un seul niveau, et le socle refuse le reste.
+   */
+  parentExternalId?: string;
 }
 
 export interface ObservedGrant {
@@ -271,6 +282,24 @@ export interface ObservedAccess {
   role: string;
 }
 
+/**
+ * Un accès qu'une étape de plan a ouvert et qu'aucune collecte ne rendra jamais, tel que
+ * le socle l'a retrouvé sur cette étape.
+ *
+ * Le socle ne sait pas ce que `key` désigne : il la transporte, la stocke et la compare à
+ * elle-même. Rédiger ce qui la solde appartient au connecteur qui l'a écrite.
+ */
+export interface OpenEngagement {
+  key: string;
+  /** Le libellé de l'étape qui l'a ouvert, figé ce jour-là. */
+  label: string;
+  /** Les paramètres de cette étape, tels qu'ils ont été approuvés. */
+  params: Record<string, unknown>;
+  /** Le terme décidé, quand il y en a un. */
+  expiresAt?: Date;
+  openedAt: Date;
+}
+
 export type SubjectRef =
   | {
       kind: "person";
@@ -298,6 +327,13 @@ export type SubjectRef =
        * un credential, donc ce n'est pas à `resolveCapability` de le dire.
        */
       handles?: Readonly<Record<string, string>>;
+      /**
+       * Les engagements ouverts sur ce système, tels que le socle les a retrouvés sur les
+       * étapes qui les ont ouverts. Ils n'existent dans aucun `CollectResult`, et c'est
+       * leur définition : sans eux, le départ se tairait sur ce que personne ne peut plus
+       * observer.
+       */
+      engagements?: readonly OpenEngagement[];
     }
   | { kind: "service"; key: string };
 
@@ -362,6 +398,22 @@ export interface PlannedStep {
    */
   expectedActor?: Acteur;
   validationBy?: Acteur;
+  /**
+   * Ce que cette étape ouvre et qu'aucune collecte ne rendra jamais, sous la forme que le
+   * connecteur émetteur a choisie. Le socle la transporte, la stocke et la compare à
+   * elle-même : il ne l'interprète jamais, ce qu'elle désigne n'ayant de sens que pour le
+   * connecteur qui l'a écrite.
+   *
+   * Présente si et seulement si ce que l'étape ouvre ne reparaîtra pas dans le
+   * `CollectResult` de ce connecteur. Une clé de trop fait proposer deux fois la même
+   * coupure au départ, sous deux clés d'idempotence que le dédoublonnage ne rapproche pas ;
+   * une clé qui manque laisse un accès que plus rien ne nomme.
+   *
+   * Hors de l'empreinte, comme `grantExpiresAt` : elle ne dit rien de plus que
+   * l'`idempotencyKey` de l'étape qui la porte, et l'y mettre déclarerait obsolète tout
+   * plan en vol le jour où un connecteur reformule ses clés.
+   */
+  engagementKey?: string;
 }
 
 /**
@@ -374,8 +426,42 @@ export type PrecheckResult =
   | { state: "ALREADY_PRESENT" }
   | { state: "STALE"; expected: unknown; actual: unknown };
 
+/**
+ * Ce qu'une étape remet et que le socle doit ranger : un credential émis pour quelqu'un,
+ * dont une moitié se garde et l'autre se rend une seule fois.
+ *
+ * Il passe par le socle plutôt que par le connecteur qui l'a obtenu, et ce n'est pas un
+ * détour : aucun fichier de `src/connectors/` n'importe `@/lib/db`, et leur en ouvrir
+ * l'accès ferait du contrat une façade. Un connecteur dit ce qu'il a obtenu, le socle
+ * décide de ce qui s'écrit et de ce qui se rend.
+ */
+export interface CredentialRemis {
+  key: string;
+  label: string;
+  purpose: string;
+  provider: string;
+  /** Qui le détient et qui en répond : la personne que l'étape vise. */
+  ownerUsername: string;
+  blob: string;
+  target: string;
+  scopes: NonEmptyArray<string>;
+  expiresAt: Date;
+  /** Ce qui ne se garde pas : rendu une fois à l'écran, jamais écrit, jamais journalisé. */
+  aRemettre: string;
+}
+
 export type StepOutcome =
-  | { state: "SUCCEEDED"; reversibleUntil?: Date; evidence?: string }
+  | {
+      state: "SUCCEEDED";
+      reversibleUntil?: Date;
+      evidence?: string;
+      /**
+       * Absent sur la quasi-totalité des étapes, et c'est la forme voulue : une étape qui
+       * ouvre un accès sur un compte existant n'a rien à ranger, seule celle qui fabrique
+       * un credential en a.
+       */
+      credential?: CredentialRemis;
+    }
   | { state: "ALREADY_ABSENT" }
   | { state: "ALREADY_PRESENT" }
   | { state: "FAILED"; error: string; retryable: boolean };

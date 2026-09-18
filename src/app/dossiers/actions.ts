@@ -112,7 +112,12 @@ async function ouvrir(sens: SensDossier, formData: FormData): Promise<EtatDossie
         throw new Error(messageDeRefus(calcule.refus));
       }
 
-      await enregistrerPlanDOuverture(dossier.id, calcule, operateur.username, maintenant);
+      await enregistrerPlanDOuverture(
+        { kind: sens, accessCaseId: dossier.id },
+        calcule,
+        operateur.username,
+        maintenant,
+      );
       return dossier.id;
     },
   });

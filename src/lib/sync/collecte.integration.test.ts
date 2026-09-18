@@ -296,3 +296,212 @@ describe("le garde-fou de chute, contre une vraie base", () => {
     expect(accesDuVoisin).toBe(2);
   });
 });
+
+/**
+ * La contenance d'une ressource par une autre, exercée contre une vraie base.
+ *
+ * C'est la seule garantie de cette feature qui ne se tienne pas plus bas. Le refus d'une
+ * contenance malformée se juge sur le relevé seul et vit dans l'unitaire. Ce qui reste
+ * demande une table : `Resource.parentId` pointe vers `Resource.id`, donc vers une ligne
+ * dont l'identifiant n'existe qu'une fois l'écriture faite, et un double écrit à la main
+ * qui prétendrait poser cette clé étrangère vérifierait sa propre implémentation.
+ *
+ * Une seule histoire, quatre nuits, parce que la garantie est une suite : la contenance
+ * se pose quel que soit l'ordre du relevé, elle ne bouge pas quand rien ne change, elle
+ * se retire sans emporter ce qu'elle décorait, et le contenant reste invisible aux deux
+ * plateaux du garde-fou de chute.
+ */
+
+const NUIT_A = new Date("2026-09-14T02:00:00Z");
+const NUIT_B = new Date("2026-09-15T02:00:00Z");
+const NUIT_C = new Date("2026-09-16T02:00:00Z");
+const NUIT_D = new Date("2026-09-17T02:00:00Z");
+
+/** Le contenant : un projet, qui regroupe des applications et n'ouvre aucun droit par lui-même. */
+const PROJET = { externalId: "projet-produit-alpha", label: "Produit Alpha" };
+const WEB = { externalId: "produit-alpha-web", label: "Produit Alpha (web)" };
+const API = { externalId: "produit-alpha-api", label: "Produit Alpha (api)" };
+
+/**
+ * Trois applications qu'aucun projet ne contient.
+ *
+ * Sans elles, une écriture qui poserait le même contenant sur toute la table passerait
+ * inaperçue, et la colonne ne distinguerait plus « contenue par » de « lue dans le même
+ * relevé ».
+ */
+const HORS_PROJET = [
+  { externalId: "produit-beta-web", label: "Produit Beta (web)" },
+  { externalId: "service-annuaire", label: "Service annuaire" },
+  { externalId: "service-paie", label: "Service paie" },
+];
+
+const DANS_LE_PROJET = [
+  { ...WEB, parentExternalId: PROJET.externalId },
+  { ...API, parentExternalId: PROJET.externalId },
+];
+
+const COMPTES = ["alpha-1", "alpha-2", "beta-1", "annuaire-1", "paie-1"];
+
+/** Un accès par application, et aucun sur le projet : c'est ce qui rend les deux façons de compter distinguables. */
+const TOUS_LES_ACCES = [
+  { identityExternalId: "alpha-1", resourceExternalId: WEB.externalId, role: "collaborateur" },
+  { identityExternalId: "alpha-2", resourceExternalId: API.externalId, role: "collaborateur" },
+  { identityExternalId: "beta-1", resourceExternalId: "produit-beta-web", role: "collaborateur" },
+  {
+    identityExternalId: "annuaire-1",
+    resourceExternalId: "service-annuaire",
+    role: "collaborateur",
+  },
+  { identityExternalId: "paie-1", resourceExternalId: "service-paie", role: "collaborateur" },
+];
+
+const ligne = (externalId: string) =>
+  prisma.resource.findUniqueOrThrow({
+    where: { provider_externalId: { provider: PROVIDER, externalId } },
+    select: { id: true, label: true, parentId: true },
+  });
+
+describe("la contenance d'une ressource, contre une vraie base", () => {
+  it("un contenant et ce qu'il contient arrivent dans le même relevé, dans n'importe quel ordre", async () => {
+    // Given un système qui rend six ressources : un projet, les deux applications qu'il
+    // contient, et trois applications hors de tout projet. Le relevé annonce le projet en
+    // dernier, après les applications qui le nomment, ce que le contrat autorise et que
+    // rien ne peut ordonner : un connecteur pagine ce que l'API lui rend.
+    const premiere = await executerCollecte(
+      connecteurQuiLit(() => ({
+        status: "ok",
+        itemsSeen: COMPTES.length,
+        identities: COMPTES.map(compte),
+        resources: [...DANS_LE_PROJET, ...HORS_PROJET, PROJET],
+        grants: TOUS_LES_ACCES,
+      })),
+      NUIT_A,
+      nouvelleExecution(),
+    );
+
+    // Then tout est passé, et rien n'a été perdu en chemin : six ressources écrites, cinq
+    // comptes, cinq accès. Une contenance refusée aurait fait basculer le passage en
+    // PARTIAL, et c'est la première chose à écarter avant de lire la colonne.
+    expect(premiere.status).toBe("OK");
+    expect(premiere.erreurs).toEqual([]);
+    expect(premiere.ressources).toBe(6);
+    expect(premiere.identites.creees).toBe(5);
+    expect(premiere.acces.crees).toBe(5);
+
+    // Then la ligne de chaque application pointe vers celle du projet, alors que le projet
+    // n'existait pas encore en base quand son nom a été lu. C'est toute la raison d'être de
+    // cette histoire : la clé étrangère se résout sur une table écrite, pas sur une table en
+    // cours d'écriture.
+    const projet = await ligne(PROJET.externalId);
+    const web = await ligne(WEB.externalId);
+    const api = await ligne(API.externalId);
+    expect(web.parentId).toBe(projet.id);
+    expect(api.parentId).toBe(projet.id);
+
+    // Then le projet n'est contenu par rien, et les trois applications hors projet non plus :
+    // la contenance suit ce que le connecteur a déclaré, ligne par ligne.
+    expect(projet.parentId).toBeNull();
+    const orphelines = await prisma.resource.findMany({
+      where: { provider: PROVIDER, externalId: { in: HORS_PROJET.map((r) => r.externalId) } },
+      select: { parentId: true },
+    });
+    expect(orphelines).toEqual([{ parentId: null }, { parentId: null }, { parentId: null }]);
+
+    // When la nuit suivante rend le même relevé, mais le projet en premier. Rien n'a changé
+    // chez le fournisseur, seul l'ordre de pagination a bougé.
+    const seconde = await executerCollecte(
+      connecteurQuiLit(() => ({
+        status: "ok",
+        itemsSeen: COMPTES.length,
+        identities: COMPTES.map(compte),
+        resources: [PROJET, ...DANS_LE_PROJET, ...HORS_PROJET],
+        grants: TOUS_LES_ACCES,
+      })),
+      NUIT_B,
+      nouvelleExecution(),
+    );
+
+    // Then rien n'a changé en base : les mêmes lignes, sous les mêmes identifiants, avec la
+    // même contenance. Une ligne recréée changerait d'identifiant et emporterait ses accès,
+    // et un identifiant qui bouge d'une nuit à l'autre est ce qui fait qu'une décision prise
+    // hier ne désigne plus rien aujourd'hui.
+    expect(seconde.status).toBe("OK");
+    expect(seconde.erreurs).toEqual([]);
+    expect(seconde.acces.crees).toBe(0);
+    expect(seconde.acces.revus).toBe(5);
+    expect(await ligne(PROJET.externalId)).toEqual(projet);
+    expect(await ligne(WEB.externalId)).toEqual(web);
+    expect(await ligne(API.externalId)).toEqual(api);
+
+    // When la troisième nuit cesse de déclarer la contenance : les six ressources sont
+    // toujours là, mais plus aucune ne nomme de contenant. C'est ce qui arrive quand une
+    // application sort de son projet, et c'est indiscernable d'un fournisseur qui cesse de
+    // rendre le champ, donc ça doit se lire comme un fait constaté.
+    const troisieme = await executerCollecte(
+      connecteurQuiLit(() => ({
+        status: "ok",
+        itemsSeen: COMPTES.length,
+        identities: COMPTES.map(compte),
+        resources: [PROJET, WEB, API, ...HORS_PROJET],
+        grants: TOUS_LES_ACCES,
+      })),
+      NUIT_C,
+      nouvelleExecution(),
+    );
+
+    // Then la colonne est revenue à nul, et rien d'autre n'a bougé : même identifiant, même
+    // libellé, et les accès toujours vivants sur les mêmes lignes. Une contenance n'ouvre
+    // aucun droit, la retirer ne doit donc rien coûter à ce qu'elle décorait.
+    expect(troisieme.status).toBe("OK");
+    expect(troisieme.erreurs).toEqual([]);
+    expect(await ligne(WEB.externalId)).toEqual({ ...web, parentId: null });
+    expect(await ligne(API.externalId)).toEqual({ ...api, parentId: null });
+    expect(troisieme.acces.disparus).toBe(0);
+    expect(await accesVivants()).toBe(5);
+
+    // When la quatrième nuit ne rend plus que le projet et ses deux applications, contenance
+    // rétablie, et plus aucune des trois autres. Les cinq comptes sont toujours lus : c'est
+    // le plateau des ressources qu'on regarde, et une chute des comptes gèlerait tout en
+    // amont.
+    const quatrieme = await executerCollecte(
+      connecteurQuiLit(() => ({
+        status: "ok",
+        itemsSeen: COMPTES.length,
+        identities: COMPTES.map(compte),
+        resources: [...DANS_LE_PROJET, PROJET],
+        grants: TOUS_LES_ACCES.slice(0, 2),
+      })),
+      NUIT_D,
+      nouvelleExecution(),
+    );
+
+    // Then le garde-fou refuse, et ce sont les deux nombres qu'il annonce qui portent la
+    // garantie. Observé vaut deux, le relevé sans son contenant, et non trois : compter les
+    // lignes du relevé ferait entrer le projet dans le plateau du soir. Référence vaut cinq,
+    // les applications qui portent encore un accès, et non six : le projet n'en porte aucun,
+    // et le compter gonflerait le plateau de la base. Un contenant qui pèserait d'un seul
+    // côté masquerait une chute réelle, donc autoriserait une datation que le garde-fou
+    // vient précisément de refuser.
+    expect(quatrieme.status).toBe("PARTIAL");
+    expect(quatrieme.refus).toEqual([{ famille: "ressources", observe: 2, reference: 5 }]);
+
+    // Then le projet ne porte toujours aucun accès, ce qui est la prémisse de la lecture
+    // ci-dessus : sans cette ligne, l'égalité à cinq se lirait comme une coïncidence.
+    const accesDuProjet = await prisma.accessGrant.count({
+      where: { resource: { provider: PROVIDER, externalId: PROJET.externalId } },
+    });
+    expect(accesDuProjet).toBe(0);
+
+    // Then la contenance est de retour, sur les mêmes lignes qu'aux trois premières nuits.
+    // Elle se repose donc après avoir été retirée, et toujours dans un relevé qui nomme le
+    // contenant en dernier.
+    expect(await ligne(WEB.externalId)).toEqual(web);
+    expect(await ligne(API.externalId)).toEqual(api);
+
+    // Then rien n'a été daté, ni les comptes, tous revus, ni les accès, que le refus
+    // protège : trois des cinq n'ont pas été rendus cette nuit et vivent encore.
+    expect(quatrieme.identites.disparues).toBe(0);
+    expect(quatrieme.acces.disparus).toBe(0);
+    expect(await accesVivants()).toBe(5);
+  });
+});

@@ -6,6 +6,7 @@ import { notion } from "@/connectors/notion";
 import type { Connector, Intent, PlannedStep, RunContext } from "@/core/connector";
 import type { Acteur, EtatDossier } from "@/core/dossier";
 import { peutClore, peutConfirmer, systemesDuDepart } from "@/core/dossier";
+import type { LigneDEngagement } from "@/core/geste";
 import { CLE_INCUBATEUR } from "@/core/modele-plan";
 import { empreinteDuPlan } from "@/core/plan";
 import { Prisma } from "@/generated/prisma/client";
@@ -112,6 +113,8 @@ const base = vi.hoisted(() => ({
   collisionAuProchainCreate: null as Error | null,
   collisionAuProchainPlan: null as Error | null,
   planGagnantEcritParLaCollision: true,
+  /** Les engagements ouverts, tels que la lecture des étapes portant une clé les rend. */
+  engagements: [] as LigneDEngagement[],
   /** Faux quand la collision ne vient pas d'une course, donc sans dossier a rendre. */
   gagnantEcritParLaCollision: true,
 }));
@@ -238,6 +241,9 @@ vi.mock("@/lib/db", () => ({
           base.plans.filter((plan) => plan.accessCaseId === where.accessCaseId).length,
         ),
     },
+    // Ce qu'un départ ne retrouve nulle part ailleurs : vide par défaut, les plans de ces
+    // scénarios n'ouvrant aucun engagement.
+    planStep: { findMany: () => Promise.resolve(base.engagements) },
   },
 }));
 
@@ -396,6 +402,7 @@ beforeEach(() => {
   base.gagnantEcritParLaCollision = true;
   base.collisionAuProchainPlan = null;
   base.planGagnantEcritParLaCollision = true;
+  base.engagements.length = 0;
   contextes.length = 0;
   registre(GITHUB, notion);
 });
@@ -460,7 +467,12 @@ describe("un plan de départ, après que le dossier a gagné un sens", () => {
     const calcule = await calculerPlan("OFFBOARDING", PERSONNE, USERNAME, MAINTENANT);
 
     // When on l'enregistre
-    const planId = await enregistrerPlan(dossier.id, calcule, "operatrice.exemple", MAINTENANT);
+    const planId = await enregistrerPlan(
+      { kind: calcule.sens, accessCaseId: dossier.id },
+      calcule,
+      "operatrice.exemple",
+      MAINTENANT,
+    );
 
     // Then le plan porte le sens de son dossier, et non plus un sens écrit en dur
     const plan = base.plans[0];
@@ -534,7 +546,12 @@ describe("un plan d'arrivée", () => {
     expect(contextes[0]?.dryRun).toBe(true);
 
     // Then ce plan se confirme, puisqu'il demande quelque chose
-    const planId = await enregistrerPlan(dossier.id, calcule, "operatrice.exemple", MAINTENANT);
+    const planId = await enregistrerPlan(
+      { kind: calcule.sens, accessCaseId: dossier.id },
+      calcule,
+      "operatrice.exemple",
+      MAINTENANT,
+    );
     const plan = base.plans[0];
     expect(plan?.id).toBe(planId);
     expect(plan?.kind).toBe("ONBOARDING");
@@ -639,7 +656,12 @@ describe("un plan d'arrivée", () => {
     );
 
     // When la reprise perdante enregistre son plan
-    await enregistrerPlanDOuverture(dossier.id, calcule, "operatrice.exemple", MAINTENANT);
+    await enregistrerPlanDOuverture(
+      { kind: calcule.sens, accessCaseId: dossier.id },
+      calcule,
+      "operatrice.exemple",
+      MAINTENANT,
+    );
 
     // Then le dossier ne porte que le plan gagnant : deux plans sur un même dossier ne
     // se départagent pas, et les écrans finiraient par en montrer un puis l'autre.
@@ -661,7 +683,12 @@ describe("un plan d'arrivée", () => {
     // Then l'erreur n'est pas avalée : un dossier annoncé ouvert sans plan derrière est
     // exactement l'état que la reprise existe pour éviter.
     await expect(
-      enregistrerPlanDOuverture(dossier.id, calcule, "operatrice.exemple", MAINTENANT),
+      enregistrerPlanDOuverture(
+        { kind: calcule.sens, accessCaseId: dossier.id },
+        calcule,
+        "operatrice.exemple",
+        MAINTENANT,
+      ),
     ).rejects.toThrow("Unique constraint failed");
     expect(base.plans).toHaveLength(0);
   });
@@ -833,6 +860,56 @@ describe("l'intention portée aux connecteurs", () => {
       ),
     ).toEqual([USERNAME, USERNAME]);
   });
+
+  it("remet à chaque système les engagements ouverts sur lui, et rien aux autres", async () => {
+    // Given deux connecteurs qui ne savent que retirer, dont l'un n'observe aucun compte
+    // mais porte un engagement ouvert, et l'autre observe un compte sans engagement
+    const intentions = new Map<string, Intent>();
+    const mouchard = (key: string): Connector => ({
+      ...SANS_OCTROI,
+      contract: { ...SANS_OCTROI.contract, key },
+      plan: (intent: Intent) => {
+        intentions.set(key, intent);
+        return Promise.resolve([]);
+      },
+    });
+    registre(mouchard("jetons"), mouchard("coffre"));
+    base.identites.push(identite({ provider: "coffre", matchMethod: "DECLARED" }));
+    base.engagements.push({
+      engagementKey: "jetons:astreinte",
+      capability: "grant",
+      systemKey: "jetons",
+      label: "Émettre un jeton d'astreinte",
+      params: { usage: "astreinte" },
+      grantExpiresAt: new Date("2026-12-31T00:00:00Z"),
+      executedAt: new Date("2026-08-01T09:00:00Z"),
+    });
+
+    // When on calcule un départ
+    await calculerPlan("OFFBOARDING", PERSONNE, USERNAME, MAINTENANT);
+
+    // Then le système engagé est interrogé bien qu'aucun compte n'y soit observé : sans
+    // cela, l'accès qu'aucune collecte ne rend ne serait nommé nulle part
+    expect([...intentions.keys()].sort()).toEqual(["coffre", "jetons"]);
+
+    // Then il reçoit son engagement sur le sujet, tel que la lecture l'a plié, et sans la
+    // clé de système qui a servi à le router : c'est la seule chose qui permette au
+    // connecteur de proposer la coupure d'un accès dont il ne voit aucune trace
+    const engage = intentions.get("jetons")?.subject;
+    expect(engage?.kind === "person" ? engage.engagements : null).toEqual([
+      {
+        key: "jetons:astreinte",
+        label: "Émettre un jeton d'astreinte",
+        params: { usage: "astreinte" },
+        openedAt: new Date("2026-08-01T09:00:00Z"),
+        expiresAt: new Date("2026-12-31T00:00:00Z"),
+      },
+    ]);
+
+    // Then l'autre n'en reçoit aucun, et le champ est absent plutôt que vide : une liste
+    // vide dirait « j'ai regardé et il n'y a rien », ce qui n'est pas la même chose
+    expect(intentions.get("coffre")?.subject).not.toHaveProperty("engagements");
+  });
 });
 
 function modele(
@@ -943,7 +1020,12 @@ describe("un plan qui porte ce qu'aucun système ne connaît", () => {
 
     // When on fige ce plan
     const dossier = await ouvrirDossier(PERSONNE, "OFFBOARDING", null);
-    const planId = await enregistrerPlan(dossier.id, calcule, "operatrice.exemple", MAINTENANT);
+    const planId = await enregistrerPlan(
+      { kind: calcule.sens, accessCaseId: dossier.id },
+      calcule,
+      "operatrice.exemple",
+      MAINTENANT,
+    );
 
     // Then l'origine descend en base avec le reste : sans elle, l'écran du dossier
     // ne saurait plus dire qui a demandé quoi
@@ -1085,7 +1167,7 @@ describe("un plan qui porte ce qu'aucun système ne connaît", () => {
     const premier = await ouvrirDossier(PERSONNE, "OFFBOARDING", null);
     const calculePremier = await calculerPlan("OFFBOARDING", PERSONNE, USERNAME, MAINTENANT);
     const planPremier = await enregistrerPlan(
-      premier.id,
+      { kind: calculePremier.sens, accessCaseId: premier.id },
       calculePremier,
       "operatrice.exemple",
       MAINTENANT,
@@ -1099,7 +1181,7 @@ describe("un plan qui porte ce qu'aucun système ne connaît", () => {
     const second = await ouvrirDossier(PERSONNE, "OFFBOARDING", null);
     const calculeSecond = await calculerPlan("OFFBOARDING", PERSONNE, USERNAME, MAINTENANT);
     const planSecond = await enregistrerPlan(
-      second.id,
+      { kind: calculeSecond.sens, accessCaseId: second.id },
       calculeSecond,
       "operatrice.exemple",
       MAINTENANT,
@@ -1186,7 +1268,12 @@ describe("la répartition des rôles, au moment de figer les étapes", () => {
     const calcule = await calculerPlan("ONBOARDING", PERSONNE, USERNAME, MAINTENANT);
 
     // When on fige le plan
-    await enregistrerPlan(dossier.id, calcule, "operatrice.exemple", MAINTENANT);
+    await enregistrerPlan(
+      { kind: calcule.sens, accessCaseId: dossier.id },
+      calcule,
+      "operatrice.exemple",
+      MAINTENANT,
+    );
 
     // Then chaque étape porte sa répartition, sans table de traduction : les valeurs
     // du cœur et celles de l'énumération Prisma sont les mêmes littéraux.
@@ -1216,7 +1303,12 @@ describe("la répartition des rôles, au moment de figer les étapes", () => {
     // ce qui sort d'ici est un défaut de construction, et le corriger demande de savoir
     // laquelle des origines l'a proposé.
     await expect(
-      enregistrerPlan(dossier.id, calcule, "operatrice.exemple", MAINTENANT),
+      enregistrerPlan(
+        { kind: calcule.sens, accessCaseId: dossier.id },
+        calcule,
+        "operatrice.exemple",
+        MAINTENANT,
+      ),
     ).rejects.toThrow(/Geste n°1 de l'atelier.*SUBJECT agit, SUBJECT contrôle/s);
 
     // Then rien n'a été écrit : un plan à moitié figé attendrait pour toujours un
@@ -1233,7 +1325,12 @@ describe("la répartition des rôles, au moment de figer les étapes", () => {
     // Then le plan ne se fige pas : faire contrôler l'équipe transverse par quelqu'un
     // d'extérieur au dossier inverse la responsabilité.
     await expect(
-      enregistrerPlan(dossier.id, calcule, "operatrice.exemple", MAINTENANT),
+      enregistrerPlan(
+        { kind: calcule.sens, accessCaseId: dossier.id },
+        calcule,
+        "operatrice.exemple",
+        MAINTENANT,
+      ),
     ).rejects.toThrow(/OPERATOR agit, DELEGATE contrôle/);
     expect(base.plans).toEqual([]);
 
@@ -1244,7 +1341,12 @@ describe("la répartition des rôles, au moment de figer les étapes", () => {
 
     // Then il se fige, et l'étape porte les deux rôles : ce n'est pas une déclaration
     // que son auteur redirait, la règle qui l'interdit portant sur le username.
-    await enregistrerPlan(dossier.id, relu, "operatrice.exemple", MAINTENANT);
+    await enregistrerPlan(
+      { kind: relu.sens, accessCaseId: dossier.id },
+      relu,
+      "operatrice.exemple",
+      MAINTENANT,
+    );
     expect(base.plans[0]?.steps[0]).toMatchObject({
       expectedActor: "OPERATOR",
       validationBy: "OPERATOR",
@@ -1284,7 +1386,12 @@ describe("la répartition des rôles, au moment de figer les étapes", () => {
 
     // When on fige le plan
     const dossier = await ouvrirDossier(PERSONNE, "OFFBOARDING", null);
-    await enregistrerPlan(dossier.id, calcule, "operatrice.exemple", MAINTENANT);
+    await enregistrerPlan(
+      { kind: calcule.sens, accessCaseId: dossier.id },
+      calcule,
+      "operatrice.exemple",
+      MAINTENANT,
+    );
 
     // Then la colonne porte ce que le modèle nommait, et l'assemblage n'a touché ni à
     // l'un ni à l'autre : c'est la chaîne entière, de la ligne éditée à l'écran

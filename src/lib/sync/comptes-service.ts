@@ -16,7 +16,13 @@ export async function comptesEnRetardDeRevue(maintenant: Date): Promise<readonly
     // Un ordre explicite : sans lui, la même liste s'écrirait différemment d'une nuit à
     // l'autre dans le journal, et ce bruit se lirait comme un changement.
     orderBy: { key: "asc" },
-    select: { key: true, reviewEveryDays: true, lastReviewedAt: true, createdAt: true },
+    select: {
+      key: true,
+      reviewEveryDays: true,
+      lastReviewedAt: true,
+      createdAt: true,
+      expiresAt: true,
+    },
   });
 
   return comptes
@@ -27,6 +33,7 @@ export async function comptesEnRetardDeRevue(maintenant: Date): Promise<readonly
             reviewEveryDays: compte.reviewEveryDays,
             lastReviewedAt: compte.lastReviewedAt,
             createdAt: compte.createdAt,
+            expiresAt: compte.expiresAt,
           },
           maintenant,
         ).etat === "EN_RETARD",

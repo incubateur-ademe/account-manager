@@ -1,7 +1,14 @@
 import { randomUUID } from "node:crypto";
 
 import { CONNECTEURS } from "@/connectors";
-import type { Connector, Intent, ObservedAccess, PlannedStep, RunContext } from "@/core/connector";
+import type {
+  Connector,
+  Intent,
+  ObservedAccess,
+  OpenEngagement,
+  PlannedStep,
+  RunContext,
+} from "@/core/connector";
 import {
   type CompteCouvrable,
   type Derogation,
@@ -17,6 +24,7 @@ import {
   type SystemesDuDepart,
   systemesDuDepart,
 } from "@/core/dossier";
+import type { IntentionDUnGeste } from "@/core/geste";
 import type { RefusDOctroi } from "@/core/octroi";
 import {
   assembler,
@@ -33,6 +41,7 @@ import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { derogationsApplicables } from "@/lib/derogation";
 import { env } from "@/lib/env";
+import { engagementsOuverts } from "@/lib/geste";
 import { etapesDeclarees } from "@/lib/modele-plan";
 
 /**
@@ -146,9 +155,12 @@ async function systemesDeLaPersonne(personId: string): Promise<ComptesDuDepart> 
  * Les connecteurs qu'un plan interroge, et ce ne sont pas les mêmes dans les deux
  * sens.
  *
- * Pour un départ, seuls ceux où la personne est observée avec un rattachement sûr :
- * une ressemblance ne coupe rien, et un système où elle n'a pas de compte n'appelle
- * aucun geste.
+ * Pour un départ, ceux où la personne est observée avec un rattachement sûr : une
+ * ressemblance ne coupe rien, et un système où elle n'a pas de compte n'appelle aucun
+ * geste. Plus ceux où elle détient un engagement, qui n'est par définition dans aucun
+ * relevé : quelqu'un détenant un jeton sans être collaborateur d'aucune application ne
+ * serait observé nulle part, le connecteur ne serait pas interrogé, et l'engagement
+ * retomberait dans le trou muet que la clé existe pour boucher.
  *
  * Pour une arrivée, tous ceux qui savent donner un accès, sans regarder ce qui est
  * déjà là : un compte déjà ouvert se pointe « déjà présent », il ne fait pas
@@ -159,9 +171,10 @@ function interroge(
   sens: SensDossier,
   connecteur: Connector,
   presente: ReadonlySet<string>,
+  engages: ReadonlySet<string>,
 ): boolean {
   if (sens === "OFFBOARDING") {
-    return presente.has(connecteur.contract.key);
+    return presente.has(connecteur.contract.key) || engages.has(connecteur.contract.key);
   }
   return connecteur.contract.capabilities.grant !== undefined;
 }
@@ -238,6 +251,20 @@ export async function calculerPlan(
   const adresse = constates.adresse;
   const presente = new Set(constates.revocables);
 
+  // Au même instant que les tolérances, et gelé pour la même raison : un engagement dont le
+  // terme tombe entre la confirmation et l'exécution, ou qu'un geste ouvre pendant ce
+  // même intervalle, déplacerait l'empreinte, et le plan deviendrait inexécutable sans
+  // issue, le recalcul n'étant ouvert qu'à un brouillon. L'instant borne donc l'ensemble
+  // des lignes autant que leur terme, ce dont `engagementsOuverts` répond.
+  const engagements =
+    sens === "OFFBOARDING" ? await engagementsOuverts(personId, tolerancesAu ?? maintenant) : [];
+
+  const parSysteme = new Map<string, OpenEngagement[]>();
+  for (const { systemKey, ...engagement } of engagements) {
+    parSysteme.set(systemKey, [...(parSysteme.get(systemKey) ?? []), engagement]);
+  }
+  const engages = new Set(parSysteme.keys());
+
   const ctx: RunContext = {
     runId: randomUUID(),
     now: maintenant,
@@ -252,7 +279,7 @@ export async function calculerPlan(
   const systemes: string[] = [];
 
   for (const connecteur of CONNECTEURS) {
-    if (!interroge(sens, connecteur, presente)) {
+    if (!interroge(sens, connecteur, presente, engages)) {
       continue;
     }
 
@@ -270,6 +297,9 @@ export async function calculerPlan(
             ...(adresse === undefined ? {} : { email: adresse }),
             ...(constates.accesParSysteme.has(connecteur.contract.key)
               ? { acces: constates.accesParSysteme.get(connecteur.contract.key) }
+              : {}),
+            ...(parSysteme.has(connecteur.contract.key)
+              ? { engagements: parSysteme.get(connecteur.contract.key) }
               : {}),
           },
         },
@@ -488,8 +518,25 @@ export function messageDeRefus(refus: readonly RefusDOctroi[]): string {
  * moitié, et un appelant qui oublierait de regarder `refus` enregistrerait sinon un
  * plan amputé sans que rien ne le signale.
  */
+/**
+ * D'où un plan tient son existence, et il n'en a qu'une : un dossier, ou une personne visée
+ * avec ce qu'un opérateur a demandé pour elle.
+ *
+ * Une union discriminée et non trois paramètres facultatifs, pour une raison mécanique :
+ * trois facultatifs laissent écrire un plan `MANUAL_OP` portant un dossier, et le typecheck
+ * n'aurait rien à dire.
+ */
+export type AncrageDeDossier = {
+  kind: "ONBOARDING" | "OFFBOARDING";
+  accessCaseId: string;
+};
+
+export type AncrageDuPlan =
+  | AncrageDeDossier
+  | { kind: "MANUAL_OP"; subjectId: string; intention: IntentionDUnGeste };
+
 export async function enregistrerPlan(
-  accessCaseId: string,
+  ancrage: AncrageDuPlan,
   calcule: PlanCalcule,
   createdBy: string,
   maintenant: Date,
@@ -521,8 +568,10 @@ export async function enregistrerPlan(
   const plan = await client.plan.create({
     data: {
       id: planId,
-      accessCaseId,
-      kind: calcule.sens,
+      kind: ancrage.kind,
+      ...(ancrage.kind === "MANUAL_OP"
+        ? { subjectId: ancrage.subjectId, intent: ancrage.intention as object }
+        : { accessCaseId: ancrage.accessCaseId }),
       state: "DRAFT",
       planDigest: calcule.empreinte,
       createdBy,
@@ -548,6 +597,13 @@ export async function enregistrerPlan(
           ...(etape.grantExpiresAt ? { grantExpiresAt: etape.grantExpiresAt } : {}),
           ...(etape.manual ? { manual: etape.manual as object } : {}),
           ...(etape.template ? { template: etape.template as object } : {}),
+          ...(etape.engagementKey ? { engagementKey: etape.engagementKey } : {}),
+          // Depuis l'ancrage et jamais depuis la `PlannedStep`, qui n'en porte pas : le
+          // profil est la justification d'une arrivée, un geste n'a pas de profil d'où la
+          // déduire, et c'est l'opérateur qui l'a écrite.
+          ...(ancrage.kind === "MANUAL_OP"
+            ? { justification: ancrage.intention.justification }
+            : {}),
         })),
       },
     },
@@ -572,13 +628,13 @@ export async function enregistrerPlan(
  * defaire la transaction.
  */
 export async function enregistrerPlanDOuverture(
-  accessCaseId: string,
+  ancrage: AncrageDeDossier,
   calcule: PlanCalcule,
   createdBy: string,
   maintenant: Date,
 ): Promise<void> {
   try {
-    await enregistrerPlan(accessCaseId, calcule, createdBy, maintenant);
+    await enregistrerPlan(ancrage, calcule, createdBy, maintenant);
   } catch (erreur) {
     if (!(erreur instanceof Prisma.PrismaClientKnownRequestError) || erreur.code !== "P2002") {
       throw erreur;
@@ -586,7 +642,7 @@ export async function enregistrerPlanDOuverture(
 
     // Meme prudence que sur le dossier : sans plan derriere, la collision ne vient pas
     // d'une course, et l'avaler annoncerait un geste abouti sans rien pour le porter.
-    if ((await prisma.plan.count({ where: { accessCaseId } })) === 0) {
+    if ((await prisma.plan.count({ where: { accessCaseId: ancrage.accessCaseId } })) === 0) {
       throw erreur;
     }
   }

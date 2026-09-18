@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { notion } from "@/connectors/notion";
-import type { Connector, Intent } from "@/core/connector";
+import type { Connector, Intent, PlannedStep } from "@/core/connector";
 import type {
   Acteur,
   EtatDossier,
@@ -12,8 +12,12 @@ import type {
   SensDossier,
 } from "@/core/dossier";
 import { peutClore } from "@/core/dossier";
+import type { IntentionDUnGeste } from "@/core/geste";
+import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
+import { empreinteDuPlan } from "@/core/plan";
 import { calculerPlan, enregistrerPlan } from "@/lib/dossier";
 import type { ResultatDExecution } from "@/lib/execution";
+import { REFUS_DEPART_OUVERT, REFUS_INTENTION_ILLISIBLE } from "@/lib/geste";
 import { operatrice } from "@/test/doubles/session";
 
 import {
@@ -61,7 +65,9 @@ interface PlanEnBase {
    * supprimer une fiche laisse des plans vivants que plus aucun dossier ne porte.
    */
   accessCaseId: string | null;
-  kind: SensDossier;
+  /** Nul quand le plan est un geste : son ancrage est la personne, pas un dossier. */
+  subjectId: string | null;
+  kind: SensDossier | "MANUAL_OP";
   state: EtatPlan;
   planDigest: string;
   confirmedDigest: string | null;
@@ -146,11 +152,17 @@ const base = vi.hoisted(() => ({
     startupsMayExtend: boolean;
     steps: readonly EtapeDeModeleEnBase[];
   }[],
+  /** Les écrans que le passage tracé a demandé de rafraîchir, dans l'ordre. */
+  revalidations: [] as string[],
 }));
 
 vi.mock("@/connectors", () => ({ CONNECTEURS: base.connecteurs }));
 
-vi.mock("next/cache", () => ({ revalidatePath: () => undefined }));
+vi.mock("next/cache", () => ({
+  revalidatePath: (chemin: string) => {
+    base.revalidations.push(chemin);
+  },
+}));
 
 /**
  * Le passage tracé est relevé et non joué : ce qui se décide ici est ce que l'action lui
@@ -199,6 +211,10 @@ function planComplet(plan: PlanEnBase) {
   return {
     ...plan,
     accessCase: dossierDuPlan(plan),
+    // Prisma rend toujours une relation sélectionnée, nulle s'il le faut : l'omettre
+    // ferait lire `undefined` là où le code compare à `null`, et un plan orphelin
+    // passerait pour un geste.
+    subject: plan.subjectId === null ? null : { id: plan.subjectId, username: USERNAME },
     steps: base.etapes.filter((etape) => etape.planId === plan.id).map((etape) => ({ ...etape })),
   };
 }
@@ -249,7 +265,13 @@ vi.mock("@/lib/db", () => ({
         };
       }) => {
         const { steps, ...entete } = data;
-        base.plans.push({ ...entete, confirmedDigest: null, confirmedBy: null });
+        base.plans.push({
+          ...entete,
+          accessCaseId: entete.accessCaseId ?? null,
+          subjectId: entete.subjectId ?? null,
+          confirmedDigest: null,
+          confirmedBy: null,
+        });
         steps.create.forEach((etape, rang) => {
           base.etapes.push({
             id: `etape-${base.etapes.length + 1}-${rang}`,
@@ -348,6 +370,20 @@ vi.mock("@/lib/db", () => ({
       },
     },
     accessCase: {
+      // Ce que lit la garde du départ ouvert, sur laquelle tient tout geste hors dossier.
+      findFirst: ({
+        where,
+      }: {
+        where: { personId: string; kind: string; state: { in: readonly string[] } };
+      }) =>
+        Promise.resolve(
+          base.dossiers.find(
+            (dossier) =>
+              dossier.personId === where.personId &&
+              dossier.kind === where.kind &&
+              where.state.in.includes(dossier.state),
+          ) ?? null,
+        ),
       findUnique: ({ where }: { where: { id: string } }) => {
         const dossier = base.dossiers.find((candidat) => candidat.id === where.id);
         if (!dossier) {
@@ -389,6 +425,9 @@ vi.mock("@/lib/db", () => ({
       findMany: () => Promise.resolve(base.modeles),
     },
     planStep: {
+      // Aucun engagement dans ces scénarios : ce que cette lecture rend est ce qu'un départ
+      // ne retrouve nulle part ailleurs, et ces plans n'en ouvrent aucun.
+      findMany: () => Promise.resolve([]),
       findUnique: ({ where }: { where: { id: string } }) => {
         const etape = base.etapes.find((candidat) => candidat.id === where.id);
         const plan = etape && base.plans.find((candidat) => candidat.id === etape.planId);
@@ -534,7 +573,12 @@ async function dossierAvecPlan(sens: SensDossier): Promise<{
   base.dossiers.push(dossier);
 
   const calcule = await calculerPlan(sens, PERSONNE, USERNAME, new Date());
-  const planId = await enregistrerPlan(dossier.id, calcule, "operatrice.exemple", new Date());
+  const planId = await enregistrerPlan(
+    { kind: sens, accessCaseId: dossier.id },
+    calcule,
+    "operatrice.exemple",
+    new Date(),
+  );
   const plan = base.plans.find((candidat) => candidat.id === planId);
 
   if (!plan) {
@@ -542,6 +586,69 @@ async function dossierAvecPlan(sens: SensDossier): Promise<{
   }
 
   return { dossier, plan };
+}
+
+/**
+ * Un geste hors dossier, confirmé : un plan de plus, simplement un plan qui n'a pas de
+ * dossier.
+ *
+ * Son unique étape est en `tier: "manual"` et porte une clé d'engagement, et les deux
+ * comptent. Rien n'appelant de connecteur, ce qui pose son `executedAt` est le pointage,
+ * ou le verdict quand le plan en réclame un : c'est là que naît l'engagement, donc là que
+ * les gardes doivent se tenir. Et la clé est ce qui fait relire cet engagement par un
+ * départ, donc ce qui fait qu'une parole de trop en déplace l'empreinte.
+ */
+async function gesteAvecPlan(validationBy: Acteur | null = null): Promise<PlanEnBase> {
+  const etape: PlannedStep = {
+    systemKey: "atelier",
+    capability: "grant",
+    tier: "manual",
+    action: "emettre-un-jeton",
+    label: "Émettre un jeton d'atelier pour l'astreinte",
+    params: { usage: "astreinte" },
+    riskLevel: "high",
+    expectedState: { jeton: true },
+    idempotencyKey: "atelier:grant-jeton:astreinte",
+    engagementKey: "atelier:jeton:astreinte",
+    ...(validationBy === null ? {} : { validationBy }),
+    manual: {
+      title: "Émettre un jeton d'atelier",
+      runbook: "Console de l'atelier, onglet Jetons.",
+      doneWhen: "Le jeton a été remis à son destinataire.",
+    },
+  };
+
+  const intention: IntentionDUnGeste = {
+    systeme: "atelier",
+    scope: { usage: "astreinte" },
+    justification: "renfort d'astreinte pendant les congés",
+  };
+
+  const planId = await enregistrerPlan(
+    { kind: "MANUAL_OP", subjectId: PERSONNE, intention },
+    {
+      sens: "ONBOARDING",
+      etapes: [{ etape, origine: "connecteur", ordre: 0 }],
+      ecartees: [],
+      empreinte: empreinteDuPlan([etape]),
+      systemes: ["atelier"],
+      sansConnecteur: [],
+      nonConfirmes: [],
+      refus: [],
+    },
+    "operatrice.exemple",
+    new Date(),
+  );
+
+  const plan = base.plans.find((candidat) => candidat.id === planId);
+  if (!plan) {
+    throw new Error("le geste n'a pas été enregistré");
+  }
+  // Confirmé à la main : la confirmation d'un geste a son propre scénario, et ce qui se
+  // joue ici commence après elle.
+  plan.state = "EXECUTING";
+  base.revalidations.length = 0;
+  return plan;
 }
 
 beforeEach(() => {
@@ -557,8 +664,15 @@ beforeEach(() => {
   base.gestes.length = 0;
   base.pendantLEcritureDeLEtape = null;
   base.lancements.length = 0;
-  base.resultatDExecution = { simulation: true, executees: 0, soldees: 0, echecs: 0 };
+  base.resultatDExecution = {
+    simulation: true,
+    executees: 0,
+    soldees: 0,
+    echecs: 0,
+    remises: [],
+  };
   base.modeles.length = 0;
+  base.revalidations.length = 0;
   base.connecteurs.length = 0;
   base.connecteurs.push(notion, ATELIER);
 });
@@ -655,6 +769,34 @@ describe("le geste qui engage : confirmer un plan", () => {
     expect((await confirmerPlan(null, formulaire({ planId: "inconnu" }))).erreur).toBe(
       "Ce plan n'existe plus.",
     );
+  });
+
+  it("refuse le geste dont l'intention gelée ne se relit plus, au lieu de lever", async () => {
+    // Given un geste encore brouillon, dont la colonne d'intention porte une forme que
+    // le schéma ne reconnaît pas. Elle est gelée, faite pour survivre au code qui l'a
+    // écrite : une écriture faite hors de cet outil, ou un champ ajouté au schéma,
+    // rendrait d'un coup illisible chaque ligne déjà posée.
+    const plan = await gesteAvecPlan();
+    plan.state = "DRAFT";
+    Object.assign(plan, {
+      intent: {
+        systeme: "atelier",
+        scope: { usage: "astreinte" },
+        justification: "renfort",
+        champDUneAutreVersion: true,
+      },
+    });
+
+    // When on confirme
+    const illisible = await confirmerPlan(null, formulaire({ planId: plan.id }));
+
+    // Then l'écran reçoit un refus qui dit quoi faire, et non une erreur de serveur :
+    // lever ici lui ôterait toute issue, ce que le même fichier refuse déjà sur
+    // l'origine figée d'une étape. Rien n'est écrit, et rien n'est journalisé.
+    expect(illisible.erreur).toBe(REFUS_INTENTION_ILLISIBLE);
+    expect(plan.state).toBe("DRAFT");
+    expect(plan.confirmedDigest).toBeNull();
+    expect(base.journal).toEqual([]);
   });
 });
 
@@ -2226,6 +2368,7 @@ describe("un délégué entre, agit, et son droit s'éteint sous lui", () => {
     base.plans.push({
       id: "plan-orphelin",
       accessCaseId: null,
+      subjectId: null,
       kind: "OFFBOARDING",
       state: "EXECUTING",
       planDigest: "0".repeat(64),
@@ -2485,6 +2628,7 @@ describe("lancer l'exécution d'un plan, et ce que l'opérateur emporte avec lui
       executees: 0,
       soldees: 0,
       echecs: 0,
+      remises: [],
     };
 
     // When on relance
@@ -2513,5 +2657,132 @@ describe("lancer l'exécution d'un plan, et ce que l'opérateur emporte avec lui
       "NEXT_REDIRECT;replace;/moi;307;",
     );
     expect(base.lancements).toEqual([]);
+  });
+});
+
+/**
+ * Ce qu'une étape de geste oppose à qui la pointe, et ce qu'elle rafraîchit.
+ *
+ * Les trois gardes tenues ici n'ont d'appui nulle part ailleurs : un geste n'a pas de
+ * dossier, donc ni son état vivant ni son sens ne se lisent où les deux actions les
+ * lisaient. Ce qui les remplace est le départ ouvert pour l'un, le sens d'un octroi pour
+ * l'autre, et la fiche de la personne pour l'écran.
+ */
+describe("une étape de geste, que nul dossier ne porte", () => {
+  it("refuse le constat inverse d'un octroi, puis tout pointage pendant qu'un départ court", async () => {
+    // Given un geste confirmé sur une personne, dont l'unique étape porte une clé
+    // d'engagement et attend l'équipe transverse
+    const plan = await gesteAvecPlan();
+    const etape = base.etapes.find((candidate) => candidate.planId === plan.id);
+    if (!etape) {
+      throw new Error("le geste n'a pas d'étape");
+    }
+
+    // When l'opérateur pointe « déjà-absent » sur cette étape
+    const inverse = await pointerEtape(
+      null,
+      formulaire({ etapeId: etape.id, pointage: "deja-absent" }),
+    );
+
+    // Then le refus tombe comme sous un dossier d'arrivée : un geste est un octroi par
+    // construction, et consigner « déjà absent » sous lui déclarerait ouvert, clé
+    // d'engagement à l'appui, l'accès que celui qui pointe vient de dire absent
+    expect(inverse.erreur).toBe(LIBELLE_DOSSIER.ONBOARDING.constat.refus);
+    expect(etape.state).toBe("PENDING");
+    expect(base.journal).toEqual([]);
+
+    // When un départ s'ouvre sur la personne et se confirme, puis que l'opérateur pointe
+    // « fait »
+    base.dossiers.push({
+      id: "depart-1",
+      personId: PERSONNE,
+      kind: "OFFBOARDING",
+      state: "CONFIRMED",
+    });
+    const pendantLeDepart = await pointerEtape(
+      null,
+      formulaire({ etapeId: etape.id, pointage: "fait" }),
+    );
+
+    // Then le pointage refuse, et rien n'est écrit : sans connecteur à appeler, c'est lui
+    // qui solde l'étape et fait naître l'engagement, lequel déplacerait l'empreinte d'un
+    // départ confirmé que plus aucun recalcul ne rattrape
+    expect(pendantLeDepart.erreur).toBe(REFUS_DEPART_OUVERT);
+    expect(etape.state).toBe("PENDING");
+    expect(base.journal).toEqual([]);
+    expect(base.revalidations).toEqual([]);
+
+    // When le départ est abandonné et que l'opérateur repointe « fait »
+    const depart = base.dossiers.find((candidat) => candidat.id === "depart-1");
+    if (depart) {
+      depart.state = "CANCELLED";
+    }
+    const fait = await pointerEtape(null, formulaire({ etapeId: etape.id, pointage: "fait" }));
+
+    // Then l'étape se solde, et le journal porte le sens du geste plutôt que rien : la
+    // colonne « sens » du journal se relira dans deux ans
+    expect(fait.erreur).toBeUndefined();
+    expect(etape.state).toBe("SUCCEEDED");
+    expect(base.journal.at(-1)).toMatchObject({
+      action: "dossier.pointage",
+      after: { sens: "ONBOARDING", etat: "SUCCEEDED" },
+    });
+
+    // Then l'écran rafraîchi est la fiche de la personne, et rien d'autre : deux chemins
+    // vers un dossier nul ne rafraîchissent rien tout en laissant périmée la seule page
+    // où un geste se voit
+    expect(base.revalidations).toEqual([`/personnes/${USERNAME}`]);
+  });
+
+  it("refuse le second regard pendant qu'un départ court, et rafraîchit la même fiche", async () => {
+    // Given un geste dont le plan confie l'étape au regard d'un autre opérateur, pointée
+    // « fait » et donc en attente de ce regard
+    const plan = await gesteAvecPlan("OPERATOR");
+    const etape = base.etapes.find((candidate) => candidate.planId === plan.id);
+    if (!etape) {
+      throw new Error("le geste n'a pas d'étape");
+    }
+    await pointerEtape(null, formulaire({ etapeId: etape.id, pointage: "fait" }));
+    expect(etape.validation).toBe("AWAITING");
+
+    // When un départ s'ouvre, et qu'un second opérateur accepte la déclaration
+    base.dossiers.push({
+      id: "depart-1",
+      personId: PERSONNE,
+      kind: "OFFBOARDING",
+      state: "CONFIRMED",
+    });
+    base.operateur = "second.operateur";
+    base.revalidations.length = 0;
+    const pendantLeDepart = await validerEtape(
+      null,
+      formulaire({ etapeId: etape.id, verdict: "accepter" }),
+    );
+
+    // Then le verdict refuse : c'est lui qui solde réellement une étape que le plan confie
+    // à un second regard, donc lui qui ferait naître l'engagement
+    expect(pendantLeDepart.erreur).toBe(REFUS_DEPART_OUVERT);
+    expect(etape.validation).toBe("AWAITING");
+    expect(base.revalidations).toEqual([]);
+
+    // When le départ est abandonné et que le second opérateur reprend son verdict
+    const depart = base.dossiers.find((candidat) => candidat.id === "depart-1");
+    if (depart) {
+      depart.state = "CANCELLED";
+    }
+    const accepte = await validerEtape(
+      null,
+      formulaire({ etapeId: etape.id, verdict: "accepter" }),
+    );
+
+    // Then la déclaration est acceptée, le journal porte le sens du geste, et l'écran
+    // rafraîchi est la fiche
+    expect(accepte.erreur).toBeUndefined();
+    expect(etape.validation).toBe("ACCEPTED");
+    expect(base.journal.at(-1)).toMatchObject({
+      action: "dossier.validation",
+      after: { sens: "ONBOARDING", validation: "ACCEPTED" },
+    });
+    expect(base.revalidations).toEqual([`/personnes/${USERNAME}`]);
   });
 });

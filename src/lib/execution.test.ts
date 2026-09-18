@@ -31,6 +31,7 @@ interface EtapeEnBase {
   riskLevel: string;
   idempotencyKey: string;
   grantExpiresAt: Date | null;
+  engagementKey: string | null;
   attempts: number;
   executedAt: Date | null;
   lastError: string | null;
@@ -83,6 +84,8 @@ const base = vi.hoisted(() => ({
   sujets: [] as SubjectRef[],
   intentions: [] as string[],
   echeancesRecues: {} as Record<string, Date | undefined>,
+  /** Les clés d'engagement telles que le connecteur les reçoit, par clé d'idempotence. */
+  clesRecues: {} as Record<string, string | undefined>,
   /** Les rôles de la forge dont le plan exige qu'un autre opérateur relise le geste. */
   relectureExigee: [] as string[],
   /**
@@ -367,6 +370,7 @@ const FORGE: Connector = {
   execute: (step: PlannedStep) => {
     base.chronologie.push(`execute:${cle(step)}`);
     base.echeancesRecues[cle(step)] = step.grantExpiresAt;
+    base.clesRecues[cle(step)] = step.engagementKey;
     return Promise.resolve(
       base.issues[cle(step)] ?? { state: "SUCCEEDED", evidence: "invitation envoyée" },
     );
@@ -468,6 +472,7 @@ async function figerLePlan(
       // boucle doit rapprocher le figé du recalculé à travers lui.
       idempotencyKey: `${etape.idempotencyKey}:${PLAN}`,
       grantExpiresAt: etape.grantExpiresAt ?? null,
+      engagementKey: etape.engagementKey ?? null,
       attempts: 0,
       executedAt: null,
       lastError: null,
@@ -485,6 +490,7 @@ async function figerLePlan(
   base.ecritures.length = 0;
   base.etatsDePlanEcrits.length = 0;
   base.echeancesRecues = {};
+  base.clesRecues = {};
 }
 
 function etape(cleNue: string): EtapeEnBase {
@@ -549,6 +555,7 @@ beforeEach(() => {
   base.sujets.length = 0;
   base.intentions.length = 0;
   base.echeancesRecues = {};
+  base.clesRecues = {};
   base.relectureExigee.length = 0;
   base.pendantLEcritureDeLEtape = null;
 });
@@ -646,6 +653,11 @@ describe("l'exécution autorisée", () => {
     await figerLePlan();
     expect(base.plan?.steps.map(({ ordre }) => ordre)).toEqual([0, 1, 2, 3]);
 
+    // Given une clé d'engagement posée sur l'étape qui ira jusqu'au bout : le connecteur
+    // seul sait de quel côté de la frontière tombe son action, et le socle la transporte
+    // sans jamais l'interpréter
+    etape(CLE_LECTEUR).engagementKey = "forge:jeton:astreinte";
+
     // When on lance l'exécution
     const resultat = await lancer();
 
@@ -690,6 +702,11 @@ describe("l'exécution autorisée", () => {
     // reprendre au recalcul reconduirait le terme d'un accès du seul fait de
     // l'exécuter plus tard
     expect(base.echeancesRecues[CLE_LECTEUR]).toEqual(new Date(MAINTENANT.getTime() + 90 * JOUR));
+
+    // Then la clé d'engagement reçue est celle du plan figé, au même titre et pour la même
+    // raison : le recalcul n'en porte aucune, et la perdre en chemin rendrait muet, au
+    // départ, le seul accès dont aucune collecte ne rend compte
+    expect(base.clesRecues[CLE_LECTEUR]).toBe("forge:jeton:astreinte");
 
     // Then l'échec porte sa cause, et une seconde trace le dit
     expect(etape(CLE_MEMBRE).state).toBe("FAILED");

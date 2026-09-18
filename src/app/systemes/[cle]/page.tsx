@@ -11,7 +11,7 @@ import { type EtatRevue, LIBELLE_REVUE, revueDe } from "@/core/revue";
 import { configurationDe } from "@/lib/configuration-connecteur";
 import { prisma } from "@/lib/db";
 import { requireOperateur } from "@/lib/session";
-import { aUnePage, ecranDe } from "@/ui/connecteurs/registre";
+import { aUnePage, ecranDe, mentionDeLecture } from "@/ui/connecteurs/registre";
 import { dateFr } from "@/ui/dates";
 
 export const dynamic = "force-dynamic";
@@ -20,13 +20,16 @@ interface Props {
   params: Promise<{ cle: string }>;
 }
 
-const SEVERITE: Record<EtatRevue, "success" | "warning" | "error"> = {
+const SEVERITE: Record<EtatRevue, "success" | "warning" | "error" | "info"> = {
   A_JOUR: "success",
   BIENTOT: "warning",
   EN_RETARD: "error",
+  // Éteint, et non en faute : un jeton dont le terme est passé n'ouvre plus rien, et il
+  // n'y a rien à demander à personne.
+  EXPIRE: "info",
 };
 
-const ORDRE: Record<EtatRevue, number> = { EN_RETARD: 0, BIENTOT: 1, A_JOUR: 2 };
+const ORDRE: Record<EtatRevue, number> = { EN_RETARD: 0, BIENTOT: 1, A_JOUR: 2, EXPIRE: 3 };
 
 export default async function ConnecteurPage({ params }: Props) {
   await requireOperateur();
@@ -56,6 +59,7 @@ export default async function ConnecteurPage({ params }: Props) {
       reviewEveryDays: true,
       lastReviewedAt: true,
       createdAt: true,
+      expiresAt: true,
     },
     orderBy: { key: "asc" },
   });
@@ -66,7 +70,9 @@ export default async function ConnecteurPage({ params }: Props) {
     .sort((a, b) => ORDRE[a.revue.etat] - ORDRE[b.revue.etat] || a.key.localeCompare(b.key));
 
   const chargeur = ecranDe(cle);
-  const Ecran = chargeur ? (await chargeur()).default : undefined;
+  const ecran = chargeur ? await chargeur() : undefined;
+  const Ecran = ecran?.default;
+  const mention = mentionDeLecture(ecran);
 
   return (
     <main className={fr.cx("fr-container", "fr-my-6w")}>
@@ -172,7 +178,7 @@ export default async function ConnecteurPage({ params }: Props) {
         <Table
           fixed
           caption={`Comptes machine déclarés sur ${contrat.label}`}
-          headers={["Compte", "Propriétaire", "Revue"]}
+          headers={["Compte", "Propriétaire", "Terme", "Revue"]}
           data={avecRevue.map((compte) => [
             <span key="c">
               <strong>{compte.label}</strong>
@@ -182,6 +188,11 @@ export default async function ConnecteurPage({ params }: Props) {
               </span>
             </span>,
             compte.ownerUsername,
+            <span key="t" className={fr.cx("fr-text--sm")}>
+              {compte.expiresAt === null
+                ? "sans terme"
+                : `${compte.expiresAt.getTime() <= maintenant.getTime() ? "passé le" : "jusqu'au"} ${dateFr.format(compte.expiresAt)}`}
+            </span>,
             <span key="r">
               <Badge severity={SEVERITE[compte.revue.etat]} small noIcon>
                 {LIBELLE_REVUE[compte.revue.etat]}
@@ -190,7 +201,14 @@ export default async function ConnecteurPage({ params }: Props) {
               <span className={fr.cx("fr-text--sm")}>
                 {compte.revue.etat === "EN_RETARD"
                   ? `depuis ${compte.revue.joursDeRetard} jour${compte.revue.joursDeRetard > 1 ? "s" : ""}`
-                  : `attendue le ${dateFr.format(compte.revue.echeance)}`}
+                  : compte.revue.etat === "EXPIRE"
+                    ? "plus rien à revoir"
+                    : // La colonne voisine porte déjà le terme, et c'est lui qui décide :
+                      // annoncer ici une revue attendue ferait attendre un geste que personne
+                      // ne peut faire.
+                      compte.revue.reclamee
+                      ? `attendue le ${dateFr.format(compte.revue.echeance)}`
+                      : "sans revue périodique"}
               </span>
             </span>,
           ])}
@@ -199,12 +217,9 @@ export default async function ConnecteurPage({ params }: Props) {
 
       {Ecran ? <Ecran contrat={contrat} configuration={configuration} /> : null}
 
-      <Alert
-        severity="info"
-        className={fr.cx("fr-mt-4w")}
-        small
-        description="Cet écran ne modifie rien. Ce qui s'y règle vit dans le dépôt de configuration, où le changement se relit avant d'être appliqué."
-      />
+      {mention === null ? null : (
+        <Alert severity="info" className={fr.cx("fr-mt-4w")} small description={mention} />
+      )}
     </main>
   );
 }
