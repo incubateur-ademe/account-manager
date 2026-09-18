@@ -20,7 +20,7 @@ export interface Bloc {
 
 export interface Anatomie {
   readonly hauteur: number;
-  readonly primaires: number;
+  readonly primaires: readonly string[];
   readonly modalesSansChamp: readonly string[];
   readonly modalesBavardes: readonly string[];
   readonly lignesTropHautes: readonly string[];
@@ -187,12 +187,17 @@ export async function anatomieDe(page: Page): Promise<Anatomie> {
 
     return {
       hauteur: hauteurPage,
-      primaires: [...document.querySelectorAll("main .fr-btn")].filter(
-        (b) =>
-          seVoit(b) &&
-          !b.className.includes("fr-btn--secondary") &&
-          !b.className.includes("fr-btn--tertiary"),
-      ).length,
+      primaires: [...document.querySelectorAll("main .fr-btn")]
+        .filter(
+          (b) =>
+            seVoit(b) &&
+            !b.className.includes("fr-btn--secondary") &&
+            !b.className.includes("fr-btn--tertiary") &&
+            /* Le « ? » du mode aide porte fr-btn sans variante : il déclenche une infobulle,
+               il ne fait rien. Le compter en action primaire donnait six primaires par fiche. */
+            !b.className.includes("fr-btn--tooltip"),
+        )
+        .map((b) => `${b.tagName.toLowerCase()} « ${texteDe(b).slice(0, 40)} »`),
       modalesSansChamp,
       modalesBavardes,
       lignesTropHautes,

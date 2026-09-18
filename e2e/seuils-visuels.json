@@ -1,8 +1,8 @@
 {
   "modales-sans-champ": 7,
   "modales-au-dela-de-60-mots-par-champ": 3,
-  "ecrans-a-plus-d-un-bouton-primaire": 4,
-  "lignes-de-tableau-au-dela-de-120px": 4,
-  "colonnes-au-contenu-identique-partout": 1,
-  "contenus-repetes-dans-un-ecran": 16
+  "ecrans-a-plus-d-un-bouton-primaire": 0,
+  "lignes-de-tableau-au-dela-de-120px": 1,
+  "colonnes-au-contenu-identique-partout": 0,
+  "contenus-repetes-dans-un-ecran": 14
 }

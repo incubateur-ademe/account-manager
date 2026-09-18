@@ -108,8 +108,10 @@ test("relever ce qui ne se lit pas dans le code", async ({ browser }) => {
     const vue = await anatomieDe(page);
     rapport.push(...rendreAnatomie(ecran.nom, ecran.chemin, vue));
 
-    if (vue.primaires > 1) {
-      manquements["ecrans-a-plus-d-un-bouton-primaire"]?.push(`${ecran.nom} : ${vue.primaires}`);
+    if (vue.primaires.length > 1) {
+      manquements["ecrans-a-plus-d-un-bouton-primaire"]?.push(
+        `${ecran.nom} : ${vue.primaires.join(", ")}`,
+      );
     }
     for (const ligne of vue.lignesTropHautes) {
       manquements["lignes-de-tableau-au-dela-de-120px"]?.push(`${ecran.nom} : ${ligne}`);
