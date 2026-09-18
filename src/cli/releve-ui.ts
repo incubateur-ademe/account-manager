@@ -199,7 +199,16 @@ function textesNusDe(source: Source): Litteral[] {
       .replace(/\s+/g, " ")
       .trim();
     const ligneDuFragment = source.contenu.slice(0, trouve.index).split("\n").length;
-    const estCommentaire = estLigneDeCommentaire(source.lignes[ligneDuFragment - 1] ?? "");
+    /*
+     * Le fragment court d'un « > » au « < » suivant, donc il traverse le code posé entre deux
+     * balises, commentaires compris. Un commentaire ajouté entre deux cellules d'un tableau se
+     * comptait ainsi comme une phrase d'écran.
+     */
+    const brut = trouve[1] ?? "";
+    const estCommentaire =
+      estLigneDeCommentaire(source.lignes[ligneDuFragment - 1] ?? "") ||
+      brut.includes("//") ||
+      brut.includes("/*");
     if (texte !== undefined && !estCommentaire && estTexteOperateur(texte)) {
       trouves.push({
         chemin: source.chemin,
