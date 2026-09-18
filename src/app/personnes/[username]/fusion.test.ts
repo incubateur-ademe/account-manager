@@ -22,6 +22,8 @@ interface DroitEnBase {
 
 const base = vi.hoisted(() => ({
   droits: [] as DroitEnBase[],
+  /** Les gestes hors dossier de la source, et la fiche que chacun vise. */
+  gestes: [] as { id: string; subjectId: string }[],
   /** Ce que la transaction a demandé, dans l'ordre, avec ses arguments. */
   requetes: [] as string[],
   journal: [] as AuditInput[],
@@ -69,8 +71,23 @@ vi.mock("@/lib/actions", async () => {
   const { operatrice } = await import("@/test/doubles/session");
   return {
     actionTracee: async (params: {
+      action: string;
+      targetType: string;
+      targetId: string;
+      after?: Record<string, unknown>;
       ecrire: (utilisateur: unknown) => Promise<unknown>;
     }): Promise<void> => {
+      // La trace du passage part au même journal que celles que `ecrire` pose : c'est
+      // là qu'un scénario relit ce que la fusion a dit avoir fait.
+      base.journal.push({
+        actorKind: "HUMAN",
+        actorUsername: operatrice().username,
+        action: params.action,
+        targetType: params.targetType,
+        targetId: params.targetId,
+        after: params.after,
+        result: "SUCCESS",
+      });
       await params.ecrire(operatrice());
     },
   };
@@ -141,10 +158,33 @@ vi.mock("@/lib/db", () => {
         return Promise.resolve({ count: where.id.in.length });
       },
     },
+    plan: {
+      updateMany: ({
+        where,
+        data,
+      }: {
+        where: { id: { in: readonly string[] } };
+        data: { subjectId: string };
+      }) => {
+        noter("deplacer les gestes", where.id.in);
+        for (const id of where.id.in) {
+          const geste = base.gestes.find((candidat) => candidat.id === id);
+          if (geste) {
+            geste.subjectId = data.subjectId;
+          }
+        }
+        return Promise.resolve({ count: where.id.in.length });
+      },
+    },
     person: {
       // La cascade du schéma est jouée : ce que la fusion n'a pas déplacé disparaît
-      // avec la fiche, et c'est ce que la ligne de journal doit avoir dit avant.
+      // avec la fiche, et c'est ce que la ligne de journal doit avoir dit avant. Sauf
+      // les gestes, que la relation `Restrict` retient : un geste resté sur la source
+      // ferait lever la suppression et annulerait toute la fusion.
       delete: () => {
+        if (base.gestes.some((geste) => geste.subjectId === SOURCE.id)) {
+          throw new Error("Foreign key constraint failed on the field: `Plan_subjectId_fkey`");
+        }
         base.requetes.push("supprimer la fiche");
         base.droits = base.droits.filter((droit) => droit.personId !== SOURCE.id);
         return Promise.resolve(undefined);
@@ -168,6 +208,10 @@ vi.mock("@/lib/db", () => {
       accessCase: { findMany: vide },
       reference: { findMany: vide },
       startupAssignment: { findMany: vide },
+      plan: {
+        findMany: ({ where }: { where: { subjectId: string } }) =>
+          Promise.resolve(base.gestes.filter((geste) => geste.subjectId === where.subjectId)),
+      },
       scopeOverride: { findUnique: () => Promise.resolve(null) },
       caseParticipation: {
         findMany: ({ where }: { where: { personId: string } }) =>
@@ -193,6 +237,10 @@ beforeEach(() => {
   base.requetes.length = 0;
   base.journal.length = 0;
   base.droits.length = 0;
+  base.gestes.length = 0;
+  // Un geste hors dossier sur la fiche absorbée : la relation du sujet est en `Restrict`,
+  // et c'est la seule chose de tout l'inventaire que la base refuse de laisser disparaître.
+  base.gestes.push({ id: "geste-1", subjectId: SOURCE.id });
 
   // Le dossier A n'appartient qu'à la source, le B et le C aux deux : sur B c'est le
   // droit de la source qui est le plus récent, sur C celui de la cible.
@@ -225,8 +273,21 @@ describe("la fusion de deux fiches, et les droits de participer qu'elle départa
     expect(base.requetes).toEqual([
       "supprimer(droit-cible-b)",
       "deplacer(droit-source-a,droit-source-b)",
+      "deplacer les gestes(geste-1)",
       "supprimer la fiche",
     ]);
+
+    // Then le geste hors dossier a suivi la fiche qui survit, et il a fallu qu'il parte
+    // avant la suppression : sa relation est en `Restrict`, et l'y laisser lèverait une
+    // violation de clé étrangère au milieu de la transaction, annulant toute la fusion
+    expect(base.gestes).toEqual([{ id: "geste-1", subjectId: CIBLE.id }]);
+
+    // Then la trace de la fusion le nomme plutôt que de le compter : un geste porte un
+    // accès qu'aucune collecte ne rendra, et le journal est le seul endroit où ce qu'il
+    // est devenu se retrouve
+    expect(base.journal.find((ligne) => ligne.action === "personne.fusion")?.after).toMatchObject({
+      gestes: ["geste-1"],
+    });
 
     // Then il ne reste qu'un droit par dossier, tous sur la fiche qui survit : le
     // dossier C garde celui qu'elle détenait déjà, plus récent que celui de la source,

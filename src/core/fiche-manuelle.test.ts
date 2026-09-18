@@ -33,6 +33,7 @@ const aFusionner = (over: Partial<FicheAFusionner> = {}): FicheAFusionner => ({
   references: [],
   rattachements: [],
   surcharge: null,
+  gestes: [],
   ...over,
 });
 
@@ -138,6 +139,7 @@ describe("l'identifiant fautif rejoint la vraie personne", () => {
     ],
     dossiers: [{ id: "d1", vivant: true }],
     references: [{ id: "r1", resourceId: "res-1" }],
+    gestes: ["plan-geste-1"],
   });
 
   const cible = aFusionner({ username: "camille.exemple" });
@@ -177,8 +179,13 @@ describe("l'identifiant fautif rejoint la vraie personne", () => {
       "reecrire-cles",
       "deplacer-dossiers",
       "deplacer-references",
+      // Avant la suppression, et l'ordre est ici la seule garde : la relation du sujet est
+      // en `Restrict`, si bien qu'un geste laissé derrière ferait lever la base au milieu
+      // de la transaction et annulerait toute la fusion.
+      "deplacer-gestes",
       "supprimer-fiche",
     ]);
+    expect(plan.gestes).toEqual(["plan-geste-1"]);
     expect(plan.etapes.at(-1)).toEqual({ type: "supprimer-fiche", username: "camille.exempl" });
   });
 });

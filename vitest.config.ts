@@ -35,6 +35,9 @@ const ADRESSES_MORTES = {
   // ferait en plus résoudre en « automatique » des étapes que la suite croit manuelles.
   NOTION_SCIM_TOKEN: "",
   SCALINGO_API_TOKEN: "",
+  // Vidée pour la même raison, et l'oubli coûterait ici davantage qu'un appel de lecture :
+  // une émission réelle que rien ne saurait révoquer, sur un proxy sans route de reprise.
+  FGP_URL: "",
   // Redit ici bien qu'il vaille faux par défaut : l'invariant du produit est qu'aucune
   // exécution n'écrit sans autorisation explicite, et un poste qui l'autorise ne doit
   // pas le transmettre à une suite de tests.

@@ -403,6 +403,7 @@ export function assemblerOrganisation(
       externalId: cle,
       label: `Équipe ${equipe.name}`,
       url: `https://github.com/orgs/${org}/teams/${equipe.slug}`,
+      parentExternalId: org,
     });
 
     for (const membre of membres) {

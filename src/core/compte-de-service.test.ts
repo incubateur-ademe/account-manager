@@ -30,7 +30,15 @@ const COMPLETE = {
 
 const SYSTEMES = ["github", "notion", "scalingo"];
 
-const lire = (brut: typeof COMPLETE) => lireDeclaration(brut, SYSTEMES);
+/** L'instant d'où le terme se juge, fixé pour que les deux bornes soient reproductibles. */
+const MAINTENANT = new Date("2026-09-17T09:00:00Z");
+
+const JOUR_MS = 24 * 60 * 60 * 1000;
+
+const dans = (jours: number) => new Date(MAINTENANT.getTime() + jours * JOUR_MS);
+
+const lire = (brut: typeof COMPLETE & { expiresAt?: string }) =>
+  lireDeclaration(brut, SYSTEMES, MAINTENANT);
 
 describe("la saisie d'un compte de service", () => {
   it("passe entière et détourée, et se refuse dès qu'un des quatre dits manque", () => {
@@ -74,6 +82,40 @@ describe("la saisie d'un compte de service", () => {
     // saisie, et rien ici n'a autorité pour dire combien de temps un bot se garde.
     expect(lire({ ...COMPLETE, reviewEveryDays: 1 })).toEqual({
       declaration: { ...COMPLETE, reviewEveryDays: 1 },
+    });
+  });
+
+  it("borne le terme des deux côtés, parce qu'un terme posé éteint la revue et qu'aucun écran ne le corrige", () => {
+    // Given l'absence de terme, qui est le cas ordinaire d'un compte machine : la
+    // périodicité décide seule, et la fiche ne porte pas le champ.
+    expect(lire({ ...COMPLETE, expiresAt: "" })).toEqual({ declaration: COMPLETE });
+    expect(lire(COMPLETE)).toEqual({ declaration: COMPLETE });
+
+    // Then un terme à venir passe, et il monte dans la déclaration : c'est la seule
+    // reprise qui existe pour un jeton émis, faute de révocation chez le proxy.
+    expect(lire({ ...COMPLETE, expiresAt: dans(30).toISOString() })).toEqual({
+      declaration: { ...COMPLETE, expiresAt: dans(30) },
+    });
+
+    // Then une date illisible est refusée plutôt que repliée sur « aucun terme » : le
+    // silence est ce qui rendrait la fiche indétectable.
+    expect(lire({ ...COMPLETE, expiresAt: "le mois prochain" })).toHaveProperty("erreur");
+
+    // Then un terme déjà passé est refusé : la fiche naîtrait « terme passé », donc
+    // sans revue et sans rien à reprendre, ce qui ne décrit aucun jeton vivant.
+    const passe = lire({ ...COMPLETE, expiresAt: dans(-1).toISOString() });
+    expect("erreur" in passe && passe.erreur).toContain("déjà passé");
+
+    // Then un terme trop lointain est refusé, et c'est le refus qui coûte : un terme non
+    // nul fait dire « à jour » au calcul de revue et retire le bouton, aucun écran
+    // n'édite cette colonne, et la saisie de travers serait donc irréversible depuis
+    // l'interface. C'est le défaut miroir de la périodicité zéro, refusée juste au-dessus.
+    const tropLoin = lire({ ...COMPLETE, expiresAt: dans(401).toISOString() });
+    expect("erreur" in tropLoin && tropLoin.erreur).toContain("400");
+
+    // Then la borne est bien au jour près, et non à l'année : la veille du plafond passe.
+    expect(lire({ ...COMPLETE, expiresAt: dans(399).toISOString() })).toEqual({
+      declaration: { ...COMPLETE, expiresAt: dans(399) },
     });
   });
 });

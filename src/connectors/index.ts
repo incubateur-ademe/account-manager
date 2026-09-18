@@ -4,7 +4,7 @@ import { configurationDe } from "@/lib/configuration-connecteur";
 
 import { CONTRAT_GITHUB, type ConfigGithub, creerGithub, examinerScopeGithub } from "./github";
 import { notion } from "./notion";
-import { scalingo } from "./scalingo";
+import { examinerScopeScalingo, scalingo } from "./scalingo";
 
 const configGithub = () => configurationDe<ConfigGithub>(CONTRAT_GITHUB);
 
@@ -25,6 +25,7 @@ export const CONNECTEURS: readonly Connector[] = [creerGithub(configGithub), not
  */
 const EXAMENS: Readonly<Record<string, (scope: unknown) => ExamenDeScope>> = {
   github: (scope) => examinerScopeGithub(configGithub().organisations)(scope),
+  scalingo: examinerScopeScalingo,
 };
 
 /**

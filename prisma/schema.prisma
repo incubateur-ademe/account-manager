@@ -147,6 +147,7 @@ model Person {
   identities         ExternalIdentity[]
   references         Reference[]
   accessCases        AccessCase[]
+  gestes             Plan[]
   participations     CaseParticipation[]
   findings           Finding[]
   startupAssignments StartupAssignment[]
@@ -209,6 +210,30 @@ model ServiceAccount {
   reviewEveryDays Int       @default(180)
   lastReviewedAt  DateTime?
 
+  /// Le blob chiffre remis par le proxy a jetons restreints. Inerte seul : sa cle de
+  /// dechiffrement se derive du sel du serveur et d'une cle client que rien n'ecrit ici.
+  /// Garde parce que le proxy n'offre aucune route d'introspection : cette ligne est le
+  /// seul registre de ce qui a ete emis.
+  ///
+  /// La cle client, elle, ne s'ecrit nulle part : le couple blob plus cle vaut l'acces,
+  /// et l'ADR-0001 a refuse de faire de cette base le coffre des credentials du parc.
+  fgpBlob String?
+
+  /// L'hote unique que ce blob autorise. Un blob n'en porte qu'un, d'ou une colonne et
+  /// non une liste.
+  fgpTarget String?
+
+  /// Les scopes demandes, sous la forme METHOD:PATH, tels qu'ils ont ete envoyes.
+  fgpScopes String[]
+
+  /// Le terme. Le proxy n'ayant aucune revocation, c'est le seul mecanisme de reprise, et
+  /// c'est aussi ce qui sort ce compte de la file des revues quand il est passe.
+  expiresAt DateTime?
+
+  /// L'operateur qui a lance l'emission, nominatif comme tout ce qui decide. Distinct de
+  /// ownerUsername, qui est la personne qui detient le jeton.
+  issuedBy String?
+
   identities ExternalIdentity[]
 
   createdAt DateTime @default(now())
@@ -217,6 +242,7 @@ model ServiceAccount {
   @@index([ownerUsername])
   @@index([lastReviewedAt])
   @@index([provider])
+  @@index([expiresAt])
 }
 
 // ---------------------------------------------------------------------------
@@ -281,10 +307,27 @@ model Resource {
   label      String
   url        String?
 
+  // Nul est le cas normal : la plupart des ressources ne sont contenues par rien, et un
+  // connecteur qui ignore la notion n'a rien à remplir.
+  parentId String?
+
+  // SetNull et non Cascade : `AccessGrant.resource` et `Reference.resource` sont l'un et
+  // l'autre en Cascade, si bien qu'une cascade ici ferait de la suppression d'un
+  // regroupement qui n'ouvre aucun droit la suppression silencieuse de tous les accès de
+  // toutes ses contenues.
+  //
+  // Un seul niveau, tenu par le socle et non par la colonne : PostgreSQL ne refuse ni les
+  // chaînes ni les cycles sur une clé étrangère vers la même table. La collecte refuse à
+  // l'entrée toute contenance dont le contenant est lui-même contenu, si bien qu'aucun
+  // lecteur n'a jamais à parcourir une chaîne ni à se garder d'une boucle.
+  parent   Resource?  @relation("Contenance", fields: [parentId], references: [id], onDelete: SetNull)
+  contenus Resource[] @relation("Contenance")
+
   grants     AccessGrant[]
   references Reference[]
 
   @@unique([provider, externalId])
+  @@index([parentId])
 }
 
 model AccessGrant {
@@ -550,8 +593,26 @@ model Plan {
   id String @id @default(cuid())
 
   accessCaseId String?
-  kind         PlanKind
-  state        PlanState @default(DRAFT)
+
+  /// La personne que vise un plan qui n'a pas de dossier. Nulle sur un plan de dossier,
+  /// dont le sujet est celui de son dossier : un plan porte un ancrage, et un seul.
+  ///
+  /// Restrict et non Cascade, a la difference de tout le reste de ce schema. Cette ligne
+  /// est la seule trace d'un acces qu'aucune collecte ne rendra jamais : une cascade
+  /// l'effacerait avec la fiche pendant que l'acces, lui, court jusqu'a son echeance.
+  /// SetNull ne vaut pas mieux, un geste sans sujet ne se recalculant plus et sortant de
+  /// la requete du depart. Supprimer une fiche qui en porte un est donc refuse par la
+  /// base, et la fusion doit les deplacer avant.
+  subjectId String?
+
+  /// L'intention gelee d'un geste hors dossier : le systeme vise, le scope, le terme et
+  /// la justification. Elle est a son recalcul ce que AccessCase.profileKey est a celui
+  /// d'une arrivee, c'est-a-dire la seule entree dont son empreinte redecoule. Nulle sur
+  /// un plan de dossier.
+  intent Json?
+
+  kind  PlanKind
+  state PlanState @default(DRAFT)
 
   planDigest      String
   confirmedDigest String?
@@ -563,6 +624,7 @@ model Plan {
   expiresAt   DateTime
 
   accessCase AccessCase? @relation(fields: [accessCaseId], references: [id], onDelete: SetNull)
+  subject    Person?     @relation(fields: [subjectId], references: [id], onDelete: Restrict)
   steps      PlanStep[]
 
   /// Un index unique partiel sur ("accessCaseId"), qui exclut les etats d'un plan
@@ -574,6 +636,7 @@ model Plan {
 
   @@index([state])
   @@index([accessCaseId])
+  @@index([subjectId])
 }
 
 enum RiskLevel {
@@ -653,6 +716,12 @@ model PlanStep {
   /// la premiere nuit.
   grantExpiresAt DateTime?
 
+  /// La cle d'un engagement, telle que le connecteur emetteur l'a ecrite. Elle vit ici et
+  /// pas sur AccessGrant, pour la meme raison que l'echeance juste au-dessus : cette
+  /// table-la est reconstruite par la collecte, et ce que cette colonne designe est
+  /// justement ce qu'aucune collecte ne rend.
+  engagementKey String?
+
   /// Pourquoi cet acces a ete accorde, quand il ne vient d'aucun profil. Jamais
   /// remplie automatiquement depuis un profil : le profil est la justification, et la
   /// recopier ferait naitre la file des acces a justifier deja pleine de faux.
@@ -691,6 +760,14 @@ model PlanStep {
   attempts  Int       @default(0)
   lastError String?
 
+  /// Si le dernier echec de cette etape se reprend tel quel, tel que le connecteur
+  /// l'a dit. Faux, la reprise ne la represente plus d'elle-meme : un echec ambigu
+  /// d'une emission de jeton veut dire qu'un credential a pu naitre ailleurs, que
+  /// rien ne liste et que rien ne revoque, et un second clic en ajouterait un second.
+  /// Nulle quand rien n'a encore ete tente, ou quand la cause est une exception, qui
+  /// ne dit rien de la reprise : l'etape reste alors reprise.
+  retryable Boolean?
+
   executedAt      DateTime?
   reversibleUntil DateTime?
   idempotencyKey  String    @unique
@@ -700,6 +777,7 @@ model PlanStep {
   @@index([planId])
   @@index([state])
   @@index([grantExpiresAt])
+  @@index([engagementKey])
   /// Sert la file « ce qui attend quelqu'un », que #13 et #14 liront par dossier et
   /// par personne.
   @@index([validation])

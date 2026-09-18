@@ -75,7 +75,12 @@ describe("un plan confirmé rejoue les tolérances de sa confirmation", () => {
     const dossier = await ouvrirDossier(personId, "OFFBOARDING", null);
     const calcule = await calculerPlan("OFFBOARDING", personId, USERNAME, CONFIRMATION);
     expect(calcule.etapes.length).toBeGreaterThan(0);
-    const planId = await enregistrerPlan(dossier.id, calcule, OPERATRICE.username, CONFIRMATION);
+    const planId = await enregistrerPlan(
+      { kind: calcule.sens, accessCaseId: dossier.id },
+      calcule,
+      OPERATRICE.username,
+      CONFIRMATION,
+    );
 
     // La confirmation, telle que l'action l'écrit : l'empreinte du calcul et l'instant
     // qui l'a produite, dans la même écriture.

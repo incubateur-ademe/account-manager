@@ -76,6 +76,7 @@ vi.mock("@/lib/db", async () =>
     },
     planTemplate: { findMany: () => Promise.resolve([]) },
     derogation: { findMany: () => Promise.resolve([]) },
+    planStep: { findMany: () => Promise.resolve([]) },
     plan: {
       create: ({
         data,
@@ -305,9 +306,14 @@ describe("un scope qui ne s'applique pas arrête la construction, jamais l'exéc
     // When on tente quand même d'enregistrer ce plan
     // Then c'est la construction qui échoue et non l'exécution : refuser plus tard
     // laisserait un plan confirmé que personne ne peut exécuter
-    await expect(enregistrerPlan(DOSSIER, horsParc, OPERATRICE, MAINTENANT)).rejects.toThrow(
-      "ademe-oubliee",
-    );
+    await expect(
+      enregistrerPlan(
+        { kind: horsParc.sens, accessCaseId: DOSSIER },
+        horsParc,
+        OPERATRICE,
+        MAINTENANT,
+      ),
+    ).rejects.toThrow("ademe-oubliee");
     expect(base.plansEcrits).toEqual([]);
 
     // Given un profil qui ouvre une administration sans terme
@@ -319,9 +325,14 @@ describe("un scope qui ne s'applique pas arrête la construction, jamais l'exéc
     expect(sansTerme.refus[0]?.motif).toContain(`le rôle admin sur l'organisation ${ORGANISATION}`);
     expect(sansTerme.refus[0]?.motif).toContain("risque élevé");
     expect(sansTerme.refus[0]?.motif).toContain("expiresInDays");
-    await expect(enregistrerPlan(DOSSIER, sansTerme, OPERATRICE, MAINTENANT)).rejects.toThrow(
-      "expiresInDays",
-    );
+    await expect(
+      enregistrerPlan(
+        { kind: sansTerme.sens, accessCaseId: DOSSIER },
+        sansTerme,
+        OPERATRICE,
+        MAINTENANT,
+      ),
+    ).rejects.toThrow("expiresInDays");
     expect(base.plansEcrits).toEqual([]);
 
     // Given le même profil, terme compris
@@ -337,7 +348,12 @@ describe("un scope qui ne s'applique pas arrête la construction, jamais l'exéc
     const administration = uneEtape(admissible, "github");
     expect(administration.riskLevel).toBe("high");
     expect(administration.grantExpiresAt).toEqual(new Date(MAINTENANT.getTime() + 180 * JOUR));
-    await enregistrerPlan(DOSSIER, admissible, OPERATRICE, MAINTENANT);
+    await enregistrerPlan(
+      { kind: admissible.sens, accessCaseId: DOSSIER },
+      admissible,
+      OPERATRICE,
+      MAINTENANT,
+    );
     expect(base.plansEcrits).toEqual([{ accessCaseId: DOSSIER, etapes: 1 }]);
 
     // Then les deux refus se lisent avant le clic et non après : un profil qui ne

@@ -56,6 +56,7 @@ interface CompteDeServiceEnBase {
   reviewEveryDays: number;
   lastReviewedAt: Date | null;
   createdAt: Date;
+  expiresAt: Date | null;
 }
 
 const base = vi.hoisted(() => ({
@@ -636,8 +637,20 @@ describe("ce que l'inventaire dit d'un système, et ce qu'il refuse d'en dire", 
         reviewEveryDays: 90,
         lastReviewedAt: dansJours(-5),
         createdAt: dansJours(-400),
+        expiresAt: null,
       })),
-      { reviewEveryDays: 30, lastReviewedAt: null, createdAt: dansJours(-200) },
+      { reviewEveryDays: 30, lastReviewedAt: null, createdAt: dansJours(-200), expiresAt: null },
+      // Un jeton émis dont le terme est passé, et dont la revue est dépassée depuis des
+      // mois : il compte parmi les comptes suivis, jamais parmi les retards. Rien ne peut
+      // le reprendre, le proxy qui l'a émis n'offrant ni révocation ni introspection, si
+      // bien qu'il n'y a aucun geste à réclamer à personne. Le compter en retard rallumerait
+      // pour toujours le signal que ce lot existe pour éteindre.
+      {
+        reviewEveryDays: 7,
+        lastReviewedAt: null,
+        createdAt: dansJours(-200),
+        expiresAt: dansJours(-1),
+      },
     );
 
     // When l'accueil se rend
@@ -681,7 +694,7 @@ describe("ce que l'inventaire dit d'un système, et ce qu'il refuse d'en dire", 
         cible: "/comptes-isoles",
       },
       {
-        titre: "7 comptes de service",
+        titre: "8 comptes de service",
         description: "Dont 1 en retard de revue.",
         cible: "/comptes-de-service",
       },

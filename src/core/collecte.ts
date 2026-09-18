@@ -1,4 +1,9 @@
-import type { ObservedDetail, ObservedIdentity } from "@/core/connector";
+import type {
+  CollectError,
+  ObservedDetail,
+  ObservedIdentity,
+  ObservedResource,
+} from "@/core/connector";
 import type { IdKind, PersonSource, SyncStatus } from "@/generated/prisma/enums";
 
 /**
@@ -58,6 +63,116 @@ export function chuteExcessive(reference: number, observe: number, partMax: numb
     return false;
   }
   return observe < Math.floor(reference * (1 - partMax));
+}
+
+export interface ContenancesVerifiees {
+  ressources: readonly ObservedResource[];
+  erreurs: readonly CollectError[];
+  /**
+   * Ce que le garde-fou de chute doit compter, c'est-à-dire le relevé sans ses contenants.
+   *
+   * La référence à laquelle il se compare ne retient que les ressources portant un accès
+   * vivant, quand un contenant n'en porte souvent aucun : un projet Scalingo n'a pas de
+   * membres. Le compter gonflerait un seul des deux plateaux, donc masquerait une chute
+   * réelle et autoriserait une datation que le garde-fou aurait refusée.
+   *
+   * La balance reste inexacte sur une ressource qui n'est contenant de rien et ne porte
+   * aucun accès, une équipe sans membre par exemple. C'est une dette antérieure, consentie
+   * le temps que la notion de projet se stabilise chez Scalingo (ADR-0002).
+   */
+  releve: number;
+}
+
+function refusDeContenance(
+  ressource: ObservedResource,
+  parent: string,
+  declarees: ReadonlyMap<string, string | undefined>,
+): string | null {
+  if (parent === ressource.externalId) {
+    return "se contient elle-même";
+  }
+  if (!declarees.has(parent)) {
+    return `contenue par une ressource absente de la collecte : ${parent}`;
+  }
+  if (declarees.get(parent) !== undefined) {
+    return `contenue par une ressource qui l'est déjà : ${parent}`;
+  }
+  return null;
+}
+
+/**
+ * Les trois refus se jugent sur ce que le connecteur a déclaré, jamais sur ce qui survit
+ * aux deux autres : sans cela, une contenance écartée ferait passer pour valide celle qui
+ * s'appuyait dessus, et la contradiction du connecteur sortirait du relevé sans un mot.
+ *
+ * La ressource survit toujours à sa contenance. La jeter la sortirait de la table de
+ * résolution, donc ferait tomber chacun de ses accès dans « accès sur une ressource absente
+ * de la collecte » : écarter une contenance ne coûte rien, elle n'ouvre aucun droit, quand
+ * écarter une ressource coûte ses accès.
+ *
+ * Un cycle de deux n'a pas besoin d'une règle à lui : chacune y est contenue par une
+ * ressource qui l'est déjà, donc les deux tombent sous le troisième refus. La profondeur
+ * maximale d'un et l'absence de cycle sont la même règle.
+ */
+export function verifierContenances(ressources: readonly ObservedResource[]): ContenancesVerifiees {
+  // La dernière déclaration d'une clé répétée gagne, exactement comme la boucle d'upsert
+  // garde la dernière écriture. Appliquée à la liste entière et non à la seule table des
+  // contenances : conservées en double, une clé se comptait deux fois dans le relevé que
+  // le garde-fou de chute compare à des lignes distinctes, donc gonflait un seul des deux
+  // plateaux, et la boucle d'écriture laissait en base le parent de la première
+  // occurrence, comparé à une valeur relue avant le passage.
+  const repetees = new Set<string>();
+  const uniques = new Map<string, ObservedResource>();
+  for (const ressource of ressources) {
+    if (uniques.has(ressource.externalId)) {
+      repetees.add(ressource.externalId);
+    }
+    uniques.set(ressource.externalId, ressource);
+  }
+
+  const declarees = new Map<string, string | undefined>(
+    [...uniques].map(([cle, { parentExternalId }]) => [cle, parentExternalId]),
+  );
+
+  // Dite, et non tue : c'est une contradiction du connecteur, et cette fonction existe
+  // pour qu'aucune ne sorte du relevé sans un mot. Le passage tombe donc en `PARTIAL`, et
+  // aucune disparition ne se date sur un relevé qui se contredit.
+  const erreurs: CollectError[] = [...repetees].map((cle) => ({
+    scope: "ressources",
+    itemRef: cle,
+    message: "déclarée plusieurs fois dans le même relevé : la dernière déclaration est retenue",
+  }));
+
+  const retenues: ObservedResource[] = [...uniques.values()].map((ressource) => {
+    const parent = ressource.parentExternalId;
+    if (parent === undefined) {
+      return ressource;
+    }
+
+    const refus = refusDeContenance(ressource, parent, declarees);
+    if (refus === null) {
+      return ressource;
+    }
+
+    erreurs.push({ scope: "ressources", itemRef: ressource.externalId, message: refus });
+    return {
+      externalId: ressource.externalId,
+      label: ressource.label,
+      ...(ressource.url === undefined ? {} : { url: ressource.url }),
+    };
+  });
+
+  // Sur les contenances retenues et non sur les déclarées : une contenance écartée ne fait
+  // pas de son contenant prétendu un contenant.
+  const contenants = new Set(
+    retenues.map(({ parentExternalId }) => parentExternalId).filter((cle) => cle !== undefined),
+  );
+
+  return {
+    ressources: retenues,
+    erreurs,
+    releve: retenues.filter(({ externalId }) => !contenants.has(externalId)).length,
+  };
 }
 
 /**

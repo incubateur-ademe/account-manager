@@ -530,9 +530,14 @@ ressource Coolify :
 | `BREAK_GLASS_USERNAMES` | usernames de secours |
 | `GITHUB_TOKEN` | jeton fine-grained, organisation `incubateur-ademe`, lecture seule |
 | `NOTION_SCIM_TOKEN` | jeton SCIM du workspace Notion, nominatif, sans portée restreinte |
+| `SCALINGO_API_TOKEN` | jeton d'API du compte propriétaire des applications, à portée compte entier |
+| `FGP_URL` | `https://<hôte-du-proxy>`, sans chemin ni jeton : la route d'émission n'en demande aucun |
 
 `NODE_ENV`, `PORT` et `HOSTNAME` sont posés par l'image, ne pas les redéfinir.
 `ESPACE_MEMBRE_URL` a une valeur par défaut correcte.
+
+Les jetons de systèmes cibles et `FGP_URL` sont facultatifs : leur absence dégrade en
+manuel les capacités qui en dépendent, elle n'empêche ni le démarrage ni la collecte.
 
 ### Deux pièges des variables Coolify
 

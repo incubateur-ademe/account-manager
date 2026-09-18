@@ -10,7 +10,18 @@ export interface ProprietesEcran {
   configuration: unknown;
 }
 
-type ChargeurEcran = () => Promise<{ default: ComponentType<ProprietesEcran> }>;
+export interface ModuleEcran {
+  default: ComponentType<ProprietesEcran>;
+  /**
+   * Vrai quand l'écran porte un geste d'écriture, et absent sinon.
+   *
+   * Déclaré par l'écran lui-même, parce qu'une exception nommant un connecteur dans le
+   * socle serait une dépendance du socle vers lui, que docs/adr/0002 refuse.
+   */
+  porteUnGeste?: boolean;
+}
+
+type ChargeurEcran = () => Promise<ModuleEcran>;
 
 /**
  * L'import ne va que dans un sens : `src/ui/` connaît `src/connectors/`, jamais
@@ -19,6 +30,7 @@ type ChargeurEcran = () => Promise<{ default: ComponentType<ProprietesEcran> }>;
  */
 const ECRANS: Readonly<Record<string, ChargeurEcran>> = {
   github: () => import("./github/Ecran"),
+  scalingo: () => import("./scalingo/Ecran"),
 };
 
 type ChargeurTuiles = () => Promise<{ tuiles: readonly TuileDeConnecteur[] }>;
@@ -63,4 +75,21 @@ export function aUnePage(contrat: ConnectorContract): boolean {
     contrat.configSchema !== undefined ||
     (contrat.features?.length ?? 0) > 0
   );
+}
+
+/**
+ * La phrase que la page de système n'a le droit d'afficher qu'au dessus d'écrans qui ne
+ * portent aucun geste.
+ *
+ * Rendue sans condition, elle rassurait au dessus d'un bouton qui journalise au nom de
+ * l'opérateur, écrit un plan en base et périme les brouillons précédents : c'est le sens
+ * le plus coûteux dans lequel une phrase d'écran puisse être fausse, puisqu'on n'ira pas
+ * vérifier ce qu'on nous dit immuable.
+ */
+export const MENTION_SANS_ECRITURE =
+  "Cet écran ne modifie rien. Ce qui s'y règle vit dans le dépôt de configuration, où le changement se relit avant d'être appliqué.";
+
+/** Nulle dès que l'écran du connecteur déclare un geste : la page n'affirme alors rien. */
+export function mentionDeLecture(ecran: ModuleEcran | undefined): string | null {
+  return ecran?.porteUnGeste === true ? null : MENTION_SANS_ECRITURE;
 }

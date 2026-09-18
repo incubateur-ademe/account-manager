@@ -78,8 +78,10 @@ export async function declarerUnCompteDeService(
       ownerUsername: String(formData.get("ownerUsername") ?? ""),
       reviewEveryDays: Number(formData.get("reviewEveryDays") ?? REVUE_PAR_DEFAUT),
       provider: String(formData.get("provider") ?? ""),
+      expiresAt: String(formData.get("expiresAt") ?? ""),
     },
     systemesQuiAccueillentUnCompteMachine().map(({ key }) => key),
+    new Date(),
   );
   if ("erreur" in lecture) {
     return lecture;
