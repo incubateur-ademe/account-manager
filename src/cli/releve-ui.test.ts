@@ -181,14 +181,66 @@ describe("ce que le relevé compte, et ce qu'il refuse de compter", () => {
     );
     expect(mesure.compter([jumelles]).valeur).toBe(1);
 
-    // Then un composant monté deux fois ne compte qu'une fois. La récursion donne à un symbole les
-    // titres de tout le fichier d'où il vient, donc le second montage n'ajoute que des doublons, et
-    // ici ce doublon comblerait le saut de h2 à h4.
+    // Then un export enveloppé garde ses titres. Sa déclaration ne porte aucun JSX, son corps vit
+    // dans l'argument que rien ne monte en balise, et borner la lecture à cette ligne coupait
+    // l'écran de son titre sans qu'aucun compteur ne bouge. C'est la forme des frontières d'erreur
+    // de Next, donc chaque nouvelle serait née muette.
+    const frontiere = sourceDeTest(
+      "src/app/collectes/Frontiere.tsx",
+      `function Repli() {\n  return <Alert as="h4" title="Panne" />;\n}\nexport const Frontiere = catchError(Repli);`,
+    );
+    const pageAFrontiere = sourceDeTest(
+      "src/app/collectes/page.tsx",
+      `import { Frontiere } from "./Frontiere";\nexport default function Page() {\n  return <main><h1>Collectes</h1><Frontiere /></main>;\n}`,
+    );
+    expect(mesure.compter([pageAFrontiere, frontiere]).valeur).toBe(1);
+
+    // Then un composant monté deux fois rend ses titres deux fois, et son second montage peut créer
+    // un saut. Ne retenir que le premier montage insérait ici un h2 de moins, et le saut de h2 à h4
+    // disparaissait du compteur.
+    const bloc = sourceDeTest(
+      "src/app/collectes/Bloc.tsx",
+      `export function Bloc() {\n  return <Alert as="h2" title="Bloc" />;\n}`,
+    );
     const monteDeuxFois = sourceDeTest(
       "src/app/collectes/page.tsx",
-      `import { GardeFou } from "./GardeFou";\nexport default function Page() {\n  return <main><GardeFou /><h1>Collectes</h1><h2>Détail</h2><GardeFou /><h4>Reste</h4></main>;\n}`,
+      `import { Bloc } from "./Bloc";\nexport default function Page() {\n  return <main><h1>Collectes</h1><Bloc /><h3>Détail</h3><Bloc /><h4>Reste</h4></main>;\n}`,
     );
-    expect(mesure.compter([monteDeuxFois, enfant]).valeur).toBe(1);
+    expect(mesure.compter([monteDeuxFois, bloc]).valeur).toBe(1);
+
+    // Then le même second montage ne crée rien quand il tombe au bon endroit. Ce qui se mesure est
+    // la place du titre dans l'ordre de lecture, jamais le nombre de montages.
+    const monteDeuxFoisSansSaut = sourceDeTest(
+      "src/app/collectes/page.tsx",
+      `import { Bloc } from "./Bloc";\nexport default function Page() {\n  return <main><h1>Collectes</h1><Bloc /><h3>Détail</h3><Bloc /><h3>Reste</h3></main>;\n}`,
+    );
+    expect(mesure.compter([monteDeuxFoisSansSaut, bloc]).valeur).toBe(0);
+
+    // Then un symbole monté ne rend que SES titres, et non ceux de ses voisins de fichier. Donner à
+    // chaque symbole les titres de tout son fichier faisait hériter au bouton de recalcul les
+    // titres que seul le pointage atteint, et ces titres fantômes comblaient un vrai saut.
+    const voisinsDeFichier = sourceDeTest(
+      "src/app/collectes/Pointage.tsx",
+      `export function BoutonRecalculer() {\n  return <Button priority="secondary">Recalculer</Button>;\n}\n\nexport function Pointage() {\n  return <Alert title="Remises" />;\n}`,
+    );
+    const monteLeBouton = sourceDeTest(
+      "src/app/collectes/page.tsx",
+      `import { BoutonRecalculer } from "./Pointage";\nexport default function Page() {\n  return <main><h1>Collectes</h1><h2>Détail</h2><BoutonRecalculer /><h4>Reste</h4></main>;\n}`,
+    );
+    expect(mesure.compter([monteLeBouton, voisinsDeFichier]).valeur).toBe(1);
+
+    // Then un corps monte aussi des composants déclarés plus bas dans son propre fichier, sans les
+    // importer. Ne suivre que les imports rendait la borne par symbole aveugle aux trois Alert que
+    // Remises n'atteint qu'à travers Remise.
+    const voisinLocal = sourceDeTest(
+      "src/app/collectes/Remises.tsx",
+      `function Remise() {\n  return <Alert title="Remise" />;\n}\n\nexport function Remises() {\n  return <Remise />;\n}`,
+    );
+    const pageDesRemises = sourceDeTest(
+      "src/app/collectes/page.tsx",
+      `import { Remises } from "./Remises";\nexport default function Page() {\n  return <main><h1>Collectes</h1><Remises /></main>;\n}`,
+    );
+    expect(mesure.compter([pageDesRemises, voisinLocal]).valeur).toBe(1);
 
     // Then un montage se situe à sa propre balise, et non à celle d'un composant dont le nom
     // commence pareil.
@@ -244,11 +296,27 @@ describe("ce que le relevé compte, et ce qu'il refuse de compter", () => {
 
     // Then `raison` sert aussi de libellé de champ et de code machine. Les lire comme des
     // refus ferait monter la mesure sur du texte qu'aucun refus n'affiche.
-    const libelle = `const champ = { raison: "Pourquoi ce retrait (facultatif)" };`;
+    // Then une propriété intercalée entre le verdict et sa raison ne rend pas le refus invisible :
+    // c'est l'objet qui fait l'unité, pas la ligne.
+    const intercale = `return {\n  possible: false,\n  cible: null,\n  raison: "Plan introuvable.",\n};`;
+    expect(compter("refus-en-forme-d-etiquette", VERDICT, intercale)).toBe(1);
+
+    // Then l'ordre des propriétés non plus.
+    const inverse = `return {\n  raison: "Plan introuvable.",\n  possible: false,\n};`;
+    expect(compter("refus-en-forme-d-etiquette", VERDICT, inverse)).toBe(1);
+
+    /*
+     * Les deux exclusions se prouvent sur des textes que la mesure compterait si elle les voyait.
+     * Une forme qu'elle écarte de toute façon, trop courte ou trop peu bavarde, rendrait zéro sans
+     * rien dire de l'exclusion visée.
+     */
+    const libelle = `const champ = { raison: "Constat introuvable." };`;
     expect(compter("refus-en-forme-d-etiquette", "src/app/dossiers/redaction.ts", libelle)).toBe(0);
-    expect(
-      compter("refus-en-forme-d-etiquette", "src/core/collecte.ts", `{ raison: "non-lu" }`),
-    ).toBe(0);
+
+    // Then un code machine reste hors du compte jusque DANS un verdict, où l'appartenance ne le
+    // sauve pas : ce n'est pas une phrase.
+    const machine = `return { possible: false, raison: "non-lu" };`;
+    expect(compter("refus-en-forme-d-etiquette", "src/core/collecte.ts", machine)).toBe(0);
   });
 
   it("n'exonère que la ligne qui emploie un composant, jamais le fichier entier", () => {

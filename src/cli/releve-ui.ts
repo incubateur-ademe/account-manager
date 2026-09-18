@@ -39,6 +39,11 @@ export interface Resultat {
   readonly sites: readonly Site[];
 }
 
+interface Plage {
+  readonly debut: number;
+  readonly fin: number;
+}
+
 export interface Mesure {
   readonly id: string;
   readonly libelle: string;
@@ -238,22 +243,83 @@ function tousLesTextes(sources: readonly Source[]): Litteral[] {
 }
 
 /*
+ * L'objet d'un verdict, reconnu comme une unité. Se contenter de la ligne du `possible: false` et de
+ * la suivante rendait le refus invisible dès qu'une propriété s'intercalait avant la raison, ou que
+ * l'ordre des propriétés changeait.
+ */
+function plagesDeVerdict(source: Source): Plage[] {
+  const plages: Plage[] = [];
+  const motif = /possible:\s*false/g;
+  let trouve = motif.exec(source.contenu);
+  while (trouve !== null) {
+    let profondeur = 0;
+    let debut = -1;
+    for (let index = trouve.index; index >= 0; index -= 1) {
+      const caractere = source.contenu[index];
+      if (caractere === "}") profondeur += 1;
+      else if (caractere === "{") {
+        if (profondeur === 0) {
+          debut = index;
+          break;
+        }
+        profondeur -= 1;
+      }
+    }
+    if (debut >= 0) {
+      profondeur = 0;
+      let fin = source.contenu.length;
+      for (let index = debut; index < source.contenu.length; index += 1) {
+        const caractere = source.contenu[index];
+        if (caractere === "{") profondeur += 1;
+        else if (caractere === "}") {
+          profondeur -= 1;
+          if (profondeur === 0) {
+            fin = index + 1;
+            break;
+          }
+        }
+      }
+      plages.push({ debut, fin });
+    }
+    trouve = motif.exec(source.contenu);
+  }
+  return plages;
+}
+
+function debutsDeLigne(source: Source): number[] {
+  const debuts: number[] = [];
+  let position = 0;
+  for (const ligne of source.lignes) {
+    debuts.push(position);
+    position += ligne.length + 1;
+  }
+  return debuts;
+}
+
+/*
  * Un refus rendu à l'opérateur. `erreur` est la clé des actions serveur ; `raison` porte la même chose
- * dans un verdict, mais sert ailleurs de libellé de champ et de code machine, d'où la condition sur le
- * `possible: false` qui l'accompagne.
+ * dans un verdict, mais sert ailleurs de libellé de champ et de code machine, d'où la condition
+ * d'appartenance à l'objet qui porte le `possible: false`.
  */
 function refusDe(source: Source): Litteral[] {
   const trouves: Litteral[] = [];
+  const verdicts = plagesDeVerdict(source);
+  const debuts = debutsDeLigne(source);
+  const dansUnVerdict = (position: number): boolean =>
+    verdicts.some((plage) => position >= plage.debut && position < plage.fin);
+
   source.lignes.forEach((ligne, index) => {
     if (estLigneDeCommentaire(ligne)) return;
-    const verdict = /possible:\s*false/;
-    const cles =
-      verdict.test(ligne) || verdict.test(source.lignes[index - 1] ?? "")
-        ? /\b(?:erreur|raison):\s*"([^"\\]{8,400})"/
-        : /\berreur:\s*"([^"\\]{8,400})"/;
-    const texte = cles.exec(ligne)?.[1];
-    if (texte !== undefined && estTexteOperateur(texte)) {
-      trouves.push({ chemin: source.chemin, ligne: index + 1, extrait: texte, texte });
+    const cles = /\b(erreur|raison):\s*"([^"\\]{8,400})"/g;
+    let trouve = cles.exec(ligne);
+    while (trouve !== null) {
+      const texte = trouve[2];
+      const retenu = trouve[1] === "erreur" || dansUnVerdict((debuts[index] ?? 0) + trouve.index);
+      if (retenu && texte !== undefined && estTexteOperateur(texte)) {
+        trouves.push({ chemin: source.chemin, ligne: index + 1, extrait: texte, texte });
+        return;
+      }
+      trouve = cles.exec(ligne);
     }
   });
   return trouves;
@@ -397,19 +463,23 @@ interface TitreRendu {
   readonly venuDe: string | null;
 }
 
-function titresDuFichier(source: Source): TitreRendu[] {
+function titresDuFichier(source: Source, plage: Plage): TitreRendu[] {
   const titres: TitreRendu[] = [];
+  const dansLaPlage = (position: number): boolean =>
+    position >= plage.debut && position < plage.fin;
 
   const balises = /<h([1-6])[\s>]/g;
   let trouve = balises.exec(source.contenu);
   while (trouve !== null) {
-    titres.push({
-      niveau: Number(trouve[1]),
-      position: trouve.index,
-      ligne: source.contenu.slice(0, trouve.index).split("\n").length,
-      chemin: source.chemin,
-      venuDe: null,
-    });
+    if (dansLaPlage(trouve.index)) {
+      titres.push({
+        niveau: Number(trouve[1]),
+        position: trouve.index,
+        ligne: source.contenu.slice(0, trouve.index).split("\n").length,
+        chemin: source.chemin,
+        venuDe: null,
+      });
+    }
     trouve = balises.exec(source.contenu);
   }
 
@@ -419,6 +489,7 @@ function titresDuFichier(source: Source): TitreRendu[] {
    */
   for (const nom of COMPOSANTS_PORTEURS_DE_TITRE) {
     for (const { site, texte, position } of balisesOuvrantes(source, nom)) {
+      if (!dansLaPlage(position)) continue;
       if (!/\b(?:title|label)=/.test(texte)) continue;
       const declare = /\b(?:as|titleAs)="h([2-6])"/.exec(texte);
       titres.push({
@@ -434,43 +505,126 @@ function titresDuFichier(source: Source): TitreRendu[] {
   return titres;
 }
 
-function titresDeLEcran(
-  source: Source,
-  parChemin: ReadonlyMap<string, Source>,
-  vus: ReadonlySet<string> = new Set(),
-): TitreRendu[] {
-  const titres = titresDuFichier(source);
+/*
+ * Le corps d'un symbole exporté, borné par la déclaration de premier niveau qui le suit. Sans cette
+ * borne, la récursion donne à un SYMBOLE les titres de tout le FICHIER d'où il vient : page.tsx
+ * importe six symboles de Pointage.tsx, et le bouton de recalcul, qui ne rend aucun titre, héritait
+ * des trois Alert que seul Pointage atteint.
+ *
+ * Retourne null quand la déclaration ne se laisse pas reconnaître, une réexportation par exemple. Le
+ * fichier entier sert alors de plage, ce qui est le comportement d'avant plutôt qu'une devinette.
+ */
+const DEBUT_DE_DECLARATION =
+  "^(?:export|const|let|var|function|async|class|interface|type|enum)\\b";
 
+function corpsDuSymbole(source: Source, nom: string): Plage | null {
+  const echappe = nom.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+  const declaration = new RegExp(
+    `^(?:export\\s+)?(?:default\\s+)?(?:async\\s+)?(?:function|const|let|var|class)\\s+${echappe}\\b`,
+    "m",
+  );
+  const trouve = declaration.exec(source.contenu);
+  if (trouve === null) return null;
+  const finDeLaLigne = source.contenu.indexOf("\n", trouve.index);
+  const suivante = new RegExp(DEBUT_DE_DECLARATION, "gm");
+  suivante.lastIndex = finDeLaLigne === -1 ? source.contenu.length : finDeLaLigne + 1;
+  const borne = suivante.exec(source.contenu);
+  const plage = { debut: trouve.index, fin: borne === null ? source.contenu.length : borne.index };
+  /*
+   * Un export enveloppé, `export const X = catchError(Repli)`, donne une plage d'une ligne sans
+   * JSX : le corps vit dans l'argument, que rien ne monte en balise. Rendre cette plage-là couperait
+   * la mesure de l'écran sans qu'aucun compteur ne bouge, là où le fichier entier reste le repli.
+   */
+  return /<[A-Za-z]/.test(source.contenu.slice(plage.debut, plage.fin)) ? plage : null;
+}
+
+function nomsMontes(source: Source, plage: Plage): string[] {
+  const noms = new Set<string>();
+  const balises = /<([A-Z][A-Za-z0-9_]*)[\s/>]/g;
+  let trouve = balises.exec(source.contenu);
+  while (trouve !== null) {
+    const nom = trouve[1];
+    if (nom !== undefined && trouve.index >= plage.debut && trouve.index < plage.fin) noms.add(nom);
+    trouve = balises.exec(source.contenu);
+  }
+  return [...noms];
+}
+
+function titresRendus(
+  source: Source,
+  plage: Plage,
+  parChemin: ReadonlyMap<string, Source>,
+  vus: ReadonlySet<string>,
+  pile: ReadonlySet<string>,
+): TitreRendu[] {
+  const titres = titresDuFichier(source, plage);
+
+  /*
+   * Les titres du symbole monté, pas ceux de son fichier, et insérés à CHAQUE occurrence de sa
+   * balise : un composant réellement monté deux fois rend bien ses titres deux fois.
+   */
+  const inserer = (nom: string, rendus: readonly TitreRendu[]): void => {
+    for (const montage of balisesOuvrantes(source, nom)) {
+      if (montage.position < plage.debut || montage.position >= plage.fin) continue;
+      for (const titre of rendus) {
+        titres.push({
+          ...titre,
+          position: montage.position + titre.position / 100_000,
+          ligne: montage.site.ligne,
+          chemin: source.chemin,
+          venuDe: titre.venuDe ?? `${titre.chemin}:${titre.ligne}`,
+        });
+      }
+    }
+  };
+
+  const importes = new Set<string>();
   const imports = /import\s*\{([^}]*)\}\s*from\s*"([^"]+)"/g;
   let trouve = imports.exec(source.contenu);
   while (trouve !== null) {
     const chemin = cheminImporte(source, trouve[2] ?? "");
     const enfant = chemin === null ? undefined : parChemin.get(chemin);
-    if (enfant !== undefined && !vus.has(enfant.chemin)) {
-      for (const nom of (trouve[1] ?? "").split(",").map((m) => m.trim().split(" ")[0])) {
-        if (nom === undefined || nom.length === 0) continue;
-        /*
-         * Seul le premier montage compte. La récursion donne à un symbole les titres de tout le
-         * fichier d'où il vient, donc un second montage n'ajouterait que des doublons, et un doublon
-         * comble un saut qui existe.
-         */
-        const montage = balisesOuvrantes(source, nom)[0];
-        if (montage === undefined) continue;
-        for (const titre of titresDeLEcran(enfant, parChemin, new Set([...vus, source.chemin]))) {
-          titres.push({
-            ...titre,
-            position: montage.position + titre.position / 100_000,
-            ligne: montage.site.ligne,
-            chemin: source.chemin,
-            venuDe: titre.venuDe ?? `${titre.chemin}:${titre.ligne}`,
-          });
-        }
-      }
+    for (const nom of (trouve[1] ?? "").split(",").map((m) => m.trim().split(" ")[0])) {
+      if (nom === undefined || nom.length === 0) continue;
+      importes.add(nom);
+      if (enfant === undefined || vus.has(enfant.chemin)) continue;
+      inserer(
+        nom,
+        titresRendus(
+          enfant,
+          corpsDuSymbole(enfant, nom) ?? { debut: 0, fin: enfant.contenu.length },
+          parChemin,
+          new Set([...vus, source.chemin]),
+          new Set(),
+        ),
+      );
     }
     trouve = imports.exec(source.contenu);
   }
 
+  /*
+   * Un corps monte aussi des composants déclarés plus bas dans son propre fichier, sans les
+   * importer : Remises monte Remise, qui porte les trois Alert. Les ignorer creuserait le trou que
+   * la borne par symbole vient de fermer.
+   */
+  for (const nom of nomsMontes(source, plage)) {
+    if (importes.has(nom) || pile.has(nom)) continue;
+    const corps = corpsDuSymbole(source, nom);
+    if (corps === null || (corps.debut <= plage.debut && corps.fin >= plage.fin)) continue;
+    inserer(nom, titresRendus(source, corps, parChemin, vus, new Set([...pile, nom])));
+  }
+
   return titres.sort((a, b) => a.position - b.position);
+}
+
+function titresDeLEcran(source: Source, parChemin: ReadonlyMap<string, Source>): TitreRendu[] {
+  return titresRendus(
+    source,
+    { debut: 0, fin: source.contenu.length },
+    parChemin,
+    new Set(),
+    new Set(),
+  );
 }
 
 // ---------------------------------------------------------------------------
