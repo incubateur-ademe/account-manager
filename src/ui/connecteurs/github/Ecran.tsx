@@ -31,7 +31,7 @@ export default function EcranGithub({ configuration }: ProprietesEcran) {
       <Alert
         severity="warning"
         small
-        description="Retirer une organisation d'ici n'est pas un réglage d'affichage. La collecte suivante datera la disparition des comptes qui n'y sont plus vus, et le départ de leurs titulaires s'ensuivra. En ajouter une fait entrer ses membres dans le suivi, à la collecte suivante."
+        description="Retirer une organisation fait dater, à la collecte suivante, la disparition des comptes qui n'y sont plus vus, et un dossier de départ cesse alors de proposer leur retrait. Au-delà de ce que le garde-fou tolère de perdre d'un coup, rien n'est daté tant qu'on ne l'y autorise pas. En ajouter une fait entrer ses membres dans le suivi."
       />
     </section>
   );

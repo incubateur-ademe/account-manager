@@ -10,6 +10,7 @@ import {
   normaliserIdentifiant,
   type PlanFusion,
   planifierFusion,
+  RAISON_NON_EDITABLE,
   renommable,
   validerChamps,
 } from "@/core/fiche-manuelle";
@@ -101,8 +102,9 @@ export async function modifierFiche(_etat: EtatEdition, formData: FormData): Pro
   if (!personne) {
     return { erreur: "Cette personne n'est plus en base." };
   }
-  if (!ficheEditable(personne, declaresLocaux()).editable) {
-    return { erreur: "Une collecte réécrit cette fiche, elle n'est pas modifiable ici." };
+  const editabilite = ficheEditable(personne, declaresLocaux());
+  if (!editabilite.editable) {
+    return { erreur: `Rien n'a été enregistré. ${RAISON_NON_EDITABLE[editabilite.raison]}` };
   }
 
   const validation = validerChamps({

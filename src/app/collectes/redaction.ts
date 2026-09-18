@@ -73,7 +73,7 @@ const SYSTEME_CIBLE = {
  */
 function ampleur(blocage: BlocageInstalle): string {
   if (blocage.datables === undefined) {
-    return "Combien de personnes seraient constatées parties n'a pas pu être compté cette nuit-là. Une décision posée maintenant restera sans effet faute d'ampleur à mesurer.";
+    return "Le nombre de personnes qui seraient constatées parties n'a pas pu être compté cette nuit-là. Une décision posée maintenant restera sans effet faute d'ampleur à mesurer.";
   }
 
   const personnes = `${blocage.datables} ${blocage.datables > 1 ? "personnes" : "personne"}`;

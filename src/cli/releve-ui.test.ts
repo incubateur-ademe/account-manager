@@ -36,6 +36,13 @@ describe("ce que le relevé compte, et ce qu'il refuse de compter", () => {
       compter("titres-injectes-sans-niveau", ECRAN, `<Alert\n  as="h3"\n  title="X"\n/>`),
     ).toBe(0);
 
+    // Then un Accordion pose le sien par son label. Ne lire que la prop title laissait ce h3
+    // s'injecter sans que le plafond zéro le voie.
+    expect(compter("titres-injectes-sans-niveau", ECRAN, `<Accordion label="X" />`)).toBe(1);
+    expect(
+      compter("titres-injectes-sans-niveau", ECRAN, `<Accordion titleAs="h2" label="X" />`),
+    ).toBe(0);
+
     // Then une modale laisse son titre en h1 tant qu'elle ne dit rien.
     expect(compter("titres-de-modale-en-h1", ECRAN, `<modale.Component title="X">`)).toBe(1);
     expect(
@@ -150,12 +157,46 @@ describe("ce que le relevé compte, et ce qu'il refuse de compter", () => {
     // qu'une première version ratait, et son zéro passait pour une garantie.
     expect(mesure.compter([page, enfant]).valeur).toBe(1);
 
+    // Then le site rapporté tient debout des deux côtés : la page et la ligne où le composant est
+    // monté, puis dans l'extrait le fichier et la ligne où le titre est écrit. Croiser les deux
+    // donnait une ligne qui n'existe pas dans le fichier nommé.
+    const [saut] = mesure.compter([page, enfant]).sites;
+    expect(saut?.chemin).toBe("src/app/collectes/page.tsx");
+    expect(saut?.ligne).toBe(3);
+    expect(saut?.extrait).toBe("h1 puis h3, titre écrit dans src/app/collectes/GardeFou.tsx:1");
+
     // Then il disparaît dès que l'enfant déclare le bon niveau.
     const corrige = sourceDeTest(
       "src/app/collectes/GardeFou.tsx",
       `<Alert as="h2" title="Bloqué" />`,
     );
     expect(mesure.compter([page, corrige]).valeur).toBe(0);
+
+    // Then deux balises rigoureusement identiques gardent chacune sa place. Retrouver leur position
+    // en cherchant leur texte donnait la première aux deux, l'ordre de lecture devenait faux et le
+    // saut qui suivait la seconde disparaissait du compteur.
+    const jumelles = sourceDeTest(
+      "src/app/collectes/page.tsx",
+      `export default function Page() {\n  return <main>\n    <h1>Collectes</h1>\n    <Alert as="h2" title="X" />\n    <h3>Détail</h3>\n    <Alert as="h2" title="X" />\n    <h4>Reste</h4>\n  </main>;\n}`,
+    );
+    expect(mesure.compter([jumelles]).valeur).toBe(1);
+
+    // Then un composant monté deux fois ne compte qu'une fois. La récursion donne à un symbole les
+    // titres de tout le fichier d'où il vient, donc le second montage n'ajoute que des doublons, et
+    // ici ce doublon comblerait le saut de h2 à h4.
+    const monteDeuxFois = sourceDeTest(
+      "src/app/collectes/page.tsx",
+      `import { GardeFou } from "./GardeFou";\nexport default function Page() {\n  return <main><GardeFou /><h1>Collectes</h1><h2>Détail</h2><GardeFou /><h4>Reste</h4></main>;\n}`,
+    );
+    expect(mesure.compter([monteDeuxFois, enfant]).valeur).toBe(1);
+
+    // Then un montage se situe à sa propre balise, et non à celle d'un composant dont le nom
+    // commence pareil.
+    const voisin = sourceDeTest(
+      "src/app/collectes/page.tsx",
+      `import { GardeFou } from "./GardeFou";\nexport default function Page() {\n  return <main><GardeFouEnTete /><h1>Collectes</h1><GardeFou /></main>;\n}`,
+    );
+    expect(mesure.compter([voisin, enfant]).valeur).toBe(1);
   });
 
   it("distingue un refus qui étiquette d'un refus qui dit ce qui s'est passé", () => {

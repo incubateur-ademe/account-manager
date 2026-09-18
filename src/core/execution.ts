@@ -24,7 +24,7 @@ export function peutExecuter(etat: EtatPlan): Verdict {
   if (etat === "DRAFT") {
     return {
       possible: false,
-      raison: "Ce plan doit d'abord être confirmé. Personne n'a encore répondu de cette liste.",
+      raison: "Ce plan est encore un brouillon. Confirmez-le avant de l'exécuter.",
     };
   }
   return { possible: false, raison: "Ce plan est clos. Il n'y a plus rien à exécuter." };

@@ -1127,9 +1127,13 @@ export default async function DossierPage({
       {/* Hors du bloc des étapes, comme l'annulation : un plan qui n'en porte aucune
           est soldé par construction, et le bouton vivait dans une branche que ce
           cas-là n'atteint jamais. */}
-      {plan && peutClore(dossier.kind, dossier.state, plan.state, plan.steps.length).possible ? (
-        <BoutonClore dossierId={dossier.id} />
-      ) : null}
+      <BoutonClore
+        dossierId={dossier.id}
+        cloturable={
+          peutClore(dossier.kind, dossier.state, plan?.state ?? null, plan?.steps.length ?? 0)
+            .possible
+        }
+      />
 
       <BoutonAnnuler
         dossierId={dossier.id}

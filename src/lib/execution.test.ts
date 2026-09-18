@@ -1101,8 +1101,10 @@ describe("les gardes qui précèdent la moindre lecture", () => {
       base.plan.state = "DRAFT";
     }
 
-    // Then un brouillon ne part pas : personne n'a répondu de cette liste
-    expect((await lancer()).refus).toContain("doit d'abord être confirmé");
+    // Then un brouillon ne part pas, et le refus nomme le geste qui manque
+    const brouillon = (await lancer()).refus;
+    expect(brouillon).toContain("encore un brouillon");
+    expect(brouillon).toContain("Confirmez-le");
     expect(appels()).toEqual([]);
 
     // Given un plan engagé mais sans empreinte confirmée

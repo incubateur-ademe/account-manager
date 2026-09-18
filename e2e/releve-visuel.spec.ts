@@ -271,11 +271,11 @@ test("relever ce qui ne se lit pas dans le code", async ({ browser }) => {
     await pagePerso.screenshot({ path: `${SORTIE}/${ecran.nom}.png`, fullPage: true });
     rapport.push(...rendreAnatomie(ecran.nom, ecran.chemin, await anatomieDe(pagePerso)));
   }
-  await participante.close();
 
   rapport.push("\n# Les modales, telles qu'elles s'ouvrent", "", ...modalesVues);
 
   await page.setViewportSize({ width: 375, height: 812 });
+  await pagePerso.setViewportSize({ width: 375, height: 812 });
   const debordent: string[] = [];
   for (const ecran of ECRANS) {
     await page.goto(ecran.chemin, { waitUntil: "networkidle" });
@@ -283,6 +283,14 @@ test("relever ce qui ne se lit pas dans le code", async ({ browser }) => {
     const { deborde, hauteur } = await anatomieDe(page);
     if (deborde) debordent.push(`  ${ecran.nom} (${hauteur}px)`);
   }
+  for (const ecran of ESPACE_PERSONNEL) {
+    await pagePerso.goto(ecran.chemin, { waitUntil: "networkidle" });
+    await pagePerso.screenshot({ path: `${SORTIE}/etroit/${ecran.nom}.png`, fullPage: true });
+    const { deborde, hauteur } = await anatomieDe(pagePerso);
+    if (deborde) debordent.push(`  ${ecran.nom} (${hauteur}px)`);
+  }
+  await participante.close();
+
   rapport.push(
     "\n# En 375px",
     "",

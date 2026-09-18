@@ -321,8 +321,8 @@ function actionnables(sources: readonly Source[]): Site[] {
 function balisesOuvrantes(
   source: Source,
   nom: string,
-): { readonly site: Site; readonly texte: string }[] {
-  const trouves: { site: Site; texte: string }[] = [];
+): { readonly site: Site; readonly texte: string; readonly position: number }[] {
+  const trouves: { site: Site; texte: string; position: number }[] = [];
   const debut = new RegExp(`<${nom}[\\s/>]`, "g");
   let amorce = debut.exec(source.contenu);
   while (amorce !== null) {
@@ -343,6 +343,7 @@ function balisesOuvrantes(
         extrait: texte.replace(/\s+/g, " ").slice(0, 110),
       },
       texte,
+      position: amorce.index,
     });
     amorce = debut.exec(source.contenu);
   }
@@ -392,6 +393,8 @@ interface TitreRendu {
   readonly position: number;
   readonly ligne: number;
   readonly chemin: string;
+  /* Le fichier et la ligne où le titre est écrit, quand ce n'est pas là où il est monté. */
+  readonly venuDe: string | null;
 }
 
 function titresDuFichier(source: Source): TitreRendu[] {
@@ -405,6 +408,7 @@ function titresDuFichier(source: Source): TitreRendu[] {
       position: trouve.index,
       ligne: source.contenu.slice(0, trouve.index).split("\n").length,
       chemin: source.chemin,
+      venuDe: null,
     });
     trouve = balises.exec(source.contenu);
   }
@@ -414,14 +418,15 @@ function titresDuFichier(source: Source): TitreRendu[] {
    * ce h3 implicite qui crée les sauts.
    */
   for (const nom of COMPOSANTS_PORTEURS_DE_TITRE) {
-    for (const { site, texte } of balisesOuvrantes(source, nom)) {
+    for (const { site, texte, position } of balisesOuvrantes(source, nom)) {
       if (!/\b(?:title|label)=/.test(texte)) continue;
       const declare = /\b(?:as|titleAs)="h([2-6])"/.exec(texte);
       titres.push({
         niveau: declare?.[1] === undefined ? 3 : Number(declare[1]),
-        position: source.contenu.indexOf(texte),
+        position,
         ligne: site.ligne,
         chemin: source.chemin,
+        venuDe: null,
       });
     }
   }
@@ -444,17 +449,21 @@ function titresDeLEcran(
     if (enfant !== undefined && !vus.has(enfant.chemin)) {
       for (const nom of (trouve[1] ?? "").split(",").map((m) => m.trim().split(" ")[0])) {
         if (nom === undefined || nom.length === 0) continue;
-        for (const { site } of balisesOuvrantes(source, nom)) {
-          const position = source.contenu.indexOf(`<${nom}`, 0);
-          const interieurs = titresDeLEcran(enfant, parChemin, new Set([...vus, source.chemin]));
-          for (const titre of interieurs) {
-            titres.push({
-              ...titre,
-              position: position + titre.position / 100_000,
-              ligne: site.ligne,
-            });
-          }
-          break;
+        /*
+         * Seul le premier montage compte. La récursion donne à un symbole les titres de tout le
+         * fichier d'où il vient, donc un second montage n'ajouterait que des doublons, et un doublon
+         * comble un saut qui existe.
+         */
+        const montage = balisesOuvrantes(source, nom)[0];
+        if (montage === undefined) continue;
+        for (const titre of titresDeLEcran(enfant, parChemin, new Set([...vus, source.chemin]))) {
+          titres.push({
+            ...titre,
+            position: montage.position + titre.position / 100_000,
+            ligne: montage.site.ligne,
+            chemin: source.chemin,
+            venuDe: titre.venuDe ?? `${titre.chemin}:${titre.ligne}`,
+          });
         }
       }
     }
@@ -647,13 +656,13 @@ export const MESURES: readonly Mesure[] = [
     id: "titres-injectes-sans-niveau",
     libelle: "Composants DSFR posant un titre sans déclarer son niveau",
     cible:
-      "Un Alert ou un Tile porteur d'un title l'injecte en h3 par défaut, d'où des h3 sans h2 parent.",
+      "Un Alert porteur d'un title, un Accordion porteur d'un label, l'injectent en h3 par défaut, d'où des h3 sans h2 parent.",
     compter: (sources) =>
       resultat(
         sources.flatMap((source) =>
           COMPOSANTS_PORTEURS_DE_TITRE.flatMap((nom) =>
             balisesOuvrantes(source, nom)
-              .filter(({ texte }) => /\btitle=/.test(texte))
+              .filter(({ texte }) => /\b(?:title|label)=/.test(texte))
               .filter(({ texte }) => !/\b(as|titleAs)=/.test(texte))
               .map(({ site }) => site),
           ),
@@ -676,7 +685,10 @@ export const MESURES: readonly Mesure[] = [
             sites.push({
               chemin: titre.chemin,
               ligne: titre.ligne,
-              extrait: `${source.chemin} : h${precedent} puis h${titre.niveau}`,
+              extrait:
+                titre.venuDe === null
+                  ? `h${precedent} puis h${titre.niveau}`
+                  : `h${precedent} puis h${titre.niveau}, titre écrit dans ${titre.venuDe}`,
             });
           }
           precedent = titre.niveau;
