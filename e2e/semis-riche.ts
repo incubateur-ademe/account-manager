@@ -179,11 +179,11 @@ export async function semerLesEcransPleins(client: Client): Promise<void> {
   await client.query(`
     INSERT INTO "SyncRun" (id, provider, capability, "startedAt", "finishedAt", status, "itemsSeen", error)
     VALUES
-      ('run-gh-1', 'github', 'collect', now() - interval '2 hours', now() - interval '2 hours' + interval '40 seconds', 'OK', 42, NULL),
-      ('run-gh-2', 'github', 'collect', now() - interval '1 day', now() - interval '1 day' + interval '38 seconds', 'OK', 41, NULL),
-      ('run-nt-1', 'notion', 'collect', now() - interval '3 hours', now() - interval '3 hours' + interval '2 minutes', 'PARTIAL', 17, '{"message":"Deux pages n''ont pas pu être lues"}'::jsonb),
-      ('run-sc-1', 'scalingo', 'collect', now() - interval '40 hours', NULL, 'FAILED', 0, '{"message":"Jeton refusé par le système"}'::jsonb),
-      ('run-sc-2', 'scalingo', 'collect', now() - interval '3 days', now() - interval '3 days' + interval '20 seconds', 'OK', 9, NULL)
+      ('run-gh-1', 'github', 'list', now() - interval '2 hours', now() - interval '2 hours' + interval '40 seconds', 'OK', 42, NULL),
+      ('run-gh-2', 'github', 'list', now() - interval '1 day', now() - interval '1 day' + interval '38 seconds', 'OK', 41, NULL),
+      ('run-nt-1', 'notion', 'list', now() - interval '3 hours', now() - interval '3 hours' + interval '2 minutes', 'PARTIAL', 17, '{"message":"Deux pages n''ont pas pu être lues"}'::jsonb),
+      ('run-sc-1', 'scalingo', 'list', now() - interval '40 hours', NULL, 'FAILED', 0, '{"message":"Jeton refusé par le système"}'::jsonb),
+      ('run-sc-2', 'scalingo', 'list', now() - interval '3 days', now() - interval '3 days' + interval '20 seconds', 'OK', 9, NULL)
   `);
 
   await client.query(`

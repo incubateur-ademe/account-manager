@@ -272,65 +272,69 @@ export default async function SystemesPage() {
               : "Jamais lu."}
           </p>
 
-          <Table
-            fixed
-            caption={`Capacités sur ${contrat.label}`}
-            headers={["Capacité", "Aujourd'hui", "Ce qui manque pour faire mieux"]}
-            data={capacites.map(({ libelle, quoi, resolue }) => [
-              <span key="c">
-                <strong>{libelle}</strong>
-                <br />
-                <span className={fr.cx("fr-text--sm")}>{quoi}</span>
-              </span>,
-              <Badge key="t" severity={LIBELLE_TIER[resolue.tier].severite} small noIcon>
-                {LIBELLE_TIER[resolue.tier].libelle}
-              </Badge>,
-              resolue.degradedFrom ? (
-                <span key="m" className={fr.cx("fr-text--sm")}>
-                  {LIBELLE_TIER[resolue.degradedFrom.tier].libelle} si :{" "}
-                  {resolue.degradedFrom.missing.join(", ")}
-                </span>
-              ) : (
-                <span key="m" className={fr.cx("fr-text--sm")}>
-                  sans objet
-                </span>
-              ),
-            ])}
-          />
+          {/* Le détail du contrat se replie : ce qu'un opérateur vient voir ici est l'état des
+              lectures, et cette référence se lit une fois, le jour où l'on branche le système.
+              Dépliée pour trois systèmes, elle faisait à elle seule quatre mille pixels. */}
+          <Accordion titleAs="h3" label={`Ce que ${contrat.label} sait faire, et ce qu'il attend`}>
+            <Table
+              fixed
+              caption={`Capacités sur ${contrat.label}`}
+              headers={["Capacité", "Aujourd'hui", "Ce qui manque pour faire mieux"]}
+              data={capacites.map(({ libelle, quoi, resolue }) => [
+                <span key="c">
+                  <strong>{libelle}</strong>
+                  <br />
+                  <span className={fr.cx("fr-text--sm")}>{quoi}</span>
+                </span>,
+                <Badge key="t" severity={LIBELLE_TIER[resolue.tier].severite} small noIcon>
+                  {LIBELLE_TIER[resolue.tier].libelle}
+                </Badge>,
+                resolue.degradedFrom ? (
+                  <span key="m" className={fr.cx("fr-text--sm")}>
+                    {LIBELLE_TIER[resolue.degradedFrom.tier].libelle} si :{" "}
+                    {resolue.degradedFrom.missing.join(", ")}
+                  </span>
+                ) : (
+                  <span key="m" className={fr.cx("fr-text--sm")}>
+                    sans objet
+                  </span>
+                ),
+              ])}
+            />
 
-          {/* Hors du tableau, et replié : ces marches à suivre font plus de cent mots chacune,
-              et les porter en cellule donnait des lignes de 233 pixels pour un écran de cinq
-              mille. On les lit une fois, le jour où l'on branche le système. Le DSFR n'autorise
-              pas l'accordéon en cellule, et le journal donne déjà cette forme à sa charge utile. */}
-          {capacites
-            .filter(({ resolue }) => resolue.decl || resolue.degradedFrom)
-            .map(({ libelle, resolue }) => (
-              <Accordion
-                key={libelle}
-                titleAs="h3"
-                label={`Comment faire « ${libelle.toLowerCase()} » sur ${contrat.label}`}
-              >
-                <p className={fr.cx("fr-text--sm", "fr-mb-0")}>{resolue.runbook}</p>
-              </Accordion>
-            ))}
+            {/* Hors du tableau, et replié : ces marches à suivre font plus de cent mots chacune,
+                et les porter en cellule donnait des lignes de 233 pixels pour un écran de cinq
+                mille. On les lit une fois, le jour où l'on branche le système. Le DSFR n'autorise
+                pas l'accordéon en cellule, et le journal donne déjà cette forme à sa charge utile. */}
+            {capacites
+              .filter(({ resolue }) => resolue.decl || resolue.degradedFrom)
+              .map(({ libelle, resolue }) => (
+                <div key={libelle} className={fr.cx("fr-mt-2w")}>
+                  <h4 className={fr.cx("fr-text--sm", "fr-text--bold", "fr-mb-1v")}>
+                    Comment faire « {libelle.toLowerCase()} »
+                  </h4>
+                  <p className={fr.cx("fr-text--sm", "fr-mb-0")}>{resolue.runbook}</p>
+                </div>
+              ))}
 
-          <Scope systeme={contrat.label} octroiDeclare={octroiDeclare} scope={scope} />
+            <Scope systeme={contrat.label} octroiDeclare={octroiDeclare} scope={scope} />
 
-          {profils.etat === "lus" ? (
-            <Profils acces={profils.parSysteme.get(contrat.key) ?? []} />
-          ) : null}
+            {profils.etat === "lus" ? (
+              <Profils acces={profils.parSysteme.get(contrat.key) ?? []} />
+            ) : null}
 
-          <p className={fr.cx("fr-text--sm", "fr-mt-1w")}>
-            Credentials :{" "}
-            {sondes.length === 0
-              ? "aucun requis"
-              : sondes
-                  .map(
-                    (sonde) =>
-                      `${sonde.id} ${sonde.available ? "présent" : `absent (${sonde.unavailableReason ?? "raison non précisée"})`}`,
-                  )
-                  .join(" / ")}
-          </p>
+            <p className={fr.cx("fr-text--sm", "fr-mt-1w")}>
+              Credentials :{" "}
+              {sondes.length === 0
+                ? "aucun requis"
+                : sondes
+                    .map(
+                      (sonde) =>
+                        `${sonde.id} ${sonde.available ? "présent" : `absent (${sonde.unavailableReason ?? "raison non précisée"})`}`,
+                    )
+                    .join(" / ")}
+            </p>
+          </Accordion>
 
           {page ? (
             <p className={fr.cx("fr-text--sm")}>
