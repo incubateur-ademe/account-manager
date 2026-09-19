@@ -27,7 +27,7 @@ export const LIBELLE_ETAT_COLLECTE: Record<
 > = {
   OK: {
     libelle: "complète",
-    explication: "Collecte complète : les disparitions ont pu être datées.",
+    explication: "Les disparitions ont pu être datées.",
     severite: "success",
   },
   PARTIAL: {
@@ -43,7 +43,7 @@ export const LIBELLE_ETAT_COLLECTE: Record<
   },
   SKIPPED: {
     libelle: "non lu",
-    explication: "Système non lu : son silence ne dit pas qu'il n'y a rien à y voir.",
+    explication: "Système non lu. Ce qui s'y trouve reste inconnu.",
     severite: "info",
   },
 };

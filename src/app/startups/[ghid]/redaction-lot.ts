@@ -13,7 +13,7 @@ export const LOT = {
   titre: "Traiter ses membres en une fois",
 
   intro: (nomStartup: string): string =>
-    `${nomStartup} s'arrête, et ses membres se traitent le même jour pour la même raison. Une phase terminale ne sort personne d'elle-même : c'est vous qui décidez, ligne par ligne. Les lignes cochées d'avance sont celles pour qui la question se pose vraiment ; les autres restent cochables une par une, et la colonne « Ce qui la retient » dit pourquoi elles ne l'étaient pas.`,
+    `${nomStartup} s'arrête, et ses membres se traitent le même jour pour la même raison. Une phase terminale ne sort personne d'elle-même ; c'est vous qui décidez, ligne par ligne. Les lignes cochées d'avance sont celles pour qui la question se pose ; les autres restent cochables, et la colonne « Ce qui la retient » dit pourquoi elles ne l'étaient pas.`,
 
   colonneRetient: "Ce qui la retient",
 
@@ -47,7 +47,7 @@ export const LOT = {
   },
 
   ceQueLaSortieNeFaitPas:
-    "Déclarer quelqu'un hors incubateur ne coupe aucun accès et ne ferme aucun constat : la collecte de la nuit le reconstatera. C'est le troisième bouton qui vide la file, et il se signe à part.",
+    "Déclarer quelqu'un hors incubateur ne coupe aucun accès et ne ferme aucun constat. La collecte de la nuit le reconstatera. C'est le troisième bouton qui vide la file, et il se signe à part.",
 
   traces:
     "Chaque personne a sa propre trace au journal, et celles de ce lot s'y retrouvent ensemble.",

@@ -2,14 +2,25 @@ import { fr } from "@codegouvfr/react-dsfr";
 import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import { Table } from "@codegouvfr/react-dsfr/Table";
+import type { Metadata } from "next";
+import Link from "next/link";
 
+import { CONNECTEURS } from "@/connectors";
 import { LIBELLE_ETAT_COLLECTE } from "@/core/lexique";
 import { prisma } from "@/lib/db";
 import { requireOperateur } from "@/lib/session";
 import { collecteEnCours } from "@/lib/sync/executer";
+import { aUnePage } from "@/ui/connecteurs/registre";
 import { BoutonCollecte } from "./BoutonCollecte";
 import { blocagesDuMoment, PASSAGES_AFFICHES } from "./blocages";
 import { GardeFouBloque } from "./GardeFouBloque";
+
+export const metadata: Metadata = { title: "Collectes" };
+
+/* Les systèmes dont la fiche existe, calculés une fois pour toutes les lignes. */
+const aUneFiche = new Set(
+  CONNECTEURS.filter(({ contract }) => aUnePage(contract)).map(({ contract }) => contract.key),
+);
 
 export const dynamic = "force-dynamic";
 
@@ -79,6 +90,7 @@ export default async function CollectesPage() {
 
       {enCours ? (
         <Alert
+          as="h2"
           severity="info"
           className={fr.cx("fr-mb-3w")}
           title="Une collecte est en cours"
@@ -98,7 +110,15 @@ export default async function CollectesPage() {
           caption="Dernières exécutions, du plus récent au plus ancien"
           headers={["Système", "Début", "Durée", "État", "Éléments", "Ce qui a été dit"]}
           data={runs.map((run) => [
-            <strong key="s">{run.provider}</strong>,
+            /* Tous les systèmes n'ont pas de fiche : aUnePage en décide, et lier sans le demander
+               enverrait sur un refus. */
+            aUneFiche.has(run.provider) ? (
+              <Link key="s" href={`/systemes/${run.provider}`}>
+                <strong>{run.provider}</strong>
+              </Link>
+            ) : (
+              <strong key="s">{run.provider}</strong>
+            ),
             dateFr.format(run.startedAt),
             duree(run.startedAt, run.finishedAt),
             <Badge key="e" severity={LIBELLE_ETAT_COLLECTE[run.status].severite} small noIcon>

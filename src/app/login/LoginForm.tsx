@@ -22,8 +22,8 @@ export function LoginForm({ suite }: { suite?: string }) {
         state={message ? "info" : "default"}
         stateRelatedMessage={message ?? undefined}
       />
-      <Button type="submit" disabled={pending} className={fr.cx("fr-mt-2w")}>
-        {pending ? "Envoi en cours…" : "Recevoir un lien de connexion"}
+      <Button priority="primary" type="submit" disabled={pending} className={fr.cx("fr-mt-2w")}>
+        {pending ? "Envoi…" : "Recevoir un lien de connexion"}
       </Button>
     </form>
   );

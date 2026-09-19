@@ -41,7 +41,7 @@ export function FicheEditable({ fiche }: { fiche: ChampsSaisis }) {
         <div className={fr.cx("fr-col-12", "fr-col-md-6")}>
           <Input
             label="Compte GitHub"
-            hintText="Login, arobase et adresse complète du profil acceptées : la saisie est réduite avant comparaison."
+            hintText="Login, arobase et adresse complète du profil acceptées."
             nativeInputProps={{
               name: "githubLogin",
               defaultValue: fiche.githubLogin ?? "",
@@ -72,9 +72,9 @@ export function FicheEditable({ fiche }: { fiche: ChampsSaisis }) {
       </div>
 
       <p className={fr.cx("fr-text--sm")}>
-        Le login et les adresses alimentent le rapprochement automatique : tant que sa fiche est
-        suivie, les corriger rebranche les comptes encore isolés et ceux à venir, jamais ceux déjà
-        rattachés à quelqu'un d'autre, qui se détachent à la main.
+        Tant que sa fiche est suivie, corriger le login ou les adresses rebranche les comptes encore
+        isolés et ceux à venir, jamais ceux déjà rattachés à quelqu'un d'autre, qui se détachent à
+        la main.
       </p>
 
       <Button type="submit" priority="secondary" disabled={pending}>

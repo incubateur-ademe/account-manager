@@ -118,7 +118,7 @@ describe("ce que le bandeau promet à qui autorise une datation", () => {
     expect(dit).toContain("30 personnes y sont tenues pour présentes");
     expect(dit).toContain("il n'en resterait que 13");
     expect(dit).toContain("départ de 17 personnes");
-    expect(dit).toContain("Aucune collecte ne s'est dite complète depuis 4 collectes");
+    expect(dit).toContain("Aucune collecte complète depuis 4 collectes");
 
     // Then elle n'affirme rien des listes, et c'est là qu'elle mentirait le plus
     // facilement : ce déclencheur parle parce que l'autre s'est tu, et l'autre se tait
@@ -159,7 +159,7 @@ describe("ce que le bandeau promet à qui autorise une datation", () => {
       expect(releve).toContain("La dernière collecte complète comptait 30 personnes suivies");
       expect(releve).toContain("n'en a résolu que 13");
       expect(releve).toContain("départ de 17 personnes");
-      expect(releve).toContain("Aucune collecte ne s'est dite complète depuis 4 collectes");
+      expect(releve).toContain("Aucune collecte complète depuis 4 collectes");
       expect(releve).toContain("Or c'est la dernière collecte complète qui sert de référence");
     }
 
@@ -189,7 +189,7 @@ describe("ce que le bandeau promet à qui autorise une datation", () => {
     // et une nuit dégradée pour un tout autre motif la fait vieillir sans qu'aucun refus
     // ne retombe.
     const perimetre = REDACTION.perimetre.constat(blocage("perimetre"));
-    expect(perimetre).toContain("Aucune collecte ne s'est dite complète depuis 5 collectes");
+    expect(perimetre).toContain("Aucune collecte complète depuis 5 collectes");
     expect(perimetre).not.toMatch(/à l'identique/u);
     expect(perimetre).not.toMatch(/Ce relevé/u);
 

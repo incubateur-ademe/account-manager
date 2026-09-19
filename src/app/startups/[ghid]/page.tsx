@@ -19,6 +19,7 @@ import { phasesDesStartups } from "@/lib/appartenance";
 import { prisma } from "@/lib/db";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
+import { Absent } from "@/ui/Absent";
 import { dateFr } from "@/ui/dates";
 import { RATTACHEMENT_IDENTITE } from "@/ui/severites";
 
@@ -288,13 +289,14 @@ export default async function FicheStartupPage({ params }: Props) {
 
       {fraicheur.perimee ? (
         <Alert
+          as="h2"
           className={fr.cx("fr-mt-3w")}
           severity="warning"
           title="Ce que montre cet écran n'est plus à jour"
           description={
             fraicheur.heures === null
-              ? "Aucune collecte n'a jamais eu lieu : ce que cette page affiche ne vient d'aucune observation."
-              : `La dernière collecte remonte à ${fraicheur.heures} heures, au-delà des ${thresholds.collectStaleHours} heures admises. La phase, les membres et leurs échéances sont gelés ensemble : rien ici ne signale ce qui a pu changer depuis.`
+              ? "Aucune collecte n'a jamais eu lieu. Rien de ce qu'affiche cette page ne vient d'une observation."
+              : `La dernière collecte remonte à ${fraicheur.heures} heures, au-delà des ${thresholds.collectStaleHours} heures admises. La phase, les membres et leurs échéances sont gelés depuis.`
           }
         />
       ) : null}
@@ -306,39 +308,32 @@ export default async function FicheStartupPage({ params }: Props) {
       <p className={fr.cx("fr-text--sm", "fr-mt-3w")}>
         Sa phase a été constatée le {dateFr.format(startup.lastSeenAt)}, la dernière fois que la
         liste de l'incubateur a rendu cette startup. Si cette date n'avance plus alors que le reste
-        de l'écran paraît frais, deux causes : ou bien la liste ne rend plus cette startup, ou bien
-        elle n'est plus lue du tout. La première se voit en comparant cette date à celle des autres
-        startups.
+        de l'écran paraît frais, comparez-la à celle des autres startups.
       </p>
 
       {startup.vanishedAt ? (
         <Alert
+          as="h2"
           className={fr.cx("fr-mt-2w")}
           severity="warning"
           title="Cette startup n'est plus rendue par l'incubateur"
-          // Deux dates et non une : la disparition se constate au passage qui ne revoit
-          // plus la startup, et une collecte partielle interdit de la dater, si bien que
-          // le constat peut tomber des mois après le fait. Les confondre ferait croire
-          // que les accès ne survivent que depuis le jour du constat.
-          description={`La liste de l'incubateur l'a rendue pour la dernière fois le ${dateFr.format(startup.lastSeenAt)}, et la collecte a constaté sa disparition le ${dateFr.format(startup.vanishedAt)}. La phase affichée est la dernière connue, pas un fait d'aujourd'hui : une co-incubation retirée, un identifiant renommé et un abandon donnent ici le même symptôme.${lignes.length > 0 ? " Les personnes ci-dessous, elles, gardent leurs accès." : ""}`}
+          description={`La phase affichée est la dernière connue, pas un fait d'aujourd'hui. Une co-incubation retirée, un identifiant renommé et un abandon donnent ici le même symptôme.${lignes.length > 0 ? " Les personnes ci-dessous gardent leurs accès." : ""}`}
         />
       ) : null}
 
       <section className={fr.cx("fr-mt-4w")}>
         <h2 className={fr.cx("fr-h5")}>Situation</h2>
         <dl className={fr.cx("fr-grid-row", "fr-grid-row--gutters")}>
-          <Champ libelle="Phase">
-            {libellePhase ?? <span className={fr.cx("fr-hint-text")}>inconnue</span>}
-          </Champ>
+          <Champ libelle="Phase">{libellePhase ?? <Absent mention="inconnue" />}</Champ>
           <Champ libelle="Depuis">
-            {startup.phaseStart ? (
-              dateFr.format(startup.phaseStart)
-            ) : (
-              <span className={fr.cx("fr-hint-text")}>inconnu</span>
-            )}
+            {startup.phaseStart ? dateFr.format(startup.phaseStart) : <Absent mention="inconnue" />}
           </Champ>
           <Champ libelle="Première observation">{dateFr.format(startup.firstSeenAt)}</Champ>
           <Champ libelle="Dernière observation">{dateFr.format(startup.lastSeenAt)}</Champ>
+          {/* Deux dates et non une : la disparition se constate au passage qui ne revoit
+              plus la startup, et une collecte partielle interdit de la dater, si bien que
+              le constat peut tomber des mois après le fait. Les confondre ferait croire
+              que les accès ne survivent que depuis le jour du constat. */}
           {startup.vanishedAt ? (
             <Champ libelle="Disparition constatée le">{dateFr.format(startup.vanishedAt)}</Champ>
           ) : null}
@@ -386,8 +381,8 @@ export default async function FicheStartupPage({ params }: Props) {
 
           {lignes.length === 0 ? (
             <p>
-              Aucun membre à interroger : la question n'a pas été posée, et ce silence n'est pas une
-              absence de constat.{" "}
+              Aucun membre à interroger. La question n'a pas été posée, donc aucun constat n'a pu
+              naître.{" "}
               <Link className={fr.cx("fr-link")} href="/constats">
                 Voir la file des constats
               </Link>

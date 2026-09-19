@@ -9,7 +9,7 @@ import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 import type { SaisieAttendue } from "@/core/modele-plan";
 import type { Masse } from "@/core/plan";
 import { useListesApresEnvoi } from "@/ui/formulaire";
-import { useCleDOuverture } from "@/ui/modale";
+import { useCleDOuverture, useFermetureApresSucces } from "@/ui/modale";
 import { messageObligatoire } from "@/ui/validation";
 
 import { AnnulationDossier } from "./AnnulationDossier";
@@ -65,7 +65,7 @@ export function BoutonAnnuler({
         </Button>
       ) : null}
 
-      <modaleAnnulation.Component title={mots.annuler}>
+      <modaleAnnulation.Component titleAs="h2" title={mots.annuler}>
         {/* Le formulaire reste monté quoi qu'il arrive : l'annulation fait basculer
             `annulable` à faux avant que son effet de fermeture n'ait eu son tour, et
             un formulaire démonté à cet instant emporte le dialogue ouvert avec lui,
@@ -74,7 +74,7 @@ export function BoutonAnnuler({
           <>
             <p className={fr.cx("fr-text--sm")}>
               {etapes === 0
-                ? "Ce dossier n'a aucune étape : rien n'a été proposé, et rien ne sera abandonné."
+                ? "Ce dossier n'a aucune étape, rien ne sera abandonné."
                 : `${etapes} étape${etapes > 1 ? "s" : ""} proposée${etapes > 1 ? "s" : ""} ${etapes > 1 ? "seront abandonnées" : "sera abandonnée"}.`}{" "}
               {mots.annulationEffet}
             </p>
@@ -104,7 +104,7 @@ export function BoutonConfirmer({ planId }: { planId: string }) {
   return (
     <form action={formAction}>
       <input type="hidden" name="planId" value={planId} />
-      <Button type="submit" disabled={pending}>
+      <Button priority="primary" type="submit" disabled={pending}>
         {pending ? "Confirmation…" : "Confirmer ce plan"}
       </Button>
       {etat?.erreur ? (
@@ -199,7 +199,7 @@ export function Pointage({
               aria-label="Raison"
               {...messageObligatoire(
                 choix === "ignoree"
-                  ? "Dites pourquoi cette étape est écartée : sans raison, elle deviendra un accès oublié."
+                  ? "Dites pourquoi cette étape est écartée."
                   : "Dites ce qui a échoué, sinon personne ne saura quoi reprendre.",
               )}
             />
@@ -332,9 +332,7 @@ export function Validation({
               disabled={!possible}
               placeholder="Qu'est-ce qui manque ?"
               aria-label="Motif du refus"
-              {...messageObligatoire(
-                "Dites ce qui manque : sans motif, le refus renvoie l'étape à faire sans dire quoi.",
-              )}
+              {...messageObligatoire("Dites ce qui manque.")}
             />
           </div>
         ) : null}
@@ -407,7 +405,7 @@ export function BoutonExecuter({
         </>
       ) : null}
 
-      <Button type="submit" disabled={pending || bloque}>
+      <Button priority="primary" type="submit" disabled={pending || bloque}>
         {pending
           ? simulation
             ? LIBELLE_LANCEMENT.bouton.enCours.simulation
@@ -435,16 +433,46 @@ export function BoutonExecuter({
   );
 }
 
-export function BoutonClore({ dossierId }: { dossierId: string }) {
+/*
+ * Le seul geste de cet écran que l'outil ne sait pas défaire : aucun chemin ne rouvre un dossier
+ * clos. C'est le critère qui décide d'une confirmation ici, et non la gravité ressentie : détacher
+ * une identité ou retirer un rattachement se refont en trois clics et partent donc au clic unique.
+ */
+const modaleCloture = createModal({ id: "clore-le-dossier", isOpenedByDefault: false });
+
+/**
+ * Le formulaire de la clôture, et lui seul : la modale qui le porte ne meurt jamais, lui
+ * renaît à chaque ouverture. Son état vivrait sinon aussi longtemps que l'écran, et un
+ * refus se relirait sous une modale rouverte.
+ */
+function ClotureDossier({
+  dossierId,
+  visible,
+  onSucces,
+}: {
+  dossierId: string;
+  /**
+   * Monté même quand il ne se montre pas : c'est son effet de fermeture qui referme la
+   * modale, et il doit survivre à la revalidation qui suit la clôture.
+   */
+  visible: boolean;
+  onSucces?: () => void;
+}) {
   const [etat, formAction, pending] = useActionState<EtatAction | null, FormData>(
     cloreDossier,
     null,
   );
 
+  useFermetureApresSucces(pending, etat?.erreur, onSucces);
+
+  if (!visible) {
+    return null;
+  }
+
   return (
     <form action={formAction}>
       <input type="hidden" name="dossierId" value={dossierId} />
-      <Button type="submit" disabled={pending}>
+      <Button priority="primary" type="submit" disabled={pending}>
         {pending ? "Clôture…" : "Clore le dossier"}
       </Button>
       {etat?.erreur ? (
@@ -453,6 +481,43 @@ export function BoutonClore({ dossierId }: { dossierId: string }) {
         </p>
       ) : null}
     </form>
+  );
+}
+
+/**
+ * La modale se rend toujours, et seul son contenu dépend du verdict. La clôture fait
+ * basculer `cloturable` à faux avant que l'effet de fermeture n'ait eu son tour, et un
+ * composant démonté à cet instant emporte le dialogue ouvert avec lui, laissant le
+ * verrou de défilement du système de design posé sur la page.
+ */
+export function BoutonClore({ dossierId, cloturable }: { dossierId: string; cloturable: boolean }) {
+  const ouverture = useCleDOuverture(modaleCloture);
+
+  return (
+    <>
+      {cloturable ? (
+        <Button priority="primary" nativeButtonProps={modaleCloture.buttonProps}>
+          Clore le dossier
+        </Button>
+      ) : null}
+
+      <modaleCloture.Component titleAs="h2" title="Clore ce dossier ?">
+        {cloturable ? (
+          <p className={fr.cx("fr-text--sm")}>
+            Un dossier clos ne se rouvre pas. Ce qui reste à faire devra passer par un nouveau
+            dossier.
+          </p>
+        ) : (
+          <p className={fr.cx("fr-text--sm")}>Ce dossier ne se clôt pas.</p>
+        )}
+        <ClotureDossier
+          key={ouverture}
+          dossierId={dossierId}
+          visible={cloturable}
+          onSucces={modaleCloture.close}
+        />
+      </modaleCloture.Component>
+    </>
   );
 }
 

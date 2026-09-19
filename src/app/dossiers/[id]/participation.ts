@@ -39,13 +39,11 @@ export interface EtatParticipation {
  */
 const REFUS_DE_CANAL: Record<RefusAdresse, string> = {
   INCONNUE: "Cette adresse ne désigne personne.",
-  PLURALITE:
-    "Cette adresse désigne déjà quelqu'un d'autre : un lien envoyé là n'identifierait personne.",
+  PLURALITE: "Cette adresse désigne déjà quelqu'un d'autre.",
   FICHE_FERMEE: "Cette adresse est portée par une fiche que la collecte réécrit.",
-  ALLOWLIST:
-    "Cette adresse porte le nom d'un opérateur de l'outil : elle n'ouvrira jamais un droit par dossier.",
+  ALLOWLIST: "Cette adresse porte le nom d'un opérateur de l'outil.",
   LIGNE_ETRANGERE:
-    "Quelqu'un s'est déjà connecté avec cette adresse par son identifiant beta.gouv : elle ne peut pas servir ici.",
+    "Quelqu'un s'est déjà connecté avec cette adresse par son identifiant beta.gouv.",
 };
 
 /**
@@ -109,8 +107,7 @@ export async function octroyerParticipation(
   // soupçonne le départ d'un tiers avant que personne ne l'ait tranché.
   if (dossier.state === "WATCH") {
     return {
-      erreur:
-        "Ce départ n'est que soupçonné : ouvrir ce dossier à quelqu'un le lui apprendrait avant que personne ne l'ait décidé.",
+      erreur: "Ce départ n'est que soupçonné.",
     };
   }
 

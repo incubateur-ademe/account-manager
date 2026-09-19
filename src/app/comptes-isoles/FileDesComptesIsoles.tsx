@@ -136,7 +136,7 @@ export function FileDesComptesIsoles({
         }))}
       />
 
-      <modale.Component title="À qui appartient ce compte" size="large">
+      <modale.Component titleAs="h2" title="À qui appartient ce compte" size="large">
         {choisi === null ? null : (
           <>
             {/* Un `div` et non un `p` : le badge du système de design rend lui-même un
@@ -183,9 +183,9 @@ export function FileDesComptesIsoles({
               </ul>
             ) : null}
             <p className={fr.cx("fr-text--sm")}>
-              Un compte rattaché à la main l'est de façon sûre, et pourra donc justifier une
-              révocation : c'est un jugement, il est journalisé avec votre nom. Le plus souvent il
-              manque une fiche, plutôt qu'il ne faut retirer un accès.
+              Un compte rattaché à la main pourra justifier une révocation, et le rattachement est
+              journalisé avec votre nom. Le plus souvent il manque une fiche, plutôt qu'un accès à
+              retirer.
             </p>
             <Rattacher
               key={`${ouverture}:${choisi.id}`}

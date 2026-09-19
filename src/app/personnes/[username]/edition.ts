@@ -10,6 +10,7 @@ import {
   normaliserIdentifiant,
   type PlanFusion,
   planifierFusion,
+  RAISON_NON_EDITABLE,
   renommable,
   validerChamps,
 } from "@/core/fiche-manuelle";
@@ -101,8 +102,9 @@ export async function modifierFiche(_etat: EtatEdition, formData: FormData): Pro
   if (!personne) {
     return { erreur: "Cette personne n'est plus en base." };
   }
-  if (!ficheEditable(personne, declaresLocaux()).editable) {
-    return { erreur: "Cette fiche n'est pas modifiable ici : une collecte la réécrit." };
+  const editabilite = ficheEditable(personne, declaresLocaux());
+  if (!editabilite.editable) {
+    return { erreur: `Rien n'a été enregistré. ${RAISON_NON_EDITABLE[editabilite.raison]}` };
   }
 
   const validation = validerChamps({
@@ -339,7 +341,7 @@ export async function renommerFiche(
   if (!renommable(personne, declaresLocaux())) {
     return {
       erreur:
-        "Cet identifiant n'a pas été fabriqué ici : c'est un pivot d'identité, et aucun code ne le met à jour.",
+        "Cet identifiant n'a pas été fabriqué ici. C'est un pivot d'identité, qu'aucun code ne met à jour.",
     };
   }
 

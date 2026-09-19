@@ -100,16 +100,12 @@ export default async function DossiersPage() {
       <h1>Dossiers</h1>
 
       <p className={fr.cx("fr-text--lead")}>
-        Les arrivées et les départs en préparation, et ceux qui sont soldés. Un dossier s'ouvre
-        depuis la fiche d'une personne, ou depuis le constat d'arrivée qui la désigne : dans les
-        deux cas le pivot reste l'identifiant beta.gouv.
+        Un dossier s'ouvre depuis la fiche d'une personne, ou depuis le constat d'arrivée qui la
+        désigne.
       </p>
 
       {ouverts.length === 0 ? (
-        <p>
-          Aucun dossier ouvert. Rien n'est en préparation, ce qui n'est pas la même chose que rien à
-          faire : la fiche d'une personne dit ce qui l'attend.
-        </p>
+        <p>Aucun dossier ouvert. Ce qui attend chaque personne est sur sa fiche.</p>
       ) : (
         <>
           <h2 className={fr.cx("fr-h5")}>
@@ -123,9 +119,6 @@ export default async function DossiersPage() {
       {soldes.length > 0 ? (
         <section className={fr.cx("fr-mt-6w")}>
           <h2 className={fr.cx("fr-h5")}>Dossiers clos ou annulés</h2>
-          <p className={fr.cx("fr-text--sm")}>
-            Ils restent lisibles : ce qui a été décidé, et ce qui a été pointé, ne s'efface pas.
-          </p>
           {tableau(soldes)}
         </section>
       ) : null}

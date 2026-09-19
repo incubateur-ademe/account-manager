@@ -28,7 +28,7 @@ export async function cloreConstat(_etat: EtatCloture, formData: FormData): Prom
   const raison = String(formData.get("raison") ?? "").trim();
 
   if (!dedupKey) {
-    return { erreur: "Constat introuvable." };
+    return { erreur: "Aucun constat n'a été choisi. Rechargez la page." };
   }
   if (raison.length < 3) {
     return { erreur: "Indiquez ce qui a été fait." };
@@ -93,7 +93,7 @@ export async function tolererConstat(
   const jusquAu = String(formData.get("jusquAu") ?? "").trim();
 
   if (!dedupKey) {
-    return { erreur: "Constat introuvable." };
+    return { erreur: "Aucun constat n'a été choisi. Rechargez la page." };
   }
 
   const constat = await prisma.finding.findUnique({
@@ -139,7 +139,9 @@ export async function tolererConstat(
   }
   // Le verdict garantit la cible, que le typage ne sait pas suivre à travers lui.
   if (cible === null) {
-    return { erreur: "Cet écart ne se tolère pas." };
+    return {
+      erreur: "Cet écart ne se tolère pas. Il porte sur ce qui a été déclaré, pas sur un accès.",
+    };
   }
 
   await actionTracee({
@@ -198,7 +200,7 @@ export async function leverDerogation(
 
   const id = String(formData.get("derogationId") ?? "").trim();
   if (!id) {
-    return { erreur: "Tolérance introuvable." };
+    return { erreur: "Aucune tolérance n'a été choisie. Rechargez la page." };
   }
 
   const maintenant = new Date();

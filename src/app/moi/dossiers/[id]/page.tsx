@@ -218,6 +218,9 @@ export default async function DossierDuParticipantPage({
       <h1 className={fr.cx("fr-mb-1v")}>
         {mots.nom} de {dossier.person.fullname}
       </h1>
+      {/* Pas de fil d'Ariane ici : react-dsfr nomme « Accueil » le lien de tête, quand la barre de
+          navigation appelle la même destination « Mon espace ». Deux noms pour un endroit, sur le
+          même écran, coûtent plus que l'absence de fil. */}
       <p className={fr.cx("fr-text--sm")}>
         <Link href="/moi">Revenir à mon espace</Link>
       </p>
@@ -254,8 +257,8 @@ export default async function DossierDuParticipantPage({
         <>
           <h2 className={fr.cx("fr-h4")}>Ce qui attend votre regard</h2>
           <p>
-            Quelqu'un d'autre a déclaré ces étapes, et c'est à vous d'en juger : vous dites ce que
-            cette déclaration vaut, vous ne la refaites pas.
+            Quelqu'un d'autre a déclaré ces étapes. Vous dites ce que cette déclaration vaut, vous
+            ne la refaites pas.
           </p>
           {raisonDuPlan === null ? null : <p>Rien ne s'y signe pour autant. {raisonDuPlan}</p>}
           <ol>
@@ -309,7 +312,7 @@ export default async function DossierDuParticipantPage({
       {siennes.length === 0 && aControler.length === 0 ? (
         <p>
           Rien n'attend non plus votre regard. Cette page ne montre que ce qui vous revient et ce
-          que vous avez à signer : le reste de ce dossier ne vous est pas montré.
+          que vous avez à signer.
         </p>
       ) : null}
     </main>

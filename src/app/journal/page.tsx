@@ -167,7 +167,7 @@ export default async function JournalPage(props: {
         <p className={fr.cx("fr-text--lead")}>
           {filtreActif
             ? "Aucun événement ne correspond à ces critères."
-            : "Le journal est vide : aucune connexion ni aucune collecte n'a encore été tracée."}
+            : "Le journal est vide. Aucune connexion ni aucune collecte n'a encore été tracée."}
         </p>
       ) : (
         <>

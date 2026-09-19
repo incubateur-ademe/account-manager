@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-
 import {
   type Acteur,
   combinaisonValide,
@@ -30,6 +29,7 @@ import {
   systemesDuDepart,
   validationApresPointage,
 } from "./dossier";
+import { LIBELLE_ETAT_DOSSIER } from "./libelle-dossier";
 
 const FRAIS = { perime: false, obsolete: false };
 
@@ -1063,5 +1063,31 @@ describe("deux délégués sur un dossier, et aucun ne signe pour lui-même", ()
     // jeton.
     expect(roleSurDossier(DELEGUE_A, DOSSIER, false, false)).toBeNull();
     expect(pointage(DELEGUE_A, false, "DELEGATE", null, false).permis).toBe(false);
+  });
+});
+
+describe("l'état qu'aucun code ne pose", () => {
+  it("n'écrit WATCH nulle part, et le dit plutôt que de laisser l'écran le promettre", async () => {
+    // Given tout le code du produit, ses tests exclus.
+    const sources = Object.entries(
+      import.meta.glob("/src/**/*.{ts,tsx}", { eager: true, query: "?raw", import: "default" }),
+    ).filter(
+      ([chemin]) =>
+        !chemin.includes(".test.") && !chemin.includes("/generated/") && !chemin.includes("/cli/"),
+    ) as [string, string][];
+
+    // Then aucun site n'écrit cet état en base. Il vit dans l'énumération, la machine à états le
+    // range et l'écran sait dire « en veille », mais rien ne peut y mettre un dossier : un dossier
+    // naît CANDIDATE.
+    const ecrivent = sources.filter(
+      ([, source]) =>
+        /state:\s*"WATCH"/u.test(source) || /"WATCH"\s*as\s+EtatDossier/u.test(source),
+    );
+    expect(ecrivent.map(([chemin]) => chemin)).toEqual([]);
+
+    // Then ce test est la seule chose qui tienne le fait. Le retirer de l'énumération demanderait
+    // une migration, que ce dépôt écrit à la main dès qu'une valeur disparaît ; le laisser sans
+    // rien dire promettrait au mainteneur un état métier qu'il chercherait un jour à atteindre.
+    expect(LIBELLE_ETAT_DOSSIER.WATCH).toBe("en veille");
   });
 });

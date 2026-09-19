@@ -2,6 +2,7 @@ import { fr } from "@codegouvfr/react-dsfr";
 import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import { Table } from "@codegouvfr/react-dsfr/Table";
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { systemesQuiAccueillentUnCompteMachine } from "@/connectors";
 import { type EtatRevue, LIBELLE_REVUE, revueDe } from "@/core/revue";
@@ -65,15 +66,18 @@ export default async function ComptesDeServicePage() {
       <h1>Comptes de service</h1>
 
       <p className={fr.cx("fr-text--lead")}>
-        Bots, jetons d'intégration continue et clés d'API. Ils n'ont pas de fin de mission : c'est
-        la revue périodique qui les remet en question, et une revue en retard est un constat au même
-        titre qu'un accès expiré.
+        Bots, jetons d'intégration continue et clés d'API. Sans fin de mission, c'est la revue
+        périodique qui les remet en question, et une revue en retard vaut constat.
       </p>
+
+      <div className={fr.cx("fr-mb-4w")}>
+        <Declarer systemes={systemes} />
+      </div>
 
       {avecRevue.length === 0 ? (
         <p>
-          Aucun compte de service. Un compte machine ne se découvre pas : il se déclare ici, et son
-          compte constaté s'y rattache depuis la file des comptes isolés.
+          Aucun compte de service. Un compte machine se déclare ici, et son compte constaté s'y
+          rattache depuis la file des comptes isolés.
         </p>
       ) : (
         <>
@@ -105,7 +109,9 @@ export default async function ComptesDeServicePage() {
               // système donnerait à croire qu'ils n'en ont jamais eu.
               libelleDuSysteme.get(compte.provider) ?? compte.provider,
               compte.purpose,
-              compte.ownerUsername,
+              <Link key="o" href={`/personnes/${compte.ownerUsername}`}>
+                {compte.ownerUsername}
+              </Link>,
               // La périodicité ne dit rien d'un compte dont un terme porte la péremption :
               // elle vaut la durée de ce terme, et l'afficher ferait lire une cadence là où
               // il n'y a qu'une date de mort.
@@ -133,8 +139,6 @@ export default async function ComptesDeServicePage() {
           />
         </>
       )}
-
-      <Declarer systemes={systemes} />
     </main>
   );
 }

@@ -56,11 +56,26 @@ Zod 4 pour la validation.
 | `pnpm test:integration` | étage d'intégration, sur cette base dédiée |
 | `pnpm test:contrat` | étage de contrat, contre les vraies API distantes |
 | `pnpm test:e2e` | étage de bout en bout, à la main avant une livraison |
-| `pnpm verify` | lint + typecheck + test |
+| `pnpm cadre` | mesure les dispersions d'interface et refuse un plafond dépassé |
+| `pnpm cadre:poser` | fige les mesures actuelles comme nouveaux plafonds |
+| `pnpm verify` | lint + cadre + typecheck + test |
 | `pnpm sync` | collecte sur les systèmes cibles |
 | `pnpm db:generate` / `db:migrate` / `db:deploy` / `db:studio` | Prisma |
 
 `pnpm verify` ne fait pas le build. Lance `/verif` pour la vérification complète.
+
+**Le cadre d'interface se tient par des plafonds, pas par des règles écrites.** `src/cli/releve-ui.ts`
+compte des dispersions : combien de façons différentes de faire un geste identique. Chaque compteur a
+un plafond dans `src/cli/seuils-ui.json`, qui **ne remonte jamais**. Un dépassement fait échouer
+`pnpm verify`, et une valeur descendue sous son plafond est signalée pour qu'on la fige avec
+`pnpm cadre:poser`. Sans ce second geste, une reprise gagnée se reperd au lot suivant sans que rien ne
+le dise.
+
+Une mesure se pose avec ses exclusions, jamais sans. Un compteur qui ne peut pas atteindre zéro à
+cause d'un cas légitime finit désactivé, ce qui coûte plus cher que son absence. Les exclusions déjà
+posées portent leur raison en commentaire : `src/cli` n'affiche rien à un opérateur, une route qui
+retourne `Promise<never>` ne rend aucun écran, l'accueil hérite du titre du gabarit racine, et
+`fr-search-bar` s'écrit à la main faute de composant `SearchBar` dans react-dsfr.
 
 **Après toute modification du schéma Prisma, lance `pnpm db:generate` puis redémarre `pnpm dev`.**
 Deux caches se cumulent. `prisma migrate dev` applique bien la migration en base mais **ne régénère
@@ -124,6 +139,25 @@ différemment quand seul le nom change, et qu'un écran s'hydrate au lieu de seu
 scénario instable s'y supprime, il ne se rejoue pas : `retries` vaut zéro. Le cookie s'y forge plutôt
 que de passer par le lien de connexion, si bien qu'une connexion à la main avant une livraison reste
 nécessaire.
+
+**Un quatrième fichier vit dans `e2e/` sans rien prouver.** `releve-visuel.spec.ts` ouvre les écrans,
+capture chacun en 1440 et en 375, et écrit l'arbre de titres tel que le DOM le porte. Il ne tourne que
+sur demande, `RELEVE_VISUEL=1 pnpm test:e2e`, écrit sous `test-results/releve-visuel/`, et ne compte donc pas parmi les trois garanties
+ci-dessus. Il existe pour ce que `pnpm cadre` ne peut pas voir en lisant du code : un titre injecté par
+react-dsfr, l'ordre de lecture réel, la densité, le débordement en étroit. C'est ainsi qu'on a constaté
+que chaque écran portait deux `h1`, dont un venu des modales et un du sélecteur de thème du DSFR, que
+rien dans le code ne laissait voir.
+
+**Six règles de forme ne se tiennent que dans le navigateur**, et leurs plafonds vivent dans
+`e2e/seuils-visuels.json` : modales sans champ, modales au-delà de soixante mots par champ, écrans à
+plus d'un bouton primaire, lignes de tableau au-delà de 120 px, colonnes au contenu identique partout,
+contenus répétés dans un écran. Un dépassement fait échouer le relevé visuel. `POSER_LES_PLAFONDS=1`
+les fige, et comme ceux de `pnpm cadre`, ils ne remontent jamais.
+
+Ces six-là ne peuvent pas descendre dans `pnpm cadre`, et la raison vaut d'être connue avant d'essayer :
+le contenu d'une modale vit dans des composants enfants qu'aucune lecture du source ne suit, et la
+hauteur d'une ligne dépend de ce qu'on y a mis. Une première version les mesurait en statique et
+comptait douze modales sans champ là où le navigateur en voit sept.
 
 **Les deux étages du bas ne partent pas d'un clone.** Une fois pour toutes :
 
@@ -191,6 +225,45 @@ défauts ou de décisions s'écrit en puces, pas en paragraphes. Le cheminement 
 ce qui a été essayé puis abandonné n'apprend rien à qui relit, seul le résultat compte. Une
 description qu'on ne lit pas en entier ne protège de rien. Les deux endroits qui méritent d'être
 longs sont ce qui n'a pas été vérifié, et ce qui reste ouvert.
+
+**Un texte d'écran dit quoi faire, jamais pourquoi la règle existe.** La règle « aucun commentaire sauf
+le POURQUOI non évident » vaut pour le code, pas pour l'interface. Un texte d'aide dit quoi saisir et ce
+qui va arriver ; un libellé de bouton dit ce que le clic fait, du point de vue de qui clique. Cinq
+interdits, tous constatés sur ce dépôt. Deux seulement se comptent, les deux premiers : les trois
+autres demandent de lire l'écran à côté du texte, et `pnpm cadre` ne sait pas le faire.
+
+- **Pas de deux-points suivis d'une explication.** Sur 144 emplois, 142 ouvrent une justification et 2
+  une consigne. Les deux-points introduisent une consigne ou une donnée, rien d'autre.
+- **Pas de clause qui revient sur ce qu'on vient d'affirmer** : « ce qui ne dit rien de », « ce qui
+  n'est pas la même chose que », « et ce silence n'est pas une réponse ». Annoncer le fait, s'arrêter.
+- **Pas de phrase qui redit ce que l'écran montre déjà.** Un tableau n'a pas besoin qu'on le résume
+  au-dessus, un bouton n'a pas besoin qu'on annonce son existence.
+- **Un chapeau porte un fait**, un chiffre, une date, un mécanisme invisible ailleurs. S'il paraphrase
+  son `h1` ou annonce les `h2` qui suivent, il se supprime.
+- **Pas de personnification.** Un système n'a ni intention ni voix.
+
+**Un refus dit ce qui s'est passé, puis ce qui reste à faire.** « Compte introuvable » nomme un objet
+et s'arrête. Les dix-huit refus écrits ainsi refusaient tous un formulaire, jamais une recherche. Un
+champ caché manquait, ou portait une valeur hors liste. Les dix qui disaient « introuvable » étaient
+donc faux, rien n'ayant été cherché. Deux tournures couvrent les deux causes, « Aucun compte n'a été
+choisi. Rechargez la page. » et « Ce verdict n'est pas dans la liste. Rechargez la page. ». Le mot
+« inconnu » reste bon quand une suite l'accompagne, la mesure `refus-en-forme-d-etiquette` ne visant
+pas le vocabulaire.
+
+**Le registre se choisit sur une question : après avoir lu, quelqu'un doit-il agir ?** Si oui, la
+phrase s'adresse à lui et nomme le geste, à l'impératif. Sinon elle constate ou pose une règle, à
+l'indicatif, et l'impersonnel y est juste : « Un bot et une personne ne se déclarent pas au même
+endroit » n'escamote personne. Il ne l'est que dans une consigne, où il masque à qui l'on parle.
+
+Les règles de forme viennent du DSFR et se tiennent sans discussion : verbe à l'infinitif en tête de
+libellé de bouton, impératif pour l'aide et les messages d'erreur, jamais les deux dans un même
+composant, majuscule initiale seule, aucune ponctuation finale sur un titre ni sur un en-tête de
+colonne, vouvoiement.
+
+**Une réécriture ne promet jamais plus que l'originale.** En resserrant, on remplace une observation
+prudente par une garantie qui sonne mieux. C'est arrivé ici : sept phrases fausses en une passe, dont
+trois introduites par la passe, et deux épinglées par ses propres tests neufs. Se méfier de tout absolu
+qu'on ajoute, « chaque », « aucun », « le seul », « toujours ».
 
 **Jamais de tiret cadratin (U+2014) ni de tiret demi-cadratin (U+2013)**, nulle part : ni prose, ni
 commentaire, ni code, ni message de commit. Virgule, deux-points, parenthèses ou point à la place. Le

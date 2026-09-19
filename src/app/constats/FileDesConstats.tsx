@@ -200,7 +200,7 @@ export function FileDesConstats({
         }))}
       />
 
-      <modale.Component title="Clore ce constat">
+      <modale.Component titleAs="h2" title="Clore ce constat">
         {choisi === null ? null : (
           <>
             <p className={fr.cx("fr-text--lead", "fr-mb-1v")}>
@@ -233,7 +233,7 @@ export function FileDesConstats({
         )}
       </modale.Component>
 
-      <modaleTolerance.Component title="Tolérer cet écart">
+      <modaleTolerance.Component titleAs="h2" title="Tolérer cet écart">
         {tolere === null ? null : (
           <>
             <p className={fr.cx("fr-text--lead", "fr-mb-1v")}>
@@ -264,7 +264,7 @@ export function FileDesConstats({
         )}
       </modaleTolerance.Component>
 
-      <modaleArrivee.Component title={LIBELLE_DOSSIER.ONBOARDING.ouvrir}>
+      <modaleArrivee.Component titleAs="h2" title={LIBELLE_DOSSIER.ONBOARDING.ouvrir}>
         {arrivee === null ? null : (
           <>
             <p className={fr.cx("fr-text--lead", "fr-mb-1v")}>{arrivee.fullname}</p>

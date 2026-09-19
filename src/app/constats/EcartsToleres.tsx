@@ -59,7 +59,7 @@ export function EcartsToleres({ lignes }: { lignes: readonly LigneTolerance[] })
       <h2 className={fr.cx("fr-h6")}>Écarts tolérés</h2>
       <p className={fr.cx("fr-text--sm")}>
         Ces écarts ne remontent plus dans la file tant que leur tolérance court. Chacun y revient de
-        lui-même le lendemain du dernier jour couvert, sans que personne ait à s'en souvenir.
+        lui-même le lendemain du dernier jour couvert.
       </p>
 
       <TableCustom

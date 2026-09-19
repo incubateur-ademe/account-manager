@@ -135,15 +135,14 @@ export async function autoriserDatation(
   const datables = entierPoste(formData, "datables");
 
   if (!estFamilleDeChute(famille)) {
-    return { erreur: "Famille de garde-fou non reconnue." };
+    return { erreur: "Cette famille de garde-fou n'est pas dans la liste. Rechargez la page." };
   }
   if (!provider) {
-    return { erreur: "Système introuvable." };
+    return { erreur: "Aucun système n'a été choisi. Rechargez la page." };
   }
   if (raison.length < 3) {
     return {
-      erreur:
-        "Indiquez pourquoi cette chute est légitime : votre motif sera recopié au journal, avec votre nom.",
+      erreur: "Indiquez pourquoi cette chute est légitime.",
     };
   }
 
@@ -152,14 +151,13 @@ export async function autoriserDatation(
   );
   if (!montre) {
     return {
-      erreur:
-        "Ce garde-fou ne bloque plus rien. Rechargez la page : la sortie ne s'offre que sous un refus, et une décision posée sans lui attendrait une collecte qui ne la prendra peut-être jamais.",
+      erreur: "Ce garde-fou ne bloque plus rien. Rechargez la page.",
     };
   }
   if (!ampleurMesurable(montre)) {
     return {
       erreur:
-        "La dernière collecte n'a pas pu compter combien de personnes une datation ferait partir. Une décision posée maintenant resterait sans effet et ne daterait rien : reprenez-la quand ce nombre sera de nouveau annoncé.",
+        "La dernière collecte n'a pas pu compter combien de personnes une datation ferait partir. Reprenez quand ce nombre sera de nouveau annoncé.",
     };
   }
   if (
@@ -169,7 +167,7 @@ export async function autoriserDatation(
   ) {
     return {
       erreur:
-        "La chute a changé depuis l'affichage de cette page. Rechargez-la et décidez sur les nombres du jour : une décision porte l'ampleur qu'on avait sous les yeux, et rien de plus profond ne sera daté sur elle.",
+        "La chute a changé depuis l'affichage de cette page. Rechargez-la et décidez sur les nombres du jour.",
     };
   }
 

@@ -1,0 +1,1238 @@
+/*
+ * Chaque mesure compte une DISPERSION, jamais un volume : combien de façons différentes de faire un
+ * geste identique. Un volume monte quand on découpe légitimement un écran en deux composants, donc il
+ * punirait un remaniement sain.
+ *
+ * Les seuils vivent dans seuils-ui.json et ne remontent jamais. Un dépassement fait échouer `pnpm
+ * cadre`, donc `pnpm verify`. Une valeur descendue sous son seuil est signalée pour que le seuil se
+ * resserre : sans ça, une reprise gagnée se reperd au lot suivant sans que rien ne le dise.
+ *
+ * L'extraction des textes est faite à la regex et non sur l'arbre syntaxique. C'est un choix : l'API
+ * TypeScript n'expose plus createSourceFile depuis la 7.0, et @babel/parser n'est ici qu'une
+ * dépendance transitive de MUI. Conséquence à connaître avant de lire un chiffre : un texte calculé à
+ * l'exécution échappe à la mesure, et un titre qui contient une expression n'est pas vu.
+ */
+
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ICI = dirname(fileURLToPath(import.meta.url));
+const RACINE = join(ICI, "..", "..");
+const SRC = join(RACINE, "src");
+const FICHIER_SEUILS = join(ICI, "seuils-ui.json");
+
+export interface Source {
+  readonly chemin: string;
+  readonly contenu: string;
+  readonly lignes: readonly string[];
+}
+
+export interface Site {
+  readonly chemin: string;
+  readonly ligne: number;
+  readonly extrait: string;
+}
+
+export interface Resultat {
+  readonly valeur: number;
+  readonly sites: readonly Site[];
+}
+
+interface Plage {
+  readonly debut: number;
+  readonly fin: number;
+}
+
+export interface Mesure {
+  readonly id: string;
+  readonly libelle: string;
+  readonly cible: string;
+  readonly compter: (sources: readonly Source[]) => Resultat;
+}
+
+// ---------------------------------------------------------------------------
+// Lecture des sources
+// ---------------------------------------------------------------------------
+
+function parcourir(racine: string, gardien: (chemin: string) => boolean): string[] {
+  const trouves: string[] = [];
+  const pile = [racine];
+  while (pile.length > 0) {
+    const courant = pile.pop();
+    if (courant === undefined) break;
+    for (const entree of readdirSync(courant)) {
+      if (entree === "node_modules" || entree === "generated") continue;
+      const chemin = join(courant, entree);
+      if (statSync(chemin).isDirectory()) pile.push(chemin);
+      else if (gardien(chemin)) trouves.push(chemin);
+    }
+  }
+  return trouves.sort();
+}
+
+function lire(chemins: readonly string[]): Source[] {
+  return chemins.map((chemin) => {
+    const contenu = readFileSync(chemin, "utf8");
+    return { chemin: relative(RACINE, chemin), contenu, lignes: contenu.split("\n") };
+  });
+}
+
+/*
+ * src/cli est exclu, et pas seulement pour éviter que ce fichier ne se compte lui-même : aucune de ces
+ * chaînes n'atteint un opérateur, elles vont sur une sortie de terminal.
+ */
+const estSourceDInterface = (chemin: string): boolean =>
+  (chemin.endsWith(".tsx") || chemin.endsWith(".ts")) &&
+  !chemin.includes(".test.") &&
+  !chemin.endsWith(".d.ts") &&
+  !chemin.includes(`${sep}cli${sep}`);
+
+const estEcran = (source: Source): boolean =>
+  source.chemin.endsWith(`${"page"}.tsx`) && source.chemin.startsWith(join("src", "app"));
+
+/*
+ * Une route qui se termine par un refus ne rend aucun écran : son composant est typé `Promise<never>`
+ * et appelle notFound(). Lui réclamer un fil d'Ariane produirait un faux positif permanent, et un
+ * compteur qui ne peut pas atteindre zéro finit désactivé.
+ */
+const rendUnEcran = (source: Source): boolean => !/Promise<never>/.test(source.contenu);
+
+/*
+ * L'accueil hérite du titre posé par le gabarit racine, qui est déjà le nom du produit. Lui en donner
+ * un second le dupliquerait dans l'onglet.
+ */
+/*
+ * Un motif cherché hors des lignes de commentaire. La règle du dépôt veut que le POURQUOI vive en
+ * commentaire, et le nom d'un composant y apparaît souvent : s'en contenter rendrait la mesure muette.
+ */
+const horsCommentaire = (source: Source, motif: RegExp): boolean =>
+  source.lignes.some((ligne) => !estLigneDeCommentaire(ligne) && motif.test(ligne));
+
+/*
+ * Un objet metadata sans champ title laisse l'onglet muet tout autant qu'un écran sans metadata.
+ */
+const declareUnTitreDOnglet = (source: Source): boolean => {
+  const declaration = /\b(?:metadata|generateMetadata)\b/.exec(source.contenu);
+  if (declaration === null) return false;
+  if (!horsCommentaire(source, /\b(?:metadata|generateMetadata)\b/)) return false;
+  /* Le title doit venir APRÈS la déclaration, sans quoi un title: posé ailleurs dans le fichier
+     suffirait à faire croire que l'onglet est nommé. */
+  return /\btitle\s*:/.test(source.contenu.slice(declaration.index));
+};
+
+const estAccueil = (source: Source): boolean => source.chemin === join("src", "app", "page.tsx");
+
+// ---------------------------------------------------------------------------
+// Extraction des textes destinés à l'opérateur
+// ---------------------------------------------------------------------------
+
+/*
+ * Un littéral n'est retenu que s'il ressemble à une phrase française. Les trois exclusions portent sur
+ * ce qui se confond le plus souvent avec du texte : les classes du DSFR, les chemins et adresses, et
+ * les identifiants techniques écrits en camelCase ou en kebab-case.
+ */
+const ACRONYMES_TOLERES = new Set(["OVH", "SCIM", "API", "URL", "GitHub", "ADEME", "DSFR", "RGAA"]);
+
+function estTexteOperateur(brut: string): boolean {
+  const s = brut.trim();
+  if (s.length < 8) return false;
+  if (!s.includes(" ")) return false;
+  if (/fr-[a-z]/.test(s)) return false;
+  if (/^[/#]|^https?:|^mailto:/.test(s)) return false;
+  if (/^[a-z]+([A-Z][a-z]+)+$/.test(s)) return false;
+  if (/^[\d\s%.,:;+*/=<>()[\]{}|&-]+$/.test(s)) return false;
+  const motsAlphabetiques = s.split(/\s+/).filter((m) => /[a-zà-ÿ]{2}/i.test(m));
+  if (motsAlphabetiques.length < 2) return false;
+  return /[à-ÿ]/i.test(s) || /^[A-ZÀ-Ý]/.test(s);
+}
+
+interface Litteral extends Site {
+  readonly texte: string;
+}
+
+/*
+ * Un commentaire porte souvent les mêmes tournures que les écrans, la règle du dépôt voulant que le
+ * POURQUOI y vive. Les compter gonflerait chaque mesure de texte d'un tiers sans qu'aucun opérateur
+ * ne lise jamais ces lignes.
+ */
+const estLigneDeCommentaire = (ligne: string): boolean => /^\s*(\/\/|\*|\/\*)/.test(ligne);
+
+function litterauxDe(source: Source): Litteral[] {
+  const trouves: Litteral[] = [];
+  /*
+   * Les descriptions de schéma Zod documentent le fichier de politique, que personne ne lit dans
+   * l'outil : elles s'écrivent pour qui édite du YAML, pas pour un opérateur devant un écran.
+   */
+  const ouvreUnSchema = /\.meta\(/;
+  const finitParUneDescription = /description:\s*$/;
+  source.lignes.forEach((ligne, index) => {
+    if (estLigneDeCommentaire(ligne)) return;
+    const precedente = source.lignes[index - 1] ?? "";
+    if (index > 0 && (ouvreUnSchema.test(precedente) || finitParUneDescription.test(precedente))) {
+      return;
+    }
+    // Les gabarits porteurs d'une interpolation sont écartés : leur texte rendu n'est pas celui-ci.
+    const motifs = [/"([^"\\]{8,400})"/g, /`([^`\\$]{8,400})`/g];
+    for (const motif of motifs) {
+      let trouve = motif.exec(ligne);
+      while (trouve !== null) {
+        const texte = trouve[1];
+        if (texte !== undefined && estTexteOperateur(texte)) {
+          trouves.push({
+            chemin: source.chemin,
+            ligne: index + 1,
+            extrait: texte.length > 110 ? `${texte.slice(0, 110)}…` : texte,
+            texte,
+          });
+        }
+        trouve = motif.exec(ligne);
+      }
+    }
+  });
+  return trouves;
+}
+
+/*
+ * Deux tiers du texte de ce dépôt sont écrits nus entre deux balises JSX et non dans un littéral. Ne
+ * lire que les littéraux ferait passer les mesures à côté de l'essentiel : une première version de ce
+ * fichier ne voyait pas une clause de nuance posée dans un <p>.
+ */
+function textesNusDe(source: Source): Litteral[] {
+  if (!source.chemin.endsWith(".tsx")) return [];
+  const trouves: Litteral[] = [];
+  /*
+   * Les accolades sont remplacées plutôt qu'exclues : un texte porteur d'une valeur calculée reste
+   * une phrase d'écran, et l'exclure laissait passer la forme la plus courante du dépôt.
+   */
+  const motif = />([^<]{8,600})</g;
+  let trouve = motif.exec(source.contenu);
+  while (trouve !== null) {
+    const texte = trouve[1]
+      ?.replace(/\{[^{}]*\}/g, "…")
+      .replace(/\s+/g, " ")
+      .trim();
+    const ligneDuFragment = source.contenu.slice(0, trouve.index).split("\n").length;
+    /*
+     * Le fragment court d'un « > » au « < » suivant, donc il traverse le code posé entre deux
+     * balises, commentaires compris. Un commentaire ajouté entre deux cellules d'un tableau se
+     * comptait ainsi comme une phrase d'écran.
+     */
+    const brut = trouve[1] ?? "";
+    const estCommentaire =
+      estLigneDeCommentaire(source.lignes[ligneDuFragment - 1] ?? "") ||
+      brut.includes("//") ||
+      brut.includes("/*");
+    if (texte !== undefined && !estCommentaire && estTexteOperateur(texte)) {
+      trouves.push({
+        chemin: source.chemin,
+        ligne: source.contenu.slice(0, trouve.index).split("\n").length,
+        extrait: texte.length > 110 ? `${texte.slice(0, 110)}…` : texte,
+        texte,
+      });
+    }
+    trouve = motif.exec(source.contenu);
+  }
+  return trouves;
+}
+
+const compterMots = (texte: string): number => texte.trim().split(/\s+/).filter(Boolean).length;
+
+function tousLesTextes(sources: readonly Source[]): Litteral[] {
+  return sources.flatMap((source) => [...litterauxDe(source), ...textesNusDe(source)]);
+}
+
+/*
+ * L'objet d'un verdict, reconnu comme une unité. Se contenter de la ligne du `possible: false` et de
+ * la suivante rendait le refus invisible dès qu'une propriété s'intercalait avant la raison, ou que
+ * l'ordre des propriétés changeait.
+ */
+function plagesDeVerdict(source: Source): Plage[] {
+  const plages: Plage[] = [];
+  const motif = /possible:\s*false/g;
+  let trouve = motif.exec(source.contenu);
+  while (trouve !== null) {
+    let profondeur = 0;
+    let debut = -1;
+    for (let index = trouve.index; index >= 0; index -= 1) {
+      const caractere = source.contenu[index];
+      if (caractere === "}") profondeur += 1;
+      else if (caractere === "{") {
+        if (profondeur === 0) {
+          debut = index;
+          break;
+        }
+        profondeur -= 1;
+      }
+    }
+    if (debut >= 0) {
+      profondeur = 0;
+      let fin = source.contenu.length;
+      for (let index = debut; index < source.contenu.length; index += 1) {
+        const caractere = source.contenu[index];
+        if (caractere === "{") profondeur += 1;
+        else if (caractere === "}") {
+          profondeur -= 1;
+          if (profondeur === 0) {
+            fin = index + 1;
+            break;
+          }
+        }
+      }
+      plages.push({ debut, fin });
+    }
+    trouve = motif.exec(source.contenu);
+  }
+  return plages;
+}
+
+function debutsDeLigne(source: Source): number[] {
+  const debuts: number[] = [];
+  let position = 0;
+  for (const ligne of source.lignes) {
+    debuts.push(position);
+    position += ligne.length + 1;
+  }
+  return debuts;
+}
+
+/*
+ * Un refus rendu à l'opérateur. `erreur` est la clé des actions serveur ; `raison` porte la même chose
+ * dans un verdict, mais sert ailleurs de libellé de champ et de code machine, d'où la condition
+ * d'appartenance à l'objet qui porte le `possible: false`.
+ */
+function refusDe(source: Source): Litteral[] {
+  const trouves: Litteral[] = [];
+  const verdicts = plagesDeVerdict(source);
+  const debuts = debutsDeLigne(source);
+  const dansUnVerdict = (position: number): boolean =>
+    verdicts.some((plage) => position >= plage.debut && position < plage.fin);
+
+  source.lignes.forEach((ligne, index) => {
+    if (estLigneDeCommentaire(ligne)) return;
+    const cles = /\b(erreur|raison):\s*"([^"\\]{8,400})"/g;
+    let trouve = cles.exec(ligne);
+    while (trouve !== null) {
+      const texte = trouve[2];
+      const retenu = trouve[1] === "erreur" || dansUnVerdict((debuts[index] ?? 0) + trouve.index);
+      if (retenu && texte !== undefined && estTexteOperateur(texte)) {
+        trouves.push({ chemin: source.chemin, ligne: index + 1, extrait: texte, texte });
+        return;
+      }
+      trouve = cles.exec(ligne);
+    }
+  });
+  return trouves;
+}
+
+/*
+ * Une étiquette de non-existence, en fin de message et sans rien après elle. Le mot ne suffit pas :
+ * « Acteur inconnu. Dites qui doit faire cette étape. » emploie le même, et dit la suite.
+ */
+const FINIT_EN_ETIQUETTE = /^[^.!?]*\b(?:introuvable|inconnue?s?|non reconnue?s?|invalide)\.?$/;
+
+// ---------------------------------------------------------------------------
+// Extraction des éléments d'interface
+// ---------------------------------------------------------------------------
+
+function balisesAvecTexte(source: Source, balise: string): Site[] {
+  const motif = new RegExp(`<${balise}\\b[^>]*>\\s*([^<>{}\\n]{2,200}?)\\s*</${balise}>`, "g");
+  const trouves: Site[] = [];
+  let trouve = motif.exec(source.contenu);
+  while (trouve !== null) {
+    const texte = trouve[1];
+    if (texte !== undefined && texte.trim().length > 0) {
+      const ligne = source.contenu.slice(0, trouve.index).split("\n").length;
+      trouves.push({ chemin: source.chemin, ligne, extrait: texte.trim() });
+    }
+    trouve = motif.exec(source.contenu);
+  }
+  return trouves;
+}
+
+function titres(sources: readonly Source[]): Site[] {
+  return sources.flatMap((source) =>
+    [1, 2, 3, 4, 5, 6].flatMap((niveau) => balisesAvecTexte(source, `h${niveau}`)),
+  );
+}
+
+/*
+ * Un actionnable est un bouton ou un lien dont le libellé est écrit en clair. Les trois formes
+ * couvertes sont l'enfant textuel, la prop children et la prop label, qui sont les seules employées
+ * ici. Un libellé calculé à l'exécution n'est pas vu, et c'est assumé.
+ */
+function actionnables(sources: readonly Source[]): Site[] {
+  const trouves: Site[] = [];
+  for (const source of sources) {
+    trouves.push(...balisesAvecTexte(source, "Button"), ...balisesAvecTexte(source, "Link"));
+    const props = /(?:children|label)=\{?"([^"\\]{2,120})"\}?/g;
+    let trouve = props.exec(source.contenu);
+    while (trouve !== null) {
+      const texte = trouve[1];
+      if (texte !== undefined) {
+        const ligne = source.contenu.slice(0, trouve.index).split("\n").length;
+        trouves.push({ chemin: source.chemin, ligne, extrait: texte });
+      }
+      trouve = props.exec(source.contenu);
+    }
+  }
+  return trouves;
+}
+
+/*
+ * Le texte d'une balise ouvrante, accolades suivies. Une prop calculée contient volontiers un « > »
+ * dans un ternaire ou une comparaison, donc s'arrêter au premier « > » couperait la balise en deux et
+ * ferait manquer les props qui suivent.
+ */
+function balisesOuvrantes(
+  source: Source,
+  nom: string,
+): { readonly site: Site; readonly texte: string; readonly position: number }[] {
+  const trouves: { site: Site; texte: string; position: number }[] = [];
+  const debut = new RegExp(`<${nom}[\\s/>]`, "g");
+  let amorce = debut.exec(source.contenu);
+  while (amorce !== null) {
+    let profondeur = 0;
+    let index = amorce.index;
+    while (index < source.contenu.length) {
+      const caractere = source.contenu[index];
+      if (caractere === "{") profondeur += 1;
+      else if (caractere === "}") profondeur -= 1;
+      else if (caractere === ">" && profondeur === 0) break;
+      index += 1;
+    }
+    const texte = source.contenu.slice(amorce.index, index + 1);
+    trouves.push({
+      site: {
+        chemin: source.chemin,
+        ligne: source.contenu.slice(0, amorce.index).split("\n").length,
+        extrait: texte.replace(/\s+/g, " ").slice(0, 110),
+      },
+      texte,
+      position: amorce.index,
+    });
+    amorce = debut.exec(source.contenu);
+  }
+  return trouves;
+}
+
+/*
+ * Les composants react-dsfr dont la classe racine est réécrite à la main quelque part. Le composant
+ * existe et est typé : écrire sa classe soi-même en reproduit le rendu sans son comportement ni ses
+ * garanties d'accessibilité.
+ */
+/*
+ * Tout composant react-dsfr qui rend un titre quand on lui passe title ou label, et qui choisit h3
+ * quand rien ne le dit. Les oublier laisse un h3 s'injecter sans que la mesure le voie.
+ */
+const COMPOSANTS_PORTEURS_DE_TITRE = ["Alert", "Tile", "Accordion", "CallOut"] as const;
+
+const CLASSES_RACINES: readonly (readonly [string, string])[] = [["CallOut", "fr-callout"]];
+/*
+ * Trois classes sont hors de cette liste, chacune pour une raison qui ne se lèvera pas :
+ *
+ * fr-search-bar, parce que react-dsfr 1.32.4 n'exporte aucun SearchBar.
+ * fr-pagination, parce que Pagination réclame getPageLinkProps, une fonction en propriété, qui ne
+ *   traverse pas la frontière serveur ; l'écran du journal se rend sans « use client ».
+ * fr-tags-group, parce que TagsGroup exige un tableau non vide, [TagProps, ...TagProps[]], qu'un
+ *   map ne garantit pas : le passer demanderait un cast, que ce dépôt refuse.
+ *
+ * Une règle qui réclame l'impossible se fait désactiver, et emporte alors les cas qu'elle tenait.
+ */
+
+/*
+ * Les titres d'un écran ne vivent pas tous dans son fichier : une page monte des composants qui
+ * écrivent les leurs. Mesurer la hiérarchie sans les suivre donne un zéro qui ne prouve rien, ce
+ * qu'une relecture a constaté sur /collectes, où le h1 est dans la page et le h3 dans un enfant.
+ */
+function cheminImporte(source: Source, specificateur: string): string | null {
+  const base = specificateur.startsWith("@/")
+    ? join("src", specificateur.slice(2))
+    : specificateur.startsWith(".")
+      ? join(dirname(source.chemin), specificateur)
+      : null;
+  return base === null ? null : `${base}.tsx`;
+}
+
+interface TitreRendu {
+  readonly niveau: number;
+  readonly position: number;
+  readonly ligne: number;
+  readonly chemin: string;
+  /* Le fichier et la ligne où le titre est écrit, quand ce n'est pas là où il est monté. */
+  readonly venuDe: string | null;
+}
+
+function titresDuFichier(source: Source, plage: Plage): TitreRendu[] {
+  const titres: TitreRendu[] = [];
+  const dansLaPlage = (position: number): boolean =>
+    position >= plage.debut && position < plage.fin;
+
+  const balises = /<h([1-6])[\s>]/g;
+  let trouve = balises.exec(source.contenu);
+  while (trouve !== null) {
+    if (dansLaPlage(trouve.index)) {
+      titres.push({
+        niveau: Number(trouve[1]),
+        position: trouve.index,
+        ligne: source.contenu.slice(0, trouve.index).split("\n").length,
+        chemin: source.chemin,
+        venuDe: null,
+      });
+    }
+    trouve = balises.exec(source.contenu);
+  }
+
+  /*
+   * Un composant react-dsfr porteur d'un title injecte un titre, en h3 quand rien ne le dit. C'est
+   * ce h3 implicite qui crée les sauts.
+   */
+  for (const nom of COMPOSANTS_PORTEURS_DE_TITRE) {
+    for (const { site, texte, position } of balisesOuvrantes(source, nom)) {
+      if (!dansLaPlage(position)) continue;
+      if (!/\b(?:title|label)=/.test(texte)) continue;
+      const declare = /\b(?:as|titleAs)="h([2-6])"/.exec(texte);
+      titres.push({
+        niveau: declare?.[1] === undefined ? 3 : Number(declare[1]),
+        position,
+        ligne: site.ligne,
+        chemin: source.chemin,
+        venuDe: null,
+      });
+    }
+  }
+
+  return titres;
+}
+
+/*
+ * La borne d'un corps, commune au symbole importé et à l'export par défaut de l'écran. Sans elle, la
+ * récursion donne à un SYMBOLE les titres de tout le FICHIER d'où il vient : page.tsx importe six
+ * symboles de Pointage.tsx, et le bouton de recalcul, qui ne rend aucun titre, héritait des trois
+ * Alert que seul Pointage atteint.
+ *
+ * Elle se lit à l'indentation, et non à la grammaire du langage. L'invariant sur lequel elle
+ * s'appuie est tenu par `pnpm lint` : Biome formate tout le dépôt, donc rien d'imbriqué ne commence
+ * en colonne zéro. Le jour où le dépôt cesserait d'être formaté, cette borne deviendrait fausse. Ce
+ * que Biome ne reformate pas lui échappe de la même façon, le contenu d'un gabarit multi-ligne en
+ * premier lieu.
+ *
+ * Trois formes de ligne en colonne zéro. Celle qui ne fait que fermer termine la déclaration ;
+ * celle qui ferme puis rouvre continue une signature découpée, `}: {` ou `}) {` ; toute autre ouvre
+ * la déclaration suivante, et la borne se pose avant elle. `} as const;` ferme puis continue sans
+ * rien rouvrir, elle termine donc.
+ */
+const NE_FAIT_QUE_FERMER = /^[)\]}>][^([{]*$/;
+const FERME_PUIS_ROUVRE = /^[)\]}>].*[([{]\s*$/;
+
+function corpsDeLaDeclaration(source: Source, debut: number): Plage {
+  const premiere = source.contenu.slice(0, debut).split("\n").length - 1;
+  let position = debut;
+  for (let index = premiere; index < source.lignes.length; index += 1) {
+    const ligne = source.lignes[index] ?? "";
+    if (index > premiere && ligne.length > 0 && !/^\s/.test(ligne)) {
+      if (NE_FAIT_QUE_FERMER.test(ligne)) return { debut, fin: position + ligne.length };
+      if (!FERME_PUIS_ROUVRE.test(ligne)) return { debut, fin: position };
+    }
+    position += ligne.length + 1;
+  }
+  return { debut, fin: source.contenu.length };
+}
+
+/*
+ * Les identifiants passés nus en argument d'un appel. Une propriété, un littéral ou une fonction
+ * écrite sur place n'en sont pas : ils ne nomment aucune déclaration à aller lire.
+ */
+function identifiantsPassesEnArgument(texte: string): string[] {
+  const noms: string[] = [];
+  const appels = /[A-Za-z_$][\w$]*\s*\(([^()]*)\)/g;
+  let trouve = appels.exec(texte);
+  while (trouve !== null) {
+    for (const brut of (trouve[1] ?? "").split(",")) {
+      const nom = brut.trim();
+      if (/^[A-Za-z_$][\w$]*$/.test(nom)) noms.push(nom);
+    }
+    trouve = appels.exec(texte);
+  }
+  return noms;
+}
+
+/*
+ * Retourne null pour deux formes seulement : la déclaration introuvable, une réexportation par
+ * exemple, et l'enveloppe dont l'argument ne se résout pas ici. L'appelant prend alors le fichier
+ * entier, repli assumé qui attribue au symbole les titres de ses voisins.
+ */
+function corpsDuSymbole(
+  source: Source,
+  nom: string,
+  deja: ReadonlySet<string> = new Set(),
+): Plage | null {
+  const echappe = nom.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+  const declaration = new RegExp(
+    `^(?:export\\s+)?(?:default\\s+)?(?:async\\s+)?(?:function|const|let|var|class)\\s+${echappe}\\b`,
+    "m",
+  );
+  const trouve = declaration.exec(source.contenu);
+  if (trouve === null) return null;
+  const plage = corpsDeLaDeclaration(source, trouve.index);
+  if (/<[A-Za-z]/.test(source.contenu.slice(plage.debut, plage.fin))) return plage;
+
+  /*
+   * Un export enveloppé, `export const Frontiere = catchError(Repli)`, ne porte aucun JSX dans sa
+   * propre déclaration : le corps rendu est celui de l'argument. Le fichier entier, seul repli
+   * possible ici, donnerait à Frontiere les titres de ses voisins de fichier, que rien ne monte.
+   */
+  /*
+   * Une seule enveloppe se résout, celle qui ne reçoit qu'un composant. Au-delà, rien ne dit lequel
+   * est rendu, et retenir le premier ferait dépendre la mesure de l'ordre des arguments. Le repli
+   * sur le fichier entier sur-compte, ce qui se voit ; se tromper de corps ne se voit pas.
+   */
+  const arguments_ = identifiantsPassesEnArgument(source.contenu.slice(plage.debut, plage.fin));
+  const seul = arguments_.length === 1 ? arguments_[0] : undefined;
+  if (seul === undefined || seul === nom || deja.has(seul)) return null;
+  return corpsDuSymbole(source, seul, new Set([...deja, nom]));
+}
+
+function nomsMontes(source: Source, plage: Plage): string[] {
+  const noms = new Set<string>();
+  const balises = /<([A-Z][A-Za-z0-9_]*)[\s/>]/g;
+  let trouve = balises.exec(source.contenu);
+  while (trouve !== null) {
+    const nom = trouve[1];
+    if (nom !== undefined && trouve.index >= plage.debut && trouve.index < plage.fin) noms.add(nom);
+    trouve = balises.exec(source.contenu);
+  }
+  return [...noms];
+}
+
+/*
+ * Un import renomme : `import { Bloc as Section }` déclare `Bloc` dans le fichier enfant et monte
+ * `<Section>` dans le parent. Ne garder que l'un des deux noms fait disparaître du relevé tous les
+ * titres de ce composant.
+ */
+function specificateursImportes(
+  liste: string,
+): { readonly exporte: string; readonly local: string }[] {
+  const trouves: { exporte: string; local: string }[] = [];
+  for (const brut of liste.split(",")) {
+    const decoupe = /^(?:type\s+)?([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?$/.exec(
+      brut.trim(),
+    );
+    const exporte = decoupe?.[1];
+    if (exporte === undefined) continue;
+    trouves.push({ exporte, local: decoupe?.[2] ?? exporte });
+  }
+  return trouves;
+}
+
+function titresRendus(
+  source: Source,
+  plage: Plage,
+  parChemin: ReadonlyMap<string, Source>,
+  vus: ReadonlySet<string>,
+  pile: ReadonlySet<string>,
+): TitreRendu[] {
+  const titres = titresDuFichier(source, plage);
+
+  /*
+   * Les titres du symbole monté, pas ceux de son fichier, et insérés à CHAQUE occurrence de sa
+   * balise : un composant réellement monté deux fois rend bien ses titres deux fois.
+   */
+  const inserer = (nom: string, rendus: readonly TitreRendu[]): void => {
+    for (const montage of balisesOuvrantes(source, nom)) {
+      if (montage.position < plage.debut || montage.position >= plage.fin) continue;
+      for (const titre of rendus) {
+        titres.push({
+          ...titre,
+          position: montage.position + titre.position / 100_000,
+          ligne: montage.site.ligne,
+          chemin: source.chemin,
+          venuDe: titre.venuDe ?? `${titre.chemin}:${titre.ligne}`,
+        });
+      }
+    }
+  };
+
+  const importes = new Set<string>();
+  const imports = /import\s*\{([^}]*)\}\s*from\s*"([^"]+)"/g;
+  let trouve = imports.exec(source.contenu);
+  while (trouve !== null) {
+    const chemin = cheminImporte(source, trouve[2] ?? "");
+    const enfant = chemin === null ? undefined : parChemin.get(chemin);
+    for (const { exporte, local } of specificateursImportes(trouve[1] ?? "")) {
+      importes.add(local);
+      if (enfant === undefined || vus.has(enfant.chemin)) continue;
+      inserer(
+        local,
+        titresRendus(
+          enfant,
+          corpsDuSymbole(enfant, exporte) ?? { debut: 0, fin: enfant.contenu.length },
+          parChemin,
+          new Set([...vus, source.chemin]),
+          new Set(),
+        ),
+      );
+    }
+    trouve = imports.exec(source.contenu);
+  }
+
+  /*
+   * Un corps monte aussi des composants déclarés plus bas dans son propre fichier, sans les
+   * importer : Remises monte Remise, qui porte les trois Alert. Les ignorer creuserait le trou que
+   * la borne par symbole vient de fermer.
+   */
+  for (const nom of nomsMontes(source, plage)) {
+    if (importes.has(nom) || pile.has(nom)) continue;
+    const corps = corpsDuSymbole(source, nom);
+    if (corps === null || (corps.debut <= plage.debut && corps.fin >= plage.fin)) continue;
+    inserer(nom, titresRendus(source, corps, parChemin, vus, new Set([...pile, nom])));
+  }
+
+  return titres.sort((a, b) => a.position - b.position);
+}
+
+/*
+ * Le corps de ce qu'une route rend. Trois formes se reconnaissent : la fonction nommée, la fonction
+ * anonyme, et le renvoi d'un symbole déclaré plus haut.
+ */
+const porteDuJsx = (source: Source, plage: Plage): boolean =>
+  /<[A-Za-z]/.test(source.contenu.slice(plage.debut, plage.fin));
+
+function corpsDeLExportParDefaut(source: Source): Plage | null {
+  const fonction = /^export\s+default\s+(?:async\s+)?(?:function|class)\b/m.exec(source.contenu);
+  if (fonction !== null) {
+    const plage = corpsDeLaDeclaration(source, fonction.index);
+    /*
+     * Même filet que pour un symbole : un écran qui monte son contenu par une variable ne porte
+     * aucune balise dans son export par défaut, et le fichier entier reprend la main plutôt que de
+     * le déclarer muet.
+     */
+    return porteDuJsx(source, plage) ? plage : null;
+  }
+  const renvoi = /^export\s+default\s+([A-Za-z_$][\w$]*)\s*;/m.exec(source.contenu);
+  const nom = renvoi?.[1];
+  return nom === undefined ? null : corpsDuSymbole(source, nom);
+}
+
+/*
+ * Un écran est ce que rend son export par défaut, jamais ce que contient son fichier. Partir du
+ * fichier entier faisait entrer dans la séquence les titres des déclarations voisines : une page qui
+ * rend un h1 et déclare à côté un composant à h3 que rien ne monte comptait un saut que personne ne
+ * voit. Le repli, quand aucun export par défaut ne se reconnaît, reste le fichier entier.
+ */
+function titresDeLEcran(source: Source, parChemin: ReadonlyMap<string, Source>): TitreRendu[] {
+  return titresRendus(
+    source,
+    corpsDeLExportParDefaut(source) ?? { debut: 0, fin: source.contenu.length },
+    parChemin,
+    new Set(),
+    new Set(),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Les mesures
+// ---------------------------------------------------------------------------
+
+const resultat = (sites: readonly Site[]): Resultat => ({ valeur: sites.length, sites });
+
+export const MESURES: readonly Mesure[] = [
+  {
+    id: "titres-ponctues",
+    libelle: "Titres terminés par une ponctuation",
+    cible: "Le DSFR l'interdit. Déjà à zéro : le figer est gratuit.",
+    compter: (sources) => resultat(titres(sources).filter((t) => /[.;:!]$/.test(t.extrait))),
+  },
+  {
+    id: "libelles-ponctues",
+    libelle: "Libellés d'actionnable terminés par une ponctuation",
+    cible: "Déjà à zéro.",
+    compter: (sources) => resultat(actionnables(sources).filter((a) => /[.;:!?]$/.test(a.extrait))),
+  },
+  {
+    id: "libelles-en-capitales",
+    libelle: "Libellés d'actionnable portant un mot tout en capitales",
+    cible: "Déjà à zéro. Les acronymes du domaine sont tolérés.",
+    compter: (sources) =>
+      resultat(
+        actionnables(sources).filter((a) =>
+          a.extrait
+            .split(/\s+/)
+            .some((mot) => /^[A-ZÀ-Ý]{2,}$/.test(mot) && !ACRONYMES_TOLERES.has(mot)),
+        ),
+      ),
+  },
+  {
+    id: "deux-points-explicatifs",
+    libelle: "Textes dont les deux-points ouvrent une explication",
+    cible: "Les deux-points introduisent une consigne ou une donnée, jamais un pourquoi.",
+    compter: (sources) =>
+      resultat(tousLesTextes(sources).filter((t) => / : [a-zà-ÿ]/.test(t.texte))),
+  },
+  {
+    id: "clauses-de-nuance",
+    libelle: "Textes revenant sur ce qu'ils viennent d'affirmer",
+    cible: "Annoncer le fait, s'arrêter. Zéro à terme.",
+    compter: (sources) =>
+      resultat(
+        tousLesTextes(sources).filter((t) =>
+          /*
+           * Le défaut n'est pas de dire ce qu'une absence ne prouve pas, c'est d'y revenir après
+           * coup : « la liste ne dit rien du parc » affirme, « la liste est vide, ce qui ne dit
+           * rien du parc » se reprend. Seule la seconde forme se compte.
+           */
+          /, ce qui ne |, ce qui n'|son silence ne |faute d'observation|n'est pas la même chose|, et ce silence/.test(
+            t.texte,
+          ),
+        ),
+      ),
+  },
+  {
+    id: "textes-de-plus-de-quarante-mots",
+    libelle: "Textes de plus de quarante mots",
+    cible: "Aucune chaîne longue du dépôt n'est une énumération légitime.",
+    compter: (sources) => resultat(tousLesTextes(sources).filter((t) => compterMots(t.texte) > 40)),
+  },
+  {
+    id: "libelles-d-attente-muets",
+    libelle: "Libellés d'attente qui ne nomment pas leur geste",
+    cible:
+      "Un libellé d'attente se dérive du verbe de son bouton. Il y en a donc un par action, et compter les formes distinctes punirait justement le fait de les nommer. Ce qui se compte est le générique, qui laisse l'opérateur devant un bouton muet.",
+    compter: (sources) => {
+      const vus = new Map<string, Site>();
+      for (const source of sources) {
+        source.lignes.forEach((ligne, index) => {
+          /* Un exemple de saisie finit par des points de suspension sans rien faire attendre. */
+          if (/placeholder|[Ee]xemple/.test(ligne)) return;
+          const motif = /"([^"\\]{3,80}…)"/g;
+          let trouve = motif.exec(ligne);
+          while (trouve !== null) {
+            const texte = trouve[1];
+            /* « Chargement », « En cours », « Patientez » : aucun ne dit ce qu'on attend. */
+            const muet = /^(en cours|chargement|patient|veuillez|traitement|envoi en cours)/i;
+            if (texte !== undefined && muet.test(texte) && !vus.has(texte)) {
+              vus.set(texte, { chemin: source.chemin, ligne: index + 1, extrait: texte });
+            }
+            trouve = motif.exec(ligne);
+          }
+        });
+      }
+      return resultat([...vus.values()]);
+    },
+  },
+  {
+    id: "valeur-absente-ecrite-a-la-main",
+    libelle: "Rendus de la valeur absente écrits hors du composant dédié",
+    cible: "Un seul composant porte ce rendu. Zéro ailleurs.",
+    compter: (sources) => {
+      const sites: Site[] = [];
+      for (const source of sources) {
+        if (source.chemin === join("src", "ui", "Absent.tsx")) continue;
+        /* Une accolade n'importe où dans le contenu dit que le texte est calculé, donc pas écrit ici. */
+        const motif = /<span[^>]*\bfr-hint-text\b[^>]*>([^<{}]+)<\/span>/g;
+        let trouve = motif.exec(source.contenu);
+        while (trouve !== null) {
+          const texte = (trouve[1] ?? "").replace(/\s+/g, " ").trim();
+          /*
+           * La même classe sert au texte d'aide sous un label, qui est son usage canonique et qui
+           * n'a rien à voir avec une valeur manquante. Seule la longueur les sépare : une valeur
+           * absente se dit en un mot ou deux, une consigne en une phrase.
+           */
+          if (compterMots(texte) <= 5) {
+            sites.push({
+              chemin: source.chemin,
+              ligne: source.contenu.slice(0, trouve.index).split("\n").length,
+              extrait: texte.slice(0, 80),
+            });
+          }
+          trouve = motif.exec(source.contenu);
+        }
+      }
+      return resultat(sites);
+    },
+  },
+  {
+    id: "coquilles-de-page",
+    libelle: "Formes distinctes de la coquille de page",
+    cible: "22 des 23 écrans partagent déjà la même. Les écarts sont les écrans de repli.",
+    compter: (sources) => {
+      const formes = new Map<string, Site>();
+      for (const source of sources.filter(estEcran).filter(rendUnEcran)) {
+        const trouve = /<main\b([^>]*)>/.exec(source.contenu);
+        const signature = (trouve?.[1] ?? "(aucun main)").replace(/\s+/g, " ").trim();
+        if (!formes.has(signature)) {
+          const ligne = trouve ? source.contenu.slice(0, trouve.index).split("\n").length : 1;
+          formes.set(signature, { chemin: source.chemin, ligne, extrait: signature });
+        }
+      }
+      return resultat([...formes.values()]);
+    },
+  },
+  {
+    id: "ecrans-sans-titre-d-onglet",
+    libelle: "Écrans sans titre d'onglet",
+    cible: "Un écran sans metadata laisse l'onglet muet.",
+    compter: (sources) =>
+      resultat(
+        sources
+          .filter(estEcran)
+          /* Une route qui se termine par un refus ne rend aucun onglet non plus. */
+          .filter(rendUnEcran)
+          .filter((source) => !estAccueil(source))
+          .filter((source) => !declareUnTitreDOnglet(source))
+          .map((source) => ({
+            chemin: source.chemin,
+            ligne: 1,
+            extrait: "ni metadata ni generateMetadata",
+          })),
+      ),
+  },
+  {
+    id: "ecrans-profonds-sans-fil-d-ariane",
+    libelle: "Écrans de profondeur deux ou plus sans fil d'Ariane",
+    cible: "Sans lui, l'écran ne dit pas d'où l'on vient.",
+    compter: (sources) =>
+      resultat(
+        sources
+          .filter(estEcran)
+          .filter(rendUnEcran)
+          /*
+           * L'espace personnel en est exclu : react-dsfr nomme « Accueil » le lien de tête du fil
+           * d'Ariane, quand la navigation appelle la même destination « Mon espace ». Un lien de
+           * retour explicite y dit mieux où l'on va.
+           */
+          .filter((source) => !source.chemin.startsWith(join("src", "app", "moi")))
+          .filter((source) => {
+            const segments = source.chemin.split(/[\\/]/).slice(2, -1);
+            return segments.length >= 2 && !horsCommentaire(source, /<Breadcrumb\b/);
+          })
+          .map((source) => ({ chemin: source.chemin, ligne: 1, extrait: "aucun Breadcrumb" })),
+      ),
+  },
+  {
+    id: "titres-injectes-sans-niveau",
+    libelle: "Composants DSFR posant un titre sans déclarer son niveau",
+    cible:
+      "Un Alert porteur d'un title, un Accordion porteur d'un label, l'injectent en h3 par défaut, d'où des h3 sans h2 parent.",
+    compter: (sources) =>
+      resultat(
+        sources.flatMap((source) =>
+          COMPOSANTS_PORTEURS_DE_TITRE.flatMap((nom) =>
+            balisesOuvrantes(source, nom)
+              .filter(({ texte }) => /\b(?:title|label)=/.test(texte))
+              .filter(({ texte }) => !/\b(as|titleAs)=/.test(texte))
+              .map(({ site }) => site),
+          ),
+        ),
+      ),
+  },
+  {
+    id: "sauts-de-niveau-de-titre",
+    libelle: "Ruptures dans la hiérarchie des titres d'un écran",
+    cible:
+      "Le RGAA veut une hiérarchie sans saut. Un h3 posé après un h1 en est un. Une remontée de h3 à h2 n'en est pas un, et ne se compte pas.",
+    compter: (sources) => {
+      const parChemin = new Map(sources.map((source) => [source.chemin, source]));
+      const sites: Site[] = [];
+
+      for (const source of sources.filter(estEcran).filter(rendUnEcran)) {
+        let precedent = 0;
+        for (const titre of titresDeLEcran(source, parChemin)) {
+          if (precedent > 0 && titre.niveau > precedent + 1) {
+            sites.push({
+              chemin: titre.chemin,
+              ligne: titre.ligne,
+              extrait:
+                titre.venuDe === null
+                  ? `h${precedent} puis h${titre.niveau}`
+                  : `h${precedent} puis h${titre.niveau}, titre écrit dans ${titre.venuDe}`,
+            });
+          }
+          precedent = titre.niveau;
+        }
+      }
+
+      return resultat(sites);
+    },
+  },
+  {
+    id: "controles-desactives",
+    libelle: "Contrôles rendus inertes plutôt que retirés",
+    cible:
+      "Un contrôle sans effet se retire plutôt que de se griser. Deux exceptions se tiennent : l'attente d'une soumission, et le refus qui porte sa raison à côté, parce qu'un geste absent sans explication se cherche. Le plafond empêche d'en ajouter d'autres sans y penser, il ne vise pas zéro.",
+    compter: (sources) => {
+      const sites: Site[] = [];
+      for (const source of sources) {
+        source.lignes.forEach((ligne, index) => {
+          if (estLigneDeCommentaire(ligne)) return;
+          /* aria-disabled marque une page courante ou une borne de pagination, pas un contrôle grisé. */
+          if (!/\bdisabled(?:=|\s|$)/.test(ligne) || /aria-disabled/.test(ligne)) return;
+          /* Le temps d'une soumission, l'inertie dit que le geste est parti. */
+          if (/isPending|pending|soumission|useFormStatus|\ben[A-Z]\w+|EnCours/.test(ligne)) return;
+          sites.push({
+            chemin: source.chemin,
+            ligne: index + 1,
+            extrait: ligne.trim().slice(0, 110),
+          });
+        });
+      }
+      return resultat(sites);
+    },
+  },
+  {
+    id: "boutons-de-priorite-implicite",
+    libelle: "Boutons dont la priorité n'est pas déclarée",
+    cible:
+      "react-dsfr rend un bouton en primaire quand rien ne le dit. Le niveau le plus fort s'obtient donc en n'écrivant rien, et aucune relecture ne le voit passer.",
+    compter: (sources) =>
+      resultat(
+        sources.flatMap((source) =>
+          balisesOuvrantes(source, "Button")
+            .filter(({ texte }) => !/\bpriority=/.test(texte))
+            .map(({ site }) => site),
+        ),
+      ),
+  },
+  {
+    id: "fils-d-ariane-qui-renomment-leur-parent",
+    libelle: "Segments de fil d'Ariane qui ne reprennent pas le titre de leur parent",
+    cible:
+      "Un écran porte un nom, et c'est celui de son h1. Le menu a le droit d'être plus court, parce qu'il doit tenir sur une ligne ; le fil d'Ariane, lui, ramène vers un écran et doit l'appeler par son nom.",
+    compter: (sources) => {
+      const titreDe = new Map(
+        sources.filter(estEcran).map((source) => {
+          const trouve = /<h1[^>]*>\s*([^<>{}]+?)\s*<\/h1>/.exec(source.contenu);
+          const chemin = `/${source.chemin.split(/[\\/]/).slice(2, -1).join("/")}`;
+          return [chemin, (trouve?.[1] ?? "").trim()];
+        }),
+      );
+
+      const sites: Site[] = [];
+      for (const source of sources) {
+        const motif = /label:\s*"([^"]+)"\s*,\s*linkProps:\s*\{\s*href:\s*"([^"]+)"/g;
+        let trouve = motif.exec(source.contenu);
+        while (trouve !== null) {
+          const [, etiquette, cible] = trouve;
+          const titre = titreDe.get(cible ?? "");
+          if (
+            etiquette !== undefined &&
+            titre !== undefined &&
+            titre !== "" &&
+            titre !== etiquette
+          ) {
+            sites.push({
+              chemin: source.chemin,
+              ligne: source.contenu.slice(0, trouve.index).split("\n").length,
+              extrait: `« ${etiquette} » mène à un écran titré « ${titre} »`,
+            });
+          }
+          trouve = motif.exec(source.contenu);
+        }
+      }
+      return resultat(sites);
+    },
+  },
+  {
+    id: "titres-de-modale-en-h1",
+    libelle: "Modales laissant leur titre en h1",
+    cible:
+      "react-dsfr rend un titre de modale en h1. Chaque modale déclarée ajoute donc un second h1 au document, quoi qu'en dise le code de la page.",
+    compter: (sources) =>
+      resultat(
+        sources.flatMap((source) =>
+          balisesOuvrantes(source, "[A-Za-z][\\w]*\\.Component")
+            .filter(({ texte }) => !/\btitleAs=/.test(texte))
+            .map(({ site }) => site),
+        ),
+      ),
+  },
+  {
+    id: "composants-dsfr-reecrits-a-la-main",
+    libelle: "Classes racines de composants react-dsfr écrites à la main",
+    cible: "Le composant existe et il est typé. Sa classe n'a aucune raison d'être écrite ici.",
+    compter: (sources) => {
+      const sites: Site[] = [];
+      for (const source of sources) {
+        for (const [composant, classe] of CLASSES_RACINES) {
+          source.lignes.forEach((ligne, index) => {
+            /*
+             * La ligne qui emploie le composant porte aussi sa classe, puisque react-dsfr la pose.
+             * Seule cette ligne est exonérée : exonérer le fichier entier laisserait passer ses
+             * autres occurrences écrites à la main.
+             */
+            if (new RegExp(`<${composant}\\b`).test(ligne)) return;
+            if (new RegExp(`["'\`\\s]${classe}["'\`\\s]`).test(ligne)) {
+              sites.push({
+                chemin: source.chemin,
+                ligne: index + 1,
+                extrait: ligne.trim().slice(0, 110),
+              });
+            }
+          });
+        }
+      }
+      return resultat(sites);
+    },
+  },
+  {
+    id: "refus-en-forme-d-etiquette",
+    libelle: "Refus écrits en étiquette plutôt qu'en phrase",
+    cible:
+      "Un refus nomme un objet et s'arrête, là où l'opérateur attend ce qui s'est passé et quoi faire. Zéro.",
+    compter: (sources) =>
+      resultat(
+        sources
+          .flatMap(refusDe)
+          .filter((r) => compterMots(r.texte) < 4 || FINIT_EN_ETIQUETTE.test(r.texte.trim())),
+      ),
+  },
+  {
+    id: "suppressions-de-diagnostic-de-plugin",
+    libelle: "Commentaires supprimant un diagnostic de plugin Biome",
+    cible:
+      "Une seule suppression lève TOUS les diagnostics de plugin sur le nœud. Les compter est la seule contre-mesure.",
+    compter: (sources) => {
+      const sites: Site[] = [];
+      for (const source of sources) {
+        source.lignes.forEach((ligne, index) => {
+          if (/biome-ignore\s+lint\/plugin/.test(ligne)) {
+            sites.push({ chemin: source.chemin, ligne: index + 1, extrait: ligne.trim() });
+          }
+        });
+      }
+      return resultat(sites);
+    },
+  },
+];
+
+/* De quoi exercer une mesure sur du code écrit à la main, sans passer par le disque. */
+export function sourceDeTest(chemin: string, contenu: string): Source {
+  return { chemin, contenu, lignes: contenu.split("\n") };
+}
+
+// ---------------------------------------------------------------------------
+// Seuils et sortie
+// ---------------------------------------------------------------------------
+
+type Seuils = Record<string, number>;
+
+function lireSeuils(): Seuils | null {
+  if (!existsSync(FICHIER_SEUILS)) return null;
+  return JSON.parse(readFileSync(FICHIER_SEUILS, "utf8")) as Seuils;
+}
+
+function principal(): number {
+  const arguments_ = process.argv.slice(2);
+  const poser = arguments_.includes("--poser");
+  const detail = arguments_.find((a) => a.startsWith("--detail="))?.slice("--detail=".length);
+
+  const sources = lire(parcourir(SRC, estSourceDInterface));
+  const mesures = MESURES.map((mesure) => ({ mesure, resultat: mesure.compter(sources) }));
+
+  if (detail !== undefined) {
+    const trouve = mesures.find((m) => m.mesure.id === detail);
+    if (trouve === undefined) {
+      process.stderr.write(`Mesure inconnue : ${detail}\n`);
+      return 2;
+    }
+    process.stdout.write(`${trouve.mesure.libelle} : ${trouve.resultat.valeur}\n\n`);
+    for (const site of trouve.resultat.sites) {
+      process.stdout.write(`  ${site.chemin}:${site.ligne}\n    ${site.extrait}\n`);
+    }
+    return 0;
+  }
+
+  if (poser) {
+    const relacher = arguments_.includes("--relacher");
+    const anciens = lireSeuils() ?? {};
+    const remontees = mesures.filter(({ mesure, resultat: r }) => {
+      const ancien = anciens[mesure.id];
+      return ancien !== undefined && r.valeur > ancien;
+    });
+
+    if (remontees.length > 0 && !relacher) {
+      process.stderr.write(
+        `Refus : ${remontees.length} plafond(s) remonteraient.\n` +
+          remontees
+            .map(
+              ({ mesure, resultat: r }) => `  ${mesure.id} : ${anciens[mesure.id]} → ${r.valeur}`,
+            )
+            .join("\n") +
+          `\n\nReprends la dette, ou assume la hausse avec « --relacher ».\n`,
+      );
+      return 1;
+    }
+
+    const seuils: Seuils = {};
+    for (const { mesure, resultat: r } of mesures) {
+      const ancien = anciens[mesure.id];
+      seuils[mesure.id] = ancien === undefined ? r.valeur : Math.min(r.valeur, ancien);
+    }
+    if (relacher) for (const { mesure, resultat: r } of mesures) seuils[mesure.id] = r.valeur;
+    writeFileSync(FICHIER_SEUILS, `${JSON.stringify(seuils, null, 2)}\n`, "utf8");
+    process.stdout.write(
+      `Seuils posés sur ${mesures.length} mesures dans ${relative(RACINE, FICHIER_SEUILS)}.\n`,
+    );
+    return 0;
+  }
+
+  const seuils = lireSeuils();
+  if (seuils === null) {
+    process.stderr.write(
+      `Aucun fichier de seuils. Lance « pnpm cadre:poser » une première fois pour figer l'état actuel.\n`,
+    );
+    return 2;
+  }
+
+  const largeur = Math.max(...mesures.map((m) => m.mesure.id.length));
+  const depassements: string[] = [];
+
+  /* Un plafond sans mesure est un reste : la mesure a été renommée ou retirée, et plus rien ne le
+     lit. Le signaler évite qu'il donne l'illusion d'une garantie. */
+  const connus = new Set(mesures.map(({ mesure }) => mesure.id));
+  for (const orphelin of Object.keys(seuils).filter((id) => !connus.has(id))) {
+    depassements.push(`${orphelin} : plafond posé sur une mesure qui n'existe plus`);
+  }
+  const relachements: string[] = [];
+
+  for (const { mesure, resultat: r } of mesures) {
+    const seuil = seuils[mesure.id];
+    if (seuil === undefined) {
+      depassements.push(`${mesure.id} : mesure absente du fichier de seuils`);
+      continue;
+    }
+    const etat = r.valeur > seuil ? "DÉPASSE" : r.valeur < seuil ? "gagné" : "tenu";
+    process.stdout.write(
+      `  ${mesure.id.padEnd(largeur)}  ${String(r.valeur).padStart(4)} / ${String(seuil).padEnd(4)}  ${etat}\n`,
+    );
+    if (r.valeur > seuil) {
+      depassements.push(
+        `${mesure.id} : ${r.valeur} au lieu de ${seuil}. ${mesure.cible}\n` +
+          r.sites
+            .slice(0, 5)
+            .map((s) => `      ${s.chemin}:${s.ligne}  ${s.extrait}`)
+            .join("\n"),
+      );
+    }
+    if (r.valeur < seuil) relachements.push(`${mesure.id} : ${seuil} → ${r.valeur}`);
+  }
+
+  if (relachements.length > 0) {
+    process.stdout.write(
+      `\nSeuils à resserrer, la reprise est faite mais rien ne la tient encore :\n${relachements
+        .map((r) => `  ${r}`)
+        .join("\n")}\n  Lance « pnpm cadre:poser » pour les figer.\n`,
+    );
+  }
+
+  if (depassements.length > 0) {
+    process.stderr.write(`\n${depassements.length} dépassement(s) :\n\n`);
+    for (const d of depassements) process.stderr.write(`  ${d}\n\n`);
+    return 1;
+  }
+
+  process.stdout.write(`\n${mesures.length} mesures, aucun dépassement.\n`);
+  return 0;
+}
+
+process.exitCode = principal();

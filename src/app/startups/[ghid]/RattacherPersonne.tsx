@@ -117,7 +117,7 @@ function FormulaireRattachement({
           className={fr.cx("fr-mb-2w")}
           severity="warning"
           small
-          description={`Cette date dépasse la fin de mission connue de ${saisie?.fullname ?? username} (${missionEnd}) : le rattachement fera courir ses accès au-delà.`}
+          description={`Cette date dépasse la fin de mission connue de ${saisie?.fullname ?? username} (${missionEnd}). Le rattachement fera courir ses accès au-delà.`}
         />
       ) : null}
 
@@ -158,7 +158,7 @@ function FormulaireRattachement({
       </Button>
 
       <p className={fr.cx("fr-text--sm", "fr-mt-2w")}>
-        Le constat de startups terminées ne se lève ni ne se ferme sur ce geste : il est revu à la
+        Le constat de startups terminées ne se lève ni ne se ferme sur ce geste. Il est revu à la
         prochaine collecte.
       </p>
     </form>
@@ -199,6 +199,7 @@ export function RattacherPersonne({
       </span>
 
       <modaleRattacherPersonne.Component
+        titleAs="h2"
         title={`Rattacher une personne à ${nomStartup}`}
         size="large"
       >

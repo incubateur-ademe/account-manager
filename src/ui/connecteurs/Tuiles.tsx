@@ -10,7 +10,7 @@ import { tuilesDe } from "./registre";
 import { rendreTuile } from "./rendre-tuile";
 
 const PROVENANCE = {
-  base: "Lu en base : ce chiffre date de la dernière collecte.",
+  base: "Lu en base, ce chiffre date de la dernière collecte.",
   systeme: "Demandé au système à l'instant, et pas lu en base.",
 } as const;
 

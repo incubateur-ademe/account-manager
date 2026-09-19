@@ -14,7 +14,7 @@ export function BoutonCollecte({ enCours }: { enCours: boolean }) {
 
   return (
     <form action={formAction}>
-      <Button type="submit" disabled={pending || enCours}>
+      <Button priority="primary" type="submit" disabled={pending || enCours}>
         {pending ? "Lancement…" : "Lancer une collecte"}
       </Button>
 

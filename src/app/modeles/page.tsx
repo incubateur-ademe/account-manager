@@ -71,9 +71,9 @@ export default async function ModelesPage() {
       <h1>Modèles de plan</h1>
 
       <p className={fr.cx("fr-text--lead")}>
-        Ce qu'un modèle porte, aucun système ne le connaît : signer une charte, présenter l'équipe,
-        ouvrir un accès dans un outil que l'outil ne collecte pas. Ces étapes s'ajoutent à ce que
-        les connecteurs proposent, au moment où un dossier est ouvert.
+        Un modèle porte ce qu'aucun système ne connaît, comme signer une charte ou ouvrir un accès
+        dans un outil non collecté. Ces étapes s'ajoutent à ce que les connecteurs proposent, à
+        l'ouverture d'un dossier.
       </p>
 
       <p className={fr.cx("fr-text--sm")}>{MODELE.effetSurLesPlans}</p>
@@ -115,7 +115,7 @@ export default async function ModelesPage() {
 
         {startups.length === 0 ? (
           <p>
-            Aucune startup n'est connue : la collecte du référentiel des startups n'a rien rendu.
+            Aucune startup n'est connue. La collecte du référentiel des startups n'a rien rendu.
           </p>
         ) : (
           <Table
@@ -148,6 +148,7 @@ export default async function ModelesPage() {
 
       {orphelins.length > 0 ? (
         <Alert
+          as="h2"
           className={fr.cx("fr-mt-4w")}
           severity="warning"
           title={`${orphelins.length} modèle${orphelins.length > 1 ? "s" : ""} ne correspond${orphelins.length > 1 ? "ent" : ""} plus à aucune startup connue`}

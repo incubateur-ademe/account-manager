@@ -10,6 +10,7 @@ import { useActionState, useId, useState } from "react";
 import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
 import { type CandidatDeLot, LIBELLE_ECARTE, type ResumeDeLot } from "@/core/startups";
 import { LIBELLE_STATUT } from "@/core/statut";
+import { Absent } from "@/ui/Absent";
 import { SEVERITE_STATUT } from "@/ui/severites";
 import { TableCustom } from "@/ui/TableCustom";
 
@@ -31,6 +32,7 @@ function Recapitulatif({ titre, resume }: { titre: string; resume: ResumeDeLot }
 
   return (
     <Alert
+      as="h3"
       className={fr.cx("fr-mt-2w")}
       severity={resume.echecs.length > 0 ? "warning" : "success"}
       title={`${titre} : ${resume.total} personne${resume.total > 1 ? "s" : ""} soumise${resume.total > 1 ? "s" : ""}`}
@@ -200,7 +202,7 @@ export function TraitementDuLot({
               {
                 children:
                   candidat.ecarte === null ? (
-                    <span className={fr.cx("fr-hint-text")}>rien</span>
+                    <Absent mention="rien" />
                   ) : (
                     <span className={fr.cx("fr-text--sm")}>
                       {LIBELLE_ECARTE[candidat.ecarte]}
@@ -213,7 +215,7 @@ export function TraitementDuLot({
               {
                 children:
                   candidat.constatOuvert === null ? (
-                    <span className={fr.cx("fr-hint-text")}>aucun</span>
+                    <Absent mention="aucun" />
                   ) : (
                     LIBELLE_CONSTAT.INACTIVE_STARTUP.titre
                   ),

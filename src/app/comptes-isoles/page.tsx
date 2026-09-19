@@ -158,8 +158,8 @@ export default async function ComptesIsolesPage() {
 
       <p className={fr.cx("fr-text--lead")}>
         Des comptes existent sur des systèmes de l'incubateur sans qu'aucune personne suivie ni
-        aucun compte de service ne s'en réclame. Ce n'est pas une anomalie de la collecte : chacun
-        attend qu'on lui trouve un détenteur, ou qu'on crée la fiche qui lui manque.
+        aucun compte de service ne s'en réclame. Chacun attend qu'on lui trouve un détenteur, ou
+        qu'on crée la fiche qui lui manque.
       </p>
 
       {lignes.length === 0 ? (

@@ -185,13 +185,12 @@ export const LIBELLE_APPARTENANCE: Record<
     libelle: "Dans l'incubateur, forcé",
     libelleCourt: "Forcé dans",
     precision:
-      "Un opérateur a décidé qu'elle en fait partie : sa décision prime sur ce que les rattachements disent.",
+      "Un opérateur a décidé qu'elle en fait partie. Sa décision prime sur ce que les rattachements disent.",
   },
   EXCLUSION_FORCEE: {
     libelle: "Hors incubateur, forcé",
     libelleCourt: "Forcé hors",
-    precision:
-      "Un opérateur l'a déclarée hors incubateur. Ses comptes continuent d'être examinés : c'est un titre d'appartenance, jamais un ordre de coupure.",
+    precision: "Un opérateur l'a déclarée hors incubateur. Ses comptes continuent d'être examinés.",
   },
   EQUIPE_ET_STARTUP: {
     libelle: "Équipe et startup",
@@ -202,7 +201,7 @@ export const LIBELLE_APPARTENANCE: Record<
     libelle: "Équipe transverse",
     libelleCourt: "Transverse",
     precision:
-      "Elle relève d'une équipe de l'incubateur : aucune startup ne porte son rattachement.",
+      "Elle relève d'une équipe de l'incubateur. Aucune startup ne porte son rattachement.",
   },
   STARTUP: {
     libelle: "Par startup",
@@ -213,7 +212,7 @@ export const LIBELLE_APPARTENANCE: Record<
     libelle: "Par rattachement manuel",
     libelleCourt: "Rattachement manuel",
     precision:
-      "Aucune source amont ne la rattache à l'incubateur : elle y est par une décision datée, prise ici, et bornée par elle.",
+      "Aucune source amont ne la rattache à l'incubateur. Elle y est par une décision datée, prise ici, et bornée par elle.",
   },
   AUCUN: {
     libelle: "Hors incubateur",
@@ -235,7 +234,7 @@ export function libelleAppartenance(appartenance: Appartenance): {
 
   if (appartenance.sansStartupConnue) {
     precisions.push(
-      "Aucune startup connue ne porte pourtant ce rattachement : la dernière collecte n'en a trouvé aucune.",
+      "Aucune startup connue ne porte pourtant ce rattachement. La dernière collecte n'en a trouvé aucune.",
     );
   }
 

@@ -181,12 +181,12 @@ describe("ce que l'écran des droits dit à qui saisit", () => {
     );
     expect(LIBELLE_OCTROI.canalMenace).not.toMatch(/sans doute/u);
 
-    // Then le droit que rien n'atteint se dit aussi, et c'est le seul cas où l'absence
-    // d'adresse est une anomalie : un identifiant beta.gouv réel est une porte, un
-    // identifiant fabriqué ici n'en est pas une
+    // Then le droit que rien n'atteint se dit aussi, et il porte l'issue plutôt que les
+    // deux causes qui l'ont produit : le geste à refaire est le même dans les deux cas
     expect(LIBELLE_OCTROI.sansCanal).toBe(
-      "Le droit est accordé, mais personne ne peut lui envoyer de lien de connexion : sa fiche n'offre aucune adresse que l'outil puisse servir, et son identifiant n'existe que dans cet outil. Redonnez ce droit en déclarant une adresse.",
+      "Le droit est accordé, mais personne ne peut lui envoyer de lien de connexion. Redonnez ce droit en déclarant une adresse.",
     );
+    expect(LIBELLE_OCTROI.sansCanal).toContain("Redonnez ce droit en déclarant une adresse");
     expect(retientLaModale({ avertissement: LIBELLE_OCTROI.sansCanal })).toBe(
       LIBELLE_OCTROI.sansCanal,
     );

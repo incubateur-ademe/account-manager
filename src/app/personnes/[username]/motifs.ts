@@ -208,7 +208,7 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
       titre: "Ce que montre cette fiche n'est plus frais",
       description:
         etat.fraicheur.heures === null
-          ? "Aucune collecte n'a jamais eu lieu : cette fiche ne reflète aucune observation."
+          ? "Aucune collecte n'a jamais eu lieu. Cette fiche ne reflète aucune observation."
           : `Dernière collecte lancée il y a ${etat.fraicheur.heures} heures. Sa situation a pu changer depuis.`,
     });
   }
@@ -224,7 +224,7 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
       cle: "releve-fige",
       severite: "warning",
       titre: "Aucune sortie du référentiel des personnes n'est constatée en ce moment",
-      description: `Les collectes tournent, et ce qu'affiche cette fiche vient bien de la dernière, mais aucune ne s'est dite complète depuis ${etat.ageDuReleve} collectes. Tant que c'est le cas, l'outil ne date aucune disparition, pour personne : que rien ici ne signale un départ ne dit donc rien du sien. Ce qui se lit plus bas, s'il y a quelque chose, a été constaté par la dernière collecte qui s'est dite complète et non par celle de cette nuit. Ce qui bloque est nommé sur l'écran des collectes.`,
+      description: `Aucune collecte ne s'est dite complète depuis ${etat.ageDuReleve} collectes, et ce qu'affiche cette fiche vient bien de la dernière. Aucune disparition n'est datée pendant ce temps, pour personne. Que rien ici ne signale un départ ne dit donc rien du sien. Ce qui se lit plus bas a été constaté par la dernière collecte qui s'est dite complète, et non par celle de cette nuit. Ce qui bloque est nommé sur l'écran des collectes.`,
     });
   }
 
@@ -244,7 +244,7 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
       severite: "warning",
       titre: "La dernière collecte complète n'a pas obtenu sa fiche",
       description:
-        "La source ne l'a ni rendue ni dite inconnue : la lecture de sa fiche a échoué, et une lecture qui n'aboutit pas ne dit rien de sa présence. L'outil n'en conclut donc rien et ne datera aucune sortie du référentiel des personnes tant qu'elle échouera. Ce qu'affiche cette fiche date de sa dernière observation, et ce qui débloquera la situation est en amont, dans l'espace-membre.",
+        "La lecture de sa fiche a échoué. Aucune sortie ne sera datée tant qu'elle échouera, et ce qui s'affiche ici date de la dernière observation. Le déblocage est dans l'espace-membre.",
     });
   } else if (etat.nonRendue) {
     motifs.push({
@@ -252,7 +252,7 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
       severite: "warning",
       titre: "La dernière collecte complète ne l'a pas rendue",
       description:
-        "La source ne l'a pas donnée, et l'outil n'en a rien conclu : une absence d'une seule collecte ne vaut pas départ. Si elle manque encore à la prochaine collecte complète, sa sortie du référentiel des personnes sera constatée. En attendant, ce qu'affiche cette fiche date de sa dernière observation.",
+        "Une absence d'une seule collecte ne vaut pas départ. Si elle manque encore à la prochaine collecte complète, sa sortie du référentiel des personnes sera constatée. En attendant, ce qu'affiche cette fiche date de sa dernière observation.",
     });
   }
 
@@ -311,7 +311,7 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
       severite: "warning",
       titre: "Un rattachement par startup, mais aucune startup connue",
       description:
-        "La dernière collecte n'en a trouvé aucune. Conclure d'une collecte peut-être tronquée reviendrait à la sortir sur du vide : c'est la collecte qu'il faut regarder avant elle.",
+        "La dernière collecte n'en a trouvé aucune, et elle a pu être tronquée. La regarder avant de conclure.",
     });
   }
 

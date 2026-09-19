@@ -5,15 +5,24 @@ import { usePathname } from "next/navigation";
 import type { JSX } from "react";
 import { BasculeModeAide } from "@/ui/ModeAide";
 
-const LIENS_OPERATEUR = [
+/*
+ * Rangé par ce qu'il y a à faire, puis par ce qu'on consulte, puis par la machinerie. L'ordre
+ * précédent suivait les objets métier : les cinq premières entrées ne portaient aucun geste, et la
+ * première file de travail arrivait au sixième rang. Un opérateur ouvre cet outil pour savoir s'il a
+ * quelque chose à faire.
+ *
+ * Douze entrées plates plutôt que trois groupes nommés : grouper ajouterait un clic sur la
+ * machinerie, et le gain de l'ordre s'obtient sans ce coût.
+ */
+export const LIENS_OPERATEUR = [
   { text: "Tableau de bord", href: "/" },
-  { text: "Personnes", href: "/personnes" },
-  { text: "Startups", href: "/startups" },
-  { text: "Dossiers", href: "/dossiers" },
-  { text: "Modèles", href: "/modeles" },
   { text: "Constats", href: "/constats" },
   { text: "Comptes isolés", href: "/comptes-isoles" },
+  { text: "Dossiers", href: "/dossiers" },
   { text: "Comptes de service", href: "/comptes-de-service" },
+  { text: "Personnes", href: "/personnes" },
+  { text: "Startups", href: "/startups" },
+  { text: "Modèles", href: "/modeles" },
   { text: "Systèmes", href: "/systemes" },
   { text: "Collectes", href: "/collectes" },
   { text: "Journal", href: "/journal" },

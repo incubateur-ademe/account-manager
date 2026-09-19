@@ -31,7 +31,7 @@ export const LIBELLE_LANCEMENT = {
   reel: {
     titre: "Les actions sont autorisées",
     description:
-      "Ce bouton écrira réellement sur les systèmes couverts, étape par étape. Ce qui se défait le mieux part en premier : si l'exécution s'interrompt, ce qu'elle laisse derrière elle est ce qu'on sait le mieux reprendre.",
+      "Ce bouton écrira réellement sur les systèmes couverts, étape par étape. Si l'exécution s'interrompt, ce qu'elle laisse derrière elle est ce qu'on sait le mieux reprendre.",
   },
   /**
    * Ce qui se lit avant le clic sur les deux serveurs : la vérification part aussi en
@@ -39,7 +39,7 @@ export const LIBELLE_LANCEMENT = {
    * l'autorisation.
    */
   verification:
-    "Avant d'agir, l'outil relit l'état de chaque étape que le système concerné sait relire, et ne refait pas ce qui est déjà en place. Tous ne savent pas le faire, et une étape qui ne relève d'aucun système, comme celles qui viennent d'un modèle, n'est relue par personne : c'est à vous de constater qu'une charte est signée ou qu'un poste est rendu. Une étape trouvée déjà en place est terminée sans le moindre appel, sauf si quelqu'un doit la contrôler : elle attend alors ce second regard comme les autres. Une étape dont l'état constaté ne correspond pas à l'état attendu n'est jamais exécutée : redonner un accès déjà ouvert changerait le rôle en place au lieu de ne rien faire.",
+    "Avant d'agir, l'outil relit l'état de chaque étape que le système concerné sait relire, et ne refait pas ce qui est déjà en place. Une étape qui ne relève d'aucun système, comme celles qui viennent d'un modèle, n'est relue par personne, et c'est à vous de constater qu'une charte est signée ou qu'un poste est rendu. Une étape trouvée déjà en place est terminée sans le moindre appel, sauf si quelqu'un doit la contrôler. Elle attend alors ce second regard comme les autres. Une étape dont l'état constaté ne correspond pas à l'état attendu n'est jamais exécutée. Redonner un accès déjà ouvert changerait le rôle en place.",
   /**
    * Les termes vivent hors de ce que l'outil confronte au lancement, si bien qu'un
    * terme changé depuis ne fera rien refuser. La phrase dit donc quand les lire, et
@@ -49,7 +49,7 @@ export const LIBELLE_LANCEMENT = {
     "Ce plan pose des termes. Ils ne seront pas revérifiés au lancement : lisez-les maintenant.",
   masse: {
     aucune:
-      "Aucune étape de ce plan ne peut être faite par l'outil lui-même : le lancement s'arrêtera après les relectures d'état qu'il sait faire.",
+      "Aucune étape de ce plan ne peut être faite par l'outil lui-même. Le lancement s'arrêtera après les relectures d'état qu'il sait faire.",
     /** Le plafond au-delà duquel l'exécution réclame une seconde parole. */
     quelques: (executables: number, seuil: number) =>
       `${executables} ${pluriel(executables, "étape", "étapes")} de ce plan ${pluriel(executables, "porte", "portent")} un geste que l'outil fait lui-même, pour un plafond de ${seuil}.`,
@@ -96,11 +96,11 @@ export function compteRendu({
 export const LIBELLE_REMISE = {
   titre: "Une clé vient d'être émise, et elle ne se lira qu'ici",
   unSeulAffichage:
-    "Cette clé s'affiche une fois et une seule. Rien ne la conserve : ni cet outil, ni son journal, ni le service qui l'a émise. En quittant cette page, plus personne ne pourra la relire.",
+    "Cette clé s'affiche une fois et une seule. Ni cet outil, ni son journal, ni le service qui l'a émise ne la conservent. En quittant cette page, plus personne ne pourra la relire.",
   aRemettre:
     "Recopiez-la maintenant, puis remettez-la à son détenteur par un canal qui ne la garde pas. Elle n'a rien à faire dans un ticket, dans une discussion d'équipe ni dans un fichier partagé.",
   perdue:
-    "Perdue, elle ne se retrouve pas. Il faut alors émettre un nouveau jeton : celui-ci restera vivant jusqu'à son terme, et rien ne sait ni le révoquer ni l'interrompre.",
+    "Perdue, elle ne se retrouve pas. Il faut alors émettre un nouveau jeton. Le précédent restera vivant jusqu'à son terme, et rien ne sait ni le révoquer ni l'interrompre.",
   cle: "La clé à remettre",
   /**
    * Le bloc est remplacé et non effacé : une disparition muette ferait chercher où la clé
@@ -109,7 +109,7 @@ export const LIBELLE_REMISE = {
   disparue: {
     titre: "Cette clé a été quittée, donc perdue",
     texte:
-      "Cette page a été quittée, et la clé n'existait nulle part ailleurs : elle ne se retrouve pas. Émettez un nouveau jeton. Le précédent restera vivant jusqu'à son terme, et rien ne sait ni le révoquer ni l'interrompre.",
+      "Cette page a été quittée, et la clé ne se retrouve pas. Émettez un nouveau jeton. Le précédent restera vivant jusqu'à son terme, et rien ne sait ni le révoquer ni l'interrompre.",
   },
   registre: (identifiant: string) =>
     `Ce jeton est inscrit sous « ${identifiant} » dans les comptes de service, sans sa clé.`,
@@ -118,7 +118,7 @@ export const LIBELLE_REMISE = {
     raison: (erreur: string) =>
       `Le jeton a bien été émis, et il vivra jusqu'à son terme. Mais sa fiche n'a pas pu s'écrire ici : ${erreur}`,
     seuleCopie:
-      "Ce qui suit est la seule copie du jeton lui-même, et cette page est le seul endroit où elle existe. Recopiez-le avec la clé, dans le coffre de l'équipe : sans lui, plus rien ne dira qu'un jeton a été émis, ni pour qui, ni jusqu'à quand.",
+      "Ce qui suit est la seule copie du jeton lui-même. Recopiez-le avec la clé, dans le coffre de l'équipe. Sans lui, plus rien ne dira qu'un jeton a été émis, ni pour qui, ni jusqu'à quand.",
     jeton: "Le jeton chiffré, à recopier lui aussi",
   },
 } as const;

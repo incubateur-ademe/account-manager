@@ -24,10 +24,10 @@ export function peutExecuter(etat: EtatPlan): Verdict {
   if (etat === "DRAFT") {
     return {
       possible: false,
-      raison: "Ce plan doit d'abord être confirmé : personne n'a encore répondu de cette liste.",
+      raison: "Ce plan est encore un brouillon. Confirmez-le avant de l'exécuter.",
     };
   }
-  return { possible: false, raison: "Ce plan est clos : il n'y a plus rien à exécuter." };
+  return { possible: false, raison: "Ce plan est clos. Il n'y a plus rien à exécuter." };
 }
 
 /**
@@ -46,7 +46,7 @@ export function refusDePeremption(expiresAt: Date, maintenant: Date): string | n
     return null;
   }
 
-  return `Ce plan valait jusqu'au ${expiresAt.toISOString().slice(0, 10)} : ce qu'il décrit a été constaté il y a trop longtemps pour qu'on agisse dessus sans regarder à nouveau. Rien n'a été ni lu ni écrit. Un plan confirmé ne se recalcule plus : pointez à la main ce qui a été fait, clôturez ce dossier, et rouvrez-en un pour repartir d'un plan à jour.`;
+  return `Ce plan valait jusqu'au ${expiresAt.toISOString().slice(0, 10)}. Rien n'a été ni lu ni écrit. Un plan confirmé ne se recalcule plus. Pointez à la main ce qui a été fait, clôturez ce dossier, et rouvrez-en un pour repartir d'un plan à jour.`;
 }
 
 /**
@@ -67,13 +67,13 @@ export function refusDEcart(
   empreinteActuelle: string,
 ): string | null {
   if (confirmedDigest === null) {
-    return "Ce plan ne porte aucune empreinte confirmée : rien ne dit ce qui a été approuvé, et il n'y a donc rien à comparer. Recalculez-le, puis confirmez-le.";
+    return "Ce plan ne porte aucune empreinte confirmée. Rien ne dit ce qui a été approuvé. Recalculez-le, puis confirmez-le.";
   }
   if (confirmedDigest === empreinteActuelle) {
     return null;
   }
 
-  return "Ce plan ne décrit plus ce qui a été approuvé : les accès observés ont changé depuis la confirmation. Rien n'a été exécuté, et rien ne le sera avant qu'un plan à jour ait été relu et confirmé.";
+  return "Ce plan ne décrit plus ce qui a été approuvé. Rien n'a été exécuté, et rien ne le sera avant qu'un plan à jour ait été relu et confirmé.";
 }
 
 // ---------------------------------------------------------------------------
@@ -138,18 +138,18 @@ export interface DecisionDEtape {
 }
 
 const DEJA_OUVERT =
-  "Le précheck constate l'accès déjà ouvert : quelqu'un ou quelque chose est passé avant, l'étape est soldée sans qu'aucun appel ait été fait.";
+  "Le précheck constate l'accès déjà ouvert. L'étape est soldée sans qu'aucun appel ait été fait.";
 
 const DEJA_FERME =
-  "Le précheck constate l'accès déjà fermé : quelqu'un ou quelque chose est passé avant, l'étape est soldée sans qu'aucun appel ait été fait.";
+  "Le précheck constate l'accès déjà fermé. L'étape est soldée sans qu'aucun appel ait été fait.";
 
 const SIMULATION =
   "Simulation : ACTIONS_ENABLED n'autorise aucune écriture. L'étape est prête et reste en attente, son état ne bouge pas.";
 
 const SANS_VOIE =
-  "Aucune voie automatique sur cette étape : elle attend la main d'un opérateur, et son état ne bouge pas.";
+  "Aucune voie automatique sur cette étape. Elle attend la main d'un opérateur, et son état ne bouge pas.";
 
-const PRETE = "Étape prête, et l'exécution est autorisée : l'appel part maintenant.";
+const PRETE = "Étape prête, et l'exécution est autorisée. L'appel part maintenant.";
 
 /**
  * Ce qu'il advient d'une étape, décidé sans rien lire ni rien écrire.
@@ -186,7 +186,7 @@ export function decider(
     return {
       geste: "aucun",
       etat: "STALE",
-      motif: `L'état constaté diffère de l'état attendu : attendu ${JSON.stringify(precheck.expected)}, constaté ${JSON.stringify(precheck.actual)}. Rien n'est exécuté, un octroi n'étant pas idempotent : le refaire sur un accès existant changerait le rôle en place au lieu de ne rien faire.`,
+      motif: `L'état constaté diffère de l'état attendu : attendu ${JSON.stringify(precheck.expected)}, constaté ${JSON.stringify(precheck.actual)}. Rien n'est exécuté, un octroi n'étant pas idempotent.`,
       resultat: "SKIPPED",
     };
   }

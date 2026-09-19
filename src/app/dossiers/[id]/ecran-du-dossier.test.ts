@@ -633,8 +633,11 @@ describe("l'écran d'un dossier, avec un vrai plan", () => {
 
     // Then aucun bouton de clôture n'est offert : un dossier dont une déclaration
     // attend un regard ne se clôt pas, et proposer le geste pour le refuser au clic
-    // est exactement ce que cet écran évite
-    expect(noeudsRendus(page, parType(BoutonClore))).toEqual([]);
+    // est exactement ce que cet écran évite. Le composant reste monté avec son verdict
+    // à faux, faute de quoi une clôture réussie démonterait son dialogue encore ouvert
+    expect(noeudsRendus(page, parType(BoutonClore)).map(({ props }) => props)).toEqual([
+      { dossierId: "dossier-du-depart", cloturable: false },
+    ]);
     expect(texte).not.toContain("Clore le dossier");
 
     // Then la phrase du brouillon a disparu avec lui, et le titre de la liste dit

@@ -44,14 +44,14 @@ function ChoixDeProfil({ profils, pending }: { profils: ChoixDeProfils; pending:
     <>
       {lus === null ? (
         <p className={fr.cx("fr-text--sm")}>
-          Le fichier de politique n'a pas pu être lu : aucun profil n'est proposé. Le dossier
-          s'ouvre quand même, et son plan n'ouvrira alors rien sur les systèmes couverts.
+          Le fichier de politique n'a pas pu être lu. Le dossier s'ouvre quand même, et son plan
+          n'ouvrira rien sur les systèmes couverts.
         </p>
       ) : null}
 
       {lus !== null && lus.offerts.length === 0 ? (
         <p className={fr.cx("fr-text--sm")}>
-          Aucun profil applicable n'est déclaré : ce dossier n'ouvrira rien sur les systèmes
+          Aucun profil applicable n'est déclaré. Ce dossier n'ouvrira rien sur les systèmes
           couverts, et son plan ne portera que ce que les modèles d'arrivée déclarent.
         </p>
       ) : null}
@@ -98,8 +98,7 @@ function ChoixDeProfil({ profils, pending }: { profils: ChoixDeProfils; pending:
       {lus !== null && lus.refuses.length > 0 ? (
         <>
           <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-            Ces profils sont déclarés mais ne s'appliquent pas en l'état, ils ne sont donc pas
-            proposés :
+            Ces profils sont déclarés mais ne s'appliquent pas en l'état :
           </p>
           <ul className={fr.cx("fr-text--sm", "fr-mb-1w")}>
             {lus.refuses.map((profil) => (
@@ -112,9 +111,8 @@ function ChoixDeProfil({ profils, pending }: { profils: ChoixDeProfils; pending:
       ) : null}
 
       <p className={fr.cx("fr-text--sm")}>
-        Les profils viennent du fichier de politique, lu une seule fois au démarrage du serveur : un
-        profil ajouté ou corrigé depuis n'apparaîtra qu'après un redémarrage, et relire le même
-        refus entre-temps ne veut pas dire que la correction est fausse.
+        Les profils viennent du fichier de politique, lu une seule fois au démarrage du serveur. Un
+        profil ajouté ou corrigé depuis n'apparaîtra qu'après un redémarrage.
       </p>
     </>
   );

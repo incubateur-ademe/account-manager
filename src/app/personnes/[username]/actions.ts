@@ -32,7 +32,7 @@ export async function detacherIdentite(
   const id = String(formData.get("id") ?? "").trim();
 
   if (!id) {
-    return { erreur: "Compte introuvable." };
+    return { erreur: "Aucun compte n'a été choisi. Rechargez la page." };
   }
 
   const identite = await prisma.externalIdentity.findUnique({
@@ -165,7 +165,7 @@ export async function rattacherAStartup(
   const maintenant = new Date();
   if (jourUTC(until) < jourUTC(maintenant)) {
     return {
-      erreur: "Cette date est déjà passée : le rattachement n'aurait aucun effet.",
+      erreur: "Cette date est déjà passée. Indiquez aujourd'hui ou un jour à venir.",
     };
   }
 
@@ -176,7 +176,7 @@ export async function rattacherAStartup(
   if (prolonge && String(formData.get("confirme") ?? "") !== "oui") {
     return {
       erreur:
-        "Cette date dépasse la fin de mission connue : le rattachement prolongera ses accès d'autant. Confirmez pour continuer.",
+        "Cette date dépasse la fin de mission connue. Le rattachement prolongera ses accès d'autant. Confirmez pour continuer.",
       confirmationRequise: true,
     };
   }
@@ -324,12 +324,11 @@ export async function forcerAppartenance(
   const raison = String(formData.get("raison") ?? "").trim();
 
   if (sens !== "INCLUDE" && sens !== "EXCLUDE") {
-    return { erreur: "Sens de la décision non reconnu." };
+    return { erreur: "Ce sens de décision n'est pas dans la liste. Rechargez la page." };
   }
   if (raison.length < 3) {
     return {
-      erreur:
-        "Indiquez la raison de cette décision : une appartenance sans motif est une décision qu'on ne saura pas réexaminer.",
+      erreur: "Indiquez la raison de cette décision, en trois caractères au moins.",
     };
   }
 

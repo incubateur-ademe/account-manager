@@ -33,6 +33,7 @@ import { env } from "@/lib/env";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
 import { dernierPassageComplet } from "@/lib/sync/perimetre";
+import { Absent } from "@/ui/Absent";
 import { dateFr } from "@/ui/dates";
 import { SEVERITE_STATUT } from "@/ui/severites";
 import { TableCustom } from "@/ui/TableCustom";
@@ -40,7 +41,7 @@ import { tolerance } from "@/ui/tolerance";
 
 import { ActionsDePage } from "./ActionsDePage";
 import { CeQuiAppelleUneAction } from "./CeQuiAppelleUneAction";
-import { Absent, Champ } from "./Champs";
+import { Champ } from "./Champs";
 import { expliquerStatut, SEVERITE_APPARTENANCE, SOURCE, STATUT_A_TRAITER } from "./libelles";
 import { motifsDAction } from "./motifs";
 import { SectionComptesExternes } from "./SectionComptesExternes";
@@ -62,7 +63,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     select: { fullname: true },
   });
 
-  return { title: personne ? `${personne.fullname} (${username})` : "Personne introuvable" };
+  return { title: personne ? personne.fullname : "Personne introuvable" };
 }
 
 export default async function FichePersonnePage({ params, searchParams }: Props) {
@@ -416,8 +417,8 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
         {prolongee ? (
           <p className={fr.cx("fr-text--sm")}>
             Sa fin de mission connue est{" "}
-            {personne.missionEnd ? `le ${dateFr.format(personne.missionEnd)}` : "inexistante"} :
-            l'échéance affichée vient d'un rattachement manuel à une startup.
+            {personne.missionEnd ? `le ${dateFr.format(personne.missionEnd)}` : "inexistante"}.
+            L'échéance affichée vient d'un rattachement manuel à une startup.
           </p>
         ) : null}
 
@@ -481,7 +482,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
                     reste ici que ce qu'elle seule sait, qui l'a prise et quand, plus
                     l'invitation à la retirer le jour où elle ne sert plus. */}
                 {surchargeSuperflue(appartenance)
-                  ? "Ses rattachements en cours disent désormais la même chose : cette décision est devenue superflue et peut être retirée. Aucune collecte ne la retirera à votre place."
+                  ? "Ses rattachements en cours disent désormais la même chose. Cette décision peut être retirée, aucune collecte ne la retirera à votre place."
                   : null}
               </>
             }

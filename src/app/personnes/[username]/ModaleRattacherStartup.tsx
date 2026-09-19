@@ -53,7 +53,7 @@ export function ModaleRattacherStartup({
         </Aide>
       </span>
 
-      <modaleRattacherStartup.Component title="Rattacher à une startup" size="large">
+      <modaleRattacherStartup.Component titleAs="h2" title="Rattacher à une startup" size="large">
         <p className={fr.cx("fr-text--sm")}>
           Un rattachement manuel porte obligatoirement une date de fin et le nom de qui l'a posé.
           Aucune collecte ne l'efface, là où les startups collectées sont réécrites chaque nuit.

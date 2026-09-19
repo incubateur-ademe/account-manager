@@ -58,9 +58,8 @@ export type Editabilite = { editable: true } | { editable: false; raison: Raison
 
 export const RAISON_NON_EDITABLE: Record<RaisonNonEditable, string> = {
   COLLECTEE:
-    "Cette fiche vient de l'espace-membre : la collecte réécrit ses champs chaque nuit, ce qui serait saisi ici disparaîtrait à la suivante.",
-  DECLAREE:
-    "Cette personne est déclarée dans la politique : le fichier fait autorité sur sa fiche, que la collecte reconstruit chaque nuit.",
+    "Cette fiche vient de l'espace-membre. Ce qui serait saisi ici disparaîtrait à la collecte suivante.",
+  DECLAREE: "Cette personne est déclarée dans la politique. Le fichier fait autorité sur sa fiche.",
 };
 
 /**

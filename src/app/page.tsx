@@ -2,6 +2,7 @@ import { fr } from "@codegouvfr/react-dsfr";
 import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Table } from "@codegouvfr/react-dsfr/Table";
 import { Tile } from "@codegouvfr/react-dsfr/Tile";
+
 import { CONNECTEURS } from "@/connectors";
 import { FOURNISSEUR_PERIMETRE, fraicheurDe, refusDArrivees, systemesMuets } from "@/core/collecte";
 import type { LigneDInventaire } from "@/core/inventaire";
@@ -145,19 +146,21 @@ export default async function AccueilPage() {
 
       {fraicheur.perimee ? (
         <Alert
+          as="h2"
           severity="warning"
           className={fr.cx("fr-mb-3w")}
           title="Ce que montre cet outil n'est plus à jour"
           description={
             fraicheur.heures === null
-              ? "Aucune collecte n'a jamais eu lieu : les écrans sont vides faute d'observation, ce qui ne dit rien de l'état réel des accès."
-              : `La dernière collecte lancée remonte à ${fraicheur.heures} heures, au-delà des ${thresholds.collectStaleHours} heures admises. Les échéances et les constats affichés sont ceux de ce moment-là : quelqu'un a pu partir depuis sans que rien ici ne le signale.`
+              ? "Aucune collecte n'a jamais eu lieu. Ces écrans ne disent rien des accès réels."
+              : `La dernière collecte lancée remonte à ${fraicheur.heures} heures, au-delà des ${thresholds.collectStaleHours} heures admises. Les échéances et les constats affichés datent de ce moment-là.`
           }
         />
       ) : null}
 
       {muets.length > 0 ? (
         <Alert
+          as="h2"
           severity="warning"
           className={fr.cx("fr-mb-3w")}
           title={
@@ -168,8 +171,7 @@ export default async function AccueilPage() {
           description={
             <>
               <p className={fr.cx("fr-mb-1w")}>
-                Une fiche qui ne montre aucun compte sur ces systèmes ne dit pas qu'il n'y en a pas
-                : elle dit qu'on n'a pas regardé.
+                Une fiche sans compte sur ces systèmes ne dit rien des accès réels.
               </p>
               <ul className={fr.cx("fr-mb-0")}>
                 {muets.map((muet) => (
@@ -196,7 +198,7 @@ export default async function AccueilPage() {
         </p>
       ) : (
         <p className={fr.cx("fr-text--sm")}>
-          Aucune collecte n'a encore été faite : les écrans se rempliront à la première collecte du
+          Aucune collecte n'a encore été faite. Les écrans se rempliront à la première collecte du
           traitement quotidien.
         </p>
       )}
@@ -204,6 +206,7 @@ export default async function AccueilPage() {
       <div className={fr.cx("fr-grid-row", "fr-grid-row--gutters", "fr-mt-4w")}>
         <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
           <Tile
+            titleAs="h2"
             title={`${constatsOuverts} constat${constatsOuverts > 1 ? "s" : ""}`}
             desc={
               `Dont ${sorties} sortie${sorties > 1 ? "s" : ""} du référentiel des personnes ` +
@@ -216,6 +219,7 @@ export default async function AccueilPage() {
         </div>
         <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
           <Tile
+            titleAs="h2"
             title={`${aTraiter} à traiter`}
             desc="Échéance dépassée au-delà du délai de grâce."
             linkProps={{ href: "/personnes?vue=a-traiter" }}
@@ -224,6 +228,7 @@ export default async function AccueilPage() {
         </div>
         <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
           <Tile
+            titleAs="h2"
             title={`${enSursis + bientot} à surveiller`}
             desc={`Échéance dans les ${thresholds.soonDays} jours, ou dépassée depuis peu.`}
             linkProps={{ href: "/personnes?vue=a-surveiller" }}
@@ -235,10 +240,8 @@ export default async function AccueilPage() {
         <h2>Inventaire</h2>
 
         <p className={fr.cx("fr-text--sm")}>
-          Le tableau et les chiffres qui suivent sortent de la base, donc de la dernière collecte :
-          ils disent le dernier état constaté, jamais l'état du jour, et aucun n'est demandé à un
-          système au moment où vous lisez cette page. Les tuiles du bas, elles, disent chacune d'où
-          elles tiennent leur chiffre.
+          Le tableau et les chiffres qui suivent sortent de la dernière collecte, jamais de l'état
+          du jour.
         </p>
 
         <p className={fr.cx("fr-text--sm")}>
@@ -275,6 +278,7 @@ export default async function AccueilPage() {
         <div className={fr.cx("fr-grid-row", "fr-grid-row--gutters", "fr-mt-2w")}>
           <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
             <Tile
+              titleAs="h3"
               title={`${suivies.length} personne${suivies.length > 1 ? "s" : ""} suivie${suivies.length > 1 ? "s" : ""}`}
               desc={`Dont ${sansEcheance} sans échéance connue.`}
               linkProps={{ href: "/personnes" }}
@@ -282,7 +286,19 @@ export default async function AccueilPage() {
             />
           </div>
           <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
+            {/* Le dossier est l'objet central du produit, et rien n'y menait : /dossiers n'avait
+                aucun lien entrant dans tout le dépôt, pas même depuis ici. */}
             <Tile
+              titleAs="h3"
+              title={`${inventaire.dossiers.ouverts} dossier${inventaire.dossiers.ouverts > 1 ? "s" : ""} ouvert${inventaire.dossiers.ouverts > 1 ? "s" : ""}`}
+              desc="Arrivées et départs sur lesquels un geste reste dû."
+              linkProps={{ href: "/dossiers" }}
+              orientation="horizontal"
+            />
+          </div>
+          <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
+            <Tile
+              titleAs="h3"
               title={`${inventaire.nonRevocables.total} compte${inventaire.nonRevocables.total > 1 ? "s" : ""} non révocable${inventaire.nonRevocables.total > 1 ? "s" : ""}`}
               desc={`${inventaire.nonRevocables.sansDetenteur} sans détenteur, ${inventaire.nonRevocables.ressemblance} rattaché${inventaire.nonRevocables.ressemblance > 1 ? "s" : ""} par ressemblance à confirmer.`}
               linkProps={{ href: "/comptes-isoles" }}
@@ -291,6 +307,7 @@ export default async function AccueilPage() {
           </div>
           <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
             <Tile
+              titleAs="h3"
               title={`${inventaire.comptesDeService.suivis} compte${inventaire.comptesDeService.suivis > 1 ? "s" : ""} de service`}
               desc={`Dont ${inventaire.comptesDeService.enRetard} en retard de revue.`}
               linkProps={{ href: "/comptes-de-service" }}
@@ -299,16 +316,18 @@ export default async function AccueilPage() {
           </div>
           <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
             <Tile
+              titleAs="h3"
               title={`${inventaire.startups.suivies} startup${inventaire.startups.suivies > 1 ? "s" : ""}`}
-              desc={`Dont ${inventaire.startups.terminales} en phase terminale et portant encore quelqu'un, ce qui ne justifie plus aucun accès.`}
+              desc={`Dont ${inventaire.startups.terminales} en phase terminale portent encore quelqu'un, sans accès justifié.`}
               linkProps={{ href: "/startups" }}
               orientation="horizontal"
             />
           </div>
           <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
             <Tile
+              titleAs="h3"
               title={`${inventaire.operationsTracees} opération${inventaire.operationsTracees > 1 ? "s" : ""} tracée${inventaire.operationsTracees > 1 ? "s" : ""}`}
-              desc={`Sur ${FENETRE_JOURNAL_JOURS} jours. Compteur approximatif : c'est une preuve d'activité, pas une mesure de couverture. L'écran du journal, lui, montre tout l'historique.`}
+              desc={`Sur ${FENETRE_JOURNAL_JOURS} jours. Compteur approximatif. Le journal montre tout l'historique.`}
               linkProps={{ href: "/journal" }}
               orientation="horizontal"
             />

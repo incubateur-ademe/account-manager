@@ -1,6 +1,5 @@
 import { fr } from "@codegouvfr/react-dsfr";
 import { Alert } from "@codegouvfr/react-dsfr/Alert";
-import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import { Table } from "@codegouvfr/react-dsfr/Table";
 
 import { cheminsConnus, lire, type Niveau } from "@/core/configuration";
@@ -13,7 +12,7 @@ import {
 } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
 
-import { Reglage } from "./Reglage";
+import { Reglages } from "./Reglages";
 
 export const metadata = { title: "Configuration" };
 
@@ -69,49 +68,37 @@ export default async function Configuration() {
 
       {politiqueEntierementParDefaut() ? (
         <Alert
+          as="h2"
           severity="warning"
           title="Aucune politique nulle part"
-          description="Ni fichier, ni variable CONFIG_, ni réglage ici : tout ce qui suit vient des défauts du schéma, et le périmètre ne suit personne. C'est ce qu'un POLICY_DIR mal pointé produit."
+          description="Ni fichier, ni variable CONFIG_, ni réglage ici. Tout ce qui suit vient des défauts du schéma, et le périmètre ne suit personne. C'est ce qu'un POLICY_DIR mal pointé produit."
           className={fr.cx("fr-mb-4w")}
         />
       ) : null}
 
       {inconnues.length > 0 ? (
         <Alert
+          as="h2"
           severity="warning"
           title="Des variables d'environnement ne règlent rien"
-          description={`${inconnues.join(", ")} : aucun réglage ne porte ce nom. Une faute de frappe ne se voit nulle part ailleurs, la valeur ne prenant pas en silence.`}
+          description={`${inconnues.join(", ")} : aucun réglage ne porte ce nom.`}
           className={fr.cx("fr-mb-4w")}
         />
       ) : null}
 
-      <Table
-        fixed
-        caption="Réglages"
-        headers={["Réglage", "Aujourd'hui", "D'où", "Régler"]}
-        data={cheminsConnus(policySchema).map((connu) => {
+      <Reglages
+        lignes={cheminsConnus(policySchema).map((connu) => {
           const niveau = provenances.get(connu.chemin) ?? "defaut";
 
-          return [
-            <span key="c">
-              <strong>{connu.chemin}</strong>
-              <br />
-              <span className={fr.cx("fr-text--sm")}>{connu.variable}</span>
-            </span>,
-            <span key="v" className={fr.cx("fr-text--sm")}>
-              {affiche(lire(reglages, connu.chemin))}
-            </span>,
-            <Badge key="p" severity={LIBELLE[niveau].severite} small noIcon>
-              {LIBELLE[niveau].libelle}
-            </Badge>,
-            <Reglage
-              key="r"
-              chemin={connu.chemin}
-              forme={connu.forme}
-              valeur={affiche(lire(reglages, connu.chemin))}
-              regle={niveau === "base"}
-            />,
-          ];
+          return {
+            chemin: connu.chemin,
+            variable: connu.variable,
+            forme: connu.forme,
+            valeur: affiche(lire(reglages, connu.chemin)),
+            niveau,
+            severite: LIBELLE[niveau].severite,
+            provenance: LIBELLE[niveau].libelle,
+          };
         })}
       />
 

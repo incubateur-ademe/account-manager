@@ -304,7 +304,9 @@ describe("ce que l'action de sortie accepte de l'écran qui l'appelle", () => {
 
     // Then l'action refuse sans rien écrire, et sans rien journaliser non plus : une
     // intention refusée n'est pas une décision.
-    expect(inconnue).toEqual({ erreur: "Famille de garde-fou non reconnue." });
+    expect(inconnue).toEqual({
+      erreur: "Cette famille de garde-fou n'est pas dans la liste. Rechargez la page.",
+    });
     expect(base.autorisations).toHaveLength(3);
     expect(base.journal).toHaveLength(3);
   });
@@ -334,7 +336,7 @@ describe("ce que l'action de sortie accepte de l'écran qui l'appelle", () => {
     // la sienne.
     expect(autres).toEqual({
       erreur:
-        "La chute a changé depuis l'affichage de cette page. Rechargez-la et décidez sur les nombres du jour : une décision porte l'ampleur qu'on avait sous les yeux, et rien de plus profond ne sera daté sur elle.",
+        "La chute a changé depuis l'affichage de cette page. Rechargez-la et décidez sur les nombres du jour.",
     });
     expect(base.autorisations).toEqual([]);
     expect(base.journal).toEqual([]);
@@ -456,7 +458,7 @@ describe("ce que l'action de sortie accepte de l'écran qui l'appelle", () => {
     // fermé la seule sortie du garde-fou.
     expect(sansMesure).toEqual({
       erreur:
-        "La dernière collecte n'a pas pu compter combien de personnes une datation ferait partir. Une décision posée maintenant resterait sans effet et ne daterait rien : reprenez-la quand ce nombre sera de nouveau annoncé.",
+        "La dernière collecte n'a pas pu compter combien de personnes une datation ferait partir. Reprenez quand ce nombre sera de nouveau annoncé.",
     });
     expect(base.autorisations).toEqual([]);
     expect(base.journal).toEqual([]);

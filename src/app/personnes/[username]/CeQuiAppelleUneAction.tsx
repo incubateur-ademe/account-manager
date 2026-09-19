@@ -141,7 +141,7 @@ export function CeQuiAppelleUneAction({
         />
       ))}
 
-      <modaleCloture.Component title={choisi?.titre ?? "Clore ce constat"}>
+      <modaleCloture.Component titleAs="h2" title={choisi?.titre ?? "Clore ce constat"}>
         {choisi ? (
           <>
             <p className={fr.cx("fr-text--sm")}>{choisi.explication}</p>
@@ -161,7 +161,7 @@ export function CeQuiAppelleUneAction({
         ) : null}
       </modaleCloture.Component>
 
-      <modaleArrivee.Component title={LIBELLE_DOSSIER.ONBOARDING.ouvrir}>
+      <modaleArrivee.Component titleAs="h2" title={LIBELLE_DOSSIER.ONBOARDING.ouvrir}>
         <FormulaireOuverture
           key={ouvertureArrivee}
           username={username}

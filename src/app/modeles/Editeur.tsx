@@ -226,7 +226,7 @@ function ChampsDeLEtape({ formulaire, pending }: { formulaire: Formulaire; pendi
               },
             }}
           >
-            <option value="">Personne : cette étape se croit sur parole</option>
+            <option value="">Personne, cette étape se croit sur parole</option>
             {choix(valeurs.controleur, (candidat) =>
               combinaisonValide(valeurs.acteur, candidat),
             ).map((candidat) => (
@@ -411,8 +411,8 @@ function BoutonDeRetrait({ etape }: { etape: EtapeAffichee }) {
     <form action={formAction} className={fr.cx("fr-mt-2w")}>
       <input type="hidden" name="etapeId" value={etape.id} />
       <p className={fr.cx("fr-text--sm", "fr-mb-1w")}>
-        « {etape.titre} » disparaîtra de ce modèle sans retour. Les plans déjà calculés la gardent :
-        leurs étapes sont figées, et le journal garde le détail de celle-ci.
+        « {etape.titre} » disparaîtra de ce modèle sans retour. Les plans déjà calculés la gardent,
+        et le journal en garde le détail.
       </p>
       <Button type="submit" priority="secondary" size="small" disabled={pending}>
         {pending ? "Retrait…" : "Confirmer le retrait"}
@@ -465,7 +465,7 @@ export function BasculeAutorisation({
         {autorise
           ? "Les étapes déclarées par les modèles des startups entrent dans les plans, à la suite de celles-ci."
           : neutralisees === 0
-            ? "Aucune étape de startup n'est déclarée pour ce moment : cette fermeture ne neutralise rien aujourd'hui."
+            ? "Aucune étape de startup n'est déclarée pour ce moment. Cette fermeture ne neutralise rien aujourd'hui."
             : MODELE.neutralisees(neutralisees, "par des startups")}
       </p>
 
@@ -500,10 +500,7 @@ export function Editeur({
   return (
     <>
       {etapes.length === 0 ? (
-        <p>
-          Aucune étape déclarée pour ce moment. Un plan calculé aujourd'hui n'en porterait aucune de
-          la part de ce modèle.
-        </p>
+        <p>Aucune étape déclarée pour ce moment.</p>
       ) : (
         <ol className={fr.cx("fr-mb-4w")}>
           {etapes.map((etape) => (
@@ -557,8 +554,12 @@ export function Editeur({
         </ol>
       )}
 
-      <h3 className={fr.cx("fr-h6")}>Ajouter une étape</h3>
-      <FormulaireDAjout proprietaire={proprietaire} moment={moment} />
+      {/* Replié : l'écran monte cet éditeur une fois par moment, donc le formulaire s'y rendait
+          deux ou trois fois, à 628 pixels pièce, sur une page qui ne déclare parfois aucune
+          étape. Ajouter est un geste, la liste est ce qu'on vient lire. */}
+      <Accordion titleAs="h3" label="Ajouter une étape">
+        <FormulaireDAjout proprietaire={proprietaire} moment={moment} />
+      </Accordion>
     </>
   );
 }

@@ -43,8 +43,8 @@ function Inventaire({ fusion }: { fusion: ApercuFusion }) {
       {fusion.doublons.length > 0 ? (
         <p className={fr.cx("fr-mb-1w")}>
           Les deux fiches ont un compte sur{" "}
-          {fusion.doublons.map((doublon) => doublon.provider).join(", ")} : la fiche cible en
-          portera plusieurs sur le même système, ce qui est permis mais assez rare pour être dit.
+          {fusion.doublons.map((doublon) => doublon.provider).join(", ")}. La fiche cible en portera
+          plusieurs sur le même système.
         </p>
       ) : null}
       {fusion.prolongation ? (
@@ -61,16 +61,16 @@ function Inventaire({ fusion }: { fusion: ApercuFusion }) {
       ) : null}
       {fusion.surchargeAbandonnee ? (
         <p className={fr.cx("fr-mb-1w")}>
-          La fiche cible porte déjà une surcharge d'appartenance et n'en garde qu'une : celle-ci
-          sera perdue, et le journal en gardera seul la trace. {fusion.surchargeAbandonnee}.
+          La fiche cible porte déjà une surcharge d'appartenance et n'en garde qu'une. Celle-ci sera
+          perdue, seul le journal en gardera la trace. {fusion.surchargeAbandonnee}.
         </p>
       ) : null}
       {fusion.surchargeSuit ? (
         <p className={fr.cx("fr-mb-1w")}>Sa surcharge d'appartenance suit sur la fiche cible.</p>
       ) : null}
       <p className={fr.cx("fr-mb-0")}>
-        Les méthodes de rapprochement sont conservées : un compte rattaché par ressemblance le
-        reste, et ne pourra toujours pas justifier une coupure.
+        Un compte rattaché par ressemblance le reste, et ne pourra toujours pas justifier une
+        coupure.
       </p>
     </>
   );
@@ -96,7 +96,7 @@ export function Identifiant({ username }: { username: string }) {
 
       <Input
         label="Corriger l'identifiant"
-        hintText="Cet identifiant a été fabriqué ici, faute de fiche beta.gouv. Le corriger vers un vrai username beta.gouv fera adopter la fiche par la collecte, qui réécrira alors nom, login et adresses avec la version de l'espace-membre."
+        hintText="Cet identifiant a été fabriqué ici, faute de fiche beta.gouv. Le corriger vers un vrai username fera adopter la fiche par la collecte, qui réécrira nom, login et adresses depuis l'espace-membre."
         nativeInputProps={{
           name: "nouveau",
           required: true,
@@ -112,6 +112,7 @@ export function Identifiant({ username }: { username: string }) {
 
       {fusion === null ? null : fusion.blocage !== null ? (
         <Alert
+          as="h3"
           className={fr.cx("fr-mb-2w")}
           severity="error"
           small
@@ -121,14 +122,15 @@ export function Identifiant({ username }: { username: string }) {
       ) : (
         <>
           <Alert
+            as="h3"
             className={fr.cx("fr-mb-2w")}
             severity="warning"
             title={`« ${fusion.cible} » existe déjà`}
             description={
               <>
                 <p className={fr.cx("fr-mb-1w")}>
-                  Confirmer fusionne les deux fiches : tout ce qui suit passe sur « {fusion.cible} »
-                  et « {fusion.source} » disparaît. Le geste est tracé et ne se défait pas.
+                  Confirmer fait passer tout ce qui suit sur « {fusion.cible} », et «{" "}
+                  {fusion.source} » disparaît. Le geste est tracé et ne se défait pas.
                 </p>
                 <Inventaire fusion={fusion} />
               </>
@@ -138,7 +140,7 @@ export function Identifiant({ username }: { username: string }) {
             small
             options={[
               {
-                label: "Oui, c'est la même personne : fusionner",
+                label: "Oui, c'est la même personne",
                 nativeInputProps: { name: "confirme", value: "oui" },
               },
             ]}
@@ -148,7 +150,9 @@ export function Identifiant({ username }: { username: string }) {
 
       <Button type="submit" priority="secondary" disabled={pending}>
         {pending
-          ? "En cours…"
+          ? fusion !== null && fusion.blocage === null
+            ? "Fusion…"
+            : "Correction…"
           : fusion !== null && fusion.blocage === null
             ? "Fusionner"
             : "Corriger l'identifiant"}

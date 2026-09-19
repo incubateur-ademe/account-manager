@@ -202,7 +202,7 @@ function FormulaireOctroi({
           }}
         />
 
-        <Button type="submit" disabled={pending}>
+        <Button priority="primary" type="submit" disabled={pending}>
           {pending ? LIBELLE_OCTROI.enCours : LIBELLE_OCTROI.soumettre}
         </Button>
 
@@ -246,7 +246,7 @@ function Octroi({
         {LIBELLE_OCTROI.declencheur}
       </Button>
 
-      <modaleOctroi.Component title={LIBELLE_OCTROI.titre}>
+      <modaleOctroi.Component titleAs="h2" title={LIBELLE_OCTROI.titre}>
         <FormulaireOctroi key={ouverture} dossierId={dossierId} domainesMenaces={domainesMenaces} />
       </modaleOctroi.Component>
     </>

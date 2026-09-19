@@ -1,6 +1,8 @@
 import { fr } from "@codegouvfr/react-dsfr";
 import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Badge } from "@codegouvfr/react-dsfr/Badge";
+import { Breadcrumb } from "@codegouvfr/react-dsfr/Breadcrumb";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -391,7 +393,7 @@ function EtapeOperateur({
           {etape.grantExpiresAt ? (
             <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
               <strong>Accès accordé jusqu'au {dateLocale.format(etape.grantExpiresAt)}.</strong> Ce
-              terme est compté depuis le calcul de ce plan : une prolongation de mission ne le
+              terme est compté depuis le calcul de ce plan. Une prolongation de mission ne le
               repousse pas, et reconduire cet accès demandera un nouveau plan.
             </p>
           ) : null}
@@ -439,6 +441,26 @@ function EtapeOperateur({
       }
     />
   );
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  await requireOperateur();
+
+  const { id } = await params;
+  const dossier = await prisma.accessCase.findUnique({
+    where: { id },
+    select: { kind: true, person: { select: { fullname: true } } },
+  });
+
+  return {
+    title: dossier
+      ? `${LIBELLE_DOSSIER[dossier.kind].nom} de ${dossier.person.fullname}`
+      : "Dossier introuvable",
+  };
 }
 
 export default async function DossierPage({
@@ -721,6 +743,12 @@ export default async function DossierPage({
 
   return (
     <main className={fr.cx("fr-container", "fr-my-6w")}>
+      <Breadcrumb
+        currentPageLabel={`${mots.nom} de ${dossier.person.fullname}`}
+        homeLinkProps={{ href: "/" }}
+        segments={[{ label: "Dossiers", linkProps: { href: "/dossiers" } }]}
+      />
+
       <h1 className={fr.cx("fr-mb-1v")}>
         {mots.nom} de {dossier.person.fullname}{" "}
         {clos ? (
@@ -756,6 +784,7 @@ export default async function DossierPage({
 
       {etat?.obsolete && (brouillon || confirme) ? (
         <Alert
+          as="h2"
           severity="warning"
           className={fr.cx("fr-mb-3w")}
           title="Ce plan ne décrit plus la situation"
@@ -771,9 +800,8 @@ export default async function DossierPage({
                  bouton du tout. */
               <>
                 <p className={fr.cx("fr-mb-1w")}>
-                  Ce plan reste celui qui a été confirmé et ne se recalcule plus : ses étapes valent
-                  telles quelles. Ce qui a changé depuis se traite hors de lui, et la collecte
-                  suivante le redira.
+                  Ce plan reste celui qui a été confirmé et ne se recalcule plus. Ce qui a changé
+                  depuis se traite hors de lui, et la collecte suivante le redira.
                 </p>
                 {ecart && ecart.manquantes.length > 0 ? (
                   <>
@@ -810,6 +838,7 @@ export default async function DossierPage({
 
       {etat?.perime && (brouillon || confirme) ? (
         <Alert
+          as="h2"
           severity="warning"
           className={fr.cx("fr-mb-3w")}
           title="Ce plan a dépassé sa date de validité"
@@ -831,7 +860,7 @@ export default async function DossierPage({
                 </p>
               ) : (
                 <p className={fr.cx("fr-mb-0")}>
-                  Il ne partira pas et ne se recalcule plus : cochez à la main ce qui a été fait,
+                  Il ne partira pas et ne se recalcule plus. Cochez à la main ce qui a été fait,
                   clôturez ce dossier, et rouvrez-en un pour repartir d'un plan à jour.
                 </p>
               )}
@@ -842,6 +871,7 @@ export default async function DossierPage({
 
       {actuel && actuel.nonConfirmes.length > 0 ? (
         <Alert
+          as="h2"
           severity="warning"
           className={fr.cx("fr-mb-3w")}
           title="Des comptes ne peuvent pas entrer dans ce plan"
@@ -849,8 +879,7 @@ export default async function DossierPage({
             <>
               <p className={fr.cx("fr-mb-1w")}>
                 {actuel.nonConfirmes.join(", ")}. Ces comptes lui sont rattachés sur une simple
-                ressemblance de nom, jamais sur une preuve. Couper sur cette base reviendrait à
-                couper l'accès d'un homonyme, donc aucune étape ne les vise.
+                ressemblance de nom, jamais sur une preuve. Aucune étape ne les vise.
               </p>
               <p className={fr.cx("fr-mb-0")}>
                 <Link href="/comptes-isoles">
@@ -864,15 +893,16 @@ export default async function DossierPage({
 
       {actuel && actuel.refus.length > 0 ? (
         <Alert
+          as="h2"
           severity="error"
           className={fr.cx("fr-mb-3w")}
           title="Ce plan ne peut pas être construit"
           description={
             <>
               <p className={fr.cx("fr-mb-1w")}>
-                Un accès du profil appliqué ne s'applique pas en l'état. Rien ne s'enregistre à
-                moitié : tant que ces lignes ne sont pas corrigées, aucune étape n'est produite, et
-                le recalcul refusera de la même façon.
+                Un accès du profil appliqué ne s'applique pas en l'état. Tant que ces lignes ne sont
+                pas corrigées, aucune étape n'est produite, et le recalcul refusera de la même
+                façon.
               </p>
               <ul className={fr.cx("fr-mb-1w")}>
                 {actuel.refus.map((refus) => (
@@ -883,9 +913,8 @@ export default async function DossierPage({
                 ))}
               </ul>
               <p className={fr.cx("fr-mb-0")}>
-                Cela se corrige dans le fichier de politique, sous <code>profiles</code>, lu une
-                seule fois au démarrage : le serveur doit redémarrer pour que la correction se voie
-                ici.
+                Cela se corrige dans le fichier de politique, sous <code>profiles</code>. Le serveur
+                doit redémarrer pour que la correction se voie ici.
               </p>
             </>
           }
@@ -894,6 +923,7 @@ export default async function DossierPage({
 
       {actuel && actuel.sansConnecteur.length > 0 ? (
         <Alert
+          as="h2"
           severity="warning"
           className={fr.cx("fr-mb-3w")}
           title="Des comptes sont hors des systèmes couverts"
@@ -903,6 +933,7 @@ export default async function DossierPage({
 
       {annule ? (
         <Alert
+          as="h2"
           severity="info"
           className={fr.cx("fr-mb-3w")}
           title={mots.annulationTitre}
@@ -926,7 +957,7 @@ export default async function DossierPage({
 
       {!plan ? (
         <p>
-          Aucun plan n'a été enregistré pour ce dossier : son calcul n'a pas abouti.
+          Aucun plan n'a été enregistré pour ce dossier.
           {annule || clos ? "" : mots.sansPlanIssue}
         </p>
       ) : plan.steps.length === 0 ? (
@@ -988,6 +1019,7 @@ export default async function DossierPage({
 
           {plan.state === "PARTIALLY_EXECUTED" ? (
             <Alert
+              as="h3"
               severity="warning"
               className={fr.cx("fr-mt-2w")}
               title={mots.echecTitre}
@@ -1008,6 +1040,7 @@ export default async function DossierPage({
               clic fera avant de le faire. */}
           {simulation ? (
             <Alert
+              as="h3"
               severity="info"
               className={fr.cx("fr-mb-2w")}
               small
@@ -1016,6 +1049,7 @@ export default async function DossierPage({
             />
           ) : (
             <Alert
+              as="h3"
               severity="warning"
               className={fr.cx("fr-mb-2w")}
               small
@@ -1058,8 +1092,8 @@ export default async function DossierPage({
         <section className={fr.cx("fr-mt-4w")}>
           <h2 className={fr.cx("fr-h5")}>Ce que le calcul n'a pas retenu</h2>
           <p className={fr.cx("fr-text--sm")}>
-            Ces étapes ont été proposées, le calcul du jour ne les a pas retenues. Rien n'est laissé
-            de côté en silence : si l'une d'elles compte, elle est à traiter hors de ce plan.
+            Ces étapes ont été proposées, le calcul du jour ne les a pas retenues. Si l'une d'elles
+            compte, elle est à traiter hors de ce plan.
           </p>
           <ul>
             {actuel.ecartees.map((ecartee) => (
@@ -1093,9 +1127,13 @@ export default async function DossierPage({
       {/* Hors du bloc des étapes, comme l'annulation : un plan qui n'en porte aucune
           est soldé par construction, et le bouton vivait dans une branche que ce
           cas-là n'atteint jamais. */}
-      {plan && peutClore(dossier.kind, dossier.state, plan.state, plan.steps.length).possible ? (
-        <BoutonClore dossierId={dossier.id} />
-      ) : null}
+      <BoutonClore
+        dossierId={dossier.id}
+        cloturable={
+          peutClore(dossier.kind, dossier.state, plan?.state ?? null, plan?.steps.length ?? 0)
+            .possible
+        }
+      />
 
       <BoutonAnnuler
         dossierId={dossier.id}

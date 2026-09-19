@@ -5,6 +5,8 @@
   "license": "MIT",
   "scripts": {
     "build": "next build",
+    "cadre": "node --import tsx src/cli/releve-ui.ts",
+    "cadre:poser": "node --import tsx src/cli/releve-ui.ts --poser",
     "db:deploy": "prisma migrate deploy",
     "db:deploy:test": "DATABASE_URL=\"${DATABASE_URL:-postgresql://account_manager:account_manager@127.0.0.1:${POSTGRES_PORT:-5432}/account_manager_test}\" NODE_ENV=test prisma migrate deploy",
     "db:generate": "prisma generate",
@@ -25,7 +27,7 @@
     "test:e2e": "playwright test",
     "test:integration": "DATABASE_URL=\"${DATABASE_URL:-postgresql://account_manager:account_manager@127.0.0.1:${POSTGRES_PORT:-5432}/account_manager_test}\" vitest run --project integration",
     "typecheck": "next typegen && tsc --noEmit",
-    "verify": "pnpm lint && pnpm typecheck && pnpm test"
+    "verify": "pnpm lint && pnpm cadre && pnpm typecheck && pnpm test"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",

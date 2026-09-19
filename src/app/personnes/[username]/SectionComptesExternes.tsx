@@ -36,8 +36,8 @@ export function SectionComptesExternes({
           small
           description={
             systemesCollectes.length === 0
-              ? "Aucun système couvert n'a encore été lu. Cette liste est vide faute d'observation, ce qui ne dit rien des accès réellement détenus."
-              : `Aucun compte ne lui est rattaché sur les systèmes déjà collectés (${systemesCollectes.join(", ")}). Tout système absent de cette liste n'a jamais été lu : son état reste inconnu.`
+              ? "Aucun système couvert n'a encore été lu. Cette liste ne dit rien des accès détenus."
+              : `Aucun compte ne lui est rattaché sur les systèmes déjà collectés (${systemesCollectes.join(", ")}). Tout système absent de cette liste n'a jamais été lu.`
           }
         />
       ) : (

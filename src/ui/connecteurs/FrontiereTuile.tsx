@@ -1,6 +1,7 @@
 "use client";
 
 import { fr } from "@codegouvfr/react-dsfr";
+import { CallOut } from "@codegouvfr/react-dsfr/CallOut";
 import { catchError, type ErrorInfo } from "next/error";
 
 /**
@@ -19,19 +20,20 @@ function Repli({ titre }: { titre: string }, { error }: ErrorInfo) {
   const citer = reference(error);
 
   return (
-    <div className={fr.cx("fr-callout")}>
-      <h3 className={fr.cx("fr-callout__title", "fr-text--lg")}>{titre}</h3>
-      <p className={fr.cx("fr-callout__text", "fr-text--sm")}>
-        Ce chiffre n'a pas pu s'afficher. Le reste de la page n'est pas concerné, et le détail est
-        consigné dans les journaux du serveur.
-        {citer ? (
-          <>
-            {" "}
-            Référence à citer : <code>{citer}</code>.
-          </>
-        ) : null}
-      </p>
-    </div>
+    <CallOut
+      title={titre}
+      titleAs="h3"
+      classes={{ title: fr.cx("fr-text--lg"), text: fr.cx("fr-text--sm") }}
+    >
+      Ce chiffre n'a pas pu s'afficher. Le reste de la page n'est pas concerné, et le détail est
+      consigné dans les journaux du serveur.
+      {citer ? (
+        <>
+          {" "}
+          Référence à citer : <code>{citer}</code>.
+        </>
+      ) : null}
+    </CallOut>
   );
 }
 

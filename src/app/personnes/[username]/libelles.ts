@@ -52,18 +52,18 @@ export function expliquerStatut(
 ): string {
   switch (statut) {
     case "SORTI":
-      return "Elle a quitté le référentiel des personnes de l'incubateur, et rien ici ne dit ce que ses accès sont devenus.";
+      return "Rien ici ne dit ce que ses accès sont devenus.";
     case "A_TRAITER":
       return `Son échéance est dépassée au-delà du délai de grâce de ${graceDays} jours.`;
     case "EN_SURSIS":
-      return `Son échéance est dépassée, mais le délai de grâce de ${graceDays} jours court encore : un renouvellement signé en retard est encore possible.`;
+      return `Son échéance est dépassée, mais le délai de grâce de ${graceDays} jours court encore.`;
     case "BIENTOT":
       return `Son échéance tombe dans les ${soonDays} prochains jours.`;
     case "ACTIF":
-      return "Aucune échéance ne la fait remonter. Cela ne dit rien de son activité réelle, que ses startups seules renseignent.";
+      return "Aucune échéance ne la fait remonter. Seules ses startups disent son activité.";
     case "SANS_ECHEANCE":
-      return "Aucune date de fin de mission n'est connue : aucune échéance ne la fera remonter.";
+      return "Aucune échéance ne la fera remonter.";
     case "ANCIEN":
-      return `Son échéance est dépassée depuis plus de ${staleDays} jours : elle relève désormais de l'historique.`;
+      return `Son échéance est dépassée depuis plus de ${staleDays} jours.`;
   }
 }

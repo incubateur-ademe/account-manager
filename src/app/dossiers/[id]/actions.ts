@@ -334,7 +334,7 @@ export async function pointerEtape(
 
   const nouvelEtat = POINTAGES[choix];
   if (!nouvelEtat) {
-    return { erreur: "Pointage inconnu." };
+    return { erreur: "Ce pointage n'est pas dans la liste. Rechargez la page." };
   }
 
   // Écarter une étape n'est pas déclarer un geste, c'est décider qu'un geste prévu
@@ -437,7 +437,7 @@ export async function pointerEtape(
     return {
       erreur:
         nouvelEtat === "SKIPPED"
-          ? "Dites pourquoi cette étape est écartée : sans raison, elle deviendra un accès oublié."
+          ? "Dites pourquoi cette étape est écartée."
           : "Dites ce qui a échoué, sinon personne ne saura quoi reprendre.",
     };
   }
@@ -449,7 +449,7 @@ export async function pointerEtape(
   if (!origine.success) {
     return {
       erreur:
-        "L'origine déclarée de cette étape est illisible : reprenez-la depuis son modèle avant de la cocher.",
+        "L'origine déclarée de cette étape est illisible. Reprenez-la depuis son modèle avant de la cocher.",
     };
   }
 
@@ -595,7 +595,7 @@ export async function validerEtape(
 
   const avis = VERDICTS[choix];
   if (!avis) {
-    return { erreur: "Verdict inconnu." };
+    return { erreur: "Ce verdict n'est pas dans la liste. Rechargez la page." };
   }
 
   const etape = await prisma.planStep.findUnique({
@@ -690,7 +690,7 @@ export async function validerEtape(
   // referait le même geste.
   if (avis === "REFUSED" && note.length < 3) {
     return {
-      erreur: "Dites ce qui manque : sans motif, le refus renvoie l'étape à faire sans dire quoi.",
+      erreur: "Dites ce qui manque.",
     };
   }
 

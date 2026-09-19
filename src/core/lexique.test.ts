@@ -61,7 +61,7 @@ describe("ce que l'écran dit d'une collecte", () => {
     // Then le silence d'un système non lu se dit comme un silence, et non comme un
     // résultat : « zéro compte » et « pas regardé » se ressemblent trait pour trait sur
     // un tableau de nombres, et c'est la confusion que cet outil existe pour lever.
-    expect(LIBELLE_ETAT_COLLECTE.SKIPPED.explication).toMatch(/ne dit pas/u);
+    expect(LIBELLE_ETAT_COLLECTE.SKIPPED.explication).toMatch(/inconnu/u);
   });
 
   it("range les quatre conclusions par ce qu'elles coûtent, et non par ordre d'apparition", () => {

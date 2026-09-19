@@ -186,7 +186,7 @@ function verdictDAcces(
 
   if (!systeme.octroiDeclare) {
     return refuse(
-      "ce système ne déclare aucun octroi : son connecteur ne sait pas encore donner un accès, même à la main. L'accès est à retirer du profil en attendant qu'il le sache.",
+      "ce système ne déclare aucun octroi. L'accès est à retirer du profil en attendant.",
     );
   }
 
@@ -272,7 +272,7 @@ function examinerProfil<T extends SystemeOffrantOctroi>(
 
       if (premiere) {
         motifs.push(
-          `${examen.libelle} vise ce que ${premiere.libelle} vise déjà, déclaré au rang ${premiere.rang} de ce profil : deux accès sur une même cible ne s'ajoutent pas, le second y remplacerait le rôle posé par le premier. À l'exécution, la seconde étape constaterait un autre état que celui qu'elle attend et resterait en écart pour toujours. Ne gardez que le rôle voulu.`,
+          `${examen.libelle} vise ce que ${premiere.libelle} vise déjà, déclaré au rang ${premiere.rang} de ce profil. Deux accès sur une même cible ne s'ajoutent pas, le second y remplacerait le rôle posé par le premier. Ne gardez que le rôle voulu.`,
         );
       } else {
         visees.set(cible, { rang, libelle: examen.libelle });
@@ -536,7 +536,7 @@ function etapeSansVoie(
     manual: {
       title: `Ouvrir ${libelle} à ${qui}, à la main`,
       runbook: `${systeme.capacite.runbook}${pourquoi}`,
-      doneWhen: `${qui} détient ${libelle}, ou porte une demande d'accès que le système n'attend plus que d'accepter : une demande en attente est un accès accordé, pas un accès en suspens.`,
+      doneWhen: `${qui} détient ${libelle}, ou porte une demande d'accès que le système n'attend plus que d'accepter.`,
     },
   };
 }
@@ -612,7 +612,7 @@ export function assemblerOctrois(
 
       for (const etape of elevees) {
         refuser(
-          `${quoi} ouvre une étape à risque élevé, « ${etape.label} » : elle exige une échéance, sous expiresInDays. Sans terme, l'accès ne se referme jamais de lui-même.`,
+          `${quoi} ouvre une étape à risque élevé, « ${etape.label} ». Elle exige une échéance, sous expiresInDays.`,
         );
       }
       continue;

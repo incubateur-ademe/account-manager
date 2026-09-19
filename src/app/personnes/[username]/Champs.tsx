@@ -9,7 +9,3 @@ export function Champ({ libelle, children }: { libelle: string; children: ReactN
     </div>
   );
 }
-
-export function Absent({ mention = "non renseigné" }: { mention?: string }) {
-  return <span className={fr.cx("fr-hint-text")}>{mention}</span>;
-}

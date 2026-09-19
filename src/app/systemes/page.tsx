@@ -1,7 +1,9 @@
 import { fr } from "@codegouvfr/react-dsfr";
+import { Accordion } from "@codegouvfr/react-dsfr/Accordion";
 import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Badge } from "@codegouvfr/react-dsfr/Badge";
 import { Table } from "@codegouvfr/react-dsfr/Table";
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import { CONNECTEURS, catalogueDOctroi } from "@/connectors";
@@ -13,6 +15,8 @@ import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
 import { aUnePage } from "@/ui/connecteurs/registre";
 import { type ScopeAttendu, scopeAttendu } from "@/ui/connecteurs/scope-attendu";
+
+export const metadata: Metadata = { title: "Systèmes couverts" };
 
 export const dynamic = "force-dynamic";
 
@@ -107,8 +111,7 @@ function Scope({
   if (!octroiDeclare) {
     return (
       <p className={fr.cx("fr-text--sm", "fr-mt-2w")}>
-        Aucun scope attendu : ce système ne déclare pas d'octroi, un profil ne peut donc pas encore
-        le viser.
+        Aucun scope attendu. Un profil ne peut pas encore viser ce système.
       </p>
     );
   }
@@ -116,7 +119,7 @@ function Scope({
   if (scope.etat === "illisible") {
     return (
       <p className={fr.cx("fr-text--sm", "fr-mt-2w")}>
-        Le scope attendu n'a pas pu être rendu : le schéma de ce connecteur n'est pas déclaratif.
+        Le scope attendu n'a pas pu être rendu, le schéma de ce connecteur n'étant pas déclaratif.
         C'est un défaut du connecteur, à corriger dans le code.
       </p>
     );
@@ -125,8 +128,8 @@ function Scope({
   if (scope.champs.length === 0) {
     return (
       <p className={fr.cx("fr-text--sm", "fr-mt-2w")}>
-        Aucun champ de scope : sur ce système, un accès ne se découpe pas, et un profil y laisse{" "}
-        <code>scope</code> vide.
+        Aucun champ de scope. Un accès ne s'y découpe pas, et un profil y laisse <code>scope</code>{" "}
+        vide.
       </p>
     );
   }
@@ -135,11 +138,8 @@ function Scope({
     <>
       <p className={fr.cx("fr-text--sm", "fr-mt-2w", "fr-mb-1w")}>
         Ce qu'un profil de la politique écrit sous <code>accesses[].scope</code> pour viser ce
-        système. C'est le schéma du connecteur lui-même, celui qui refusera la saisie, et non une
-        copie tenue à côté.{" "}
-        {scope.clesInconnuesRefusees
-          ? "Toute clé absente de ce tableau est refusée : dans un fichier écrit à la main, une clé inconnue est une faute de frappe."
-          : ""}
+        système. C'est le schéma du connecteur lui-même, pas une copie tenue à côté.{" "}
+        {scope.clesInconnuesRefusees ? "Toute clé absente de ce tableau est refusée." : ""}
       </p>
 
       <Table
@@ -241,15 +241,13 @@ export default async function SystemesPage() {
 
       <p className={fr.cx("fr-text--sm")}>
         Ce que l'outil sait faire sur chaque système, tel que ses credentials le permettent
-        aujourd'hui et non tel que le code l'espère. Un octroi ou un retrait automatique qui tombe
-        redevient un geste à faire à la main ; une lecture qui tombe, elle, s'arrête, et la marche à
-        suivre dit alors quoi vérifier pour qu'elle reparte.
+        aujourd'hui et non tel que le code l'espère.
       </p>
 
       {profils.etat === "illisible" ? (
         <p className={fr.cx("fr-text--sm")}>
-          La politique n'a pas pu être lue : les profils déclarés ne sont pas affichés. Le reste de
-          cet écran n'en dépend pas, et le détail est consigné dans les journaux du serveur.
+          La politique n'a pas pu être lue. Les profils déclarés ne sont pas affichés, le reste de
+          cet écran n'en dépend pas.
         </p>
       ) : null}
 
@@ -268,65 +266,69 @@ export default async function SystemesPage() {
               : "Jamais lu."}
           </p>
 
-          <Table
-            fixed
-            caption={`Capacités sur ${contrat.label}`}
-            headers={[
-              "Capacité",
-              "Aujourd'hui",
-              "Ce qui manque pour faire mieux",
-              "Marche à suivre",
-            ]}
-            data={capacites.map(({ libelle, quoi, resolue }) => [
-              <span key="c">
-                <strong>{libelle}</strong>
-                <br />
-                <span className={fr.cx("fr-text--sm")}>{quoi}</span>
-              </span>,
-              <Badge key="t" severity={LIBELLE_TIER[resolue.tier].severite} small noIcon>
-                {LIBELLE_TIER[resolue.tier].libelle}
-              </Badge>,
-              resolue.degradedFrom ? (
-                <span key="m" className={fr.cx("fr-text--sm")}>
-                  {LIBELLE_TIER[resolue.degradedFrom.tier].libelle} si :{" "}
-                  {resolue.degradedFrom.missing.join(", ")}
-                </span>
-              ) : (
-                <span key="m" className={fr.cx("fr-text--sm")}>
-                  sans objet
-                </span>
-              ),
-              <span key="r" className={fr.cx("fr-text--sm")}>
-                {/* Une capacité qu'aucune voie ne déclare n'a pas de marche à suivre : le
-                    socle retombe alors sur le runbook du contrat, qui dit comment retirer
-                    quelqu'un, et l'afficher là ferait répondre à une question que personne
-                    n'a posée. Déclarée mais hors d'atteinte, c'est l'inverse : il y a
-                    justement quelque chose à faire, et c'est celle de la voie qu'on ne
-                    peut pas emprunter aujourd'hui. */}
-                {resolue.decl || resolue.degradedFrom
-                  ? resolue.runbook
-                  : "aucune, ce système ne le fait pas"}
-              </span>,
-            ])}
-          />
+          {/* Le détail du contrat se replie : ce qu'un opérateur vient voir ici est l'état des
+              lectures, et cette référence se lit une fois, le jour où l'on branche le système.
+              Dépliée pour trois systèmes, elle faisait à elle seule quatre mille pixels. */}
+          <Accordion titleAs="h3" label={`Ce que ${contrat.label} sait faire, et ce qu'il attend`}>
+            <Table
+              fixed
+              caption={`Capacités sur ${contrat.label}`}
+              headers={["Capacité", "Aujourd'hui", "Ce qui manque pour faire mieux"]}
+              data={capacites.map(({ libelle, quoi, resolue }) => [
+                <span key="c">
+                  <strong>{libelle}</strong>
+                  <br />
+                  <span className={fr.cx("fr-text--sm")}>{quoi}</span>
+                </span>,
+                <Badge key="t" severity={LIBELLE_TIER[resolue.tier].severite} small noIcon>
+                  {LIBELLE_TIER[resolue.tier].libelle}
+                </Badge>,
+                resolue.degradedFrom ? (
+                  <span key="m" className={fr.cx("fr-text--sm")}>
+                    {LIBELLE_TIER[resolue.degradedFrom.tier].libelle} si :{" "}
+                    {resolue.degradedFrom.missing.join(", ")}
+                  </span>
+                ) : (
+                  <span key="m" className={fr.cx("fr-text--sm")}>
+                    sans objet
+                  </span>
+                ),
+              ])}
+            />
 
-          <Scope systeme={contrat.label} octroiDeclare={octroiDeclare} scope={scope} />
+            {/* Hors du tableau, et replié : ces marches à suivre font plus de cent mots chacune,
+                et les porter en cellule donnait des lignes de 233 pixels pour un écran de cinq
+                mille. On les lit une fois, le jour où l'on branche le système. Le DSFR n'autorise
+                pas l'accordéon en cellule, et le journal donne déjà cette forme à sa charge utile. */}
+            {capacites
+              .filter(({ resolue }) => resolue.decl || resolue.degradedFrom)
+              .map(({ libelle, resolue }) => (
+                <div key={libelle} className={fr.cx("fr-mt-2w")}>
+                  <h4 className={fr.cx("fr-text--sm", "fr-text--bold", "fr-mb-1v")}>
+                    Comment faire « {libelle.toLowerCase()} »
+                  </h4>
+                  <p className={fr.cx("fr-text--sm", "fr-mb-0")}>{resolue.runbook}</p>
+                </div>
+              ))}
 
-          {profils.etat === "lus" ? (
-            <Profils acces={profils.parSysteme.get(contrat.key) ?? []} />
-          ) : null}
+            <Scope systeme={contrat.label} octroiDeclare={octroiDeclare} scope={scope} />
 
-          <p className={fr.cx("fr-text--sm", "fr-mt-1w")}>
-            Credentials :{" "}
-            {sondes.length === 0
-              ? "aucun requis"
-              : sondes
-                  .map(
-                    (sonde) =>
-                      `${sonde.id} ${sonde.available ? "présent" : `absent (${sonde.unavailableReason ?? "raison non précisée"})`}`,
-                  )
-                  .join(" / ")}
-          </p>
+            {profils.etat === "lus" ? (
+              <Profils acces={profils.parSysteme.get(contrat.key) ?? []} />
+            ) : null}
+
+            <p className={fr.cx("fr-text--sm", "fr-mt-1w")}>
+              Credentials :{" "}
+              {sondes.length === 0
+                ? "aucun requis"
+                : sondes
+                    .map(
+                      (sonde) =>
+                        `${sonde.id} ${sonde.available ? "présent" : `absent (${sonde.unavailableReason ?? "raison non précisée"})`}`,
+                    )
+                    .join(" / ")}
+            </p>
+          </Accordion>
 
           {page ? (
             <p className={fr.cx("fr-text--sm")}>
@@ -342,8 +344,7 @@ export default async function SystemesPage() {
         <section className={fr.cx("fr-mt-4w")}>
           <h2 className={fr.cx("fr-h5")}>Des profils visent un système que rien ne porte</h2>
           <p className={fr.cx("fr-text--sm")}>
-            Ces accès ne s'ouvriront jamais : aucun connecteur ne déclare ces clés. Ils se corrigent
-            dans <code>profiles</code>.
+            Ces accès ne s'ouvriront jamais. Ils se corrigent dans <code>profiles</code>.
           </p>
           {profils.horsCatalogue.map(({ systeme, acces }) => (
             <div key={systeme} className={fr.cx("fr-mt-2w")}>
@@ -360,7 +361,7 @@ export default async function SystemesPage() {
         severity="info"
         className={fr.cx("fr-mt-4w")}
         small
-        description="Un système absent de cette page n'est pas couvert : ni lu, ni signalé. Le catalogue systems[] de la politique, lui, ne sert encore à rien, aucun code ne le lit ; la clé connectors, elle, est lue par la collecte et par chaque connecteur qui s'en sert."
+        description="Un système absent de cette page n'est pas couvert, ni lu ni signalé. Dans la politique, c'est la clé connectors qui le déclare."
       />
     </main>
   );

@@ -16,6 +16,7 @@ import {
 import { prisma } from "@/lib/db";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
+import { Absent } from "@/ui/Absent";
 import { dateFr } from "@/ui/dates";
 import { TableCustom } from "@/ui/TableCustom";
 
@@ -100,6 +101,7 @@ export default async function StartupsPage(props: {
   const inconnus =
     ghidsInconnus.length === 0 ? null : (
       <Alert
+        as="h2"
         severity="info"
         className={fr.cx("fr-mt-4w")}
         title={
@@ -110,10 +112,9 @@ export default async function StartupsPage(props: {
         description={
           <>
             <p className={fr.cx("fr-mb-1w")}>
-              Des personnes portent ces identifiants, mais aucune startup observée ne les porte : un
-              renommage amont, une sortie de l'incubateur ou une faute de frappe donnent ici le même
-              symptôme. Ailleurs, ils n'apparaissent que sur la fiche des personnes qui les portent,
-              et sans lien puisqu'aucune fiche de startup n'existe pour eux.
+              Un renommage amont, une sortie de l'incubateur ou une faute de frappe donnent ici le
+              même symptôme. Ailleurs, ces identifiants n'apparaissent que sur la fiche des
+              personnes qui les portent, sans lien vers une fiche de startup.
             </p>
             <ul className={fr.cx("fr-mb-0")}>
               {ghidsInconnus.map((inconnu) => (
@@ -134,13 +135,14 @@ export default async function StartupsPage(props: {
 
       {fraicheur.perimee ? (
         <Alert
+          as="h2"
           severity="warning"
           className={fr.cx("fr-mb-3w")}
           title="Ce que montre cet écran n'est plus à jour"
           description={
             fraicheur.heures === null
-              ? "Aucune collecte n'a jamais eu lieu : le référentiel des startups est vide faute d'observation, ce qui ne dit rien des startups réellement en cours."
-              : `La dernière collecte remonte à ${fraicheur.heures} heures, au-delà des ${thresholds.collectStaleHours} heures admises. Le référentiel des startups est gelé en même temps que celui des personnes : une phase a pu changer, une startup sortir de l'incubateur, sans que rien ici ne le signale.`
+              ? "Aucune collecte n'a jamais eu lieu. Le référentiel des startups ne dit rien des startups en cours."
+              : `La dernière collecte remonte à ${fraicheur.heures} heures, au-delà des ${thresholds.collectStaleHours} heures admises. Une phase a pu changer, une startup sortir de l'incubateur, sans que rien ici ne le signale.`
           }
         />
       ) : null}
@@ -148,6 +150,7 @@ export default async function StartupsPage(props: {
       <div className={fr.cx("fr-grid-row", "fr-grid-row--gutters", "fr-mb-4w")}>
         <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
           <Tile
+            titleAs="h2"
             title={`${actives} active${actives > 1 ? "s" : ""}`}
             desc="Ni en phase terminale, ni sorties de l'incubateur. Une phase inconnue reste comptée ici."
             linkProps={{ href: "/startups?vue=actives" }}
@@ -156,16 +159,18 @@ export default async function StartupsPage(props: {
         </div>
         <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
           <Tile
+            titleAs="h2"
             title={`${terminalesPeuplees} en phase terminale`}
-            desc="Seulement celles qui ont encore des membres : une startup terminée sans personne dessus est un fait d'archive, pas un travail à faire."
+            desc="Seulement celles qui ont encore des membres."
             linkProps={{ href: "/startups?vue=terminales" }}
             orientation="horizontal"
           />
         </div>
         <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
           <Tile
+            titleAs="h2"
             title={`${sortiesPeuplees} sortie${sortiesPeuplees > 1 ? "s" : ""}`}
-            desc="Plus rendues par l'incubateur, et portant encore quelqu'un : des personnes elles-mêmes sorties du référentiel des personnes, ou rattachées à cette startup à la main."
+            desc="Plus rendues par l'incubateur, et portant encore quelqu'un."
             linkProps={{ href: "/startups?vue=sorties" }}
             orientation="horizontal"
           />
@@ -181,8 +186,8 @@ export default async function StartupsPage(props: {
       {lignes.length === 0 ? (
         <p className={fr.cx("fr-text--lead")}>
           {dernierRun === null
-            ? "Aucune collecte n'a jamais eu lieu : la liste est vide faute d'observation, ce qui ne dit rien des startups réellement en cours."
-            : `La dernière collecte remonte au ${dateFr.format(dernierRun.startedAt)} et n'a rendu aucune startup pour cet incubateur. C'est le référentiel des startups qu'il faut regarder, pas le déclenchement de la collecte.`}
+            ? "Aucune collecte n'a jamais eu lieu. Cette liste ne dit rien des startups en cours."
+            : `La dernière collecte remonte au ${dateFr.format(dernierRun.startedAt)} et n'a rendu aucune startup pour cet incubateur. Regardez le référentiel des startups, pas le déclenchement de la collecte.`}
         </p>
       ) : (
         <>
@@ -231,7 +236,7 @@ export default async function StartupsPage(props: {
                   {
                     children:
                       ligne.currentPhase === null ? (
-                        <span className={fr.cx("fr-hint-text")}>inconnue</span>
+                        <Absent mention="inconnue" />
                       ) : (
                         (LIBELLE_PHASE[ligne.currentPhase] ?? ligne.currentPhase)
                       ),
@@ -240,7 +245,7 @@ export default async function StartupsPage(props: {
                     children: ligne.phaseStart ? (
                       dateFr.format(ligne.phaseStart)
                     ) : (
-                      <span className={fr.cx("fr-hint-text")}>inconnue</span>
+                      <Absent mention="inconnue" />
                     ),
                   },
                   {
