@@ -28,17 +28,17 @@ const CREDENTIAL = "notion:scim";
 const MEMBRES = "https://www.notion.so/settings/members";
 
 const RUNBOOK =
-  "Retirer la personne dans Paramètres > Membres du workspace Notion, puis vérifier qu'elle ne figure plus dans la liste. Deux limites : le propriétaire qui a créé le jeton SCIM ne se retire pas par ce chemin, et les invités n'y figurent pas, si bien qu'une fiche sans compte Notion peut garder un accès invité.";
+  "Retirer la personne dans Paramètres > Membres du workspace Notion, puis vérifier qu'elle ne figure plus dans la liste. Le propriétaire qui a créé le jeton SCIM ne se retire pas par ce chemin, et les invités n'y figurent pas.";
 
 /**
  * Une lecture qui tombe ne devient pas manuelle, elle cesse : ce runbook dit quoi vérifier
  * pour que la collecte reparte, et non comment relever des sièges à la main.
  */
 const RUNBOOK_LECTURE =
-  "Vérifier que le jeton SCIM répond encore : Notion le révoque au départ de la personne qui l'a créé comme à son simple changement de rôle, et tout propriétaire de workspace peut le retirer. Un nouveau se génère depuis les paramètres de l'organisation, par un propriétaire. La collecte se relance par « pnpm sync ».";
+  "Vérifier que le jeton SCIM répond encore. Un nouveau se génère depuis les paramètres de l'organisation, par un propriétaire. La collecte se relance par « pnpm sync ».";
 
 const RUNBOOK_OCTROI =
-  "Inviter la personne dans Paramètres > Membres du workspace Notion, sur son adresse beta.gouv, puis vérifier qu'elle figure dans la liste des membres. Une invitation non acceptée y apparaît déjà : l'accès est accordé, il n'attend qu'une connexion.";
+  "Inviter la personne dans Paramètres > Membres du workspace Notion, sur son adresse beta.gouv, puis vérifier qu'elle figure dans la liste des membres. Une invitation non acceptée y apparaît déjà, et vaut accès accordé.";
 
 const PAR_PAGE = 100;
 
@@ -208,7 +208,7 @@ export async function lireMembres(lire: LecteurScim): Promise<LectureMembres> {
           scope: "membres",
           itemRef: membre.id,
           message:
-            "entrée rendue deux fois : l'inventaire a bougé pendant la pagination, une autre fiche a donc pu être sautée",
+            "entrée rendue deux fois, l'inventaire ayant bougé pendant la pagination, et une autre fiche a donc pu être sautée",
         });
         continue;
       }
@@ -248,7 +248,7 @@ export async function lireMembres(lire: LecteurScim): Promise<LectureMembres> {
     lecture.erreurs.push({
       scope: "membres",
       message:
-        "aucune entrée rendue : un inventaire vide ne se distingue pas d'une panne silencieuse",
+        "aucune entrée rendue, un inventaire vide ne se distinguant pas d'une panne silencieuse",
     });
   }
 
@@ -466,7 +466,7 @@ export const CONTRAT_NOTION: ConnectorContract = {
       id: CREDENTIAL,
       source: "env",
       scopeNote:
-        "Jeton SCIM du workspace, sans aucun système de portée : il permet de retirer un membre et de le déconnecter de toutes ses sessions, alors que cet outil ne s'en sert qu'en lecture. Sa rotation doit précéder toute mise en service d'un chemin d'écriture.",
+        "Jeton SCIM du workspace, sans aucun système de portée. Il permet de retirer un membre et de le déconnecter de toutes ses sessions. Sa rotation doit précéder toute mise en service d'un chemin d'écriture.",
       // Notion le révoque au départ de la personne qui l'a créé, mais aussi à son
       // simple changement de rôle, et tout propriétaire de workspace peut le retirer.
       nominative: true,

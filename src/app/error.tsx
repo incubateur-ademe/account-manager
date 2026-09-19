@@ -37,10 +37,8 @@ export default function ErreurApplication({
             ne doit être tenu pour l'état réel des comptes.
           </p>
           <p className={fr.cx("fr-text--sm", "fr-mb-3w")}>
-            Réessayez : la page est rechargée depuis le serveur, et la plupart de ces erreurs sont
-            passagères. Si elle revient, repartez du tableau de bord, puis signalez-la au mainteneur
-            en indiquant l'heure et la référence ci-dessous. Le détail de l'erreur est consigné dans
-            les journaux du serveur, jamais à l'écran.
+            Réessayez. Si l'erreur revient, repartez du tableau de bord, puis signalez-la au
+            mainteneur en indiquant l'heure et la référence ci-dessous.
           </p>
           {error.digest ? (
             <p className={fr.cx("fr-text--sm", "fr-mb-5w")}>

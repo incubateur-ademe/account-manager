@@ -183,7 +183,7 @@ describe("ce que le bloc de lancement dit à qui s'apprête à cliquer", () => {
     // Given un plan qui pose des termes, que la confrontation du lancement ne regarde pas
     // Then la phrase dit quand les lire plutôt que ce qui les en tient hors
     expect(LIBELLE_LANCEMENT.termes).toBe(
-      "Ce plan pose des termes. Ils ne seront pas revérifiés au lancement : lisez-les maintenant.",
+      "Ce plan pose des termes. Ils ne seront pas revérifiés au lancement. Lisez-les maintenant.",
     );
 
     // Given un plan dont aucune étape ne se fait toute seule

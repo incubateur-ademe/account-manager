@@ -915,7 +915,8 @@ describe("contenance des ressources", () => {
     expect(erreurs[0]).toEqual({
       scope: "ressources",
       itemRef: "service-double",
-      message: "déclarée plusieurs fois dans le même relevé : la dernière déclaration est retenue",
+      message:
+        "déclarée plusieurs fois dans le même relevé, seule la dernière déclaration est retenue",
     });
     expect(erreurs[2]?.message).toBe("se contient elle-même");
   });

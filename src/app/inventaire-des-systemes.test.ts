@@ -413,7 +413,7 @@ describe("ce que l'inventaire dit d'un système, et ce qu'il refuse d'en dire", 
         "0",
         "2",
         "0",
-        "Lu partiellement, sur des erreurs : ce qui reste peut contenir des comptes déjà partis",
+        "Lu partiellement, sur des erreurs. Des comptes déjà partis peuvent y rester",
       ],
       [
         "messagerie",
@@ -429,7 +429,7 @@ describe("ce que l'inventaire dit d'un système, et ce qu'il refuse d'en dire", 
         "non observé",
         "non observé",
         "non observé",
-        "Jamais lu : aucune collecte, ou aucun accès configuré pour ce système",
+        "Jamais lu, faute de collecte ou d'accès configuré pour ce système",
       ],
     ]);
 
@@ -440,7 +440,7 @@ describe("ce que l'inventaire dit d'un système, et ce qu'il refuse d'en dire", 
     expect(texte).toContain("Une fiche sans compte sur ces systèmes ne dit rien des accès réels.");
     expect(pucesRendues(page)).toEqual([
       "messagerie a échoué à la dernière collecte",
-      "archives n'a jamais été lu : aucune collecte, ou aucun accès configuré pour lui",
+      "archives n'a jamais été lu, faute de collecte ou d'accès configuré",
     ]);
 
     // Then le compte des systèmes lus s'accorde lui aussi, et il nomme les non observés

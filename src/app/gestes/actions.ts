@@ -48,7 +48,7 @@ export async function ouvrirGeste(
   if (justification.length < JUSTIFICATION_MINIMALE) {
     return {
       erreur:
-        "La justification est ce qui restera quand personne ne se souviendra de la demande : écrivez-la en clair.",
+        "La justification est ce qui restera quand personne ne se souviendra de la demande. Écrivez-la en clair.",
     };
   }
 
@@ -56,7 +56,7 @@ export async function ouvrirGeste(
   try {
     scope = scopeEcrit.length === 0 ? {} : JSON.parse(scopeEcrit);
   } catch {
-    return { erreur: "Le périmètre demandé n'est pas lisible : il attend un objet JSON." };
+    return { erreur: "Le périmètre demandé n'est pas lisible. Écrivez un objet JSON." };
   }
 
   const lue = intentionDUnGeste.safeParse({

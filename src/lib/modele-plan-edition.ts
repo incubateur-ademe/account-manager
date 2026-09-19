@@ -188,15 +188,11 @@ function valider(valeurs: EtapeSaisie, cleFigee: string | null): EtapeValidee | 
   // chiffre se dédoubleraient l'un l'autre, ici comme à l'assemblage. Le refus ne vaut
   // qu'à la création, la clé d'une étape existante n'étant plus en jeu.
   if (cleFigee === null && !cle) {
-    return refus(
-      "Donnez à cette étape un titre qui porte au moins une lettre ou un chiffre : c'est lui qui fait sa clé.",
-    );
+    return refus("Donnez à cette étape un titre qui porte au moins une lettre ou un chiffre.");
   }
 
   if (!critere) {
-    return refus(
-      "Dites ce qu'il faut constater pour cocher cette étape : sans ce critère, « fait » ne veut rien dire.",
-    );
+    return refus("Dites ce qu'il faut constater pour cocher cette étape.");
   }
 
   const lien = valeurs.lien?.trim() || null;
@@ -204,9 +200,7 @@ function valider(valeurs: EtapeSaisie, cleFigee: string | null): EtapeValidee | 
   // Le message de Zod est en anglais et nomme des schémas d'URI : il ne remonte pas à
   // l'écran, une phrase le remplace, comme pour le critère et pour la saisie.
   if (lien !== null && !lienDEtapeSchema.safeParse(lien).success) {
-    return refus(
-      "Donnez au lien une adresse complète en http ou https : c'est elle qui s'ouvrira depuis le dossier.",
-    );
+    return refus("Donnez au lien une adresse complète en http ou https.");
   }
 
   // La répartition des rôles se refuse ici comme le reste : `enregistrerPlan` lève sur

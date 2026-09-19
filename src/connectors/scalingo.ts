@@ -37,10 +37,10 @@ const pageDesCollaborateurs = (region: string, application: string) =>
   `https://dashboard.scalingo.com/apps/${region}/${application}/settings/collaborators`;
 
 const RUNBOOK =
-  "Retirer la personne des collaborateurs de chaque application où elle figure, depuis la vue consolidée du tableau de bord Scalingo. Deux limites : le propriétaire d'une application ne s'y retire pas, il faut d'abord lui transférer la propriété ; et le retrait ne change ni les variables d'environnement ni les identifiants de base, si bien que la personne peut continuer à joindre directement les services dont elle connaît les identifiants.";
+  "Retirer la personne des collaborateurs de chaque application où elle figure, depuis la vue consolidée du tableau de bord Scalingo. Le propriétaire d'une application ne s'y retire pas, il faut d'abord lui transférer la propriété. Le retrait ne change ni les variables d'environnement ni les identifiants de base.";
 
 const RUNBOOK_OCTROI =
-  "Inviter la personne dans Paramètres > Collaborateurs de l'application visée, sur son adresse professionnelle, puis poser son rôle. Scalingo invite en rôle limité par défaut : le corriger tout de suite si un accès plein est voulu. Une invitation non acceptée figure déjà dans la liste, et c'est un accès accordé, pas un accès en suspens.";
+  "Inviter la personne dans Paramètres > Collaborateurs de l'application visée, sur son adresse professionnelle, puis poser son rôle, Scalingo invitant en rôle limité par défaut. Une invitation non acceptée figure déjà dans la liste, et vaut accès accordé.";
 
 /**
  * Une lecture qui tombe ne devient pas manuelle, elle cesse : ce runbook ne dit donc pas
@@ -48,8 +48,10 @@ const RUNBOOK_OCTROI =
  * Sans lui, l'écran des systèmes affiche sous « Lire » la marche à suivre du retrait, qui
  * ne répond pas à la question que se pose qui vient d'y lire « Jamais lu ».
  */
+/* Retiré des collaborateurs d'une application, le compte qui porte le jeton cesse de la lire sans
+   que rien d'autre ne change : la seconde vérification ne double pas la première. */
 const RUNBOOK_LECTURE =
-  "Échanger le jeton d'API contre un porteur pour vérifier qu'il répond encore, puis vérifier que le compte qui le porte voit toujours les applications attendues : retiré des collaborateurs d'une application, il cesse de la lire sans que rien d'autre ne change. La collecte se relance par « pnpm sync ».";
+  "Échanger le jeton d'API contre un porteur pour vérifier qu'il répond encore, puis vérifier que le compte qui le porte voit toujours les applications attendues. La collecte se relance par « pnpm sync ».";
 
 /**
  * Il ne demande que ce que l'écran sait recevoir, et le terme en fait désormais partie.
@@ -64,13 +66,13 @@ const RUNBOOK_LECTURE =
  * pas un registre.
  */
 const RUNBOOK_JETON =
-  "Générer le blob depuis le proxy à jetons restreints : y poser le jeton d'API Scalingo, la cible et les chemins que cette étape nomme, le mode d'authentification « scalingo-exchange », et le terme en secondes. La page rend un blob et une clé. Remettre les deux à la personne, chacun par un canal différent : ils valent l'accès ensemble et rien séparément. Saisir ensuite la fiche du compte machine depuis l'écran « Comptes de service », sur le système « scalingo », en y posant le détenteur et le terme porté par cette étape, et jamais la clé : le proxy ne garde rien, et ce terme est la seule reprise qui existe.";
+  "Générer le blob depuis le proxy à jetons restreints, en y posant le jeton d'API Scalingo, la cible et les chemins que cette étape nomme, le mode d'authentification « scalingo-exchange », et le terme en secondes. La page rend un blob et une clé. Remettre les deux à la personne, chacun par un canal différent, les deux valant l'accès ensemble et rien séparément. Saisir ensuite la fiche du compte machine depuis l'écran « Comptes de service », sur le système « scalingo », en y posant le détenteur et le terme porté par cette étape, et jamais la clé. Le proxy ne garde rien, et ce terme est la seule reprise qui existe.";
 
 const RUNBOOK_REPRISE_JETON =
-  "Ne pas faire tourner le jeton d'API Scalingo. Il est à portée compte entier, il est ce que chaque blob transporte chiffré, et il est celui de la collecte : le faire tourner ne reprend pas un jeton à une personne, il éteint d'un coup tous les blobs vivants du parc, toutes les écritures et la lecture nocturne, jusqu'à ce que la nouvelle valeur soit posée et l'application redémarrée. Ce n'est pas une étape de départ, c'est un incident, et cela se décide ailleurs que dans un dossier. Le proxy n'offre ni révocation ni introspection : il n'y a rien à appeler, rien à lister, et rien à couper. Attendre le terme est le seul recours, et un départ survenu avant ce terme ne se solde pas avant lui. Demander à la personne de détruire sa copie du blob et de sa clé, et vérifier que la fiche du compte machine porte bien le terme annoncé.";
+  "Ne pas faire tourner le jeton d'API Scalingo. Il est à portée compte entier, il est ce que chaque blob transporte chiffré, et il est celui de la collecte. Le faire tourner ne reprend pas un jeton à une personne, il éteint d'un coup tous les blobs vivants du parc, toutes les écritures et la lecture nocturne, jusqu'à ce que la nouvelle valeur soit posée et l'application redémarrée. Ce n'est pas une étape de départ, c'est un incident, et cela se décide ailleurs que dans un dossier. Le proxy n'offre ni révocation ni introspection. Il n'y a rien à appeler, rien à lister, et rien à couper. Attendre le terme est le seul recours, et un départ survenu avant ce terme ne se solde pas avant lui. Demander à la personne de détruire sa copie du blob et de sa clé, et vérifier que la fiche du compte machine porte bien le terme annoncé.";
 
 const RUNBOOK_ROTATION =
-  "Faire tourner ce que le retrait ne touche pas : les variables d'environnement des applications concernées, et les mots de passe des bases dont la personne a pu relever les identifiants. Le mot de passe de l'utilisateur par défaut d'une base se change par le support Scalingo, puis la variable et un redémarrage.";
+  "Faire tourner les variables d'environnement des applications concernées, et les mots de passe des bases dont la personne a pu relever les identifiants, qu'un retrait ne change pas. Le mot de passe de l'utilisateur par défaut d'une base se change par le support Scalingo, puis la variable et un redémarrage.";
 
 /**
  * `fetch` n'a aucun délai par défaut. Une réponse qui ne vient jamais gèlerait la
@@ -297,7 +299,7 @@ function verifierPagination(
     scope,
     ...(itemRef === undefined ? {} : { itemRef }),
     message:
-      "la réponse annonce une page suivante, alors que cette route n'en rendait aucune : l'inventaire lu est tronqué",
+      "l'inventaire lu est tronqué, la réponse annonçant une page suivante alors que cette route n'en rendait aucune",
   };
 }
 
@@ -371,7 +373,7 @@ export async function lireApplications(
       scope: "applications",
       itemRef: region,
       message:
-        "aucune application lisible : une région vide ne se distingue pas d'une panne silencieuse",
+        "aucune application lisible, une région vide ne se distinguant pas d'une panne silencieuse",
     });
   }
 
@@ -433,7 +435,7 @@ export async function lireCollaborateurs(
       scope,
       ...(itemRef === undefined ? {} : { itemRef }),
       message:
-        "la réponse ne porte aucune liste de collaborateurs : la clé a changé de nom, et son absence ne se distingue pas d'un accès que personne ne détient",
+        "la réponse ne porte aucune liste de collaborateurs, et son absence ne se distingue pas d'un accès que personne ne détient",
     });
   }
 
@@ -850,7 +852,7 @@ export function interpreterRetrait(statut: number, corps: unknown): StepOutcome 
   return {
     state: "SUCCEEDED",
     evidence:
-      "Collaboration retirée. Les variables d'environnement et les identifiants de base n'ont pas changé pour autant : c'est l'objet de l'étape de rotation.",
+      "Collaboration retirée. Les variables d'environnement et les identifiants de base n'ont pas changé. L'étape de rotation s'en charge.",
   };
 }
 
@@ -900,7 +902,7 @@ export function interpreterChangementDeRole(statut: number, corps: unknown): Ste
     return {
       state: "FAILED",
       error:
-        "La collaboration a disparu entre sa lecture et la correction du rôle : rien n'a été changé, et une reprise invitera.",
+        "La collaboration a disparu entre sa lecture et la correction du rôle. Rien n'a été changé, et une reprise invitera.",
       retryable: true,
     };
   }
@@ -917,7 +919,7 @@ export function interpreterChangementDeRole(statut: number, corps: unknown): Ste
   return {
     state: "SUCCEEDED",
     evidence:
-      "Rôle corrigé en place, sur la collaboration existante : rien n'a été retiré, et aucune invitation n'a été réémise.",
+      "Rôle corrigé en place, sur la collaboration existante. Rien n'a été retiré, et aucune invitation n'a été réémise.",
   };
 }
 
@@ -1059,8 +1061,7 @@ const NATURE = {
  */
 const NOM_SCALINGO = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
 
-const REFUS_DE_FORME =
-  "minuscules, chiffres et tirets, sans tiret en tête ni en queue : ce nom est interpolé dans l'hôte et dans les chemins que le jeton ouvre, et rien ne le rattrape après l'émission.";
+const REFUS_DE_FORME = "minuscules, chiffres et tirets, sans tiret en tête ni en queue";
 
 /**
  * Strict, et sans clé facultative : dans un profil écrit à la main, une clé inconnue est
@@ -1714,7 +1715,7 @@ export async function constaterCollaborateur(
 }
 
 const REFUS_SIMULATION =
-  "ACTIONS_ENABLED n'autorise aucune écriture : une exécution a été demandée en simulation, et aucun appel n'est parti. Le garde-fou est ici autant que chez l'appelant, pour qu'aucun appelant n'ait à s'en souvenir.";
+  "ACTIONS_ENABLED n'autorise aucune écriture. Une exécution a été demandée en simulation, et aucun appel n'est parti.";
 
 /**
  * L'écriture, et les refus qui la précèdent.
@@ -1840,7 +1841,7 @@ export const CONTRAT_SCALINGO: ConnectorContract = {
       id: CREDENTIAL,
       source: "env",
       scopeNote:
-        "Jeton d'API du compte de service propriétaire de la plupart des applications. Sa portée est le compte entier : un jeton Scalingo hérite de tous les droits du compte qui l'a créé, sur chaque application et chaque base, et le fournisseur ne sait pas le restreindre. Il sait donc supprimer une application de production, alors que cet outil ne s'en sert qu'en lecture. Séparer un jeton de lecture d'un jeton d'écriture ne cloisonnerait rien, les deux héritant du même compte : d'où un seul ici, contrairement à GitHub.",
+        "Jeton d'API du compte de service propriétaire de la plupart des applications. Sa portée est le compte entier. Un jeton Scalingo hérite de tous les droits du compte qui l'a créé, sur chaque application et chaque base, et le fournisseur ne sait pas le restreindre. Il sait donc supprimer une application de production, alors que cet outil ne s'en sert qu'en lecture. Séparer un jeton de lecture d'un jeton d'écriture ne cloisonnerait rien, les deux héritant du même compte, d'où un seul ici.",
       // Porté par un compte de service et non par une personne : il ne meurt pas avec
       // un départ, ce qui est la seule chose que ce champ dit.
       nominative: false,
@@ -1849,7 +1850,7 @@ export const CONTRAT_SCALINGO: ConnectorContract = {
       id: CREDENTIAL_FGP,
       source: "fgp",
       scopeNote:
-        "Adresse du proxy à jetons restreints, par lequel passe l'émission de jetons pour des tiers. Ce qu'un blob rétrécit : ce que peut faire son porteur, qui ne pourra appeler que les méthodes et les chemins listés à l'émission, sur une seule cible, et jusqu'à un terme. Ce qu'il ne rétrécit pas : ce que peut faire l'instance. Le jeton de compte Scalingo, à portée compte entier, voyage en clair jusqu'au proxy à l'émission et vit chiffré à l'intérieur du blob, si bien que l'instance le manipule en clair à chaque requête qu'elle relaie. Aucune révocation n'existe côté proxy : un jeton émis se reprend en attendant son terme, et par rien d'autre.",
+        "Adresse du proxy à jetons restreints, par lequel passe l'émission de jetons pour des tiers. Un blob rétrécit ce que peut faire son porteur, qui ne pourra appeler que les méthodes et les chemins listés à l'émission, sur une seule cible, et jusqu'à un terme. Il ne rétrécit pas ce que peut faire l'instance. Le jeton de compte Scalingo, à portée compte entier, voyage en clair jusqu'au proxy à l'émission et vit chiffré à l'intérieur du blob, si bien que l'instance le manipule en clair à chaque requête qu'elle relaie. Aucune révocation n'existe côté proxy, et un jeton émis se reprend en attendant son terme, par rien d'autre.",
       // Ni nominatif ni personnel : c'est une adresse de service, et l'absence de jeton sur
       // la route de génération est un fait du proxy, pas un oubli de configuration.
       nominative: false,
@@ -1912,7 +1913,7 @@ async function echanger(jeton: string): Promise<string> {
 
   const lu = porteurSchema.safeParse(await reponse.json().catch(() => undefined));
   if (!lu.success) {
-    throw new Error("échange du jeton : la réponse ne porte aucun porteur");
+    throw new Error("échange du jeton, la réponse ne porte aucun porteur");
   }
 
   return lu.data.token;

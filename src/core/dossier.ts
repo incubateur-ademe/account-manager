@@ -182,7 +182,7 @@ export function peutPointer(etat: EtatPlan, acteurAttendu: Acteur, declarant: De
   if (declarant.role !== acteurAttendu && !declarant.operateur) {
     return {
       possible: false,
-      raison: "Cette étape ne vous revient pas : elle attend quelqu'un d'autre.",
+      raison: "Cette étape attend quelqu'un d'autre.",
     };
   }
   return { possible: true };
@@ -383,7 +383,7 @@ export function peutValider(etape: EtapeAValider, valideur: ActeurNomme): Verdic
   if (etape.declaredBy === valideur.username) {
     return {
       possible: false,
-      raison: "Personne ne valide sa propre déclaration : cette étape attend un autre regard.",
+      raison: "Personne ne valide sa propre déclaration. Cette étape attend un autre regard.",
     };
   }
   return { possible: true };
@@ -587,8 +587,8 @@ export function peutAnnuler(dossier: EtatDossier, plan: EtatPlan | null): Verdic
  * il n'y en avait aucun.
  */
 const ETAPES_NON_SOLDEES: Record<SensDossier, string> = {
-  ONBOARDING: "Toutes les étapes ne sont pas soldées : des accès n'ont pas été donnés.",
-  OFFBOARDING: "Toutes les étapes ne sont pas soldées : des accès restent ouverts.",
+  ONBOARDING: "Toutes les étapes ne sont pas soldées. Des accès n'ont pas été donnés.",
+  OFFBOARDING: "Toutes les étapes ne sont pas soldées. Des accès restent ouverts.",
 };
 
 export function peutClore(

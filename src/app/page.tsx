@@ -29,7 +29,7 @@ function observation(ligne: LigneDInventaire): string {
     return "Lu dans les délais";
   }
   if (ligne.observation.etat === "partiel") {
-    return "Lu partiellement, sur des erreurs : ce qui reste peut contenir des comptes déjà partis";
+    return "Lu partiellement, sur des erreurs. Des comptes déjà partis peuvent y rester";
   }
 
   const { raison, heures } = ligne.observation;
@@ -37,7 +37,7 @@ function observation(ligne: LigneDInventaire): string {
     return "En échec à la dernière collecte";
   }
   if (raison === "non-lu") {
-    return "Jamais lu : aucune collecte, ou aucun accès configuré pour ce système";
+    return "Jamais lu, faute de collecte ou d'accès configuré pour ce système";
   }
   return `Plus lu depuis ${heures} heure${heures !== null && heures > 1 ? "s" : ""}`;
 }
@@ -180,7 +180,7 @@ export default async function AccueilPage() {
                     {muet.raison === "echec"
                       ? "a échoué à la dernière collecte"
                       : muet.raison === "non-lu"
-                        ? "n'a jamais été lu : aucune collecte, ou aucun accès configuré pour lui"
+                        ? "n'a jamais été lu, faute de collecte ou d'accès configuré"
                         : `n'a pas été lu depuis ${muet.heures} heures`}
                   </li>
                 ))}

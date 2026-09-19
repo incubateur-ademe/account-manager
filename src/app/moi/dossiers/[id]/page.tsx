@@ -79,8 +79,8 @@ export function EtapeDuParticipant({
         // `validatedBy`, et c'est une colonne que cette route ne lit pas.
         validation === "REFUSED" ? (
           <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-            <strong>Déclaration refusée.</strong> L'étape est de nouveau à faire : qui contrôle
-            cette étape vous dira ce qui manque.
+            <strong>Déclaration refusée.</strong> L'étape est de nouveau à faire. Demandez à qui la
+            contrôle ce qui manque.
           </p>
         ) : null
       }

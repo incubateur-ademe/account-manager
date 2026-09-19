@@ -347,7 +347,7 @@ describe("annulation d'un dossier de départ", () => {
     expect(surUnDossierClos.possible === false && surUnDossierClos.raison).toContain("clos");
 
     // Un dossier annulé n'a aucun accès resté ouvert : le lui dire était faux.
-    const accesOuverts = "Toutes les étapes ne sont pas soldées : des accès restent ouverts.";
+    const accesOuverts = "Toutes les étapes ne sont pas soldées. Des accès restent ouverts.";
 
     for (const plan of ["EXECUTING", "PARTIALLY_EXECUTED"] as const) {
       const verdict = peutClore("OFFBOARDING", "CANDIDATE", plan, 3);

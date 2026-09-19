@@ -74,9 +74,8 @@ export default function ErreurGlobale({
             de votre poste.
           </p>
           <p>
-            Réessayez une fois. Si cet écran revient, l'application est réellement en panne :
-            prévenez le mainteneur avec l'heure et la référence ci-dessous, le détail de l'erreur
-            l'attend dans les journaux du serveur.
+            Réessayez une fois. Si cet écran revient, l'application est réellement en panne.
+            Prévenez le mainteneur avec l'heure et la référence ci-dessous.
           </p>
           {error.digest ? <p className="reference">Référence à citer : {error.digest}</p> : null}
           <div className="actions">

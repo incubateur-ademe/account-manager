@@ -70,7 +70,7 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 const MESSAGE =
-  "Si cette saisie ouvre un accès, un lien de connexion vient de partir. Vérifiez votre boîte : il est valable peu de temps.";
+  "Si cette saisie ouvre un accès, un lien de connexion vient de partir. Il est valable peu de temps. Vérifiez votre boîte.";
 
 const OUVRE_UN_ACCES = "porteuse@exemple.test";
 

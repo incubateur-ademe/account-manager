@@ -50,7 +50,7 @@ describe("ce que l'écran dit d'une collecte", () => {
     // donc au possible, ce qui est exactement ce que le passage garantit.
     expect(LIBELLE_ETAT_COLLECTE.PARTIAL.explication).not.toMatch(/aucune dispariti/u);
     expect(LIBELLE_ETAT_COLLECTE.PARTIAL.explication).toMatch(/ont pu rester non datées/u);
-    expect(LIBELLE_ETAT_COLLECTE.PARTIAL.explication).toMatch(/tout n'a pas pu être conclu/u);
+    expect(LIBELLE_ETAT_COLLECTE.PARTIAL.explication).toMatch(/Tout n'a pas pu être conclu/u);
 
     // Then les deux qui n'ont rien lu ne promettent ni ne nient aucune datation : elles
     // n'ont pas regardé, et c'est tout ce qu'elles ont le droit de dire.

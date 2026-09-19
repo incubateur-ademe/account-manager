@@ -19,7 +19,7 @@ import { COOKIES_DE_DESTINATION, PROVIDER_ADRESSE } from "@/lib/connexion";
  * d'identifiant le perd à l'écran. Coût assumé.
  */
 const MESSAGE_UNIQUE =
-  "Si cette saisie ouvre un accès, un lien de connexion vient de partir. Vérifiez votre boîte : il est valable peu de temps.";
+  "Si cette saisie ouvre un accès, un lien de connexion vient de partir. Il est valable peu de temps. Vérifiez votre boîte.";
 
 /**
  * Le texte ne suffit pas, et la liste des autres canaux ne se tient pas pour close.

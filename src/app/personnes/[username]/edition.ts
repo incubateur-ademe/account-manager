@@ -100,7 +100,7 @@ export async function modifierFiche(_etat: EtatEdition, formData: FormData): Pro
   });
 
   if (!personne) {
-    return { erreur: "Cette personne n'est plus en base." };
+    return { erreur: "Cette personne n'existe plus." };
   }
   const editabilite = ficheEditable(personne, declaresLocaux());
   if (!editabilite.editable) {
@@ -336,7 +336,7 @@ export async function renommerFiche(
   });
 
   if (!personne) {
-    return { erreur: "Cette personne n'est plus en base." };
+    return { erreur: "Cette personne n'existe plus." };
   }
   if (!renommable(personne, declaresLocaux())) {
     return {

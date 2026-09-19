@@ -179,7 +179,7 @@ describe("un identifiant que l'allowlist porte ne s'écrit sur aucune fiche", ()
 
     // Then l'action reprend son cours ordinaire et va lire le compte : le refus
     // précédent venait bien du verrou et non d'une garde posée plus tôt.
-    expect(suite).toEqual({ erreur: "Ce compte n'est plus en base." });
+    expect(suite).toEqual({ erreur: "Ce compte n'existe plus." });
     expect(base.lectures).toEqual(["identite:idt_0000000000000000000000"]);
   });
 });

@@ -95,7 +95,7 @@ export function loadPolicy(): Policy {
   // amputée de ce que quelqu'un croit avoir déclaré.
   if (existsSync(resolve(dossier(), "accounts.yaml"))) {
     throw new Error(
-      "accounts.yaml ne se lit plus. Verser sa clé « scope » dans config.yaml, puis supprimer le fichier. Les comptes de service, eux, ne se déclarent plus dans un fichier : ils se saisissent dans l'écran « Comptes de service », et le schéma refuse désormais cette clé.",
+      "accounts.yaml ne se lit plus. Verser sa clé « scope » dans config.yaml, puis supprimer le fichier. Les comptes de service se saisissent dans l'écran « Comptes de service ».",
     );
   }
 
