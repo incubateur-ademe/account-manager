@@ -510,16 +510,33 @@ function titresDuFichier(source: Source, plage: Plage): TitreRendu[] {
  * récursion donne à un SYMBOLE les titres de tout le FICHIER d'où il vient : page.tsx importe six
  * symboles de Pointage.tsx, et le bouton de recalcul, qui ne rend aucun titre, héritait des trois
  * Alert que seul Pointage atteint.
+ *
+ * Elle se lit à l'indentation, et non à la grammaire du langage. L'invariant sur lequel elle
+ * s'appuie est tenu par `pnpm lint` : Biome formate tout le dépôt, donc rien d'imbriqué ne commence
+ * en colonne zéro. Le jour où le dépôt cesserait d'être formaté, cette borne deviendrait fausse. Ce
+ * que Biome ne reformate pas lui échappe de la même façon, le contenu d'un gabarit multi-ligne en
+ * premier lieu.
+ *
+ * Trois formes de ligne en colonne zéro. Celle qui ne fait que fermer termine la déclaration ;
+ * celle qui ferme puis rouvre continue une signature découpée, `}: {` ou `}) {` ; toute autre ouvre
+ * la déclaration suivante, et la borne se pose avant elle. `} as const;` ferme puis continue sans
+ * rien rouvrir, elle termine donc.
  */
-const DEBUT_DE_DECLARATION =
-  "^(?:export|const|let|var|function|async|class|interface|type|enum)\\b";
+const NE_FAIT_QUE_FERMER = /^[)\]}>][^([{]*$/;
+const FERME_PUIS_ROUVRE = /^[)\]}>].*[([{]\s*$/;
 
-function jusquALaDeclarationSuivante(source: Source, debut: number): Plage {
-  const finDeLaLigne = source.contenu.indexOf("\n", debut);
-  const suivante = new RegExp(DEBUT_DE_DECLARATION, "gm");
-  suivante.lastIndex = finDeLaLigne === -1 ? source.contenu.length : finDeLaLigne + 1;
-  const borne = suivante.exec(source.contenu);
-  return { debut, fin: borne === null ? source.contenu.length : borne.index };
+function corpsDeLaDeclaration(source: Source, debut: number): Plage {
+  const premiere = source.contenu.slice(0, debut).split("\n").length - 1;
+  let position = debut;
+  for (let index = premiere; index < source.lignes.length; index += 1) {
+    const ligne = source.lignes[index] ?? "";
+    if (index > premiere && ligne.length > 0 && !/^\s/.test(ligne)) {
+      if (NE_FAIT_QUE_FERMER.test(ligne)) return { debut, fin: position + ligne.length };
+      if (!FERME_PUIS_ROUVRE.test(ligne)) return { debut, fin: position };
+    }
+    position += ligne.length + 1;
+  }
+  return { debut, fin: source.contenu.length };
 }
 
 /*
@@ -557,7 +574,7 @@ function corpsDuSymbole(
   );
   const trouve = declaration.exec(source.contenu);
   if (trouve === null) return null;
-  const plage = jusquALaDeclarationSuivante(source, trouve.index);
+  const plage = corpsDeLaDeclaration(source, trouve.index);
   if (/<[A-Za-z]/.test(source.contenu.slice(plage.debut, plage.fin))) return plage;
 
   /*
@@ -684,11 +701,11 @@ const porteDuJsx = (source: Source, plage: Plage): boolean =>
 function corpsDeLExportParDefaut(source: Source): Plage | null {
   const fonction = /^export\s+default\s+(?:async\s+)?(?:function|class)\b/m.exec(source.contenu);
   if (fonction !== null) {
-    const plage = jusquALaDeclarationSuivante(source, fonction.index);
+    const plage = corpsDeLaDeclaration(source, fonction.index);
     /*
-     * Même filet que pour un symbole, et il compte davantage ici : une ligne en colonne zéro dans un
-     * gabarit multi-ligne coupe la plage avant le return, et c'est l'écran entier qui devient muet.
-     * Le compteur affiche alors un gain, et le cadre invite à figer la perte.
+     * Même filet que pour un symbole : un écran qui monte son contenu par une variable ne porte
+     * aucune balise dans son export par défaut, et le fichier entier reprend la main plutôt que de
+     * le déclarer muet.
      */
     return porteDuJsx(source, plage) ? plage : null;
   }

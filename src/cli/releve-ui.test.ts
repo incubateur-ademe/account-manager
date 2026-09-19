@@ -243,9 +243,10 @@ describe("ce que le relevé compte, et ce qu'il refuse de compter", () => {
     );
     expect(mesure.compter([voisinNonMonte]).valeur).toBe(0);
 
-    // Then une ligne en colonne zéro dans un gabarit multi-ligne ne rend pas l'écran muet. Elle
-    // coupe la plage de l'export par défaut avant son return, et sans repli sur le fichier entier
-    // les deux titres disparaissaient, le compteur affichant un gain là où il perdait la vue.
+    // Then une ligne en colonne zéro dans un gabarit multi-ligne coupe bien la plage, Biome ne
+    // reformatant pas le contenu d'un gabarit. Ce qui tient ici est le repli sur le fichier entier,
+    // la plage tronquée ne portant aucun JSX. La même ligne écrite après le premier titre passerait
+    // ce filet, et ce qui suit quitterait le relevé sans que rien ne le dise.
     const gabaritCoupe = sourceDeTest(
       "src/app/collectes/page.tsx",
       "export default function Page() {\n  const aide = `une ligne\nexport const x = 1;\nfin`;\n  return <main><h1>Collectes</h1><h3>Suite</h3></main>;\n}",
@@ -306,6 +307,68 @@ describe("ce que le relevé compte, et ce qu'il refuse de compter", () => {
       `import { GardeFou } from "./GardeFou";\nexport default function Page() {\n  return <main><GardeFouEnTete /><h1>Collectes</h1><GardeFou /></main>;\n}`,
     );
     expect(mesure.compter([voisin, enfant]).valeur).toBe(1);
+  });
+
+  it("borne une déclaration à sa vraie fin, et non au fichier entier", () => {
+    const mesure = MESURES.find((une) => une.id === "sauts-de-niveau-de-titre");
+    if (mesure === undefined) throw new Error("mesure absente");
+
+    /*
+     * La borne se lit à l'indentation, elle ne compte aucune accolade. Chaque piège ci-dessous en
+     * écrit une là où aucun code ne l'ouvre : un gabarit, un commentaire de bloc, un commentaire de
+     * ligne, une chaîne au fond d'une interpolation, une expression régulière. Le voisin que rien ne
+     * monte sert de détecteur : que la plage déborde ou qu'elle se tronque, son h4 entre dans la
+     * séquence et le saut apparaît.
+     */
+    const pageDuBloc = sourceDeTest(
+      "src/app/collectes/page.tsx",
+      `import { Bloc } from "./Bloc";\nexport default function Page() {\n  return <main><h1>Collectes</h1><Bloc /><h3>Suite</h3></main>;\n}`,
+    );
+    const sautsAvecLePiege = (piege: string): number =>
+      mesure.compter([
+        pageDuBloc,
+        sourceDeTest(
+          "src/app/collectes/Bloc.tsx",
+          `export function Bloc() {\n${piege}\n  return <Alert as="h2" title="Bloc" />;\n}\n\nfunction Voisin() {\n  return <Alert as="h4" title="Voisin" />;\n}`,
+        ),
+      ]).valeur;
+
+    expect(sautsAvecLePiege("  const aide = `une accolade } dans un gabarit`;")).toBe(0);
+    expect(sautsAvecLePiege("  /* une accolade } dans un commentaire */")).toBe(0);
+    expect(sautsAvecLePiege("  // fermer ici : }")).toBe(0);
+    expect(sautsAvecLePiege(`  const classe = \`bloc \${dense ? "{" : ""}\`;`)).toBe(0);
+    expect(sautsAvecLePiege('  const nom = brut.replace(/}/g, "");')).toBe(0);
+
+    /*
+     * Une flèche à corps parenthésé finit sur « ); » en colonne zéro. Sans borne, le composant
+     * emporte le voisin déclaré sous lui, que rien ne monte, et son h4 crée un saut.
+     */
+    const flecheParenthesee = sourceDeTest(
+      "src/app/collectes/Bloc.tsx",
+      'export const Bloc = () => (\n  <div className={fr.cx("fr-mb-2w")}>\n    <Alert as="h2" title="Bloc" />\n  </div>\n);\n\nfunction Voisin() {\n  return <Alert as="h4" title="Voisin" />;\n}',
+    );
+    expect(mesure.compter([pageDuBloc, flecheParenthesee]).valeur).toBe(0);
+
+    /*
+     * Une signature découpée pose en colonne zéro des lignes qui ferment puis rouvrent, « }: { »
+     * puis « }) { ». Les prendre pour la déclaration suivante bornait l'écran avant son return.
+     */
+    const signatureDecoupee = sourceDeTest(
+      "src/app/dossiers/[id]/page.tsx",
+      "export default async function Page({\n  params,\n}: {\n  params: Promise<{ id: string }>;\n}) {\n  return <main><h1>Dossier</h1><h2>Détail</h2></main>;\n}\n\nfunction Voisin() {\n  return <h4>Voisin</h4>;\n}",
+    );
+    expect(mesure.compter([signatureDecoupee]).valeur).toBe(0);
+
+    /*
+     * Une annotation de type en position de retour ouvre une accolade sur la ligne même de la
+     * déclaration. Borner là rendait la plage vide, et l'écran reprenait les titres de tout son
+     * fichier, voisin non monté compris.
+     */
+    const typeDeRetour = sourceDeTest(
+      "src/app/collectes/page.tsx",
+      `export default function Page(): { corps: ReactNode } | null {\n  return (\n    <main>\n      <h1>Collectes</h1>\n      <h3>Suite</h3>\n    </main>\n  );\n}\n\nfunction Voisin() {\n  return <h5>Voisin</h5>;\n}`,
+    );
+    expect(mesure.compter([typeDeRetour]).valeur).toBe(1);
   });
 
   it("distingue un refus qui étiquette d'un refus qui dit ce qui s'est passé", () => {
