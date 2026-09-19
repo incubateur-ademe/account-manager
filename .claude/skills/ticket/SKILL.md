@@ -114,7 +114,8 @@ Si le lot a modifie la doc ou la memoire, passe par `/sync-docs`.
 
 ## 7. Attendre la review et repondre
 
-Applique `/check-review-pr`. En plus :
+Applique `/check-review-pr`, dont le resume intermediaire reste interne ici : rien ne s'affiche
+avant le rapport final. En plus :
 
 - **Attends un verdict, jamais l'absence d'attente.** Un relecteur automatique peut etre saute, en
   pause ou a court de quota, et il ne rattrape pas le commit manque.

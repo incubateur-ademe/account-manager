@@ -26,9 +26,10 @@ describe("le thème qu'une réponse d'erreur emporte", () => {
     // When le gabarit se rend
     render(<RemettreLeTheme />);
 
-    // Then l'écran retrouve le sombre, au lieu de rester blanc
+    // Then l'écran retrouve le sombre, au lieu de rester blanc, et le choix qui gouverne la
+    // couleur n'est pas fabriqué pour autant
     expect(document.documentElement.getAttribute("data-fr-theme")).toBe("dark");
-    expect(document.documentElement.getAttribute("data-fr-scheme")).toBe("dark");
+    expect(document.documentElement.getAttribute("data-fr-scheme")).toBeNull();
 
     cleanup();
 
@@ -40,7 +41,8 @@ describe("le thème qu'une réponse d'erreur emporte", () => {
     // When le gabarit se rend de nouveau
     render(<RemettreLeTheme />);
 
-    // Then rien n'est écrasé : un choix explicite survit à la préférence du poste
+    // Then rien n'est écrasé : une couleur posée survit à la préférence du poste, et le choix
+    // « system » reste ce qu'il est
     expect(document.documentElement.getAttribute("data-fr-theme")).toBe("light");
     expect(document.documentElement.getAttribute("data-fr-scheme")).toBe("system");
   });
