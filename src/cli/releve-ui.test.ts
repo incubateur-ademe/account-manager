@@ -97,6 +97,12 @@ describe("ce que le relevé compte, et ce qu'il refuse de compter", () => {
     ].join("\n");
     expect(compter("deux-points-explicatifs", ECRAN, expressionCoupee)).toBe(0);
 
+    // Then un commentaire de fin de ligne n'emporte pas le littéral posé devant lui : effacer la
+    // ligne entière plutôt que la plage du commentaire rendait la mesure aveugle à ce texte.
+    const commentaireEnFinDeLigne =
+      'const T = "Aucune collecte : la liste est vide."; /* note `à : ne pas compter` */';
+    expect(compter("deux-points-explicatifs", ECRAN, commentaireEnFinDeLigne)).toBe(1);
+
     // Then une description de schéma Zod documente le fichier de politique, jamais un écran.
     const schema = `.meta({\n  description:\n    "Les accès que ce profil ouvre : un profil sans accès reste licite.",\n})`;
     expect(compter("deux-points-explicatifs", "src/core/policy.ts", schema)).toBe(0);

@@ -162,29 +162,31 @@ const estLigneDeCommentaire = (ligne: string): boolean => /^\s*(\/\/|\*|\/\*)/.t
  * Un commentaire JSX s'ouvre sur `{` avant son `/*`, et ses lignes de continuation ne portent aucun
  * astérisque : les reconnaître ligne à ligne laissait lire les phrases qu'il porte comme du texte
  * d'écran. Le balayage suit donc l'ouverture et la fermeture des blocs à travers le fichier.
+ *
+ * Seule la plage du commentaire est effacée, et non la ligne : un littéral d'écran posé avant ou
+ * après un commentaire de fin de ligne reste à compter.
  */
-function lignesSousCommentaire(source: Source): ReadonlySet<number> {
-  const couvertes = new Set<number>();
+function lignesHorsCommentaire(source: Source): string[] {
   let ouvert = false;
-  source.lignes.forEach((ligne, index) => {
-    if (ouvert) couvertes.add(index);
+  return source.lignes.map((ligne) => {
+    let nettoyee = "";
     let position = 0;
     while (position < ligne.length) {
       if (ouvert) {
         const fin = ligne.indexOf("*/", position);
-        if (fin === -1) break;
+        if (fin === -1) return nettoyee;
         ouvert = false;
         position = fin + 2;
       } else {
         const debut = ligne.indexOf("/*", position);
-        if (debut === -1) break;
+        if (debut === -1) return nettoyee + ligne.slice(position);
+        nettoyee += ligne.slice(position, debut);
         ouvert = true;
-        couvertes.add(index);
         position = debut + 2;
       }
     }
+    return nettoyee;
   });
-  return couvertes;
 }
 
 function litterauxDe(source: Source): Litteral[] {
@@ -195,10 +197,10 @@ function litterauxDe(source: Source): Litteral[] {
    */
   const ouvreUnSchema = /\.meta\(/;
   const finitParUneDescription = /description:\s*$/;
-  const sousCommentaire = lignesSousCommentaire(source);
-  source.lignes.forEach((ligne, index) => {
-    if (estLigneDeCommentaire(ligne) || sousCommentaire.has(index)) return;
-    const precedente = source.lignes[index - 1] ?? "";
+  const horsCommentaire = lignesHorsCommentaire(source);
+  horsCommentaire.forEach((ligne, index) => {
+    if (estLigneDeCommentaire(source.lignes[index] ?? "")) return;
+    const precedente = horsCommentaire[index - 1] ?? "";
     if (index > 0 && (ouvreUnSchema.test(precedente) || finitParUneDescription.test(precedente))) {
       return;
     }
