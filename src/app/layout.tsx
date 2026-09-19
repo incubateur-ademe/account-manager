@@ -4,6 +4,7 @@ import { utilisateurCourant } from "@/lib/session";
 import { chargerLesSurcharges } from "@/lib/surcharges";
 import { Deconnexion } from "@/ui/Deconnexion";
 import { DsfrProvider, StartDsfrOnHydration } from "@/ui/dsfr/client";
+import { RemettreLeTheme } from "@/ui/dsfr/RemettreLeTheme";
 import { DsfrHead, getHtmlAttributes } from "@/ui/dsfr/server";
 import { Navigation } from "@/ui/Navigation";
 
@@ -49,6 +50,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             montés avant lui. */}
           {children}
           <StartDsfrOnHydration />
+          <RemettreLeTheme />
         </DsfrProvider>
       </body>
     </html>
