@@ -21,8 +21,6 @@ export interface Bloc {
 export interface Anatomie {
   readonly hauteur: number;
   readonly primaires: readonly string[];
-  readonly modalesSansChamp: readonly string[];
-  readonly modalesBavardes: readonly string[];
   readonly lignesTropHautes: readonly string[];
   readonly colonnesConstantes: number;
   readonly sousLaLigne: number;
@@ -154,22 +152,6 @@ export async function anatomieDe(page: Page): Promise<Anatomie> {
       phrases.set(texte, (phrases.get(texte) ?? 0) + 1);
     }
 
-    /*
-     * Une modale ouverte se mesure ici, et nulle part ailleurs : son contenu vit dans des composants
-     * enfants qu'aucune lecture du source ne suit, et ses champs ne se comptent qu'une fois rendus.
-     */
-    const modalesSansChamp: string[] = [];
-    const modalesBavardes: string[] = [];
-    for (const boite of document.querySelectorAll("dialog[open]")) {
-      const titre = (boite.querySelector("h1,h2,h3")?.textContent ?? "").trim().slice(0, 50);
-      const champs = boite.querySelectorAll("input:not([type=hidden]), select, textarea").length;
-      const mots = texteDe(boite).split(" ").length;
-      if (champs === 0) modalesSansChamp.push(`${titre} (${mots} mots)`);
-      else if (mots / champs > 60) {
-        modalesBavardes.push(`${titre} (${mots} mots / ${champs} champ(s))`);
-      }
-    }
-
     const lignesTropHautes: string[] = [];
     let colonnesConstantes = 0;
     for (const table of document.querySelectorAll("table")) {
@@ -210,8 +192,6 @@ export async function anatomieDe(page: Page): Promise<Anatomie> {
             !b.className.includes("fr-btn--tooltip"),
         )
         .map((b) => `${b.tagName.toLowerCase()} « ${texteDe(b).slice(0, 40)} »`),
-      modalesSansChamp,
-      modalesBavardes,
       lignesTropHautes,
       colonnesConstantes,
       sousLaLigne: Math.max(0, hauteurPage - window.innerHeight),

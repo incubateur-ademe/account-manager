@@ -148,16 +148,23 @@ react-dsfr, l'ordre de lecture réel, la densité, le débordement en étroit. C
 que chaque écran portait deux `h1`, dont un venu des modales et un du sélecteur de thème du DSFR, que
 rien dans le code ne laissait voir.
 
-**Six règles de forme ne se tiennent que dans le navigateur**, et leurs plafonds vivent dans
-`e2e/seuils-visuels.json` : modales sans champ, modales au-delà de soixante mots par champ, écrans à
-plus d'un bouton primaire, lignes de tableau au-delà de 120 px, colonnes au contenu identique partout,
-contenus répétés dans un écran. Un dépassement fait échouer le relevé visuel. `POSER_LES_PLAFONDS=1`
-les fige, et comme ceux de `pnpm cadre`, ils ne remontent jamais.
+**Huit règles de forme ne se tiennent que dans le navigateur**, et leurs plafonds vivent dans
+`e2e/seuils-visuels.json` : modales sans champ, modales au-delà de soixante mots par champ, modales
+qui ne s'ouvrent pas, écrans à plus d'un bouton primaire, lignes de tableau au-delà de 120 px,
+colonnes au contenu identique partout, contenus répétés dans un écran, écrans qui débordent en
+375 px. Un dépassement fait échouer le relevé visuel. `POSER_LES_PLAFONDS=1` les fige, et comme ceux
+de `pnpm cadre`, ils ne remontent jamais.
 
-Ces six-là ne peuvent pas descendre dans `pnpm cadre`, et la raison vaut d'être connue avant d'essayer :
+Ces huit-là ne peuvent pas descendre dans `pnpm cadre`, et la raison vaut d'être connue avant d'essayer :
 le contenu d'une modale vit dans des composants enfants qu'aucune lecture du source ne suit, et la
 hauteur d'une ligne dépend de ce qu'on y a mis. Une première version les mesurait en statique et
 comptait douze modales sans champ là où le navigateur en voit sept.
+
+**Le relevé ne compte que les boutons qu'un écran rend cliquables.** react-dsfr monte pour chaque
+modale un second bouton porteur du même `aria-controls`, caché sous `fr-hidden` et retiré du parcours
+au clavier. Le relever faisait compter dix modales qui ne s'ouvraient pas là où aucune n'était en
+cause. La visibilité se lit sur le style calculé et pas seulement sur la boîte, un accordéon replié
+gardant une boîte pleine sous un `visibility: hidden` hérité.
 
 **Les deux étages du bas ne partent pas d'un clone.** Une fois pour toutes :
 
