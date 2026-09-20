@@ -85,6 +85,20 @@ export function compteRendu({
 }
 
 /**
+ * Les phrases d'un passage qui s'est arrêté après avoir commencé à agir.
+ *
+ * Elles viennent avant la clé remise et non après : le compte rendu juste au-dessus donne
+ * des nombres arrêtés en cours de route, et personne ne relance un dossier sans savoir que
+ * son état n'a pas été reposé.
+ */
+export const LIBELLE_PASSAGE_INCOMPLET = {
+  titre: "Ce passage s'est arrêté avant d'avoir tout traité",
+  raison: (erreur: string) => `Une écriture a échoué en cours de passage : ${erreur}`,
+  suite:
+    "Rechargez le dossier avant de relancer. Les étapes que ce passage n'a pas atteintes gardent leur état, et l'état du plan n'a pas été reposé.",
+} as const;
+
+/**
  * Les phrases de la clé remise, qui ne se lira qu'une fois.
  *
  * Elles portent la promesse la plus dangereuse de cet écran, et c'est la seule fois où

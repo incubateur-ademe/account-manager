@@ -112,6 +112,12 @@ export interface ResultatDExecution {
    * passages : seule une étape qui fabrique un credential en remet.
    */
   remises: readonly RemiseDeCredential[];
+  /**
+   * Ce qui a interrompu le passage après qu'il a commencé à agir. Non nul, des étapes
+   * n'ont pas été traitées et l'état du plan n'a pas été reposé : ce que `remises` porte a
+   * bien été émis, le reste de la page ne décrit plus rien de sûr.
+   */
+  passageIncomplet?: string;
 }
 
 /**
@@ -478,229 +484,261 @@ export async function executerPlan(
   let echecs = 0;
   const remises: RemiseDeCredential[] = [];
 
-  for (const { id, label, etape, lue } of aTraiter) {
-    const systeme = connecteur(etape.systemKey);
-    // Le tier dit ce qui a été approuvé, la présence d'`execute` dit ce que le
-    // connecteur sait faire aujourd'hui : les deux sont nécessaires, et une étape
-    // automatique dont le connecteur ne sait pas encore exécuter reste une étape que
-    // la main d'un opérateur soldera.
-    const executable = estExecutable(etape) && systeme?.execute !== undefined;
+  let passageIncomplet: string | undefined;
 
-    const trace = {
-      actorKind: "HUMAN" as const,
-      actorUsername: operateur.username,
-      action: "plan.etape.execution",
-      targetType: "planStep",
-      targetId: id,
-      correlationId: runId,
-    };
-    const contexte = {
-      etape: label,
-      systeme: etape.systemKey,
-      tier: etape.tier,
-      attendu: etape.expectedState,
-      simulation: dryRun,
-    };
+  // Ce qui a été émis vit alors dans `remises` et nulle part ailleurs : ni la base, ni le
+  // journal, ni le proxy n'en gardent la moitié périssable. Laisser l'exception remonter
+  // détruirait la seule copie au monde de la clé d'un jeton vivant que rien ne révoque, et
+  // le passage n'a de toute façon plus rien à sauver une fois qu'une de ses écritures
+  // refuse. Les étapes que la boucle n'a pas atteintes gardent leur état et se
+  // représenteront à la reprise suivante.
+  try {
+    for (const { id, label, etape, lue } of aTraiter) {
+      const systeme = connecteur(etape.systemKey);
+      // Le tier dit ce qui a été approuvé, la présence d'`execute` dit ce que le
+      // connecteur sait faire aujourd'hui : les deux sont nécessaires, et une étape
+      // automatique dont le connecteur ne sait pas encore exécuter reste une étape que
+      // la main d'un opérateur soldera.
+      const executable = estExecutable(etape) && systeme?.execute !== undefined;
 
-    // Avant le premier appel, et sans attendre : le journal précède l'action, et une
-    // panne du journal ne doit jamais faire échouer l'action qu'il documente.
-    journaliser({ ...trace, after: contexte, result: "SUCCESS" });
+      const trace = {
+        actorKind: "HUMAN" as const,
+        actorUsername: operateur.username,
+        action: "plan.etape.execution",
+        targetType: "planStep",
+        targetId: id,
+        correlationId: runId,
+      };
+      const contexte = {
+        etape: label,
+        systeme: etape.systemKey,
+        tier: etape.tier,
+        attendu: etape.expectedState,
+        simulation: dryRun,
+      };
 
-    let precheck: PrecheckResult | null = null;
-    let echecDeLecture: IssueDEtape | null = null;
+      // Avant le premier appel, et sans attendre : le journal précède l'action, et une
+      // panne du journal ne doit jamais faire échouer l'action qu'il documente.
+      journaliser({ ...trace, after: contexte, result: "SUCCESS" });
 
-    if (systeme?.precheck) {
-      try {
-        precheck = await systeme.precheck(etape, ctx);
-      } catch (cause) {
-        echecDeLecture = issueDUneException(cause);
-      }
-    }
+      let precheck: PrecheckResult | null = null;
+      let echecDeLecture: IssueDEtape | null = null;
 
-    // Un précheck qui lève n'est pas une action manquée : rien n'a été tenté, l'étape
-    // garde son état, et la cause est consignée pour que la reprise sache quoi
-    // regarder. Poser FAILED dirait qu'on a essayé d'écrire.
-    if (echecDeLecture) {
-      echecs += 1;
-      await prisma.planStep.update({
-        where: { id },
-        data: { lastError: `Précheck : ${echecDeLecture.erreur ?? echecDeLecture.motif}` },
-      });
-      journaliser({
-        ...trace,
-        after: { ...contexte, motif: `Le précheck a levé : ${echecDeLecture.motif}` },
-        result: "FAILURE",
-      });
-      continue;
-    }
-
-    const decision = decider(precheck, dryRun, executable);
-    let issue: IssueDEtape | null = null;
-
-    if (decision.geste === "executer" && systeme?.execute) {
-      executees += 1;
-      try {
-        const rendu = await systeme.execute(etape, ctx);
-        issue = issueDeLEtape(rendu);
-
-        // Le rangement revient au socle et jamais au connecteur : aucun fichier de
-        // `src/connectors/` n'importe `@/lib/db`, et leur en ouvrir l'accès ferait du
-        // contrat une façade. Après l'appel, parce qu'il n'y a rien à ranger avant.
-        if (rendu.state === "SUCCEEDED" && rendu.credential) {
-          remises.push(
-            await rangerLeCredential(rendu.credential, operateur.username, maintenant, journaliser),
-          );
+      if (systeme?.precheck) {
+        try {
+          precheck = await systeme.precheck(etape, ctx);
+        } catch (cause) {
+          echecDeLecture = issueDUneException(cause);
         }
-      } catch (cause) {
-        issue = issueDUneException(cause);
       }
-    }
 
-    const etat = issue?.etat ?? decision.etat;
-    const appele = issue !== null;
-
-    // Une étape que quelqu'un doit contrôler n'est pas soldée du seul fait que la
-    // boucle l'a faite. La machine ne porte aucun second regard, et l'opérateur qui a
-    // lancé la reprise est justement celui dont on attend qu'un autre relise le geste :
-    // sans cette attente, `validationBy` serait une colonne morte sur la ligne, jamais
-    // à `AWAITING` donc jamais validable, et l'étape se solderait au mépris de ce que
-    // le plan approuvé demandait.
-    const declare = etat === "SUCCEEDED" || etat === "ALREADY_PRESENT" || etat === "ALREADY_ABSENT";
-    const validation: EtatValidation = etape.validationBy && declare ? "AWAITING" : lue.validation;
-
-    if (etat !== null || appele) {
-      // Ce que le geste constate, et qui s'écrit sans condition : quand cette écriture
-      // part, le connecteur a déjà agi sur le système cible, et un accès ouvert ou
-      // coupé sans que rien ne l'enregistre est plus grave que n'importe quel conflit.
-      //
-      // L'état s'en détache, parce qu'il ne dit pas tout à fait la même chose que le
-      // reste : la tentative, sa date et sa cause d'échec constatent ce qui a eu lieu,
-      // l'état dit en plus ce qu'il reste à faire, et c'est à ce titre qu'un refus le
-      // pose lui aussi.
-      const traceDuGeste: Prisma.PlanStepUpdateManyMutationInput = {
-        ...(appele
-          ? {
-              attempts: { increment: 1 },
-              executedAt: maintenant,
-              lastError: issue?.erreur ?? null,
-              // Ce que le connecteur a dit de la reprise, et non ce qu'on en déduirait :
-              // sans cette colonne, `retryable` ne formulait qu'un motif au journal, et
-              // l'étape se représentait quand même au clic suivant.
-              retryable: issue?.reprenable ?? null,
-            }
-          : // L'état bouge sans qu'aucun appel ait eu lieu : le motif de la décision est
-            // tout ce que l'opérateur aura pour comprendre, et une étape retenue en écart
-            // qui n'affiche ni l'attendu ni le constaté est une étape bloquée sans raison.
-            { lastError: decision.motif }),
-        ...(issue?.reversibleUntil ? { reversibleUntil: issue.reversibleUntil } : {}),
-      };
-
-      const geste: Prisma.PlanStepUpdateManyMutationInput = {
-        ...(etat === null ? {} : { state: etat }),
-        ...traceDuGeste,
-      };
-
-      // Ce que le contrôle juge, et qui porte sur une déclaration précise : la
-      // signature du contrôleur précédent s'efface avec l'attente qu'on repose, sans
-      // quoi son avis se lirait comme s'il jugeait celle-ci. Le journal, lui, garde tout.
-      const controle =
-        validation === "AWAITING"
-          ? {
-              validation,
-              declaredBy: operateur.username,
-              validatedBy: null,
-              validatedAt: null,
-              validationNote: null,
-            }
-          : null;
-
-      if (controle === null) {
-        await prisma.planStep.update({ where: { id }, data: geste });
-      } else {
-        // Conditionnée sur la déclaration lue, comme le pointage et le verdict de
-        // l'écran : entre cette lecture et ici, les connecteurs ont été interrogés, et
-        // un contrôleur a eu tout ce temps pour trancher.
-        const { count } = await prisma.planStep.updateMany({
-          where: {
-            id,
-            state: lue.etat,
-            validation: lue.validation,
-            declaredBy: lue.declaredBy,
-            attempts: lue.attempts,
-          },
-          data: { ...geste, ...controle },
+      // Un précheck qui lève n'est pas une action manquée : rien n'a été tenté, l'étape
+      // garde son état, et la cause est consignée pour que la reprise sache quoi
+      // regarder. Poser FAILED dirait qu'on a essayé d'écrire.
+      if (echecDeLecture) {
+        echecs += 1;
+        await prisma.planStep.update({
+          where: { id },
+          data: { lastError: `Précheck : ${echecDeLecture.erreur ?? echecDeLecture.motif}` },
         });
+        journaliser({
+          ...trace,
+          after: { ...contexte, motif: `Le précheck a levé : ${echecDeLecture.motif}` },
+          result: "FAILURE",
+        });
+        continue;
+      }
 
-        // La déclaration lue n'est plus celle qui est en base. Seule une signature
-        // interdit d'y reposer l'attente : y renoncer sur un simple pointage
-        // solderait en silence une étape que le plan approuvé confiait à un second
-        // regard, et plus rien ne pourrait l'ouvrir puisque `peutValider` exige
-        // `AWAITING`. Un verdict, lui, porte toujours son signataire.
-        if (count === 0) {
-          const { count: reposee } = await prisma.planStep.updateMany({
-            where: { id, validatedBy: null },
+      const decision = decider(precheck, dryRun, executable);
+      let issue: IssueDEtape | null = null;
+
+      if (decision.geste === "executer" && systeme?.execute) {
+        executees += 1;
+        try {
+          const rendu = await systeme.execute(etape, ctx);
+          issue = issueDeLEtape(rendu);
+
+          // Le rangement revient au socle et jamais au connecteur : aucun fichier de
+          // `src/connectors/` n'importe `@/lib/db`, et leur en ouvrir l'accès ferait du
+          // contrat une façade. Après l'appel, parce qu'il n'y a rien à ranger avant.
+          if (rendu.state === "SUCCEEDED" && rendu.credential) {
+            remises.push(
+              await rangerLeCredential(
+                rendu.credential,
+                operateur.username,
+                maintenant,
+                journaliser,
+              ),
+            );
+          }
+        } catch (cause) {
+          issue = issueDUneException(cause);
+        }
+      }
+
+      const etat = issue?.etat ?? decision.etat;
+      const appele = issue !== null;
+
+      // Une étape que quelqu'un doit contrôler n'est pas soldée du seul fait que la
+      // boucle l'a faite. La machine ne porte aucun second regard, et l'opérateur qui a
+      // lancé la reprise est justement celui dont on attend qu'un autre relise le geste :
+      // sans cette attente, `validationBy` serait une colonne morte sur la ligne, jamais
+      // à `AWAITING` donc jamais validable, et l'étape se solderait au mépris de ce que
+      // le plan approuvé demandait.
+      const declare =
+        etat === "SUCCEEDED" || etat === "ALREADY_PRESENT" || etat === "ALREADY_ABSENT";
+      const validation: EtatValidation =
+        etape.validationBy && declare ? "AWAITING" : lue.validation;
+
+      if (etat !== null || appele) {
+        // Ce que le geste constate, et qui s'écrit sans condition : quand cette écriture
+        // part, le connecteur a déjà agi sur le système cible, et un accès ouvert ou
+        // coupé sans que rien ne l'enregistre est plus grave que n'importe quel conflit.
+        //
+        // L'état s'en détache, parce qu'il ne dit pas tout à fait la même chose que le
+        // reste : la tentative, sa date et sa cause d'échec constatent ce qui a eu lieu,
+        // l'état dit en plus ce qu'il reste à faire, et c'est à ce titre qu'un refus le
+        // pose lui aussi.
+        const traceDuGeste: Prisma.PlanStepUpdateManyMutationInput = {
+          ...(appele
+            ? {
+                attempts: { increment: 1 },
+                executedAt: maintenant,
+                lastError: issue?.erreur ?? null,
+                // Ce que le connecteur a dit de la reprise, et non ce qu'on en déduirait :
+                // sans cette colonne, `retryable` ne formulait qu'un motif au journal, et
+                // l'étape se représentait quand même au clic suivant.
+                retryable: issue?.reprenable ?? null,
+              }
+            : // L'état bouge sans qu'aucun appel ait eu lieu : le motif de la décision est
+              // tout ce que l'opérateur aura pour comprendre, et une étape retenue en écart
+              // qui n'affiche ni l'attendu ni le constaté est une étape bloquée sans raison.
+              { lastError: decision.motif }),
+          ...(issue?.reversibleUntil ? { reversibleUntil: issue.reversibleUntil } : {}),
+        };
+
+        const geste: Prisma.PlanStepUpdateManyMutationInput = {
+          ...(etat === null ? {} : { state: etat }),
+          ...traceDuGeste,
+        };
+
+        // Ce que le contrôle juge, et qui porte sur une déclaration précise : la
+        // signature du contrôleur précédent s'efface avec l'attente qu'on repose, sans
+        // quoi son avis se lirait comme s'il jugeait celle-ci. Le journal, lui, garde tout.
+        const controle =
+          validation === "AWAITING"
+            ? {
+                validation,
+                declaredBy: operateur.username,
+                validatedBy: null,
+                validatedAt: null,
+                validationNote: null,
+              }
+            : null;
+
+        if (controle === null) {
+          await prisma.planStep.update({ where: { id }, data: geste });
+        } else {
+          // Conditionnée sur la déclaration lue, comme le pointage et le verdict de
+          // l'écran : entre cette lecture et ici, les connecteurs ont été interrogés, et
+          // un contrôleur a eu tout ce temps pour trancher.
+          const { count } = await prisma.planStep.updateMany({
+            where: {
+              id,
+              state: lue.etat,
+              validation: lue.validation,
+              declaredBy: lue.declaredBy,
+              attempts: lue.attempts,
+            },
             data: { ...geste, ...controle },
           });
 
-          // Le refus ne lève pas : lever abandonnerait les étapes suivantes du
-          // passage, alors qu'une seule d'entre elles est en cause. Le geste s'écrit
-          // seul, l'avis signé reste en place, et `reposerLEtatDuPlan` reprend l'état
-          // d'ensemble depuis les étapes elles-mêmes.
-          //
-          // Un refus garde en revanche l'état qu'il a posé. Il renvoie l'étape à faire,
-          // et lui rendre celui du geste la laisserait soldée sous un avis qui la
-          // refuse : couple qu'aucun autre chemin ne produit, que l'état du plan lit
-          // comme un échec au lieu d'un refus, et qui sortirait l'étape des états que
-          // la reprise reprend, donc du seul chemin qui pouvait la rattraper.
-          if (reposee === 0) {
-            const { count: avecEtat } = await prisma.planStep.updateMany({
-              where: { id, validation: { not: "REFUSED" } },
-              data: geste,
+          // La déclaration lue n'est plus celle qui est en base. Seule une signature
+          // interdit d'y reposer l'attente : y renoncer sur un simple pointage
+          // solderait en silence une étape que le plan approuvé confiait à un second
+          // regard, et plus rien ne pourrait l'ouvrir puisque `peutValider` exige
+          // `AWAITING`. Un verdict, lui, porte toujours son signataire.
+          if (count === 0) {
+            const { count: reposee } = await prisma.planStep.updateMany({
+              where: { id, validatedBy: null },
+              data: { ...geste, ...controle },
             });
 
-            if (avecEtat === 0) {
-              await prisma.planStep.update({ where: { id }, data: traceDuGeste });
+            // Le refus ne lève pas : lever abandonnerait les étapes suivantes du
+            // passage, alors qu'une seule d'entre elles est en cause. Le geste s'écrit
+            // seul, l'avis signé reste en place, et `reposerLEtatDuPlan` reprend l'état
+            // d'ensemble depuis les étapes elles-mêmes.
+            //
+            // Un refus garde en revanche l'état qu'il a posé. Il renvoie l'étape à faire,
+            // et lui rendre celui du geste la laisserait soldée sous un avis qui la
+            // refuse : couple qu'aucun autre chemin ne produit, que l'état du plan lit
+            // comme un échec au lieu d'un refus, et qui sortirait l'étape des états que
+            // la reprise reprend, donc du seul chemin qui pouvait la rattraper.
+            if (reposee === 0) {
+              const { count: avecEtat } = await prisma.planStep.updateMany({
+                where: { id, validation: { not: "REFUSED" } },
+                data: geste,
+              });
+
+              if (avecEtat === 0) {
+                await prisma.planStep.update({ where: { id }, data: traceDuGeste });
+              }
+
+              journaliser({
+                ...trace,
+                before: lue,
+                after: {
+                  ...contexte,
+                  motif:
+                    "Un avis signé portait sur cette étape à l'écriture. Le geste est consigné, l'avis est laissé en place, et l'étape n'est pas remise en attente.",
+                },
+                result: "SKIPPED",
+              });
             }
-
-            journaliser({
-              ...trace,
-              before: lue,
-              after: {
-                ...contexte,
-                motif:
-                  "Un avis signé portait sur cette étape à l'écriture. Le geste est consigné, l'avis est laissé en place, et l'étape n'est pas remise en attente.",
-              },
-              result: "SKIPPED",
-            });
           }
         }
       }
+
+      // Soldée au sens de `estSoldee` et non du seul état : une étape exécutée sans
+      // faute mais confiée au regard d'un autre n'est pas finie, et l'annoncer soldée
+      // ferait dire au compte rendu l'inverse de ce que l'écran montrera.
+      if (etat !== null && estSoldee({ etat, validation })) {
+        soldees += 1;
+      }
+      if (etat === "FAILED") {
+        echecs += 1;
+      }
+
+      journaliser({
+        ...trace,
+        after: { ...contexte, motif: issue?.motif ?? decision.motif, etat: etat ?? "inchangé" },
+        result: issue?.resultat ?? decision.resultat,
+      });
     }
 
-    // Soldée au sens de `estSoldee` et non du seul état : une étape exécutée sans
-    // faute mais confiée au regard d'un autre n'est pas finie, et l'annoncer soldée
-    // ferait dire au compte rendu l'inverse de ce que l'écran montrera.
-    if (etat !== null && estSoldee({ etat, validation })) {
-      soldees += 1;
-    }
-    if (etat === "FAILED") {
-      echecs += 1;
-    }
-
+    // L'état du plan se déduit de ses étapes et ne se pose jamais à la main. Il se relit
+    // après coup plutôt que depuis la photo prise au début de ce passage : entre les deux,
+    // les connecteurs ont été interrogés, et un opérateur a eu tout ce temps pour pointer
+    // ou valider une étape que cette boucle ne verrait pas.
+    await reposerLEtatDuPlan(plan.id);
+  } catch (cause: unknown) {
+    passageIncomplet = cause instanceof Error ? cause.message : String(cause);
     journaliser({
-      ...trace,
-      after: { ...contexte, motif: issue?.motif ?? decision.motif, etat: etat ?? "inchangé" },
-      result: issue?.resultat ?? decision.resultat,
+      ...traceDuPlan,
+      after: { simulation: dryRun, interrompu: passageIncomplet, remises: remises.length },
+      result: "FAILURE",
     });
   }
 
-  // L'état du plan se déduit de ses étapes et ne se pose jamais à la main. Il se relit
-  // après coup plutôt que depuis la photo prise au début de ce passage : entre les deux,
-  // les connecteurs ont été interrogés, et un opérateur a eu tout ce temps pour pointer
-  // ou valider une étape que cette boucle ne verrait pas.
-  await reposerLEtatDuPlan(plan.id);
-
-  return { masse, simulation: dryRun, executees, soldees, echecs, remises };
+  return {
+    masse,
+    simulation: dryRun,
+    executees,
+    soldees,
+    echecs,
+    remises,
+    ...(passageIncomplet === undefined ? {} : { passageIncomplet }),
+  };
 }
 
 /**

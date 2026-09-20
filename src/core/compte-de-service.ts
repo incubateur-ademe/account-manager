@@ -32,16 +32,20 @@ export type LectureDeclaration = { erreur: string } | { declaration: Declaration
 export const REVUE_PAR_DEFAUT = 180;
 
 /**
- * Le plus loin qu'un terme puisse être posé.
+ * Le plus loin qu'un terme puisse être posé, et c'est la périodicité de revue par défaut.
  *
  * Un terme non nul éteint la revue périodique : le calcul rend « à jour » et ne la réclame
  * plus, et aucun écran n'édite cette colonne. Une date lointaine tapée de travers sort donc
  * la fiche de la revue pour toujours, sans plus aucun geste pour la ramener, ce qui est
  * exactement le signal qu'on ne peut plus éteindre que la périodicité zéro se voit refuser
- * juste à côté. Un peu plus d'un an : au-delà, la date ne décrit plus un jeton qui meurt de
- * lui-même.
+ * juste à côté.
+ *
+ * Le plafond vaut donc ce que la revue accorde : rien ne doit vivre plus longtemps sans
+ * regard parce qu'il porte un terme que s'il n'en portait aucun. C'est aussi la plus longue
+ * échéance que la politique d'exemple ouvre à un accès élevé. Une valeur plus lointaine
+ * avait été proposée à la revue de l'émission, et elle ne s'appuyait sur rien du métier.
  */
-const PLAFOND_JOURS = 400;
+const PLAFOND_JOURS = REVUE_PAR_DEFAUT;
 
 const JOUR_MS = 24 * 60 * 60 * 1000;
 
@@ -68,8 +72,11 @@ export function lireDeclaration(
   if (lu !== undefined && Number.isNaN(lu.getTime())) {
     return { erreur: "Le terme ne se lit pas comme une date." };
   }
+  // Le champ de l'écran est une date, donc la valeur postée est minuit UTC du jour choisi :
+  // le jour même se refuse ici, et le refus doit nommer le geste plutôt que de renvoyer à
+  // une saisie que rien ne distingue d'une faute.
   if (lu !== undefined && lu.getTime() <= maintenant.getTime()) {
-    return { erreur: "Le terme est déjà passé." };
+    return { erreur: "Ce terme est déjà passé. Indiquez une date postérieure à aujourd'hui." };
   }
   if (lu !== undefined && lu.getTime() - maintenant.getTime() > PLAFOND_JOURS * JOUR_MS) {
     return {

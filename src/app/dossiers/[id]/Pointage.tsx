@@ -1,6 +1,7 @@
 "use client";
 
 import { fr } from "@codegouvfr/react-dsfr";
+import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Button } from "@codegouvfr/react-dsfr/Button";
 import { createModal } from "@codegouvfr/react-dsfr/Modal";
 import { useActionState, useState } from "react";
@@ -23,7 +24,7 @@ import {
   validerEtape,
 } from "./actions";
 import { Remises } from "./Remises";
-import { compteRendu, LIBELLE_LANCEMENT } from "./redaction-execution";
+import { compteRendu, LIBELLE_LANCEMENT, LIBELLE_PASSAGE_INCOMPLET } from "./redaction-execution";
 
 // Hors du composant, comme partout ailleurs dans ce dépôt : `createModal` enregistre
 // la modale une fois pour toutes, et un écran de dossier n'en porte qu'une.
@@ -420,6 +421,20 @@ export function BoutonExecuter({
           <p className={fr.cx("fr-text--sm", "fr-mt-1w")} role="status">
             {compteRendu(etat.execution)}
           </p>
+          {etat.execution.passageIncomplet === undefined ? null : (
+            <Alert
+              as="h3"
+              className={fr.cx("fr-mt-2w")}
+              severity="error"
+              title={LIBELLE_PASSAGE_INCOMPLET.titre}
+              description={
+                <>
+                  <p>{LIBELLE_PASSAGE_INCOMPLET.raison(etat.execution.passageIncomplet)}</p>
+                  <p className={fr.cx("fr-mb-0")}>{LIBELLE_PASSAGE_INCOMPLET.suite}</p>
+                </>
+              }
+            />
+          )}
           <Remises remises={etat.execution.remises} />
         </>
       ) : null}
