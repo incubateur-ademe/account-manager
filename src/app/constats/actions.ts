@@ -4,6 +4,7 @@ import { SORTE_DE_CIBLE } from "@/core/constat";
 import {
   type Cible,
   cleDeCible,
+  colonnesDeCible,
   jourSaisi,
   leveeAdmissible,
   poseAdmissible,
@@ -11,8 +12,38 @@ import {
 } from "@/core/derogation";
 import { actionTracee } from "@/lib/actions";
 import { prisma } from "@/lib/db";
-import { derogationsApplicables } from "@/lib/derogation";
+import { couvertureEnBase, derogationsApplicables } from "@/lib/derogation";
 import { requireOperateur } from "@/lib/session";
+
+/**
+ * Une course perdue contre un autre geste, qui est un refus et non une panne.
+ *
+ * Levée plutôt que retournée, parce qu'elle se constate au milieu d'une transaction et doit
+ * la défaire. Rendue au formulaire plutôt que relancée, parce qu'une action serveur qui lève
+ * ne remplit pas l'état que l'écran affiche : l'opérateur voyait sa modale se fermer sur un
+ * geste qui n'avait rien écrit.
+ */
+class CoursePerdue extends Error {}
+
+/**
+ * Le refus d'une course, rendu tel quel ; tout le reste continue de lever.
+ *
+ * Attraper largement ferait afficher une base injoignable comme un refus métier, et
+ * `actionTracee` a déjà posé sa trace d'échec quand on arrive ici.
+ */
+async function sansCoursePerdue<T extends { erreur: string }>(
+  geste: () => Promise<unknown>,
+): Promise<T | null> {
+  try {
+    await geste();
+    return null;
+  } catch (error: unknown) {
+    if (error instanceof CoursePerdue) {
+      return { erreur: error.message } as T;
+    }
+    throw error;
+  }
+}
 
 export type EtatCloture = { erreur: string } | null;
 
@@ -144,45 +175,57 @@ export async function tolererConstat(
     };
   }
 
-  await actionTracee({
-    action: "derogation.pose",
-    targetType: "derogation",
-    targetId: cleDeCible(cible),
-    after: { raison, jusquAu, constat: dedupKey },
-    revalider: [
-      "/constats",
-      "/",
-      ...(constat.person ? [`/personnes/${constat.person.username}`] : []),
-    ],
-    // Les deux écritures ensemble : la nuit suivante réparerait bien l'une sans l'autre,
-    // mais entre les deux l'écran mentirait, en montrant un écart dans la file que le
-    // registre dit toléré, ou l'inverse.
-    ecrire: async (operateur) =>
-      prisma.$transaction(async (tx) => {
-        await tx.derogation.create({
-          data: {
-            targetType: cible.type,
-            targetId:
-              cible.type === "identite" ? `${cible.provider}:${cible.externalId}` : cible.username,
-            reason: raison,
-            createdBy: operateur.username,
-            expiresAt: echeance,
-          },
-        });
-        // Fermé tout de suite plutôt qu'à la collecte suivante : l'écart cesse de faire
-        // du bruit au moment où quelqu'un décide de l'admettre, et sans nom, parce que
-        // personne n'a jugé la situation traitée.
-        const ferme = await tx.finding.updateMany({
-          where: { id: constat.id, closedAt: null },
-          data: { closedAt: maintenant, closeReason: RAISON_COUVERT, closedBy: null },
-        });
-        if (ferme.count === 0) {
-          throw new Error("Ce constat vient d'être clos par ailleurs.");
-        }
-      }),
-  });
-
-  return null;
+  return sansCoursePerdue<{ erreur: string }>(() =>
+    actionTracee({
+      action: "derogation.pose",
+      targetType: "derogation",
+      targetId: cleDeCible(cible),
+      after: { raison, jusquAu, constat: dedupKey },
+      revalider: [
+        "/constats",
+        "/",
+        ...(constat.person ? [`/personnes/${constat.person.username}`] : []),
+      ],
+      // Les deux écritures ensemble : la nuit suivante réparerait bien l'une sans l'autre,
+      // mais entre les deux l'écran mentirait, en montrant un écart dans la file que le
+      // registre dit toléré, ou l'inverse.
+      ecrire: async (operateur) =>
+        prisma.$transaction(async (tx) => {
+          // Le verdict a lu la couverture avant d'entrer ici, si bien que deux poses lancées
+          // ensemble la trouvent vide toutes les deux. Le verrou les sérialise sur la cible,
+          // et il tombe au commit ; la relecture qui suit voit alors la ligne de la première.
+          //
+          // L'empreinte tient sur 32 bits, donc deux cibles distinctes peuvent la partager.
+          // Ce que ça coûte est une attente, et rien d'autre : la relecture filtre sur les
+          // colonnes de la cible, aucune couverture étrangère ne peut donc être vue.
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${cleDeCible(cible)}))`;
+          // Jugée à l'instant où l'on écrit, et non à celui de la lecture d'entrée : une ligne
+          // posée entre les deux est née après `maintenant`, et la règle de couverture écarte
+          // ce qui n'existait pas encore à l'instant qu'on lui donne.
+          if ((await couvertureEnBase(tx, cible, new Date())).length > 0) {
+            throw new CoursePerdue("Cet écart vient d'être toléré par ailleurs.");
+          }
+          await tx.derogation.create({
+            data: {
+              ...colonnesDeCible(cible),
+              reason: raison,
+              createdBy: operateur.username,
+              expiresAt: echeance,
+            },
+          });
+          // Fermé tout de suite plutôt qu'à la collecte suivante : l'écart cesse de faire
+          // du bruit au moment où quelqu'un décide de l'admettre, et sans nom, parce que
+          // personne n'a jugé la situation traitée.
+          const ferme = await tx.finding.updateMany({
+            where: { id: constat.id, closedAt: null },
+            data: { closedAt: maintenant, closeReason: RAISON_COUVERT, closedBy: null },
+          });
+          if (ferme.count === 0) {
+            throw new CoursePerdue("Ce constat vient d'être clos par ailleurs.");
+          }
+        }),
+    }),
+  );
 }
 
 /**
@@ -215,25 +258,39 @@ export async function leverDerogation(
     return { erreur: verdict.raison };
   }
 
-  await actionTracee({
-    action: "derogation.levee",
-    targetType: "derogation",
-    targetId: cleDeCible(derogation.cible),
-    before: { jusquAu: derogation.echeance?.toISOString() ?? null },
-    revalider: ["/constats", "/"],
-    // Conditionnée sur l'absence de levée : de deux levées lancées ensemble, la seconde
-    // n'écrase ni le nom ni l'heure de la première, et sa trace reste au journal en échec
-    // plutôt que de compter pour une décision qui n'a rien décidé.
-    ecrire: async (operateur) => {
-      const levee = await prisma.derogation.updateMany({
-        where: { id, revokedAt: null },
-        data: { revokedAt: maintenant, revokedBy: operateur.username },
-      });
-      if (levee.count === 0) {
-        throw new Error("Cette tolérance vient d'être levée par ailleurs.");
-      }
-    },
-  });
+  /*
+   * Toutes les lignes de base qui couvrent cette cible, et non la seule ligne choisie.
+   * Rien n'interdit à deux d'entre elles de courir ensemble, et lever la première laissait
+   * la seconde taire l'écart : le registre annonçait la levée faite, la file restait muette,
+   * et l'opérateur n'avait aucun moyen de comprendre pourquoi.
+   *
+   * La politique en est exclue, `leveeAdmissible` la refusant déjà : une permanente se
+   * retire de son fichier, et la lever ici la ferait revenir au déploiement suivant.
+   */
+  const cle = cleDeCible(derogation.cible);
+  const couvrantes = applicables
+    .filter((candidate) => candidate.provenance === "base" && cleDeCible(candidate.cible) === cle)
+    .map((candidate) => candidate.id);
 
-  return null;
+  return sansCoursePerdue<{ erreur: string }>(() =>
+    actionTracee({
+      action: "derogation.levee",
+      targetType: "derogation",
+      targetId: cle,
+      before: { jusquAu: derogation.echeance?.toISOString() ?? null, couvrantes },
+      revalider: ["/constats", "/"],
+      // Conditionnée sur l'absence de levée : de deux levées lancées ensemble, la seconde
+      // n'écrase ni le nom ni l'heure de la première, et sa trace reste au journal en échec
+      // plutôt que de compter pour une décision qui n'a rien décidé.
+      ecrire: async (operateur) => {
+        const levee = await prisma.derogation.updateMany({
+          where: { id: { in: couvrantes }, revokedAt: null },
+          data: { revokedAt: maintenant, revokedBy: operateur.username },
+        });
+        if (levee.count === 0) {
+          throw new CoursePerdue("Cette tolérance vient d'être levée par ailleurs.");
+        }
+      },
+    }),
+  );
 }

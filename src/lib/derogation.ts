@@ -1,10 +1,13 @@
 import {
+  type Cible,
   cleDeCible,
+  colonnesDeCible,
   couvertureParCible,
   type Derogation,
   derogationsEnCours,
   lireCible,
 } from "@/core/derogation";
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { policy } from "@/lib/policy";
 
@@ -87,6 +90,46 @@ export async function derogationsApplicables(instant: Date): Promise<LectureDeDe
   }
 
   return { applicables: derogationsEnCours(connues, instant), illisibles };
+}
+
+/**
+ * Ce que la base tolère sur une cible à l'instant demandé, lu par le client qu'on donne.
+ *
+ * La pose la relit dans sa transaction, sous son verrou : la couverture lue avant d'écrire
+ * ne dit rien de ce qu'une pose lancée en même temps vient d'enregistrer.
+ *
+ * La politique n'y figure pas, et c'est ce qu'on veut ici : une permanente ne s'écrit pas
+ * en base, donc aucune course ne la concerne.
+ */
+export async function couvertureEnBase(
+  client: Pick<Prisma.TransactionClient, "derogation">,
+  cible: Cible,
+  instant: Date,
+): Promise<readonly Derogation[]> {
+  const lignes = await client.derogation.findMany({
+    where: colonnesDeCible(cible),
+    select: {
+      id: true,
+      reason: true,
+      createdBy: true,
+      createdAt: true,
+      expiresAt: true,
+      revokedAt: true,
+    },
+  });
+  return derogationsEnCours(
+    lignes.map((ligne) => ({
+      id: ligne.id,
+      cible,
+      raison: ligne.reason,
+      responsable: ligne.createdBy,
+      provenance: "base" as const,
+      poseeLe: ligne.createdAt,
+      echeance: ligne.expiresAt,
+      leveeLe: ligne.revokedAt,
+    })),
+    instant,
+  );
 }
 
 /**
