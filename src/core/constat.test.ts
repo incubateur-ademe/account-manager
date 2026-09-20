@@ -193,6 +193,9 @@ describe("constats levés par la lecture d'un système cible", () => {
     expect(constat?.severity).toBe("HIGH");
     expect(constat?.username).toBe("jean.dupont");
     expect(constat?.identiteId).toBe("i1");
+    expect(constat?.dedupKey).toBe("ORPHAN:github:1042");
+    // Le nom d'usage reste dans le détail, qui est ce qu'un opérateur lit.
+    expect(constat?.detail).toContain("jdupont");
   });
 
   it("ne conclut pas au départ sur une simple ressemblance", () => {
@@ -211,6 +214,30 @@ describe("constats levés par la lecture d'un système cible", () => {
     expect(constat?.kind).toBe("UNREGISTERED");
     expect(constat?.severity).toBe("MEDIUM");
     expect(constat?.username).toBeUndefined();
+    expect(constat?.dedupKey).toBe("UNREGISTERED:github:1042");
+    expect(constat?.detail).toContain("jdupont");
+  });
+
+  it("ne confond pas deux comptes que le fournisseur a laissés porter le même nom", () => {
+    // Given un compte abandonné par celui qui l'a quitté, et le compte de quelqu'un
+    // d'autre à qui le fournisseur a rendu le même login. Ils coexistent le temps que
+    // la collecte date la disparition du premier.
+    const ancien = { ...base, id: "i1", externalId: "1042" };
+    const nouveau = { ...base, id: "i2", externalId: "9077" };
+
+    // When les deux sont relus le même jour, chacun sans détenteur connu
+    const constats = constatsDIdentites([ancien, nouveau]);
+
+    // Then chacun porte sa propre clé : c'est elle qui décide, plus haut, si un
+    // épisode se rouvre ou si le verrou d'un opérateur s'applique. Confondues, la
+    // clôture manuelle du premier ferait taire pour toujours l'écart du second.
+    expect(constats).toHaveLength(2);
+    expect(constats.map((constat) => constat.dedupKey)).toEqual([
+      "UNREGISTERED:github:1042",
+      "UNREGISTERED:github:9077",
+    ]);
+    // Et les deux se lisent pareil : c'est le nom, pas la clé, qui sert à l'opérateur.
+    expect(constats.every((constat) => constat.detail.includes("jdupont"))).toBe(true);
   });
 
   it("se tait sur un compte machine déclaré et sur une personne en poste", () => {
