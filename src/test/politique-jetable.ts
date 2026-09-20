@@ -7,9 +7,8 @@ import { afterAll } from "vitest";
 /**
  * Un dossier de politique le temps d'un fichier de test, et qui ne lui survit pas.
  *
- * Dix fichiers le posaient chacun de leur côté et aucun ne l'effaçait : sept cent
- * trente-trois dossiers s'étaient accumulés sur le poste du mainteneur, un par
- * lancement et par fichier.
+ * Onze fichiers le posaient chacun de leur côté et aucun ne l'effaçait, laissant un
+ * dossier par lancement et par fichier s'accumuler sur le poste.
  *
  * L'effacement passe par `afterAll` et non par la sortie du processus. Un
  * `process.on("exit")` ne se déclenche pas ici, Vitest ne laissant pas ses processus de
@@ -32,8 +31,22 @@ export function politiqueJetable(nom: string, contenu?: string): string {
     writeFileSync(join(dossier, "config.yaml"), contenu, "utf8");
   }
 
+  // Rendue telle qu'elle était, et pas seulement effacée : un processus de travail sert
+  // plusieurs fichiers, et laisser la variable désigner un dossier supprimé rendrait le
+  // suivant sensible à l'ordre.
+  const precedent = process.env["POLICY_DIR"];
   process.env["POLICY_DIR"] = dossier;
-  afterAll(() => rmSync(dossier, { recursive: true, force: true }));
+
+  afterAll(() => {
+    rmSync(dossier, { recursive: true, force: true });
+    if (precedent === undefined) {
+      // `delete` et non une affectation : Node convertit la valeur en chaîne, si bien
+      // qu'y poser `undefined` laisse la variable valoir « undefined ».
+      delete process.env["POLICY_DIR"];
+    } else {
+      process.env["POLICY_DIR"] = precedent;
+    }
+  });
 
   return dossier;
 }
