@@ -1,7 +1,3 @@
-import { copyFileSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ouvrirGeste } from "@/app/gestes/actions";
 import type { PlannedStep } from "@/core/connector";
@@ -17,6 +13,7 @@ import {
   REFUS_DEPART_OUVERT,
   REFUS_INTENTION_ILLISIBLE,
 } from "@/lib/geste";
+import { politiqueJetable } from "@/test/politique-jetable";
 
 /**
  * Un geste hors dossier, de sa naissance à son exécution, contre une vraie base.
@@ -43,9 +40,7 @@ vi.mock("next/cache", () => ({
   },
 }));
 
-const REPERTOIRE = mkdtempSync(join(tmpdir(), "geste-integration-"));
-copyFileSync(resolve(process.cwd(), "config/config.exemple.yaml"), join(REPERTOIRE, "config.yaml"));
-process.env["POLICY_DIR"] = REPERTOIRE;
+politiqueJetable("geste-integration");
 
 const USERNAME = "nour.exemple";
 const ADRESSE = "nour.exemple@exemple.invalid";

@@ -1,13 +1,10 @@
-import { copyFileSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { RAISON_COUVERT } from "@/core/derogation";
 import { prisma } from "@/lib/db";
 import { derogationsApplicables, toleranceDesComptes } from "@/lib/derogation";
 import { syncConstats } from "@/lib/sync/constats";
+import { politiqueJetable } from "@/test/politique-jetable";
 
 /**
  * Le mécanisme anti-pourrissement, contre une vraie base.
@@ -24,9 +21,7 @@ import { syncConstats } from "@/lib/sync/constats";
  * garantie.
  */
 
-const REPERTOIRE = mkdtempSync(join(tmpdir(), "derogation-integration-"));
-copyFileSync(resolve(process.cwd(), "config/config.exemple.yaml"), join(REPERTOIRE, "config.yaml"));
-process.env["POLICY_DIR"] = REPERTOIRE;
+politiqueJetable("derogation-integration");
 
 const PARTIE = "nour.exemple";
 const AUTRE = "sacha.exemple";

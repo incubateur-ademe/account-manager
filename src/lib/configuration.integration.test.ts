@@ -1,7 +1,3 @@
-import { copyFileSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { prisma } from "@/lib/db";
@@ -12,10 +8,9 @@ import {
   variablesInconnues,
 } from "@/lib/policy";
 import { chargerLesSurcharges } from "@/lib/surcharges";
+import { politiqueJetable } from "@/test/politique-jetable";
 
-const REPERTOIRE = mkdtempSync(join(tmpdir(), "configuration-"));
-copyFileSync(resolve(process.cwd(), "config/config.exemple.yaml"), join(REPERTOIRE, "config.yaml"));
-process.env["POLICY_DIR"] = REPERTOIRE;
+politiqueJetable("configuration");
 
 describe("un réglage posé en base gouverne ce que le fichier déclarait", () => {
   beforeEach(async () => {

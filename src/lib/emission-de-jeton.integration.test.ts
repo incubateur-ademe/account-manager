@@ -1,7 +1,3 @@
-import { copyFileSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuditInput } from "@/core/audit";
@@ -12,6 +8,7 @@ import { prisma } from "@/lib/db";
 import { enregistrerPlan } from "@/lib/dossier";
 import { type DemandeDeJeton, ErreurFgp } from "@/lib/fgp";
 import { calculerGeste, engagementsOuverts } from "@/lib/geste";
+import { politiqueJetable } from "@/test/politique-jetable";
 
 /**
  * L'émission d'un jeton restreint, de son intention à la fiche du compte machine, contre une
@@ -123,9 +120,7 @@ vi.mock("@/lib/audit", async (original) => {
 
 vi.mock("@/lib/session", async () => (await import("@/test/doubles/session")).sessionDe());
 
-const REPERTOIRE = mkdtempSync(join(tmpdir(), "emission-integration-"));
-copyFileSync(resolve(process.cwd(), "config/config.exemple.yaml"), join(REPERTOIRE, "config.yaml"));
-process.env["POLICY_DIR"] = REPERTOIRE;
+politiqueJetable("emission-integration");
 
 const USERNAME = "nour.exemple";
 const ADRESSE = "nour.exemple@exemple.invalid";

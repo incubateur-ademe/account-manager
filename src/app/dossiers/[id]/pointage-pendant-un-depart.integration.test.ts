@@ -1,7 +1,3 @@
-import { copyFileSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PlannedStep } from "@/core/connector";
@@ -9,6 +5,7 @@ import { intentionDUnGeste } from "@/core/geste";
 import { empreinteDuPlan } from "@/core/plan";
 import { prisma } from "@/lib/db";
 import { enregistrerPlan, type PlanCalcule } from "@/lib/dossier";
+import { politiqueJetable } from "@/test/politique-jetable";
 
 /**
  * La fenêtre entre la garde lue et l'écriture, sur les deux gestes qui font naître un
@@ -39,9 +36,7 @@ vi.mock("@/lib/geste", async (original) => ({
 
 const { pointerEtape, validerEtape } = await import("./actions");
 
-const REPERTOIRE = mkdtempSync(join(tmpdir(), "pointage-integration-"));
-copyFileSync(resolve(process.cwd(), "config/config.exemple.yaml"), join(REPERTOIRE, "config.yaml"));
-process.env["POLICY_DIR"] = REPERTOIRE;
+politiqueJetable("pointage-integration");
 
 const USERNAME = "nour.exemple";
 const OUVERTURE = new Date("2026-09-10T09:00:00Z");
