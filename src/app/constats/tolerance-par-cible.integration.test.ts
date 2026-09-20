@@ -147,12 +147,15 @@ describe("une cible ne se tolère et ne se lève que d'un bloc", () => {
     expect(posees).toBe(1);
     expect(await couvertures()).toHaveLength(1);
 
-    // Then une seule des deux a été acceptée, et l'autre s'est arrêtée, que ce soit par son
-    // verdict si la première avait déjà commité ou par l'erreur que la transaction lève.
-    const acceptees = [premiere, seconde].filter(
-      (issue) => issue.status === "fulfilled" && issue.value === null,
-    );
-    expect(acceptees).toHaveLength(1);
+    // Then une seule des deux a été acceptée, et l'autre s'est arrêtée sur un refus rendu au
+    // formulaire, que ce soit par son verdict si la première avait déjà commité ou par la
+    // course constatée sous le verrou. Aucune des deux ne lève : une action qui lève ne
+    // remplit pas l'état que l'écran affiche, et la modale se fermerait sur un geste vide.
+    const issues = [premiere, seconde];
+    expect(issues.map((issue) => issue.status)).toEqual(["fulfilled", "fulfilled"]);
+    const rendus = issues.flatMap((issue) => (issue.status === "fulfilled" ? [issue.value] : []));
+    expect(rendus.filter((rendu) => rendu === null)).toHaveLength(1);
+    expect(rendus.filter((rendu) => rendu !== null && rendu.erreur.length > 0)).toHaveLength(1);
 
     // Then l'écart de la pose arrêtée reste dans la file : son constat n'est pas clos, donc
     // rien ne se tait sur la foi d'une décision qui n'a pas abouti.
