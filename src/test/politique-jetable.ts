@@ -12,7 +12,7 @@ import { afterAll } from "vitest";
  *
  * L'effacement passe par `afterAll` et non par la sortie du processus. Un
  * `process.on("exit")` ne se déclenche pas ici, Vitest ne laissant pas ses processus de
- * travail sortir d'eux-mêmes, et seule la mesure le montrait : les dix dossiers
+ * travail sortir d'eux-mêmes, et seule la mesure le montrait : les dossiers
  * continuaient d'apparaître pendant que la suite passait au vert.
  *
  * Posé depuis le corps du module, là où le dossier se crée, parce que `POLICY_DIR` doit
