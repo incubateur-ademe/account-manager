@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -59,6 +59,9 @@ function politiqueJetable(): string {
   const { profiles, ...garde } = lue ?? {};
   void profiles;
   writeFileSync(join(dossier, "config.yaml"), stringify(garde), "utf8");
+  // Le processus qui evalue cette configuration est celui qui pilote la course, et il
+  // meurt avec elle. Sans ce nettoyage, chaque lancement laisse un dossier derriere lui.
+  process.on("exit", () => rmSync(dossier, { recursive: true, force: true }));
   return dossier;
 }
 

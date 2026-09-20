@@ -19,11 +19,19 @@ import { ouvrirUneSession, semer } from "./session";
  * qui appartient a leurs tests de contrat.
  */
 
-/** Une collecte part en arriere-plan, et la page ne se rafraichit pas d'elle-meme. */
-async function attendreLaFin(vue: Page, attendu: RegExp): Promise<void> {
+/**
+ * Une collecte part en arriere-plan, et la page ne se rafraichit pas d'elle-meme.
+ *
+ * L'attente vise l'etat terminal du passage sur le referentiel, et pas la seule presence
+ * de sa ligne : celle-ci s'affiche des le debut du passage, si bien que tout ce qui suit
+ * courrait contre une collecte encore en train d'ecrire. Le badge se lit en entier,
+ * « incomplete » contenant « complete ».
+ */
+async function attendreLaFin(vue: Page): Promise<void> {
+  const ligne = vue.getByRole("row").filter({ hasText: "espace-membre" });
   await expect(async () => {
     await vue.reload();
-    await expect(vue.getByRole("main")).toContainText(attendu);
+    await expect(ligne.getByText("complète", { exact: true })).toBeVisible();
   }).toPass({ timeout: 60_000 });
 }
 
@@ -42,7 +50,7 @@ test("une collecte lancee depuis l'ecran peuple le perimetre et leve ses constat
   // When elle lance une collecte, et que celle-ci se termine.
   await vue.goto("/collectes");
   await vue.getByRole("button", { name: "Lancer une collecte" }).click();
-  await attendreLaFin(vue, /espace-membre/u);
+  await attendreLaFin(vue);
 
   // Then le referentiel a bien ete lu, et l'ecran des collectes le dit.
   await expect(vue.getByRole("main")).toContainText("espace-membre");
