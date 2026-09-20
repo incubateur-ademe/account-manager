@@ -1,11 +1,7 @@
-import { copyFileSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-
 import type { ConnectorContract } from "@/core/connector";
+import { politiqueJetable } from "@/test/politique-jetable";
 
 /**
  * Une politique jetable plutôt qu'une fixture versionnée : ce test a besoin d'un
@@ -15,12 +11,8 @@ import type { ConnectorContract } from "@/core/connector";
  * `POLICY_DIR` se pose avant le premier appel et non avant l'import : le répertoire
  * est résolu à l'appel, pas dans une constante de module.
  */
-const REPERTOIRE = mkdtempSync(join(tmpdir(), "politique-connecteurs-"));
-
-copyFileSync(resolve(process.cwd(), "config/config.exemple.yaml"), join(REPERTOIRE, "config.yaml"));
-
-writeFileSync(
-  join(REPERTOIRE, "config.yaml"),
+politiqueJetable(
+  "politique-connecteurs",
   [
     "version: 1",
     "",
@@ -35,8 +27,6 @@ writeFileSync(
     "",
   ].join("\n"),
 );
-
-process.env["POLICY_DIR"] = REPERTOIRE;
 
 const { configurationDe, verifierConfigurations } = await import("@/lib/configuration-connecteur");
 

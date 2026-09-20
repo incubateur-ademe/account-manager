@@ -1,13 +1,9 @@
-import { copyFileSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { cleDeCible } from "@/core/derogation";
 import { prisma } from "@/lib/db";
 import { derogationsApplicables } from "@/lib/derogation";
-
+import { politiqueJetable } from "@/test/politique-jetable";
 import { leverDerogation, tolererConstat } from "./actions";
 
 /**
@@ -23,9 +19,7 @@ import { leverDerogation, tolererConstat } from "./actions";
  * rien ne fait se croiser côté application.
  */
 
-const REPERTOIRE = mkdtempSync(join(tmpdir(), "tolerance-integration-"));
-copyFileSync(resolve(process.cwd(), "config/config.exemple.yaml"), join(REPERTOIRE, "config.yaml"));
-process.env["POLICY_DIR"] = REPERTOIRE;
+politiqueJetable("tolerance-integration");
 
 vi.mock("@/lib/session", async () => (await import("@/test/doubles/session")).sessionDe());
 vi.mock("next/cache", () => ({ revalidatePath: () => undefined }));

@@ -1,11 +1,8 @@
-import { copyFileSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-
 import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
 import { calculerPlan, enregistrerPlan, ouvrirDossier } from "@/lib/dossier";
 import { executerPlan } from "@/lib/execution";
+import { politiqueJetable } from "@/test/politique-jetable";
 
 /**
  * Le gel des tolérances par l'instant de confirmation, contre une vraie base.
@@ -22,9 +19,7 @@ import { executerPlan } from "@/lib/execution";
  * recalcul n'est ouvert qu'à un brouillon.
  */
 
-const REPERTOIRE = mkdtempSync(join(tmpdir(), "gel-integration-"));
-copyFileSync(resolve(process.cwd(), "config/config.exemple.yaml"), join(REPERTOIRE, "config.yaml"));
-process.env["POLICY_DIR"] = REPERTOIRE;
+politiqueJetable("gel-integration");
 
 const USERNAME = "nour.exemple";
 const CONFIRMATION = new Date("2026-09-10T09:00:00Z");

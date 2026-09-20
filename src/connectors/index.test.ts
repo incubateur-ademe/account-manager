@@ -1,7 +1,3 @@
-import { copyFileSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-
 import { describe, expect, it } from "vitest";
 
 import { CONNECTEURS, catalogueDOctroi, connecteur } from "@/connectors";
@@ -15,6 +11,7 @@ import type {
 import { resolveCapability } from "@/core/connector";
 import { verifierProfils } from "@/core/octroi";
 import type { Profil } from "@/core/policy";
+import { politiqueJetable } from "@/test/politique-jetable";
 
 /**
  * Les modèles de politique recopiés dans un répertoire jetable, parce que l'examen de
@@ -25,11 +22,7 @@ import type { Profil } from "@/core/policy";
  * Posé dans le corps du module et non avant les imports : la politique se lit au
  * premier appel, et aucun import n'en déclenche la lecture.
  */
-const REPERTOIRE = mkdtempSync(join(tmpdir(), "politique-registre-"));
-
-copyFileSync(resolve(process.cwd(), "config/config.exemple.yaml"), join(REPERTOIRE, "config.yaml"));
-
-process.env["POLICY_DIR"] = REPERTOIRE;
+politiqueJetable("politique-registre");
 
 /**
  * Les capacités qui agissent sur un système, et les seules à qui ce test impose une

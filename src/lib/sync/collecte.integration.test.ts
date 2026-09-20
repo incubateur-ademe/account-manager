@@ -1,11 +1,9 @@
-import { copyFileSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { CollectResult, Connector } from "@/core/connector";
 import { prisma } from "@/lib/db";
 import { executerCollecte, nouvelleExecution } from "@/lib/sync/collecte";
+import { politiqueJetable } from "@/test/politique-jetable";
 
 /**
  * Le garde-fou de chute, exercé contre une vraie base.
@@ -26,9 +24,7 @@ import { executerCollecte, nouvelleExecution } from "@/lib/sync/collecte";
  * gèle quoi que ce soit.
  */
 
-const REPERTOIRE = mkdtempSync(join(tmpdir(), "collecte-integration-"));
-copyFileSync(resolve(process.cwd(), "config/config.exemple.yaml"), join(REPERTOIRE, "config.yaml"));
-process.env["POLICY_DIR"] = REPERTOIRE;
+politiqueJetable("collecte-integration");
 
 const PROVIDER = "atelier";
 /**
