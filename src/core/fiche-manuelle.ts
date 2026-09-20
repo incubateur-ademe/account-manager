@@ -153,9 +153,10 @@ export function validerChamps(saisie: SaisieFiche): ValidationChamps {
  * Les familles de constats dont la clé nomme la personne. `ORPHAN` et `UNREGISTERED`
  * s'ancrent sur le compte et traversent une fusion sans retouche.
  *
- * Reconnaître la famille plutôt que le suffixe de la clé n'est pas un détail :
- * `ORPHAN:github:jean.dupont` se termine lui aussi par un username le jour où le
- * compte porte le même nom que la fiche.
+ * Reconnaître la famille plutôt que le suffixe de la clé n'est pas un détail : celui
+ * d'`ORPHAN` et d'`UNREGISTERED` est un identifiant de fournisseur, dont rien ne borne
+ * la forme, et un système qui en émettrait un égal à un username verrait sa clé
+ * réécrite par une fusion.
  *
  * Toute famille ajoutée à `constatsDe` dont la clé nomme la personne s'ajoute ici :
  * une clé laissée sous l'ancien identifiant n'est plus constatée, elle perd donc son

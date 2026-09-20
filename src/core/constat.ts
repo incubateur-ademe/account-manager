@@ -517,6 +517,14 @@ export function constatsDActionsDeclarees(actions: readonly ActionDeclaree[]): C
   return constats;
 }
 
+/**
+ * La clé se fonde sur l'identifiant du fournisseur et jamais sur le nom d'usage. Un
+ * nom se renomme, et surtout il se recycle, GitHub rendant un login abandonné à
+ * quelqu'un d'autre. `dedupKey` étant unique sur toute la table, fermés compris, le
+ * nouveau porteur d'un nom levait la clé de l'ancien, héritait de son épisode et du
+ * verrou qu'un opérateur avait posé en le clôturant à la main, si bien que son écart
+ * ne remontait jamais.
+ */
 export function constatsDIdentites(identites: readonly IdentiteConstatable[]): Constat[] {
   const constats: Constat[] = [];
 
@@ -536,7 +544,7 @@ export function constatsDIdentites(identites: readonly IdentiteConstatable[]): C
         constats.push({
           kind: "ORPHAN",
           cible: { type: "identite", provider: identite.provider, externalId: identite.externalId },
-          dedupKey: `ORPHAN:${identite.provider}:${identite.handle}`,
+          dedupKey: `ORPHAN:${identite.provider}:${identite.externalId}`,
           severity: "HIGH",
           detail: `${ou} appartient à ${identite.personneUsername}, sortie du référentiel`,
           username: identite.personneUsername,
@@ -549,7 +557,7 @@ export function constatsDIdentites(identites: readonly IdentiteConstatable[]): C
     constats.push({
       kind: "UNREGISTERED",
       cible: { type: "identite", provider: identite.provider, externalId: identite.externalId },
-      dedupKey: `UNREGISTERED:${identite.provider}:${identite.handle}`,
+      dedupKey: `UNREGISTERED:${identite.provider}:${identite.externalId}`,
       severity: "MEDIUM",
       detail: `${ou} n'est réclamé par aucune personne suivie ni aucun compte de service`,
       identiteId: identite.id,
