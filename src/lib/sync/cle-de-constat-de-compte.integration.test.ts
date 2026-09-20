@@ -125,13 +125,16 @@ describe("un constat de compte se déduplique sur l'identifiant du fournisseur",
     expect(ancienConstat.closedBy).toBeNull();
   });
 
-  it("reprend la clé du constat qui vaut encore et laisse où il est l'épisode clos sous un ancien nom", async () => {
-    // Given la base d'avant, dont les clés nomment le compte par son nom d'usage : deux
-    // épisodes du même compte, le premier clos sous le nom qu'il portait alors, et le
-    // constat d'un compte que personne ne réclame.
+  it("reprend chaque compte sous son identifiant, sans qu'aucun nom d'usage n'en bloque un autre", async () => {
+    // Given la base d'avant, dont les clés nomment le compte par son nom d'usage. Le
+    // compte suivi porte deux épisodes, le premier clos sous le nom qu'il portait
+    // alors. Et un troisième compte a pour login l'identifiant du deuxième, ce que rien
+    // n'interdit chez le fournisseur : sa clé est exactement celle que la reprise a
+    // besoin de poser ailleurs.
     const partie = await personneSortie("nour.exemple", "Nour Exemple");
     const suivi = await compte("1042", "jdupont", partie.id);
     const isole = await compte("9077", "atelier-bot");
+    const homonyme = await compte("5150", "9077");
 
     const clos = await prisma.finding.create({
       data: {
@@ -163,16 +166,25 @@ describe("un constat de compte se déduplique sur l'identifiant du fournisseur",
         openedAt: NUIT_1,
       },
     });
+    const occupant = await prisma.finding.create({
+      data: {
+        kind: "UNREGISTERED",
+        dedupKey: "UNREGISTERED:github:9077",
+        externalIdentityId: homonyme.id,
+        openedAt: NUIT_1,
+      },
+    });
 
     // When la reprise passe.
     await prisma.$executeRawUnsafe(readFileSync(REPRISE, "utf8"));
 
-    // Then chaque constat qui vaut encore porte l'identifiant de son compte.
+    // Then chaque compte porte la clé de son identifiant, celui dont le login valait
+    // l'identifiant d'un autre ayant libéré la place au lieu de la bloquer.
     expect(await cleDe(vivant.id)).toBe("ORPHAN:github:1042");
     expect(await cleDe(sansDetenteur.id)).toBe("UNREGISTERED:github:9077");
-    // Then l'épisode clos garde la sienne : la clé est unique sur toute la table, et
-    // c'est celui qui vaut encore qui doit la prendre.
-    expect(await cleDe(clos.id)).toBe("ORPHAN:github:n.exemple");
+    expect(await cleDe(occupant.id)).toBe("UNREGISTERED:github:5150");
+    // Then l'épisode clos suit son compte sans lui prendre sa clé.
+    expect(await cleDe(clos.id)).toBe(`ORPHAN:github:1042#${clos.id}`);
 
     // Then la collecte suivante retrouve le constat repris au lieu d'en rouvrir un
     // second sur le même compte.
