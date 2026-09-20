@@ -48,6 +48,19 @@ export interface Derogation {
  */
 export const RAISON_COUVERT = "toléré par une dérogation en cours";
 
+/**
+ * Les deux colonnes sous lesquelles la base range une cible.
+ *
+ * Une composée à la main ailleurs finirait par diverger de celle que la lecture compare,
+ * et une tolérance rangée sous une clé que personne ne relit ne couvre rien.
+ */
+export function colonnesDeCible(cible: Cible): { targetType: string; targetId: string } {
+  return {
+    targetType: cible.type,
+    targetId: cible.type === "identite" ? `${cible.provider}:${cible.externalId}` : cible.username,
+  };
+}
+
 export function cleDeCible(cible: Cible): string {
   return cible.type === "identite"
     ? `identite:${cible.provider}:${cible.externalId}`

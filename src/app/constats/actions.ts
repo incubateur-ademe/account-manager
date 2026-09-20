@@ -4,6 +4,7 @@ import { SORTE_DE_CIBLE } from "@/core/constat";
 import {
   type Cible,
   cleDeCible,
+  colonnesDeCible,
   jourSaisi,
   leveeAdmissible,
   poseAdmissible,
@@ -11,7 +12,7 @@ import {
 } from "@/core/derogation";
 import { actionTracee } from "@/lib/actions";
 import { prisma } from "@/lib/db";
-import { derogationsApplicables } from "@/lib/derogation";
+import { couvertureEnBase, derogationsApplicables } from "@/lib/derogation";
 import { requireOperateur } from "@/lib/session";
 
 export type EtatCloture = { erreur: string } | null;
@@ -159,11 +160,19 @@ export async function tolererConstat(
     // registre dit toléré, ou l'inverse.
     ecrire: async (operateur) =>
       prisma.$transaction(async (tx) => {
+        // Le verdict a lu la couverture avant d'entrer ici, si bien que deux poses lancées
+        // ensemble la trouvent vide toutes les deux. Le verrou les sérialise sur la cible,
+        // et il tombe au commit ; la relecture qui suit voit alors la ligne de la première.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${cleDeCible(cible)}))`;
+        // Jugée à l'instant où l'on écrit, et non à celui de la lecture d'entrée : une ligne
+        // posée entre les deux est née après `maintenant`, et la règle de couverture écarte
+        // ce qui n'existait pas encore à l'instant qu'on lui donne.
+        if ((await couvertureEnBase(tx, cible, new Date())).length > 0) {
+          throw new Error("Cet écart vient d'être toléré par ailleurs.");
+        }
         await tx.derogation.create({
           data: {
-            targetType: cible.type,
-            targetId:
-              cible.type === "identite" ? `${cible.provider}:${cible.externalId}` : cible.username,
+            ...colonnesDeCible(cible),
             reason: raison,
             createdBy: operateur.username,
             expiresAt: echeance,
@@ -215,18 +224,32 @@ export async function leverDerogation(
     return { erreur: verdict.raison };
   }
 
+  /*
+   * Toutes les lignes de base qui couvrent cette cible, et non la seule ligne choisie.
+   * Rien n'interdit à deux d'entre elles de courir ensemble, et lever la première laissait
+   * la seconde taire l'écart : le registre annonçait la levée faite, la file restait muette,
+   * et l'opérateur n'avait aucun moyen de comprendre pourquoi.
+   *
+   * La politique en est exclue, `leveeAdmissible` la refusant déjà : une permanente se
+   * retire de son fichier, et la lever ici la ferait revenir au déploiement suivant.
+   */
+  const cle = cleDeCible(derogation.cible);
+  const couvrantes = applicables
+    .filter((candidate) => candidate.provenance === "base" && cleDeCible(candidate.cible) === cle)
+    .map((candidate) => candidate.id);
+
   await actionTracee({
     action: "derogation.levee",
     targetType: "derogation",
-    targetId: cleDeCible(derogation.cible),
-    before: { jusquAu: derogation.echeance?.toISOString() ?? null },
+    targetId: cle,
+    before: { jusquAu: derogation.echeance?.toISOString() ?? null, couvrantes },
     revalider: ["/constats", "/"],
     // Conditionnée sur l'absence de levée : de deux levées lancées ensemble, la seconde
     // n'écrase ni le nom ni l'heure de la première, et sa trace reste au journal en échec
     // plutôt que de compter pour une décision qui n'a rien décidé.
     ecrire: async (operateur) => {
       const levee = await prisma.derogation.updateMany({
-        where: { id, revokedAt: null },
+        where: { id: { in: couvrantes }, revokedAt: null },
         data: { revokedAt: maintenant, revokedBy: operateur.username },
       });
       if (levee.count === 0) {
