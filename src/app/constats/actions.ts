@@ -194,6 +194,10 @@ export async function tolererConstat(
           // Le verdict a lu la couverture avant d'entrer ici, si bien que deux poses lancées
           // ensemble la trouvent vide toutes les deux. Le verrou les sérialise sur la cible,
           // et il tombe au commit ; la relecture qui suit voit alors la ligne de la première.
+          //
+          // L'empreinte tient sur 32 bits, donc deux cibles distinctes peuvent la partager.
+          // Ce que ça coûte est une attente, et rien d'autre : la relecture filtre sur les
+          // colonnes de la cible, aucune couverture étrangère ne peut donc être vue.
           await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${cleDeCible(cible)}))`;
           // Jugée à l'instant où l'on écrit, et non à celui de la lecture d'entrée : une ligne
           // posée entre les deux est née après `maintenant`, et la règle de couverture écarte
