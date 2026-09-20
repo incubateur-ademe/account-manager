@@ -158,6 +158,37 @@ interface Litteral extends Site {
  */
 const estLigneDeCommentaire = (ligne: string): boolean => /^\s*(\/\/|\*|\/\*)/.test(ligne);
 
+/*
+ * Un commentaire JSX s'ouvre sur `{` avant son `/*`, et ses lignes de continuation ne portent aucun
+ * astérisque : les reconnaître ligne à ligne laissait lire les phrases qu'il porte comme du texte
+ * d'écran. Le balayage suit donc l'ouverture et la fermeture des blocs à travers le fichier.
+ *
+ * Seule la plage du commentaire est effacée, et non la ligne : un littéral d'écran posé avant ou
+ * après un commentaire de fin de ligne reste à compter.
+ */
+function lignesHorsCommentaire(source: Source): string[] {
+  let ouvert = false;
+  return source.lignes.map((ligne) => {
+    let nettoyee = "";
+    let position = 0;
+    while (position < ligne.length) {
+      if (ouvert) {
+        const fin = ligne.indexOf("*/", position);
+        if (fin === -1) return nettoyee;
+        ouvert = false;
+        position = fin + 2;
+      } else {
+        const debut = ligne.indexOf("/*", position);
+        if (debut === -1) return nettoyee + ligne.slice(position);
+        nettoyee += ligne.slice(position, debut);
+        ouvert = true;
+        position = debut + 2;
+      }
+    }
+    return nettoyee;
+  });
+}
+
 function litterauxDe(source: Source): Litteral[] {
   const trouves: Litteral[] = [];
   /*
@@ -166,14 +197,19 @@ function litterauxDe(source: Source): Litteral[] {
    */
   const ouvreUnSchema = /\.meta\(/;
   const finitParUneDescription = /description:\s*$/;
-  source.lignes.forEach((ligne, index) => {
-    if (estLigneDeCommentaire(ligne)) return;
-    const precedente = source.lignes[index - 1] ?? "";
+  const horsCommentaire = lignesHorsCommentaire(source);
+  horsCommentaire.forEach((ligne, index) => {
+    if (estLigneDeCommentaire(source.lignes[index] ?? "")) return;
+    const precedente = horsCommentaire[index - 1] ?? "";
     if (index > 0 && (ouvreUnSchema.test(precedente) || finitParUneDescription.test(precedente))) {
       return;
     }
-    // Les gabarits porteurs d'une interpolation sont écartés : leur texte rendu n'est pas celui-ci.
-    const motifs = [/"([^"\\]{8,400})"/g, /`([^`\\$]{8,400})`/g];
+    /*
+     * Les gabarits porteurs d'une interpolation sont écartés, leur texte rendu n'étant pas celui-ci.
+     * La borne haute doit dépasser le plus long texte du dépôt, faute de quoi le compteur des textes
+     * longs est aveugle aux pires cas, qui sont précisément les plus longs. À 400, il en cachait sept.
+     */
+    const motifs = [/"([^"\\]{8,2000})"/g, /`([^`\\$]{8,2000})`/g];
     for (const motif of motifs) {
       let trouve = motif.exec(ligne);
       while (trouve !== null) {
@@ -194,6 +230,18 @@ function litterauxDe(source: Source): Litteral[] {
 }
 
 /*
+ * Un « > » ferme une balise, ou compare deux nombres. Le second ouvrait un faux fragment qui courait
+ * sur le code suivant, et le « : » d'un ternaire s'y lisait comme celui d'une phrase. Le formateur du
+ * dépôt entoure d'espaces un opérateur de comparaison et colle le « > » d'une balise à ce qui le
+ * précède, sauf quand il ferme seul une balise écrite sur plusieurs lignes. Le « = » écarte en plus
+ * la flèche d'une fonction, qui colle elle aussi.
+ */
+function fermeUneBalise(contenu: string, position: number): boolean {
+  const avant = contenu.slice(contenu.lastIndexOf("\n", position) + 1, position);
+  return avant.trim() === "" || !/[\s=]$/.test(avant);
+}
+
+/*
  * Deux tiers du texte de ce dépôt sont écrits nus entre deux balises JSX et non dans un littéral. Ne
  * lire que les littéraux ferait passer les mesures à côté de l'essentiel : une première version de ce
  * fichier ne voyait pas une clause de nuance posée dans un <p>.
@@ -206,10 +254,27 @@ function textesNusDe(source: Source): Litteral[] {
    * une phrase d'écran, et l'exclure laissait passer la forme la plus courante du dépôt.
    */
   const motif = />([^<]{8,600})</g;
+  /*
+   * Le remplacement est repris jusqu'à ce que plus rien ne bouge, une accolade pouvant en contenir
+   * une autre. Ce qui garde une accolade après ça est un fragment qui court sur du code sans jamais
+   * le refermer, et le « : » d'un ternaire s'y lisait comme celui d'une phrase.
+   */
+  const sansExpression = (brut: string): string => {
+    let texte = brut;
+    for (;;) {
+      const reduit = texte.replace(/\{[^{}]*\}/g, "…");
+      if (reduit === texte) return texte;
+      texte = reduit;
+    }
+  };
   let trouve = motif.exec(source.contenu);
   while (trouve !== null) {
-    const texte = trouve[1]
-      ?.replace(/\{[^{}]*\}/g, "…")
+    if (!fermeUneBalise(source.contenu, trouve.index)) {
+      motif.lastIndex = trouve.index + 1;
+      trouve = motif.exec(source.contenu);
+      continue;
+    }
+    const texte = sansExpression(trouve[1] ?? "")
       .replace(/\s+/g, " ")
       .trim();
     const ligneDuFragment = source.contenu.slice(0, trouve.index).split("\n").length;
@@ -223,7 +288,7 @@ function textesNusDe(source: Source): Litteral[] {
       estLigneDeCommentaire(source.lignes[ligneDuFragment - 1] ?? "") ||
       brut.includes("//") ||
       brut.includes("/*");
-    if (texte !== undefined && !estCommentaire && estTexteOperateur(texte)) {
+    if (!estCommentaire && !/[{}]/.test(texte) && estTexteOperateur(texte)) {
       trouves.push({
         chemin: source.chemin,
         ligne: source.contenu.slice(0, trouve.index).split("\n").length,

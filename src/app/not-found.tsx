@@ -26,9 +26,8 @@ export default function PageNonTrouvee() {
             La page demandée n'existe pas, ou n'existe plus.
           </p>
           <p className={fr.cx("fr-text--sm", "fr-mb-5w")}>
-            Si vous avez saisi l'adresse à la main, vérifiez-la. Si vous suivez un lien reçu il y a
-            quelque temps, la personne ou le constat qu'il désignait a pu sortir du référentiel
-            depuis : un constat se referme dès qu'une collecte ne le vérifie plus. Le tableau de
+            Si vous avez saisi l'adresse à la main, vérifiez-la. Si vous suivez un lien ancien, la
+            personne ou le constat qu'il désignait a pu sortir du référentiel depuis. Le tableau de
             bord donne l'état du jour.
           </p>
           <ButtonsGroup

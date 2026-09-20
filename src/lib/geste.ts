@@ -79,7 +79,7 @@ export const REFUS_DEPART_OUVERT =
  * étape : le geste se refuse, et le dit.
  */
 export const REFUS_INTENTION_ILLISIBLE =
-  "L'intention gelée de ce geste est illisible : elle n'a pas pu être écrite par cet outil. Reprenez le geste depuis l'écran du système.";
+  "L'intention gelée de ce geste est illisible. Reprenez le geste depuis l'écran du système.";
 
 export async function departOuvertSur(personId: string): Promise<boolean> {
   const ouvert = await prisma.accessCase.findFirst({

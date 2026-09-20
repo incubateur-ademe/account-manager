@@ -80,7 +80,7 @@ export const LIBELLE_DOSSIER: Record<SensDossier, LibelleDossier> = {
     constat: {
       valeur: "deja-present",
       libelle: "Déjà présent",
-      refus: "Ce choix ne vaut pas sur une arrivée : seul « Déjà présent » s'y déclare.",
+      refus: "Sur une arrivée, seul « Déjà présent » se déclare.",
     },
     annule: "arrivée annulée",
     annuler: "Annuler cette arrivée",
@@ -122,7 +122,7 @@ export const LIBELLE_DOSSIER: Record<SensDossier, LibelleDossier> = {
     constat: {
       valeur: "deja-absent",
       libelle: "Déjà absent",
-      refus: "Ce choix ne vaut pas sur un départ : seul « Déjà absent » s'y déclare.",
+      refus: "Sur un départ, seul « Déjà absent » se déclare.",
     },
     annule: "départ annulé",
     annuler: "Annuler ce départ",

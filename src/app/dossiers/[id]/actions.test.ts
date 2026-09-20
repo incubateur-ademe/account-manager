@@ -847,9 +847,7 @@ describe("pointer une étape, dans le sens du dossier", () => {
 
     // Then il est refusé, l'étape n'a pas bougé, et le refus nomme le seul choix qui
     // vaut ici plutôt que de renvoyer au « sens » du dossier, qui est un mot de modèle
-    expect(contresens.erreur).toBe(
-      "Ce choix ne vaut pas sur une arrivée : seul « Déjà présent » s'y déclare.",
-    );
+    expect(contresens.erreur).toBe("Sur une arrivée, seul « Déjà présent » se déclare.");
     expect(seconde?.state).toBe("PENDING");
 
     // When la seconde étape est faite pour de bon
@@ -883,9 +881,7 @@ describe("pointer une étape, dans le sens du dossier", () => {
 
     // Then il est refusé : « déjà présent » sous une étape de retrait dirait le
     // contraire de ce que le dossier prépare, et le refus s'accorde avec le sens.
-    expect(contresens.erreur).toBe(
-      "Ce choix ne vaut pas sur un départ : seul « Déjà absent » s'y déclare.",
-    );
+    expect(contresens.erreur).toBe("Sur un départ, seul « Déjà absent » se déclare.");
     expect(etape?.state).toBe("PENDING");
 
     // When on écarte l'étape sans dire pourquoi
@@ -1772,7 +1768,7 @@ describe("la clôture d'un dossier, quand tout est coché mais que quelqu'un att
     // Then refus, et rien n'a bougé : ni le dossier, ni le journal, qui raconte des
     // gestes et non des tentatives refusées avant d'atteindre la base.
     expect(trop.erreur).toBe(
-      "Toutes les étapes ne sont pas soldées : des accès n'ont pas été donnés.",
+      "Toutes les étapes ne sont pas soldées. Des accès n'ont pas été donnés.",
     );
     expect(dossier.state).toBe("CONFIRMED");
     expect(base.journal.map((trace) => trace.action)).not.toContain("dossier.cloture");
@@ -2104,7 +2100,7 @@ describe("un délégué entre, agit, et son droit s'éteint sous lui", () => {
     // Then l'étape que le modèle confie à l'équipe lui reste fermée, et rien n'a bougé
     expect(
       await pointerEtape(null, formulaire({ etapeId: message.id, pointage: "fait" })),
-    ).toMatchObject({ erreur: expect.stringContaining("ne vous revient pas") });
+    ).toMatchObject({ erreur: expect.stringContaining("attend quelqu'un d'autre") });
     expect(message.state).toBe("PENDING");
 
     // Then écarter une étape ne lui appartient pas : ce n'est pas déclarer un geste,
@@ -2247,7 +2243,7 @@ describe("un délégué entre, agit, et son droit s'éteint sous lui", () => {
     // qui fait foi, l'écran ne faisant que se taire là où elle refuse.
     expect(
       await pointerEtape(null, formulaire({ etapeId: materiel.id, pointage: "fait" })),
-    ).toEqual({ erreur: "Cette étape ne vous revient pas : elle attend quelqu'un d'autre." });
+    ).toEqual({ erreur: "Cette étape attend quelqu'un d'autre." });
     expect(materiel.declaredBy).toBe("operatrice.exemple");
 
     base.journal.length = 0;
@@ -2492,7 +2488,7 @@ describe("le porteur qui n'est pas de l'équipe, et son dossier qui ne tient qu'
     // faisant pas entrer dans l'équipe
     expect(
       await pointerEtape(null, formulaire({ etapeId: celleDeLEquipe.id, pointage: "fait" })),
-    ).toMatchObject({ erreur: expect.stringContaining("ne vous revient pas") });
+    ).toMatchObject({ erreur: expect.stringContaining("attend quelqu'un d'autre") });
     expect(celleDeLEquipe.state).toBe("PENDING");
 
     // When son droit est révoqué, puis quand il périme, sa session restant valide dans
@@ -2586,7 +2582,7 @@ describe("le porteur qui n'est pas de l'équipe, et son dossier qui ne tient qu'
     // dossier : le renommage ne l'a pas fait glisser d'un rôle à l'autre
     expect(
       await pointerEtape(null, formulaire({ etapeId: celleDuDelegue.id, pointage: "fait" })),
-    ).toMatchObject({ erreur: expect.stringContaining("ne vous revient pas") });
+    ).toMatchObject({ erreur: expect.stringContaining("attend quelqu'un d'autre") });
     expect(celleDuDelegue.state).toBe("PENDING");
   });
 });

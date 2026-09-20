@@ -95,7 +95,7 @@ const coreSchema = z
         code: "custom",
         path: ["FGP_URL"],
         message:
-          "https obligatoire en production : le jeton de compte voyage dans le corps de la requête d'émission",
+          "https obligatoire en production, le jeton de compte voyageant dans le corps de la requête d'émission",
       });
     }
   });
@@ -143,7 +143,7 @@ const webSchema = coreSchema
         code: "custom",
         path: ["AUTH_URL"],
         message:
-          "obligatoire en production : les liens de connexion envoyés par courriel sont construits avec",
+          "obligatoire en production, les liens de connexion envoyés par courriel étant construits à partir d'elle",
       });
     }
   });

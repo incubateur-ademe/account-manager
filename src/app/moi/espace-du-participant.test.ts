@@ -575,7 +575,7 @@ describe("ce qu'un droit vivant ouvre, et ce qu'il n'ouvre plus", () => {
         pointable: false,
         controle: {
           possible: false,
-          raison: "Personne ne valide sa propre déclaration : cette étape attend un autre regard.",
+          raison: "Personne ne valide sa propre déclaration. Cette étape attend un autre regard.",
         },
       },
     ]);
@@ -626,7 +626,7 @@ describe("ce qu'un droit vivant ouvre, et ce qu'il n'ouvre plus", () => {
     // signataire
     const texteDuRefus = texteRendu(await rendre("dossier-1"));
     expect(texteDuRefus).toContain(
-      "Déclaration refusée. L'étape est de nouveau à faire : qui contrôle cette étape vous dira ce qui manque.",
+      "Déclaration refusée. L'étape est de nouveau à faire. Demandez à qui la contrôle ce qui manque.",
     );
     expect(texteDuRefus).not.toContain(
       "l'équipe transverse de l'incubateur vous dira ce qui manque",

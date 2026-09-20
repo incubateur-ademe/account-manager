@@ -258,8 +258,7 @@ describe("l'édition d'une étape de modèle", () => {
     // dédoubleraient l'un l'autre.
     expect(sansCle).toEqual({
       ok: false,
-      erreur:
-        "Donnez à cette étape un titre qui porte au moins une lettre ou un chiffre : c'est lui qui fait sa clé.",
+      erreur: "Donnez à cette étape un titre qui porte au moins une lettre ou un chiffre.",
     });
 
     // When on ajoute une étape dont le titre retombe sur une clé déjà prise

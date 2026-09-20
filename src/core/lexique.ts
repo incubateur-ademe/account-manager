@@ -32,8 +32,7 @@ export const LIBELLE_ETAT_COLLECTE: Record<
   },
   PARTIAL: {
     libelle: "incomplète",
-    explication:
-      "Collecte incomplète : tout n'a pas pu être conclu, et des disparitions ont pu rester non datées.",
+    explication: "Tout n'a pas pu être conclu, et des disparitions ont pu rester non datées.",
     severite: "warning",
   },
   FAILED: {

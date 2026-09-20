@@ -147,7 +147,7 @@ export async function declarerHorsIncubateurEnLot(
           username,
           fullname: username,
           issue: "ECHEC",
-          detail: "Cette personne n'est plus en base.",
+          detail: "Cette personne n'existe plus.",
         };
       }
 
@@ -228,7 +228,7 @@ export async function ouvrirDepartsEnLot(_etat: EtatLot, formData: FormData): Pr
           username,
           fullname: username,
           issue: "ECHEC",
-          detail: "Cette personne n'est plus en base.",
+          detail: "Cette personne n'existe plus.",
         };
       }
 

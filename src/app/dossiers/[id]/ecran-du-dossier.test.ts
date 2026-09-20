@@ -595,7 +595,7 @@ describe("l'écran d'un dossier, avec un vrai plan", () => {
       etapeId: "etape-badge",
       ecart: false,
       possible: false,
-      raison: "Personne ne valide sa propre déclaration : cette étape attend un autre regard.",
+      raison: "Personne ne valide sa propre déclaration. Cette étape attend un autre regard.",
     });
 
     // Then l'étape que quelqu'un d'autre a déclarée s'offre au contraire à son regard,

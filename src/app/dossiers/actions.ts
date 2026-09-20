@@ -67,7 +67,7 @@ async function ouvrir(sens: SensDossier, formData: FormData): Promise<EtatDossie
   });
 
   if (!personne) {
-    return { erreur: "Cette personne n'est plus en base." };
+    return { erreur: "Cette personne n'existe plus." };
   }
 
   const maintenant = new Date();

@@ -134,7 +134,7 @@ describe("ce que l'écran des droits dit à qui saisit", () => {
     // Then la seconde issue disparaît : aucun espace-membre ne connaît cet identifiant,
     // et c'est précisément la personne pour qui rien d'autre ne marche
     expect(`${LIBELLE_DROITS.canal.absent} ${LIBELLE_DROITS.canal.absentIssue(true)}`).toBe(
-      "Aucune adresse où envoyer le lien. Son identifiant n'existe que dans cet outil : redonnez ce droit en déclarant une adresse.",
+      "Aucune adresse où envoyer le lien. Son identifiant n'existe que dans cet outil. Redonnez ce droit en déclarant une adresse.",
     );
     expect(LIBELLE_DROITS.canal.absentIssue(true)).not.toContain("identifiant beta.gouv");
 
@@ -177,7 +177,7 @@ describe("ce que l'écran des droits dit à qui saisit", () => {
       expect(phrase).toMatch(/^Le droit est accordé/u);
     }
     expect(LIBELLE_OCTROI.canalMenace).toBe(
-      "Le droit est accordé. Le lien part sur la boîte que ce départ ferme : elle cessera de répondre. Redonnez ce droit avec une autre adresse dès qu'elle est connue.",
+      "Le droit est accordé. Le lien part sur la boîte que ce départ ferme, qui cessera de répondre. Redonnez ce droit avec une autre adresse dès qu'elle est connue.",
     );
     expect(LIBELLE_OCTROI.canalMenace).not.toMatch(/sans doute/u);
 

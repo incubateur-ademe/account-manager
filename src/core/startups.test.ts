@@ -593,7 +593,7 @@ describe("le récapitulatif d'un lot compte des personnes, jamais des événemen
         username: "noe.brouillon",
         fullname: "Noé Brouillon",
         issue: "ECHEC" as const,
-        detail: "Cette personne n'est plus en base.",
+        detail: "Cette personne n'existe plus.",
       },
     ];
 
@@ -610,7 +610,7 @@ describe("le récapitulatif d'un lot compte des personnes, jamais des événemen
     // les quatorze autres ont échoué aussi.
     expect(resume.echecs[0]).toMatchObject({
       username: "noe.brouillon",
-      detail: "Cette personne n'est plus en base.",
+      detail: "Cette personne n'existe plus.",
     });
     expect(resume.deja.map((resultat) => resultat.detail)).toEqual(["dossier-1", "dossier-2"]);
 

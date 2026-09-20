@@ -140,7 +140,8 @@ export function verifierContenances(ressources: readonly ObservedResource[]): Co
   const erreurs: CollectError[] = [...repetees].map((cle) => ({
     scope: "ressources",
     itemRef: cle,
-    message: "déclarée plusieurs fois dans le même relevé : la dernière déclaration est retenue",
+    message:
+      "déclarée plusieurs fois dans le même relevé, seule la dernière déclaration est retenue",
   }));
 
   const retenues: ObservedResource[] = [...uniques.values()].map((ressource) => {

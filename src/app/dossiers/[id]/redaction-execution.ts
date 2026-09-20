@@ -46,7 +46,7 @@ export const LIBELLE_LANCEMENT = {
    * non ce qui les tient hors de la confrontation.
    */
   termes:
-    "Ce plan pose des termes. Ils ne seront pas revérifiés au lancement : lisez-les maintenant.",
+    "Ce plan pose des termes. Ils ne seront pas revérifiés au lancement. Lisez-les maintenant.",
   masse: {
     aucune:
       "Aucune étape de ce plan ne peut être faite par l'outil lui-même. Le lancement s'arrêtera après les relectures d'état qu'il sait faire.",

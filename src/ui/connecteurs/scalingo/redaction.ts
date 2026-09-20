@@ -57,10 +57,10 @@ export const MOTS_DE_SCALINGO = {
   parc: {
     titre: "Le parc, projet par projet",
     regroupement:
-      "Un projet Scalingo ne fait que regrouper des applications. Il n'a pas de membres : personne n'y détient d'accès, et rien ne s'y retire. Ce qui s'ouvre et ce qui se coupe se lit sur la ligne d'une application.",
+      "Un projet Scalingo ne fait que regrouper des applications. Il n'a pas de membres, personne n'y détient d'accès, et rien ne s'y retire. Ce qui s'ouvre et ce qui se coupe se lit sur la ligne d'une application.",
     horsProjetTitre: "Sans projet",
     horsProjet: "Sans projet. Ces applications se lisent comme les autres, et leurs accès aussi.",
-    vide: "Aucune application constatée sur ce système. La liste est vide faute de collecte, ce qui ne dit rien du parc réel.",
+    vide: "Aucune application constatée sur ce système. La liste est vide faute de collecte, et ne dit rien du parc réel.",
     datation:
       "Tout ce qui suit vient de la dernière collecte, et non d'une lecture faite à l'instant. Une date est celle du dernier constat.",
     /**
@@ -73,7 +73,7 @@ export const MOTS_DE_SCALINGO = {
      * ignorances est la sienne.
      */
     rienDeVivant:
-      "Aucun accès ni aucun compte vivant ici, donc aucune date à afficher. Cet écran ne distingue pas une collecte qui n'a jamais tourné sur ce système d'une collecte qui n'y a plus rien vu : dans les deux cas, ce qui s'affiche ne dit rien du parc réel.",
+      "Aucun accès ni aucun compte vivant ici, donc aucune date à afficher. Cet écran ne distingue pas une collecte qui n'a jamais tourné d'une collecte qui n'y a plus rien vu, et ne dit rien du parc réel.",
     sansAcces: "Aucun accès vivant constaté sur cette application.",
     collaborateurs: "Voir ses collaborateurs sur Scalingo, nouvelle fenêtre",
   },
@@ -87,9 +87,9 @@ export const MOTS_DE_SCALINGO = {
      * figure pas.
      */
     machine:
-      "Ce compte est déclaré comme compte de service. Aucun rôle ne se change en son nom depuis ici : son détenteur, son terme et sa revue se tiennent sur l'écran des comptes de service.",
+      "Ce compte est déclaré comme compte de service. Aucun rôle ne se change en son nom depuis ici. Son détenteur, son terme et sa revue se tiennent sur l'écran des comptes de service.",
     invitation: "Invitation en attente",
-    vide: "Aucun compte Scalingo constaté. Rien ne dit pour autant que personne n'entre : cette liste est celle du dernier constat.",
+    vide: "Aucun compte Scalingo constaté. Rien ne dit pour autant que personne n'entre, cette liste étant celle du dernier constat.",
     sansAcces:
       "Aucun accès vivant à son nom. Le compte existe, et c'est tout ce que le dernier constat dit de lui.",
   },
@@ -103,14 +103,14 @@ export const MOTS_DE_SCALINGO = {
     proprietaire:
       "Le propriétaire d'une application ne se change pas ici. Il ne figure dans aucune liste de collaborateurs, et Scalingo ne sait pas l'en retirer.",
     ressemblance:
-      "Ce compte est rattaché sur une ressemblance de nom. Aucun geste ne part d'ici tant que personne ne l'a confirmé : baisser un rôle retire ce que la personne pouvait lire, donc coupe une partie de son accès, et une coupure ne se décide jamais sur une ressemblance. Le rattachement se tranche dans la file des comptes isolés.",
+      "Ce compte est rattaché sur une ressemblance de nom. Baisser un rôle coupe une partie de son accès, et aucun geste ne part d'ici tant que personne n'a confirmé le rattachement. Il se tranche dans la file des comptes isolés.",
     // Le refus opposé à un départ ouvert n'a pas de phrase ici : l'action le rend, le
     // formulaire le rend tel quel, et une seconde rédaction du même refus dériverait de
     // celle qui décide.
     choix: "Le rôle demandé",
     terme: "Échéance, en jours",
     termeAide:
-      "Le rôle plein est un accès à risque élevé : il exige une échéance, faute de quoi rien ne le referme de lui-même.",
+      "Le rôle plein est un accès à risque élevé, et il exige une échéance, faute de quoi rien ne le referme.",
     justification: "Pourquoi ce rôle, et pour quel travail",
     justificationAide:
       "Elle restera quand plus personne ne se souviendra de la demande, et elle est journalisée avec votre nom.",
@@ -122,6 +122,6 @@ export const MOTS_DE_SCALINGO = {
      * plutôt que de poser un lien qui ne mènerait nulle part.
      */
     brouillon:
-      "Le brouillon est écrit, et rien n'est parti sur Scalingo : un geste s'exécute depuis son plan, après confirmation.",
+      "Le brouillon est écrit, et rien n'est parti sur Scalingo. Un geste s'exécute depuis son plan, après confirmation.",
   },
 } as const;

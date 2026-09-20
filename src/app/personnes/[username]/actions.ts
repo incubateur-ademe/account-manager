@@ -48,7 +48,7 @@ export async function detacherIdentite(
   });
 
   if (!identite) {
-    return { erreur: "Ce compte n'est plus en base." };
+    return { erreur: "Ce compte n'existe plus." };
   }
 
   const detenteur = identite.person?.username ?? identite.serviceAccount?.key ?? null;
@@ -144,7 +144,7 @@ export async function rattacherAStartup(
   });
 
   if (!personne) {
-    return { erreur: "Cette personne n'est plus en base." };
+    return { erreur: "Cette personne n'existe plus." };
   }
 
   // Un ghid libre produirait une phase inconnue, donc un constat qui ne se lèvera
@@ -262,7 +262,7 @@ export async function retirerRattachement(
   });
 
   if (!rattachement) {
-    return { erreur: "Ce rattachement n'est plus en base." };
+    return { erreur: "Ce rattachement n'existe plus." };
   }
   if (rattachement.endedAt !== null) {
     return { erreur: "Ce rattachement est déjà clos." };
@@ -338,7 +338,7 @@ export async function forcerAppartenance(
   });
 
   if (!personne) {
-    return { erreur: "Cette personne n'est plus en base." };
+    return { erreur: "Cette personne n'existe plus." };
   }
 
   const avant = appartenanceDeLaLigne(
@@ -402,7 +402,7 @@ export async function libererAppartenance(
   });
 
   if (!personne) {
-    return { erreur: "Cette personne n'est plus en base." };
+    return { erreur: "Cette personne n'existe plus." };
   }
   if (!personne.scopeOverride) {
     return { erreur: "Aucune surcharge d'appartenance n'est posée sur cette personne." };

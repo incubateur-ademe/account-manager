@@ -34,7 +34,7 @@ async function sansDeuxFacteurs(contexte: ContexteTuile) {
   if (!jeton) {
     return (
       <p className={fr.cx("fr-mb-0")}>
-        Jeton Scalingo absent de l'environnement : ce chiffre ne peut pas être demandé.
+        Jeton Scalingo absent de l'environnement. Ce chiffre ne peut pas être demandé.
       </p>
     );
   }

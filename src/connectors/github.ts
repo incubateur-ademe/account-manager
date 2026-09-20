@@ -70,11 +70,13 @@ const RUNBOOK =
  * Une lecture qui tombe ne devient pas manuelle, elle cesse : ce runbook dit quoi vérifier
  * pour que la collecte reparte, et non comment relever des comptes à la main.
  */
+/* Un jeton fine-grained perd une organisation dès qu'elle retire son approbation, sans cesser
+   de répondre pour autant : la seconde vérification ne double pas la première. */
 const RUNBOOK_LECTURE =
-  "Vérifier que le jeton de lecture n'a pas expiré, puis qu'il porte toujours les organisations déclarées sous connectors.github.organisations : un jeton fine-grained en perd une dès qu'elle retire son approbation, sans cesser de répondre pour autant. La collecte se relance par « pnpm sync ».";
+  "Vérifier que le jeton de lecture n'a pas expiré, puis qu'il porte toujours les organisations déclarées sous connectors.github.organisations. La collecte se relance par « pnpm sync ».";
 
 const RUNBOOK_OCTROI =
-  "Inviter la personne dans Settings > People de l'organisation, avec le rôle demandé, puis vérifier qu'elle figure parmi les membres avec ce rôle ou parmi les invitations en attente. Une invitation reste en attente tant qu'elle n'est pas acceptée : c'est un accès accordé, pas un accès en suspens.";
+  "Inviter la personne dans Settings > People de l'organisation, avec le rôle demandé. Vérifier ensuite qu'elle figure parmi les membres avec ce rôle, ou parmi les invitations en attente, qui valent accès accordé.";
 
 /**
  * Strict, et sans clé facultative : dans un profil écrit à la main, une clé inconnue
@@ -782,7 +784,7 @@ export function interpreterOctroi(statut: number, corps: unknown, maintenant: Da
 }
 
 const REFUS_SIMULATION =
-  "ACTIONS_ENABLED n'autorise aucune écriture : une exécution a été demandée en simulation, et aucun appel n'est parti. Le garde-fou est ici autant que chez l'appelant, pour qu'aucun appelant n'ait à s'en souvenir.";
+  "ACTIONS_ENABLED n'autorise aucune écriture. Une exécution a été demandée en simulation, et aucun appel n'est parti.";
 
 /**
  * L'octroi écrit, et les trois refus qui le précèdent.
@@ -935,7 +937,7 @@ export const CONTRAT_GITHUB: ConnectorContract = {
       id: CREDENTIAL_ADMIN,
       source: "env",
       scopeNote:
-        "Jeton fine-grained restreint aux mêmes organisations, mais porteur de l'écriture sur leurs membres : il sait inviter, changer un rôle et retirer. Distinct du jeton de lecture pour que la collecte nocturne n'en dispose jamais.",
+        "Jeton fine-grained restreint aux mêmes organisations, mais porteur de l'écriture sur leurs membres. Il sait inviter, changer un rôle et retirer. Distinct du jeton de lecture pour que la collecte nocturne n'en dispose jamais.",
       nominative: false,
     },
   ],

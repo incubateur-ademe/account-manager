@@ -385,7 +385,7 @@ export async function executerPlan(
   // précisément pourquoi il se refuse ici plutôt que de se replier en silence.
   if (plan.confirmedAt === null) {
     return refuser(
-      "Ce plan ne porte pas l'instant de sa confirmation : rien ne dit ce qui était toléré quand il a été approuvé. Recalculez-le, puis confirmez-le.",
+      "Ce plan ne porte pas l'instant de sa confirmation. Recalculez-le, puis confirmez-le.",
     );
   }
 
@@ -668,7 +668,7 @@ export async function executerPlan(
               after: {
                 ...contexte,
                 motif:
-                  "Un avis signé portait sur cette étape à l'écriture : le geste est consigné, l'avis est laissé en place, et l'étape n'est pas remise en attente.",
+                  "Un avis signé portait sur cette étape à l'écriture. Le geste est consigné, l'avis est laissé en place, et l'étape n'est pas remise en attente.",
               },
               result: "SKIPPED",
             });

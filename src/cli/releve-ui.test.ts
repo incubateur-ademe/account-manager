@@ -69,6 +69,40 @@ describe("ce que le relevé compte, et ce qu'il refuse de compter", () => {
     const entreDeuxCellules = `<td>Valeur</td>\n{/* un commentaire : posé là */}\n<td>Autre</td>`;
     expect(compter("deux-points-explicatifs", ECRAN, entreDeuxCellules)).toBe(0);
 
+    // Then un commentaire JSX étalé sur plusieurs lignes non plus. Il s'ouvre sur une accolade et
+    // ses lignes de continuation ne portent aucun astérisque, si bien qu'aucune ne ressemble à un
+    // commentaire lue seule : les deux mots entre accents graves encadraient la phrase qu'il porte,
+    // et elle se comptait comme un texte d'écran.
+    const commentaireEtale = [
+      "{/* Un `div` et non un `p` : le badge du système de design rend lui-même un `p`,",
+      "    et l'imbriquer dans un autre est du HTML que React refuse d'hydrater. */}",
+    ].join("\n");
+    expect(compter("deux-points-explicatifs", ECRAN, commentaireEtale)).toBe(0);
+
+    // Then un « > » qui compare deux nombres non plus. Il ouvrait un fragment qui courait sur le
+    // code jusqu'à la balise suivante, et le « : » du ternaire s'y comptait.
+    const comparaison = [
+      'const abrege = compact.length > LONGUEUR ? "coupé" : compact;',
+      "return (",
+      "  <p>Détail</p>",
+    ].join("\n");
+    expect(compter("deux-points-explicatifs", ECRAN, comparaison)).toBe(0);
+
+    // Then un fragment coupé par une balise avant la fin de l'expression qu'il traverse non plus :
+    // l'accolade restée seule dit que ce qui a été lu est du code, et non une phrase.
+    const expressionCoupee = [
+      '<span className={fr.cx("fr-text--sm")}>',
+      '  {tard ? "en retard" : dernière ?? <Absent />}',
+      "</span>",
+    ].join("\n");
+    expect(compter("deux-points-explicatifs", ECRAN, expressionCoupee)).toBe(0);
+
+    // Then un commentaire de fin de ligne n'emporte pas le littéral posé devant lui : effacer la
+    // ligne entière plutôt que la plage du commentaire rendait la mesure aveugle à ce texte.
+    const commentaireEnFinDeLigne =
+      'const T = "Aucune collecte : la liste est vide."; /* note `à : ne pas compter` */';
+    expect(compter("deux-points-explicatifs", ECRAN, commentaireEnFinDeLigne)).toBe(1);
+
     // Then une description de schéma Zod documente le fichier de politique, jamais un écran.
     const schema = `.meta({\n  description:\n    "Les accès que ce profil ouvre : un profil sans accès reste licite.",\n})`;
     expect(compter("deux-points-explicatifs", "src/core/policy.ts", schema)).toBe(0);
@@ -80,6 +114,22 @@ describe("ce que le relevé compte, et ce qu'il refuse de compter", () => {
     expect(
       compter("deux-points-explicatifs", ECRAN, `title="Aucune collecte : la liste est vide."`),
     ).toBe(1);
+  });
+
+  it("lit un texte long jusqu'au bout, si long soit-il", () => {
+    // Given deux runbooks, dont un que sa seule longueur mettait hors de portée de la mesure : la
+    // borne du motif s'arrêtait à 400 caractères, donc les plus longs textes du dépôt étaient les
+    // seuls que le compteur des textes longs ne voyait pas.
+    const court = `const R = "${"été ".repeat(41)}";`;
+    const long = `const R = "${"été ".repeat(120)}";`;
+
+    // Then les deux se comptent.
+    expect(compter("textes-de-plus-de-quarante-mots", "src/connectors/x.ts", court)).toBe(1);
+    expect(compter("textes-de-plus-de-quarante-mots", "src/connectors/x.ts", long)).toBe(1);
+
+    // Then quarante mots tout juste restent en deçà, la mesure visant ce qui dépasse.
+    const pile = `const R = "${"été ".repeat(40)}";`;
+    expect(compter("textes-de-plus-de-quarante-mots", "src/connectors/x.ts", pile)).toBe(0);
   });
 
   it("sépare l'affirmation de la clause qui revient dessus", () => {

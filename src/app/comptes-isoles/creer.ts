@@ -64,7 +64,7 @@ async function identiteATraiter(id: string): Promise<IdentiteIsolee | { erreur: 
   });
 
   if (!identite) {
-    return { erreur: "Ce compte n'est plus en base." };
+    return { erreur: "Ce compte n'existe plus." };
   }
   if (identite.serviceAccountId !== null) {
     return { erreur: "Ce compte est déclaré comme compte de service." };

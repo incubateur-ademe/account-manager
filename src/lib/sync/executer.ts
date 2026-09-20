@@ -34,7 +34,7 @@ export async function executerSync(
 ): Promise<CompteRenduSync> {
   journal(`[sync] démarrage ${correlationId}`);
   if (!env.ACTIONS_ENABLED) {
-    journal("[sync] ACTIONS_ENABLED est faux : aucune écriture sur un système cible");
+    journal("[sync] ACTIONS_ENABLED est faux, aucune écriture sur un système cible");
   }
 
   // La politique est lue paresseusement, si bien qu'une politique manquante se

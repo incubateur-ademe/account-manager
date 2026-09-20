@@ -671,7 +671,7 @@ describe("ce qu'un délégué voit d'un dossier", () => {
     // et la garde du pointage le refuse à qui n'est pas l'acteur attendu
     expect(peutPointer("EXECUTING", "SUBJECT", { role: "DELEGATE", operateur: false })).toEqual({
       possible: false,
-      raison: "Cette étape ne vous revient pas : elle attend quelqu'un d'autre.",
+      raison: "Cette étape attend quelqu'un d'autre.",
     });
 
     // When personne n'a encore déclaré ces étapes, puis quand le regard a eu lieu

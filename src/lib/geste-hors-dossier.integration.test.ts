@@ -516,7 +516,7 @@ describe("l'ouverture d'un geste, depuis le formulaire", () => {
 
     // Then rien n'est écrit : la justification est ce qui restera quand plus personne ne se
     // souviendra de la demande, et le schéma ne dit que la forme
-    expect(bafouillee).toMatchObject({ erreur: expect.stringContaining("écrivez-la en clair") });
+    expect(bafouillee).toMatchObject({ erreur: expect.stringContaining("Écrivez-la en clair") });
     expect(await prisma.plan.count()).toBe(0);
 
     // When elle est écrite en clair
