@@ -1,7 +1,3 @@
-import { copyFileSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
@@ -13,15 +9,14 @@ import type {
   RunContext,
 } from "@/core/connector";
 import { executerCollecte } from "@/lib/sync/collecte";
+import { politiqueJetable } from "@/test/politique-jetable";
 
 /**
  * La politique se lit sur le disque, et `config/` ne contient que des modèles. Le
  * seuil de chute vient donc d'un répertoire jetable, où seul le fichier des comptes
  * est requis : les réglages, eux, ont tous un défaut.
  */
-const REPERTOIRE = mkdtempSync(join(tmpdir(), "collecte-"));
-copyFileSync(resolve(process.cwd(), "config/config.exemple.yaml"), join(REPERTOIRE, "config.yaml"));
-process.env["POLICY_DIR"] = REPERTOIRE;
+politiqueJetable("collecte");
 
 interface IdentiteEnBase {
   id: string;
