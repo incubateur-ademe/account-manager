@@ -1,4 +1,9 @@
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+
 import { defineConfig, devices } from "@playwright/test";
+import { parse, stringify } from "yaml";
 
 /**
  * L'étage du bout en bout, et il ne tourne pas dans la vérification continue.
@@ -20,6 +25,45 @@ import { defineConfig, devices } from "@playwright/test";
 
 const PORT = 3210;
 const BASE = `http://localhost:${PORT}`;
+
+/**
+ * Le referentiel des personnes, joue en local par `e2e/faux-espace-membre.ts`.
+ *
+ * C'est le seul systeme amont que ce depot sait pointer ailleurs sans changer une ligne de
+ * production, `ESPACE_MEMBRE_URL` etant deja une variable du schema. Il existe pour qu'une
+ * collecte se deroule vraiment pendant un scenario, la boucle locale restant la seule
+ * chose qu'un scenario ait le droit d'atteindre.
+ */
+const PORT_REFERENTIEL = 3211;
+const REFERENTIEL = `http://127.0.0.1:${PORT_REFERENTIEL}`;
+
+/**
+ * Une politique jetable, reduite a ce qu'une collecte exige.
+ *
+ * `policy()` lit `POLICY_DIR`, qui vaut `config` par defaut, ou seul l'exemple est commite.
+ * Sans politique, `executerSync` sort en echec avant d'avoir appele quoi que ce soit, et un
+ * scenario constaterait une collecte qui echoue sans savoir pourquoi.
+ *
+ * L'exemple prive de ses profils, et pas l'exemple entier. Le catalogue de profils remplit
+ * la modale d'ouverture d'une arrivee, que `modales-au-dela-de-60-mots-par-champ` compte
+ * alors comme de la redaction longue. Ce plafond mesure du texte d'ecran et n'a aucun moyen
+ * de distinguer une aide bavarde d'une liste venue d'un fichier. Le poser ici ferait rougir
+ * le releve sur une donnee de test. Ce que le releve gagnerait a voir un catalogue reel est
+ * une autre question, et elle demande d'abord que la mesure sache les separer.
+ */
+function politiqueJetable(): string {
+  const dossier = mkdtempSync(join(tmpdir(), "politique-de-bout-en-bout-"));
+  const lue = parse(readFileSync(resolve(process.cwd(), "config/config.exemple.yaml"), "utf8")) as
+    | Record<string, unknown>
+    | undefined;
+  const { profiles, ...garde } = lue ?? {};
+  void profiles;
+  writeFileSync(join(dossier, "config.yaml"), stringify(garde), "utf8");
+  // Le processus qui evalue cette configuration est celui qui pilote la course, et il
+  // meurt avec elle. Sans ce nettoyage, chaque lancement laisse un dossier derriere lui.
+  process.on("exit", () => rmSync(dossier, { recursive: true, force: true }));
+  return dossier;
+}
 
 /**
  * La base de test, celle-là même que l'étage d'intégration exige, et le serveur tourne
@@ -60,15 +104,32 @@ const ENVIRONNEMENT = {
   AUTH_TRUST_HOST: "true",
   OPERATORS: OPERATRICE,
   BREAK_GLASS_USERNAMES: "",
-  // Rien ne doit sortir de la machine, pas même par accident : le référentiel des
-  // personnes et le relais d'envoi pointent sur un port qui n'écoute jamais.
-  ESPACE_MEMBRE_URL: "http://127.0.0.1:1",
+  // Rien ne doit sortir de la machine, pas même par accident. Le relais d'envoi pointe
+  // sur un port qui n'écoute jamais, et le référentiel des personnes sur le double local,
+  // qui est la seule adresse joignable de tout cet environnement.
+  ESPACE_MEMBRE_URL: REFERENTIEL,
   ESPACE_MEMBRE_API_KEY: "aucune-cle-en-bout-en-bout",
+  POLICY_DIR: politiqueJetable(),
   SMTP_URL: "smtp://127.0.0.1:1",
   SMTP_EMAIL_FROM: "personne@exemple.invalid",
   // Le défaut du dépôt, redit ici parce qu'aucun scénario ne doit pouvoir écrire sur
   // un système tiers, même si l'environnement du poste l'autorise.
   ACTIONS_ENABLED: "false",
+  /*
+   * Vidés plutôt qu'absents, et c'est ce qui rend ces scénarios reproductibles d'un poste
+   * à l'autre. Playwright construit l'environnement du serveur en posant `process.env`
+   * sous ce bloc, si bien qu'un jeton exporté dans le shell de qui lance arrive jusqu'à
+   * lui. Trois écrans sondent leur système au rendu (`src/app/systemes/page.tsx`,
+   * `systemes/[cle]/page.tsx`, `dossiers/[id]/page.tsx`) : avec un jeton, ils
+   * interrogent le vrai système et ne montrent pas la même chose que sur un poste qui
+   * n'en a pas. `ACTIONS_ENABLED` ne les couvre pas, une sonde étant une lecture.
+   * `vitest.config.ts` ferme déjà la même porte pour les mêmes raisons.
+   */
+  GITHUB_TOKEN: "",
+  GITHUB_ADMIN_TOKEN: "",
+  NOTION_SCIM_TOKEN: "",
+  SCALINGO_API_TOKEN: "",
+  FGP_URL: "",
 };
 
 export default defineConfig({
@@ -88,15 +149,25 @@ export default defineConfig({
     navigationTimeout: 60_000,
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
-  webServer: {
-    command: `pnpm dev --port ${PORT}`,
-    url: `${BASE}/healthz`,
-    env: ENVIRONNEMENT,
-    // Jamais réutilisé : un serveur déjà debout tourne sur une autre base et avec une
-    // autre allowlist, et le scénario le découvrirait par des échecs incompréhensibles.
-    reuseExistingServer: false,
-    timeout: 120_000,
-    stdout: "ignore",
-    stderr: "pipe",
-  },
+  webServer: [
+    {
+      command: "node --import tsx e2e/faux-espace-membre.ts",
+      url: `${REFERENTIEL}/healthz`,
+      env: { PORT_FAUX_ESPACE_MEMBRE: String(PORT_REFERENTIEL) },
+      reuseExistingServer: false,
+      stdout: "ignore",
+      stderr: "pipe",
+    },
+    {
+      command: `pnpm dev --port ${PORT}`,
+      url: `${BASE}/healthz`,
+      env: ENVIRONNEMENT,
+      // Jamais réutilisé : un serveur déjà debout tourne sur une autre base et avec une
+      // autre allowlist, et le scénario le découvrirait par des échecs incompréhensibles.
+      reuseExistingServer: false,
+      timeout: 120_000,
+      stdout: "ignore",
+      stderr: "pipe",
+    },
+  ],
 });

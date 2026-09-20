@@ -133,20 +133,35 @@ figé ne montrerait jamais, et lui donner une adresse morte le viderait de son s
 de `pnpm test`, et il s'ignore proprement sans jeton.
 
 `e2e/*.spec.ts` est l'étage de **bout en bout**, hors de `src/`, lancé à la main avant une livraison
-et **jamais dans la vérification continue**. Trois choses seulement s'y tiennent : qu'un cookie signé
-franchisse la barrière de `src/proxy.ts` et soit décodé, que le même serveur traite deux identités
-différemment quand seul le nom change, et qu'un écran s'hydrate au lieu de seulement se rendre. Un
-scénario instable s'y supprime, il ne se rejoue pas : `retries` vaut zéro. Le cookie s'y forge plutôt
-que de passer par le lien de connexion, si bien qu'une connexion à la main avant une livraison reste
-nécessaire.
+et **jamais dans la vérification continue**. **Ce qui s'y tient est ce qu'aucun étage plus bas ne sait
+tenir**, et rien d'autre. Quatre choses aujourd'hui : qu'un cookie signé franchisse la barrière de
+`src/proxy.ts` et soit décodé, que le même serveur traite deux identités différemment quand seul le
+nom change, qu'un écran s'hydrate au lieu de seulement se rendre, et qu'une collecte lancée depuis
+l'écran remplisse les écrans qui en rendent compte. Un scénario instable s'y supprime, il ne se
+rejoue pas : `retries` vaut zéro. Le cookie s'y forge plutôt que de passer par le lien de connexion,
+si bien qu'une connexion à la main avant une livraison reste nécessaire.
 
-**Un quatrième fichier vit dans `e2e/` sans rien prouver.** `releve-visuel.spec.ts` ouvre les écrans,
+**Une collecte s'y déroule pour de vrai, et c'est le référentiel des personnes qui la rend possible.**
+`ESPACE_MEMBRE_URL` est la seule adresse amont que ce dépôt sait pointer ailleurs sans toucher au code
+de production, et `e2e/faux-espace-membre.ts` la sert en local. Les trois connecteurs portent leur
+hôte en dur, restent sans credential et se résolvent au tier `none` : ce qui se prouve ainsi est le
+périmètre, les startups et les constats, jamais le transport d'un connecteur, qui appartient à son
+test de contrat. La politique posée par la configuration est l'exemple privé de ses profils, dont le
+catalogue remplirait une modale que le relevé visuel compte alors comme de la rédaction longue.
+
+**Un fichier de plus vit dans `e2e/` sans rien prouver.** `releve-visuel.spec.ts` ouvre les écrans,
 capture chacun en 1440 et en 375, et écrit l'arbre de titres tel que le DOM le porte. Il ne tourne que
-sur demande, `RELEVE_VISUEL=1 pnpm test:e2e`, écrit sous `test-results/releve-visuel/`, et ne compte donc pas parmi les trois garanties
+sur demande, `RELEVE_VISUEL=1 pnpm test:e2e`, écrit sous `test-results/releve-visuel/`, et ne compte donc pas parmi les garanties
 ci-dessus. Il existe pour ce que `pnpm cadre` ne peut pas voir en lisant du code : un titre injecté par
 react-dsfr, l'ordre de lecture réel, la densité, le débordement en étroit. C'est ainsi qu'on a constaté
 que chaque écran portait deux `h1`, dont un venu des modales et un du sélecteur de thème du DSFR, que
 rien dans le code ne laissait voir.
+
+**Un écran neuf entre dans la liste que ce relevé ouvre, et `src/app/ecrans-releves.test.ts` refuse
+sinon.** Cette liste s'écrit à la main dans `e2e/releve-visuel.spec.ts`, donc un écran neuf n'y entre
+pas tout seul. Le garde-fou vit dans l'étage unitaire pour se heurter à la proposition qui introduit
+l'écran, et non la veille d'une livraison. Ses exclusions portent leur raison, et une exclusion que
+plus aucun écran ne justifie le fait échouer aussi.
 
 **Huit règles de forme ne se tiennent que dans le navigateur**, et leurs plafonds vivent dans
 `e2e/seuils-visuels.json` : modales sans champ, modales au-delà de soixante mots par champ, modales
