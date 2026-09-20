@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuditInput } from "@/core/audit";
-import type { PlannedStep, SubjectRef } from "@/core/connector";
 import { ETATS_VIVANTS } from "@/core/dossier";
 import { intentionDUnGeste } from "@/core/geste";
 import { prisma } from "@/lib/db";
@@ -41,19 +40,6 @@ const emetteur = vi.hoisted(() => ({
 }));
 
 /**
- * Le tier que le connecteur pose, forcé ouvert par le seul scénario qui exerce la voie
- * automatique.
- *
- * L'émission sort manuelle sans condition, et c'est le correctif que le premier scénario
- * épingle : tant qu'aucun écran ne rend la moitié périssable, emprunter cette voie
- * détruirait ce qu'elle fabrique. Le code qui range la remise existe pourtant, il est du
- * lot, et l'écran du lot suivant le rouvrira : le forcer ici est la seule façon de prouver
- * qu'il écrit bien la fiche et qu'il ne garde pas la clé. La bascule est à faux par défaut,
- * si bien que le premier scénario juge le tier réel du connecteur et non celui du double.
- */
-const voie = vi.hoisted(() => ({ ouverte: false }));
-
-/**
  * Les écritures sont autorisées ici, et c'est le seul fichier du dépôt dans ce cas : sans
  * elles, la boucle n'appellerait aucun connecteur, et le chemin qu'on veut prouver serait
  * précisément celui qui ne s'emprunte pas. Ce que cette autorisation atteint est doublé de
@@ -86,20 +72,38 @@ vi.mock("@/lib/fgp", async (original) => {
   };
 });
 
-vi.mock("@/connectors/scalingo", async (original) => {
-  const reel = await original<typeof import("@/connectors/scalingo")>();
+/**
+ * Le réseau est le seul double du connecteur, et `scalingo.execute` reste le vrai : il route
+ * l'action d'émission, refuse un hôte étranger et confronte la cible aux régions que le
+ * fournisseur annonce, trois choses qu'un double du connecteur escamoterait. Aucune adresse
+ * de cet environnement n'écoute, et le porteur s'échange comme en production.
+ */
+const SERVIES: Readonly<Record<string, unknown>> = {
+  "https://auth.scalingo.com/v1/tokens/exchange": { token: "porteur-de-test" },
+  "https://auth.scalingo.com/v1/regions": {
+    regions: [{ name: "osc-fr1", api: "https://api.osc-fr1.scalingo.com" }],
+  },
+};
 
-  return {
-    ...reel,
-    scalingo: {
-      ...reel.scalingo,
-      planifierOctroi: (scope: unknown, sujet: SubjectRef): readonly PlannedStep[] =>
-        (reel.scalingo.planifierOctroi?.(scope, sujet) ?? []).map((etape) =>
-          voie.ouverte ? { ...etape, tier: "auto" as const } : etape,
-        ),
-    },
-  };
-});
+function doublerLeReseau(): void {
+  // Le porteur échangé vit dans le module du connecteur et survit d'un scénario au suivant :
+  // seules les adresses lues par ce scénario-ci doivent se compter.
+  vi.spyOn(globalThis, "fetch")
+    .mockClear()
+    .mockImplementation((entree) => {
+      const adresse = String(entree);
+      const corps = SERVIES[adresse];
+
+      return corps === undefined
+        ? Promise.reject(new Error(`aucune adresse doublée : ${adresse}`))
+        : Promise.resolve(
+            new Response(JSON.stringify(corps), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }),
+          );
+    });
+}
 
 /**
  * Le journal s'écrit sans être attendu, si bien que l'ordre des lignes en base ne dit rien de
@@ -149,9 +153,9 @@ describe("un jeton restreint s'émet, se range, et ne laisse qu'une moitié derr
   let personId = "";
 
   beforeEach(async () => {
+    doublerLeReseau();
     ordre.length = 0;
     demandes.length = 0;
-    voie.ouverte = false;
     emetteur.reponse = { blob: "blob-opaque-de-test", cle: CLE_CLIENTE };
     const personne = await prisma.person.create({
       data: {
@@ -197,73 +201,62 @@ describe("un jeton restreint s'émet, se range, et ne laisse qu'une moitié derr
     return { planId, empreinte: calcule.empreinte };
   }
 
-  it("ferme la voie automatique par le contrat, alors même que rien ne manque", async () => {
-    // Given les deux credentials posés, le proxy comme le jeton de compte, et les écritures
-    // autorisées : rien de ce que l'émission exige ne manque
+  it("rend encore la clé quand une écriture lève après l'émission", async () => {
+    // Given les deux credentials posés, le proxy comme le jeton de compte : c'est ce qui
+    // ouvre la voie automatique, et rien d'autre
     expect(process.env["FGP_URL"]).toBeTruthy();
     expect(process.env["SCALINGO_API_TOKEN"]).toBeTruthy();
 
-    // When on calcule le geste
     const calcule = await calculerGeste(INTENTION, personId, USERNAME, OUVERTURE);
-
-    // Then l'étape sort manuelle quand même, et avec sa marche à suivre. Ce n'est pas une
-    // dégradation faute de credential, c'est le contrat : une émission fabrique une moitié
-    // périssable qu'aucun écran ne rend encore, et la voie automatique détruirait ce qu'elle
-    // fabrique en laissant derrière elle un jeton vivant dont la clé n'a atteint personne
     const etape = calcule.etapes[0]?.etape;
-    expect(etape?.tier).toBe("manual");
+    expect(etape?.tier).toBe("auto");
+    // La voie manuelle reste sous elle, avec sa marche à suivre : un credential retiré ne
+    // laisse pas un trou
     expect(etape?.manual?.runbook).toContain("proxy à jetons restreints");
-    expect(etape?.manual?.doneWhen).toContain("terme");
 
     const { planId } = await poserUnGesteConfirme();
 
-    // When on exécute le plan, écritures autorisées
+    // Given une écriture d'étape qui refuse juste après l'émission. C'est le seul instant
+    // où la moitié périssable n'existe nulle part ailleurs que dans la mémoire du passage :
+    // ni la base, ni le journal, ni le proxy n'en gardent copie
+    const espion = vi
+      .spyOn(prisma.planStep, "update")
+      .mockRejectedValueOnce(new Error("la base a refusé l'écriture de l'étape"));
+
     const { executerPlan } = await import("@/lib/execution");
     const passage = await executerPlan(planId, {
       operateur: OPERATRICE,
       masseConfirmee: false,
       maintenant: OUVERTURE,
     });
+    espion.mockRestore();
 
-    // Then rien n'est parti au proxy, rien n'a été rangé, et rien n'a été remis : la voie
-    // automatique n'est pas praticable, donc elle n'a pas brûlé la tentative d'un opérateur
-    // qui a approuvé un geste présenté comme automatique
-    expect(passage.refus).toBeUndefined();
-    expect(passage.executees).toBe(0);
-    expect(passage.remises).toEqual([]);
-    expect(demandes).toEqual([]);
-    expect(await prisma.serviceAccount.count()).toBe(0);
+    // Then l'émission a bien eu lieu, et le compte machine est écrit
+    expect(demandes).toHaveLength(1);
+    const compte = await prisma.serviceAccount.findFirstOrThrow({
+      where: { provider: "scalingo" },
+    });
 
-    // Then l'étape attend la main d'un opérateur, et son état ne bouge pas : c'est ce qui la
-    // laisse pointable, là où un échec l'aurait comptée tentée
-    const apres = await prisma.planStep.findFirstOrThrow({ where: { planId } });
-    expect(apres.state).toBe("PENDING");
-    expect(apres.attempts).toBe(0);
-    // Rien du tout sur la ligne, pas même une cause d'échec : aucun appel n'a eu lieu, et
-    // consigner une erreur ferait lire cette attente comme une panne
-    expect(apres.lastError).toBeNull();
-    expect(apres.retryable).toBeNull();
+    // Then la clé remonte quand même jusqu'à l'appelant, au lieu de disparaître avec
+    // l'exception : un jeton vivant que rien ne révoque, dont la clé n'aurait atteint
+    // personne, est ce que cette remontée existe pour éviter
+    expect(passage.remises).toEqual([
+      { key: compte.key, label: compte.label, aRemettre: CLE_CLIENTE },
+    ]);
 
-    // Then le journal, lui, dit pourquoi elle n'a pas bougé
-    const traces = await attendreLesTraces("plan.etape.execution");
+    // Then le passage dit qu'il s'est arrêté en route, et nomme la cause : le compte rendu
+    // qui l'accompagne porte des nombres arrêtés au milieu, et l'état du plan n'a pas été
+    // reposé
+    expect(passage.passageIncomplet).toContain("la base a refusé l'écriture de l'étape");
+
+    // Then le journal porte l'interruption sous le plan, avec le nombre de remises en jeu
+    const traces = await attendreLesTraces("plan.execution");
     expect(
-      traces.some((ligne) =>
-        String((ligne.after as Record<string, unknown>)["motif"] ?? "").includes(
-          "Aucune voie automatique",
-        ),
-      ),
+      traces.some((ligne) => (ligne.after as Record<string, unknown>)["interrompu"] !== undefined),
     ).toBe(true);
-
-    // Then aucun engagement n'est ouvert : un engagement naît d'un geste fait, et rien n'a
-    // été fait
-    expect(await engagementsOuverts(personId, OUVERTURE)).toEqual([]);
   });
 
   it("écrit le compte machine depuis le socle, journalise avant d'agir, et ne garde pas la clé", async () => {
-    // Given la voie automatique forcée ouverte, ce que seul ce scénario fait : le rangement
-    // de la remise est du lot, et l'écran du lot suivant rouvrira cette voie
-    voie.ouverte = true;
-
     // Given un geste hors dossier qui demande un jeton restreint, borné à sept jours
     const { planId } = await poserUnGesteConfirme();
 
@@ -283,6 +276,11 @@ describe("un jeton restreint s'émet, se range, et ne laisse qu'une moitié derr
       masseConfirmee: false,
       maintenant: OUVERTURE,
     });
+
+    // Then la cible a été confrontée aux régions que le fournisseur annonce, et le porteur
+    // échangé pour cette seule lecture : c'est `scalingo.execute` qui l'a fait, le vrai
+    const lues = vi.mocked(globalThis.fetch).mock.calls.map(([adresse]) => String(adresse));
+    expect(lues).toContain("https://auth.scalingo.com/v1/regions");
 
     // Then l'émission a bien eu lieu, une seule fois, bornée à la région et au terme
     expect(passage.refus).toBeUndefined();
@@ -373,10 +371,8 @@ describe("un jeton restreint s'émet, se range, et ne laisse qu'une moitié derr
   });
 
   it("ne rejoue jamais de lui-même une émission dont l'échec est ambigu", async () => {
-    // Given la voie automatique forcée ouverte, et un proxy qui expire au lieu de répondre :
-    // un blob a pu naître là-bas, rien ne le liste, rien ne le révoque, et aucune route
-    // d'introspection n'existe pour lever le doute
-    voie.ouverte = true;
+    // Given un proxy qui expire au lieu de répondre : un blob a pu naître là-bas, rien ne le
+    // liste, rien ne le révoque, et aucune route d'introspection n'existe pour lever le doute
     emetteur.reponse = new ErreurFgp(null, false, "The operation was aborted due to timeout");
 
     const { planId } = await poserUnGesteConfirme();

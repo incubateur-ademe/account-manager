@@ -1234,21 +1234,22 @@ function cibleDUnJeton(scope: ScopeJeton): string | undefined {
 }
 
 /**
- * L'étape d'émission, et elle est manuelle sans condition.
+ * L'étape d'émission, automatique quand les deux credentials répondent.
  *
- * Ce n'est pas une dégradation faute de credential, c'est le contrat : une émission
- * fabrique deux moitiés, dont une ne repasse jamais. La voie automatique la remonte bien
- * jusqu'à `ResultatDExecution.remises`, mais aucun écran ne la rend encore, si bien
- * qu'emprunter cette voie détruirait ce qu'elle fabrique, en laissant derrière elle un
- * jeton vivant, irrévocable jusqu'à son terme, et dont la clé n'a atteint personne. Le tier
- * le dit donc plutôt qu'une garde enfouie, et l'opérateur voit une marche à suivre là où il
- * aurait vu un bouton qui perd la moitié périssable. L'écran vient au lot suivant, et c'est
- * lui qui rouvrira cette voie ; le jour où il la rouvre, le tier automatique exige les deux
- * credentials et non un seul, l'échange étant fait par le proxy avec le jeton de compte.
+ * Les deux et non un seul : le jeton de compte est ce que le proxy chiffre dans le blob, son
+ * adresse est ce vers quoi part l'émission, et il ne manque rien d'autre. Elle est restée
+ * manuelle sans condition tant qu'aucun écran ne rendait la moitié périssable, emprunter la
+ * voie automatique détruisant alors ce qu'elle fabrique : un jeton vivant, irrévocable
+ * jusqu'à son terme, dont la clé n'avait atteint personne. C'est `Remises` qui la rend
+ * désormais, et le passage la remonte encore quand son rangement échoue.
+ *
+ * La voie manuelle reste dessous, et son critère de complétion avec elle : sans credential,
+ * l'opérateur émet depuis le proxy et saisit la fiche du compte machine à la main.
  */
 export function planifierJetonScalingo(
   scope: ScopeJeton,
   sujet: SubjectRef,
+  credentials: boolean,
 ): readonly PlannedStep[] {
   const usage = CATALOGUE_DES_USAGES[scope.usage];
   const qui = sujet.kind === "person" ? sujet.username : sujet.key;
@@ -1270,7 +1271,7 @@ export function planifierJetonScalingo(
     {
       systemKey: "scalingo",
       capability: "grant",
-      tier: "manual",
+      tier: credentials ? "auto" : "manual",
       action: ACTION_JETON,
       label: `Émettre un jeton restreint pour ${qui} : ${usage.libelle}`,
       params: { beneficiaire: qui, usage: scope.usage, cible, scopes },
@@ -1295,6 +1296,41 @@ export function planifierJetonScalingo(
 }
 
 /**
+ * Ce qui interdit d'émettre vers cette cible, quand la liste des régions le dit.
+ *
+ * L'hôte d'authentification ne s'y confronte pas : il ne désigne aucune région, et la liste
+ * blanche l'a déjà reconnu.
+ *
+ * Une liste illisible ne vaut pas un refus définitif : ne pas savoir quelles régions
+ * existent n'autorise pas à conclure que celle-ci n'existe pas, et l'étape se représente au
+ * passage suivant. Une région absente d'une liste bien lue, si.
+ */
+async function refusDeRegion(
+  lire: LecteurScalingo,
+  cible: string,
+): Promise<{ error: string; retryable: boolean } | null> {
+  if (cible === HOTE_AUTH) {
+    return null;
+  }
+
+  const { regions, erreurs } = await lireRegions(lire);
+  if (regions.length === 0) {
+    const cause = erreurs[0]?.message ?? "aucune région rendue, sans erreur rapportée";
+    return {
+      error: `Les régions Scalingo n'ont pas pu être lues (${cause}). Rien n'a été émis.`,
+      retryable: true,
+    };
+  }
+
+  return regions.some(({ api }) => api === cible)
+    ? null
+    : {
+        error: `« ${cible} » ne figure pas parmi les régions que Scalingo annonce (${regions.map(({ name }) => name).join(", ")}). Rien n'a été émis.`,
+        retryable: false,
+      };
+}
+
+/**
  * L'émission, et les refus qui la précèdent.
  *
  * La simulation d'abord, comme pour les deux autres actions et pour la même raison : ce qui
@@ -1309,14 +1345,22 @@ export function planifierJetonScalingo(
  * partirait sans terme, c'est-à-dire sans reprise d'aucune sorte. Le seul endroit qui voie
  * la valeur réellement employée est celui qui écrit.
  *
- * La cible enfin, contre la liste blanche d'hôte : ce qu'un blob porte est l'unique
+ * La cible ensuite, contre la liste blanche d'hôte : ce qu'un blob porte est l'unique
  * destination vers laquelle le proxy relaiera le jeton de compte entier, et cette liaison
  * survit à la session.
+ *
+ * La région enfin, contre celles que le fournisseur annonce. La liste blanche ne borne
+ * qu'une forme, et une forme valable désigne aussi bien une région qui n'existe pas : le
+ * blob part alors vers un hôte que personne ne sert, et il lie le jeton de compte à ce nom
+ * jusqu'à son terme. C'est la seule couture de ce connecteur qui ait un lecteur sous la main
+ * au moment d'écrire, et `GET /v1/regions` est la même lecture que celle par laquelle la
+ * collecte commence.
  *
  * Aucune reprise, jamais : retenter une émission dont on ignore si elle a abouti, c'est
  * émettre un second jeton que rien ne listera et que rien ne révoquera.
  */
 export async function executerEmissionScalingo(
+  lire: LecteurScalingo,
   emettre: EmissionDeJeton,
   jeton: string | undefined,
   step: PlannedStep,
@@ -1359,6 +1403,11 @@ export async function executerEmissionScalingo(
       error: `${refusDHote(demande.cible)} Un blob ne porte qu'une cible, et elle lie le jeton de compte entier à cet hôte jusqu'à son terme.`,
       retryable: false,
     };
+  }
+
+  const refus = await refusDeRegion(lire, demande.cible);
+  if (refus !== null) {
+    return { state: "FAILED", ...refus };
   }
 
   const secondes = Math.floor((terme.getTime() - ctx.now.getTime()) / 1_000);
@@ -1859,21 +1908,21 @@ export const CONTRAT_SCALINGO: ConnectorContract = {
   capabilities: {
     list: [{ requires: [CREDENTIAL], tier: "auto", runbook: RUNBOOK_LECTURE }],
     // Les deux sens ont leur voie automatique, et chacun garde la voie manuelle sous
-    // elle : sans jeton, il reste une marche à suivre, et c'est ce que le second tier
+    // elle : sans jeton, il reste une marche à suivre, et c'est ce que le dernier tier
     // déclare. L'octroi invite ou corrige le rôle en place, le retrait vise chaque
     // application où la personne est constatée, le socle sachant dire sur quelles
     // ressources agir. Ce que ni l'un ni l'autre ne fait est la rotation des secrets,
     // qu'aucune API n'expose et qui sort en étape manuelle.
     //
-    // L'émission d'un jeton restreint passe par la même capacité et n'en emprunte pourtant
-    // aucune voie automatique : elle sort manuelle par contrat, et le connecteur le décide
-    // lui-même dans `octroyer`. C'est pourquoi `CREDENTIAL_FGP` n'est exigé par aucune
-    // entrée ci-dessous, et il n'y a rien à corriger là : une sonde qui le rendrait
-    // disponible ne doit changer le tier d'aucune étape tant qu'aucun écran ne rend la
-    // moitié périssable. Le jour où l'écran la rend, c'est une entrée exigeant les deux
-    // credentials qu'il faudra écrire ici, l'échange étant fait par le proxy avec le jeton
-    // de compte.
+    // Deux natures passent sous `grant`, et elles ne se rendent pas praticables par la même
+    // chose : la collaboration n'a besoin que du jeton de compte, l'émission d'un jeton
+    // restreint a besoin de l'adresse du proxy en plus. D'où la première entrée, seule à
+    // exiger `CREDENTIAL_FGP`, et c'est elle qui dit la meilleure voie du système. Sans
+    // l'adresse du proxy, l'octroi reste automatique pour la collaboration, et l'émission
+    // dégrade toute seule dans `octroyer` : le connecteur décide du tier de son étape
+    // nature par nature, là où `resolveCapability` résout par capacité.
     grant: [
+      { requires: [CREDENTIAL, CREDENTIAL_FGP], tier: "auto", runbook: RUNBOOK_OCTROI },
       { requires: [CREDENTIAL], tier: "auto", runbook: RUNBOOK_OCTROI },
       { requires: [], tier: "manual", runbook: RUNBOOK_OCTROI },
     ],
@@ -2025,7 +2074,7 @@ export const scalingo: Connector = {
 
   execute: (step, ctx) =>
     step.action === ACTION_JETON
-      ? executerEmissionScalingo(emettreUnJeton, env.SCALINGO_API_TOKEN, step, ctx)
+      ? executerEmissionScalingo(lireTout, emettreUnJeton, env.SCALINGO_API_TOKEN, step, ctx)
       : executerScalingo(lireTout, ecrireTout, Boolean(env.SCALINGO_API_TOKEN), step, ctx),
 
   plan: (intent) => {
@@ -2060,11 +2109,11 @@ export const scalingo: Connector = {
  * Le connecteur décide du tier de son étape lui-même, nature par nature, là où
  * `resolveCapability` résout par capacité et non par action : les deux natures passent par la
  * même voie déclarée sous `capabilities.grant`, et elles ne se rendent pas praticables par la
- * même chose. La collaboration dégrade faute de credential, l'émission ne dégrade pas, elle
- * est manuelle par contrat tant qu'aucun écran ne rend la moitié périssable.
+ * même chose. La collaboration se contente du jeton de compte, l'émission exige en plus
+ * l'adresse du proxy qui fabrique le blob.
  */
 function octroyer(scope: ScopeScalingo, sujet: SubjectRef): readonly PlannedStep[] {
   return scope.nature === NATURE_COLLABORATION
     ? planifierOctroiScalingo(scope, sujet, Boolean(env.SCALINGO_API_TOKEN))
-    : planifierJetonScalingo(scope, sujet);
+    : planifierJetonScalingo(scope, sujet, Boolean(env.SCALINGO_API_TOKEN) && Boolean(env.FGP_URL));
 }

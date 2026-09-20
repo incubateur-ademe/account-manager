@@ -101,21 +101,24 @@ describe("la saisie d'un compte de service", () => {
     // silence est ce qui rendrait la fiche indétectable.
     expect(lire({ ...COMPLETE, expiresAt: "le mois prochain" })).toHaveProperty("erreur");
 
-    // Then un terme déjà passé est refusé : la fiche naîtrait « terme passé », donc
-    // sans revue et sans rien à reprendre, ce qui ne décrit aucun jeton vivant.
+    // Then un terme déjà passé est refusé, et le refus nomme le geste : le champ de l'écran
+    // est une date, donc la valeur postée est minuit UTC du jour choisi, et le jour même
+    // tombe ici sans que rien ne le distingue d'une faute de frappe.
     const passe = lire({ ...COMPLETE, expiresAt: dans(-1).toISOString() });
     expect("erreur" in passe && passe.erreur).toContain("déjà passé");
+    expect("erreur" in passe && passe.erreur).toContain("postérieure à aujourd'hui");
 
     // Then un terme trop lointain est refusé, et c'est le refus qui coûte : un terme non
     // nul fait dire « à jour » au calcul de revue et retire le bouton, aucun écran
     // n'édite cette colonne, et la saisie de travers serait donc irréversible depuis
     // l'interface. C'est le défaut miroir de la périodicité zéro, refusée juste au-dessus.
-    const tropLoin = lire({ ...COMPLETE, expiresAt: dans(401).toISOString() });
-    expect("erreur" in tropLoin && tropLoin.erreur).toContain("400");
+    const tropLoin = lire({ ...COMPLETE, expiresAt: dans(REVUE_PAR_DEFAUT + 1).toISOString() });
+    expect("erreur" in tropLoin && tropLoin.erreur).toContain(String(REVUE_PAR_DEFAUT));
 
-    // Then la borne est bien au jour près, et non à l'année : la veille du plafond passe.
-    expect(lire({ ...COMPLETE, expiresAt: dans(399).toISOString() })).toEqual({
-      declaration: { ...COMPLETE, expiresAt: dans(399) },
+    // Then le plafond vaut la périodicité de revue par défaut : rien ne doit vivre plus
+    // longtemps sans regard parce qu'il porte un terme que s'il n'en portait aucun.
+    expect(lire({ ...COMPLETE, expiresAt: dans(REVUE_PAR_DEFAUT - 1).toISOString() })).toEqual({
+      declaration: { ...COMPLETE, expiresAt: dans(REVUE_PAR_DEFAUT - 1) },
     });
   });
 });

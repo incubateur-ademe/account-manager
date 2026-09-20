@@ -1608,11 +1608,15 @@ describe("ce qu'un jeton restreint ouvre, et ce qu'il n'ouvre jamais", () => {
     email: "nour.exemple@exemple.invalid",
   };
 
+  /** La seule lecture que l'émission fasse d'elle-même : les régions que Scalingo sert. */
+  const regionsVivantes = () => lecteur({ [`${AUTH}/v1/regions`]: REGIONS });
+
   const etapeDeJeton = (
     scope: Omit<ScopeJeton, "nature">,
     terme: Date | undefined,
+    credentials = true,
   ): PlannedStep => {
-    const [etape] = planifierJetonScalingo({ nature: "jeton", ...scope }, SUJET);
+    const [etape] = planifierJetonScalingo({ nature: "jeton", ...scope }, SUJET, credentials);
     if (!etape) {
       throw new Error("le connecteur devrait proposer une étape d'émission");
     }
@@ -1637,13 +1641,19 @@ describe("ce qu'un jeton restreint ouvre, et ce qu'il n'ouvre jamais", () => {
       SEPT_JOURS,
     );
     const { emettre, demandes } = emetteur({ blob: "blob-opaque", cle: CLE_CLIENTE });
+    const regions = regionsVivantes();
 
     // When on exécute
-    const issue = await executerEmissionScalingo(emettre, "jeton-de-compte", etape, {
+    const issue = await executerEmissionScalingo(regions.lire, emettre, "jeton-de-compte", etape, {
       ...CONTEXTE,
       now: LE_10,
       dryRun: false,
     });
+
+    // Then la région a été confrontée à celles que le fournisseur annonce avant toute
+    // émission : la liste blanche ne borne qu'une forme, et une forme valable désigne aussi
+    // bien une région que personne ne sert
+    expect(regions.appels).toEqual([`${AUTH}/v1/regions`]);
 
     // Then une seule demande est partie, vers l'API de la région et non vers l'hôte
     // d'authentification : un blob ne porte qu'une cible, et se tromper d'hôte donnerait un
@@ -1703,6 +1713,7 @@ describe("ce qu'un jeton restreint ouvre, et ce qu'il n'ouvre jamais", () => {
     // When la même étape ne porte aucun terme
     const sansTerme = emetteur({ blob: "jamais", cle: "jamais" });
     const refus = await executerEmissionScalingo(
+      regionsVivantes().lire,
       sansTerme.emettre,
       "jeton-de-compte",
       etapeDeJeton(
@@ -1734,7 +1745,13 @@ describe("ce qu'un jeton restreint ouvre, et ce qu'il n'ouvre jamais", () => {
 
     // Given un proxy qui refuse le corps avant d'avoir chiffré quoi que ce soit
     const refuse = emetteur(new ErreurFgp(400, true, "400 Bad Request"));
-    const rejet = await executerEmissionScalingo(refuse.emettre, "jeton-de-compte", etape, reel);
+    const rejet = await executerEmissionScalingo(
+      regionsVivantes().lire,
+      refuse.emettre,
+      "jeton-de-compte",
+      etape,
+      reel,
+    );
 
     // Then l'échec ne se reprend pas, et il affirme que rien n'a été émis
     expect(rejet).toMatchObject({ state: "FAILED", retryable: false });
@@ -1743,7 +1760,13 @@ describe("ce qu'un jeton restreint ouvre, et ce qu'il n'ouvre jamais", () => {
     // Given un proxy qui expire au lieu de répondre : le doute ne se lèvera jamais, aucune
     // route d'introspection n'existant
     const muet = emetteur(new ErreurFgp(null, false, "The operation was aborted due to timeout"));
-    const perdu = await executerEmissionScalingo(muet.emettre, "jeton-de-compte", etape, reel);
+    const perdu = await executerEmissionScalingo(
+      regionsVivantes().lire,
+      muet.emettre,
+      "jeton-de-compte",
+      etape,
+      reel,
+    );
 
     // Then l'échec ne se reprend pas davantage, et il dit ce qu'il ne sait pas : un jeton a
     // pu naître, rien ne le liste, rien ne le révoque
@@ -1756,7 +1779,13 @@ describe("ce qu'un jeton restreint ouvre, et ce qu'il n'ouvre jamais", () => {
     // When la simulation est le régime, ce qui est le défaut du produit
     const enSimulation = emetteur({ blob: "jamais", cle: "jamais" });
     await expect(
-      executerEmissionScalingo(enSimulation.emettre, "jeton-de-compte", etape, CONTEXTE),
+      executerEmissionScalingo(
+        regionsVivantes().lire,
+        enSimulation.emettre,
+        "jeton-de-compte",
+        etape,
+        CONTEXTE,
+      ),
     ).rejects.toThrow(/ACTIONS_ENABLED/u);
 
     // Then l'émetteur n'a rien reçu : le refus précède la lecture de ce que l'étape demande,
@@ -1767,6 +1796,7 @@ describe("ce qu'un jeton restreint ouvre, et ce qu'il n'ouvre jamais", () => {
     // base pourrait la porter sans repasser par le schéma qui borne la forme d'une région
     const detournee = emetteur({ blob: "jamais", cle: "jamais" });
     const versUnTiers = await executerEmissionScalingo(
+      regionsVivantes().lire,
       detournee.emettre,
       "jeton-de-compte",
       {
@@ -1787,17 +1817,67 @@ describe("ce qu'un jeton restreint ouvre, et ce qu'il n'ouvre jamais", () => {
 
     // When le jeton de compte manque, qui est ce que le proxy échange
     const sansJeton = emetteur({ blob: "jamais", cle: "jamais" });
-    expect(await executerEmissionScalingo(sansJeton.emettre, undefined, etape, reel)).toMatchObject(
-      { state: "FAILED", retryable: false },
-    );
+    expect(
+      await executerEmissionScalingo(
+        regionsVivantes().lire,
+        sansJeton.emettre,
+        undefined,
+        etape,
+        reel,
+      ),
+    ).toMatchObject({ state: "FAILED", retryable: false });
     expect(sansJeton.demandes).toEqual([]);
 
-    // Then l'étape sort manuelle, et son critère de complétion nomme le blob à rapporter, la
-    // fiche à saisir et le terme à y poser : il reste une marche à suivre, pas un trou
-    expect(etape.tier).toBe("manual");
+    // Then l'étape sort automatique quand les deux credentials répondent, et manuelle sinon :
+    // l'un chiffre le blob, l'autre dit vers quel proxy partir
+    expect(etape.tier).toBe("auto");
+    expect(etapeDeJeton({ usage: "catalogue-des-regions" }, SEPT_JOURS, false).tier).toBe("manual");
+
+    // Then la voie manuelle garde son critère de complétion, qui nomme le blob à rapporter,
+    // la fiche à saisir et le terme à y poser : il reste une marche à suivre, pas un trou
     expect(etape.manual?.doneWhen).toContain("blob");
     expect(etape.manual?.doneWhen).toContain("Comptes de service");
     expect(etape.manual?.doneWhen).toContain("terme");
+
+    // Then la capacité déclare cette voie, et elle est la seule à exiger les deux : sans
+    // l'adresse du proxy, l'octroi reste automatique pour une collaboration
+    expect(CONTRAT_SCALINGO.capabilities.grant?.[0]?.requires).toEqual([
+      "scalingo:api",
+      "scalingo:fgp",
+    ]);
+
+    // Given une région dont la forme est valable et que le fournisseur n'annonce pas, telle
+    // qu'une étape figée en base pourrait la porter
+    const inventee = emetteur({ blob: "jamais", cle: "jamais" });
+    const regions = regionsVivantes();
+    const horsRegion = await executerEmissionScalingo(
+      regions.lire,
+      inventee.emettre,
+      "jeton-de-compte",
+      etapeDeJeton({ usage: "inventaire-d-une-region", region: "osc-fr9" }, SEPT_JOURS),
+      reel,
+    );
+
+    // Then rien ne part, et le refus est définitif : un blob lie le jeton de compte entier à
+    // cet hôte jusqu'à son terme, et aucune route ne sait le reprendre
+    expect(horsRegion).toMatchObject({ state: "FAILED", retryable: false });
+    expect(horsRegion.state === "FAILED" ? horsRegion.error : "").toContain("osc-fr1");
+    expect(inventee.demandes).toEqual([]);
+
+    // Given une liste de régions qu'on ne sait pas lire
+    const aveugle = emetteur({ blob: "jamais", cle: "jamais" });
+    const sansListe = await executerEmissionScalingo(
+      lecteur({}).lire,
+      aveugle.emettre,
+      "jeton-de-compte",
+      etapeDeJeton({ usage: "inventaire-d-une-region", region: "osc-fr1" }, SEPT_JOURS),
+      reel,
+    );
+
+    // Then rien ne part non plus, mais l'étape se reprend : ne pas savoir quelles régions
+    // existent n'autorise pas à conclure que celle-ci n'existe pas
+    expect(sansListe).toMatchObject({ state: "FAILED", retryable: true });
+    expect(aveugle.demandes).toEqual([]);
 
     // Then l'émission elle-même refuse sans appeler personne, la génération n'existant pas
     // hors ligne : le sel du serveur n'est exposé par aucune route

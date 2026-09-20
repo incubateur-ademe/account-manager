@@ -43,6 +43,10 @@ interface EtapeEnBase {
   caseKind: string;
   caseState: string;
   username: string;
+  /** Un geste hors dossier n'a pas de dossier : son plan porte la personne visée. */
+  ancrage?: "geste";
+  /** Ce que l'étape ouvre et qu'aucun relevé ne rendra jamais. */
+  engagementKey?: string;
 }
 
 interface RunEnBase {
@@ -173,6 +177,10 @@ vi.mock("@/lib/db", async () => {
           state: string;
           executedAt: { not: null };
           validation: { notIn: string[] };
+          // Honorée par ce double et non ignorée : la production l'envoie pour écarter ce
+          // qu'aucun relevé ne rendra, et un double qui la laisserait passer rendrait
+          // l'assertion vraie par construction.
+          engagementKey: null;
         };
       }) =>
         Promise.resolve(
@@ -181,30 +189,37 @@ vi.mock("@/lib/db", async () => {
               (etape) =>
                 etape.state === where.state &&
                 etape.executedAt !== where.executedAt.not &&
-                !where.validation.notIn.includes(etape.validation),
+                !where.validation.notIn.includes(etape.validation) &&
+                (where.engagementKey !== null || etape.engagementKey === undefined),
             )
             .map((etape) => {
               const fiche = base.fiches.find((candidate) => candidate.username === etape.username);
+              // La relation est requise en base des deux côtés : rendre nul ici doublerait une
+              // situation que le schéma interdit, et le scénario qui l'aurait oubliée
+              // passerait sans qu'on sache pourquoi son étape n'est jamais entrée.
+              if (!fiche) {
+                throw new Error(`ce harnais n'a pas de fiche pour ${etape.username}`);
+              }
+              const personne = {
+                username: fiche.username,
+                returnedAt: fiche.returnedAt,
+                identities: fiche.comptes.map((provider) => ({ provider, vanishedAt: null })),
+              };
               return {
                 label: etape.label,
                 systemKey: etape.systemKey,
                 executedAt: etape.executedAt,
-                plan: {
-                  accessCase: {
-                    kind: etape.caseKind,
-                    state: etape.caseState,
-                    person: fiche
-                      ? {
-                          username: fiche.username,
-                          returnedAt: fiche.returnedAt,
-                          identities: fiche.comptes.map((provider) => ({
-                            provider,
-                            vanishedAt: null,
-                          })),
-                        }
-                      : null,
-                  },
-                },
+                plan:
+                  etape.ancrage === "geste"
+                    ? { accessCase: null, subject: personne }
+                    : {
+                        accessCase: {
+                          kind: etape.caseKind,
+                          state: etape.caseState,
+                          person: personne,
+                        },
+                        subject: null,
+                      },
               };
             }),
         ),
@@ -879,5 +894,106 @@ describe("une action déclarée faite cesse d'être démentie par le retour de l
       closedAt: AUJOURDHUI,
       closeReason: "ne se vérifie plus à la collecte",
     });
+  });
+});
+
+describe("un octroi hors dossier se confronte à la collecte, comme celui d'une arrivée", () => {
+  const CLE_HORS_DOSSIER = "OVERDUE_MANUAL_ACTION:scalingo:nour.exemple";
+
+  it("dément ce que la collecte contredit, et se tait sur ce qu'aucun relevé ne rend", async () => {
+    // Given une personne pour qui un geste hors dossier a déclaré une invitation faite
+    // hier, et aucun compte observé sur ce système
+    base.fiches.push({
+      username: "nour.exemple",
+      firstSeenAt: PREMIERE_COLLECTE,
+      returnedAt: null,
+      comptes: [],
+    });
+    base.etapes.push({
+      label: "Inviter nour.exemple dans mon-application comme limited",
+      systemKey: "scalingo",
+      state: "SUCCEEDED",
+      validation: "NONE",
+      executedAt: new Date("2026-08-27T09:00:00Z"),
+      // Un plan de geste ne porte pas de dossier : ces deux valeurs ne sont jamais lues.
+      caseKind: "MANUAL_OP",
+      caseState: "CONFIRMED",
+      username: "nour.exemple",
+      ancrage: "geste",
+    });
+    base.relectures.push({ provider: "scalingo", startedAt: new Date("2026-08-28T01:00:00Z") });
+
+    // When la collecte tourne
+    await lancer(perimetre(), true);
+
+    // Then le démenti se lève, alors qu'aucun dossier ne porte cette étape : un octroi
+    // hors dossier ouvre un accès comme celui d'une arrivée, et le laisser dehors lui
+    // retirait le seul contrôle qu'une lecture puisse porter
+    expect(cle(CLE_HORS_DOSSIER)).toMatchObject({
+      kind: "OVERDUE_MANUAL_ACTION",
+      closedAt: null,
+    });
+    expect(base.journal).toContainEqual({
+      action: "finding.open",
+      targetId: CLE_HORS_DOSSIER,
+    });
+
+    // When le compte se met à paraître au relevé suivant
+    const fiche = base.fiches[0];
+    if (!fiche) {
+      throw new Error("la fiche vient d'être posée");
+    }
+    fiche.comptes.push("scalingo");
+
+    await lancer(perimetre(), true);
+
+    // Then le démenti se ferme tout seul, comme celui d'un dossier
+    expect(cle(CLE_HORS_DOSSIER)).toMatchObject({
+      closedAt: AUJOURDHUI,
+      closeReason: "ne se vérifie plus à la collecte",
+    });
+  });
+
+  it("ne dément jamais une étape qui porte une clé d'engagement", async () => {
+    // Given un jeton émis par un geste hors dossier, dont l'étape porte une clé
+    // d'engagement, et aucun compte observé sur ce système
+    base.fiches.push({
+      username: "nour.exemple",
+      firstSeenAt: PREMIERE_COLLECTE,
+      returnedAt: null,
+      comptes: [],
+    });
+    base.etapes.push({
+      label: "Émettre un jeton restreint pour nour.exemple : inventaire d'une région",
+      systemKey: "scalingo",
+      state: "SUCCEEDED",
+      validation: "NONE",
+      executedAt: new Date("2026-08-27T09:00:00Z"),
+      caseKind: "MANUAL_OP",
+      caseState: "CONFIRMED",
+      username: "nour.exemple",
+      ancrage: "geste",
+      engagementKey: "scalingo:jeton:inventaire-d-une-region:osc-fr1:nour.exemple",
+    });
+    base.relectures.push({ provider: "scalingo", startedAt: new Date("2026-08-28T01:00:00Z") });
+
+    // When la collecte tourne
+    await lancer(perimetre(), true);
+
+    // Then rien ne se lève : une clé d'engagement dit que ce que l'étape ouvre ne
+    // reparaîtra dans aucun relevé, et l'absence observée en est la définition
+    expect(cle(CLE_HORS_DOSSIER)).toBeUndefined();
+    expect(base.journal).toEqual([]);
+
+    // Then la même étape sans clé se ferait démentir, elle : c'est bien la clé qui décide
+    const etape = base.etapes[0];
+    if (!etape) {
+      throw new Error("l'étape vient d'être posée");
+    }
+    delete etape.engagementKey;
+
+    await lancer(perimetre(), true);
+
+    expect(cle(CLE_HORS_DOSSIER)).toMatchObject({ kind: "OVERDUE_MANUAL_ACTION" });
   });
 });

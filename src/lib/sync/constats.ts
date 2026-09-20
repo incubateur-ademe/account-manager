@@ -20,6 +20,7 @@ import {
 } from "@/core/constat";
 import { couvertureDesConstats, type Derogation, RAISON_COUVERT } from "@/core/derogation";
 import { dossierVivant, type SensDossier, sensOppose } from "@/core/dossier";
+import { ancrageLu, SENS_D_UN_GESTE } from "@/core/geste";
 import type { FindingKind } from "@/generated/prisma/enums";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
@@ -445,12 +446,24 @@ function retenirLaPlusRecente(dates: Map<string, Date>, cle: string, date: Date 
  *
  * Une étape pointée « faite » n'est qu'une parole tant qu'une lecture du système ne
  * l'a pas confirmée. On rapproche donc chaque déclaration de trois choses : le sens
- * du dossier, l'existence du compte de la personne sur ce système, et la date de la
+ * du geste, l'existence du compte de la personne sur ce système, et la date de la
  * dernière relecture.
+ *
+ * Les deux ancrages, dossier et geste hors dossier. Un octroi déclaré hors dossier ouvre
+ * un accès comme celui d'une arrivée, et le laisser dehors lui retirait le seul contrôle
+ * qu'une lecture puisse porter, celui que le second regard ne remplace pas.
  */
 async function actionsDeclarees(
   traitees: Readonly<Record<SensDossier, ReadonlyMap<string, Date>>>,
 ): Promise<ActionDeclaree[]> {
+  const personneConstatable = {
+    select: {
+      username: true,
+      returnedAt: true,
+      identities: { select: { provider: true, vanishedAt: true } },
+    },
+  } as const;
+
   const etapes = await prisma.planStep.findMany({
     // Les deux dimensions, exactement la règle d'`estSoldee` : une étape déclarée
     // faite dont personne n'a encore contrôlé la preuve n'est qu'une parole en
@@ -458,10 +471,16 @@ async function actionsDeclarees(
     // refus rend d'ailleurs l'étape à `PENDING`, si bien que seul `AWAITING` se
     // rencontre ici : le dire des deux valeurs garde cette lecture alignée sur
     // `estSoldee` le jour où l'une d'elles change de sens.
+    //
+    // Et jamais une étape qui porte une clé d'engagement. Elle en porte une si et seulement
+    // si ce qu'elle ouvre ne reparaîtra dans aucun relevé du connecteur qui l'a émise : la
+    // confronter à la collecte démentirait chaque émission réussie, l'absence observée
+    // étant sa définition et non son échec.
     where: {
       state: "SUCCEEDED",
       executedAt: { not: null },
       validation: { notIn: ["AWAITING", "REFUSED"] },
+      engagementKey: null,
     },
     select: {
       label: true,
@@ -473,15 +492,10 @@ async function actionsDeclarees(
             select: {
               kind: true,
               state: true,
-              person: {
-                select: {
-                  username: true,
-                  returnedAt: true,
-                  identities: { select: { provider: true, vanishedAt: true } },
-                },
-              },
+              person: personneConstatable,
             },
           },
+          subject: personneConstatable,
         },
       },
     },
@@ -500,24 +514,29 @@ async function actionsDeclarees(
   const declarees: ActionDeclaree[] = [];
 
   for (const etape of etapes) {
-    const dossier = etape.plan.accessCase;
-    const personne = dossier?.person;
-    if (!dossier || !personne || !etape.executedAt) {
+    const ancrage = ancrageLu(etape.plan.accessCase, etape.plan.subject);
+    if (!ancrage || !etape.executedAt) {
       continue;
     }
+
+    // Le sens se lit sur l'ancrage et non sur le plan : `PlanKind` porte aussi des
+    // valeurs qui ne sont ni une arrivée ni un départ, `MANUAL_OP` en tête, et un geste
+    // hors dossier est un octroi par construction.
+    const sens = ancrage.sorte === "dossier" ? ancrage.dossier.kind : SENS_D_UN_GESTE;
+    const personne = ancrage.sorte === "dossier" ? ancrage.dossier.person : ancrage.sujet;
 
     declarees.push({
       label: etape.label,
       systemKey: etape.systemKey,
       username: personne.username,
-      // Le sens se lit sur le dossier et non sur le plan : `PlanKind` porte aussi des
-      // valeurs qui ne sont ni une arrivée ni un départ, et une étape sans dossier
-      // n'entre pas ici.
-      sens: dossier.kind,
+      sens,
       declareeLe: etape.executedAt,
-      dossierEncoreVivant: dossierVivant(dossier.state),
+      // Un geste n'a pas de dossier à tenir vivant, et le dire vivant le rendrait
+      // opposable par-delà un retour de la personne : un séjour qui recommence ne doit pas
+      // se faire démentir par ce qu'un séjour précédent avait ouvert.
+      dossierEncoreVivant: ancrage.sorte === "dossier" && dossierVivant(ancrage.dossier.state),
       retourLe: personne.returnedAt,
-      inverseeLe: traitees[sensOppose(dossier.kind)].get(personne.username) ?? null,
+      inverseeLe: traitees[sensOppose(sens)].get(personne.username) ?? null,
       compteToujoursLa: personne.identities.some(
         (identite) => identite.provider === etape.systemKey && identite.vanishedAt === null,
       ),

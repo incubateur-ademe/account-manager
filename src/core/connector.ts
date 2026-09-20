@@ -409,6 +409,13 @@ export interface PlannedStep {
    * coupure au départ, sous deux clés d'idempotence que le dédoublonnage ne rapproche pas ;
    * une clé qui manque laisse un accès que plus rien ne nomme.
    *
+   * **Deux engagements peuvent vivre sous la même clé, et le connecteur émetteur doit les
+   * distinguer en aval.** Le socle rend chaque ligne ouverte sans les plier, une émission
+   * n'étant pas idempotente : deux passages sous la même clé ouvrent deux accès, chacun
+   * avec son terme, dont aucun ne ferme l'autre. Un connecteur qui en tire des étapes de
+   * reprise y met donc de quoi les séparer, l'instant d'ouverture par exemple, faute de
+   * quoi le dédoublonnage n'en garde qu'une et solde le plus long des deux avant l'heure.
+   *
    * Hors de l'empreinte, comme `grantExpiresAt` : elle ne dit rien de plus que
    * l'`idempotencyKey` de l'étape qui la porte, et l'y mettre déclarerait obsolète tout
    * plan en vol le jour où un connecteur reformule ses clés.

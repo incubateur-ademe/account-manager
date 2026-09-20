@@ -36,7 +36,9 @@ vi.mock("./actions", () => ({
 
 const { lancerExecution } = await import("./actions");
 const { BoutonExecuter } = await import("./Pointage");
-const { compteRendu, LIBELLE_LANCEMENT, LIBELLE_REMISE } = await import("./redaction-execution");
+const { compteRendu, LIBELLE_LANCEMENT, LIBELLE_PASSAGE_INCOMPLET, LIBELLE_REMISE } = await import(
+  "./redaction-execution"
+);
 
 const PLAN = "plan-du-depart";
 const MASSE: Masse = { executables: 3, seuil: 20, depasse: false };
@@ -206,5 +208,33 @@ describe("la clé qu'un passage remet, et qui ne se relira jamais", () => {
       expect(valeur).not.toContain(CLE);
       expect(valeur).not.toContain(JETON_CHIFFRE);
     }
+  });
+
+  it("rend la clé et dit que le passage s'est arrêté, quand une écriture a levé après l'émission", async () => {
+    // Given un passage interrompu par une écriture qui refuse, après que le jeton a été
+    // émis : la clé n'existe alors nulle part ailleurs que dans ce que l'action a rendu
+    const cause = "la base a refusé l'écriture de l'étape";
+
+    // When on lance l'exécution
+    await lancer({ ...passageQuiRemet([REMISE]), passageIncomplet: cause });
+
+    // Then la clé se lit comme dans le cas nominal : c'est tout ce qui compte de cet
+    // écran à cet instant, et la perdre laisserait un jeton vivant que rien ne révoque
+    expect(screen.getAllByText(CLE)).toHaveLength(1);
+
+    // Then l'écran dit que le passage s'est arrêté, nomme la cause et le geste qui suit :
+    // le compte rendu juste au-dessus porte des nombres arrêtés au milieu
+    expect(screen.getByText(LIBELLE_PASSAGE_INCOMPLET.titre)).toBeDefined();
+    expect(screen.getByText(LIBELLE_PASSAGE_INCOMPLET.raison(cause)).textContent).toContain(cause);
+    expect(screen.getByText(LIBELLE_PASSAGE_INCOMPLET.suite)).toBeDefined();
+
+    cleanup();
+    vi.clearAllMocks();
+
+    // When le passage va jusqu'au bout
+    await lancer(passageQuiRemet([REMISE]));
+
+    // Then rien ne parle d'interruption : un avertissement permanent ne signale plus rien
+    expect(screen.queryByText(LIBELLE_PASSAGE_INCOMPLET.titre)).toBeNull();
   });
 });
