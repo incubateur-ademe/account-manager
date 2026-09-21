@@ -46,7 +46,7 @@ async function declarerDesPermanentes(externalIds: readonly string[]): Promise<v
   const entrees = externalIds
     .map(
       (externalId) =>
-        `  - targetType: identite\n    targetId: github:${externalId}\n    reason: comptes repris par l'equipe pour de bon\n    owner: ${OPERATRICE.username}\n`,
+        `  - targetType: identite\n    targetId: github:${externalId}\n    reason: comptes repris par l'équipe pour de bon\n    owner: ${OPERATRICE.username}\n`,
     )
     .join("");
 
