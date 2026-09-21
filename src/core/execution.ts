@@ -31,6 +31,19 @@ export function peutExecuter(etat: EtatPlan): Verdict {
 }
 
 /**
+ * Ce qu'il reste à faire quand un plan confirmé refuse de partir.
+ *
+ * Aucun recalcul ne se propose ici : il n'est ouvert qu'à un brouillon, un plan confirmé
+ * portant des pointages que le refaire effacerait. L'issue dépend de ce à quoi le plan
+ * tient, un geste hors dossier n'ayant aucun dossier à clore.
+ */
+export const ISSUE_DOSSIER =
+  "Cochez à la main ce qui a été fait, clôturez ce dossier, et rouvrez-en un pour repartir d'un plan à jour.";
+
+export const ISSUE_GESTE =
+  "Cochez à la main ce qui a été fait, puis reposez ce geste pour repartir d'un plan à jour.";
+
+/**
  * Un plan cesse de valoir de deux façons qu'il ne faut pas confondre, et la seconde
  * manquait au seul chemin qui écrit : il périme par le temps, ce qu'il décrit devenant
  * trop vieux pour qu'on agisse dessus sans regarder à nouveau, et il devient obsolète
@@ -41,12 +54,12 @@ export function peutExecuter(etat: EtatPlan): Verdict {
  * L'échéance d'un octroi est calculée au moment du calcul : exécuter un plan périmé
  * ouvrirait donc des accès dont le terme a été fixé sur une situation révolue.
  */
-export function refusDePeremption(expiresAt: Date, maintenant: Date): string | null {
+export function refusDePeremption(expiresAt: Date, maintenant: Date, issue: string): string | null {
   if (!plusValableApres(expiresAt, maintenant)) {
     return null;
   }
 
-  return `Ce plan valait jusqu'au ${expiresAt.toISOString().slice(0, 10)}. Rien n'a été ni lu ni écrit. Un plan confirmé ne se recalcule plus. Pointez à la main ce qui a été fait, clôturez ce dossier, et rouvrez-en un pour repartir d'un plan à jour.`;
+  return `Ce plan valait jusqu'au ${expiresAt.toISOString().slice(0, 10)}. Rien n'a été ni lu ni écrit. Un plan confirmé ne se recalcule plus. ${issue}`;
 }
 
 /**
@@ -65,6 +78,7 @@ export function refusDePeremption(expiresAt: Date, maintenant: Date): string | n
 export function refusDEcart(
   confirmedDigest: string | null,
   empreinteActuelle: string,
+  issue: string,
 ): string | null {
   if (confirmedDigest === null) {
     return "Ce plan ne porte aucune empreinte confirmée. Rien ne dit ce qui a été approuvé. Recalculez-le, puis confirmez-le.";
@@ -73,7 +87,7 @@ export function refusDEcart(
     return null;
   }
 
-  return "Ce plan ne décrit plus ce qui a été approuvé. Rien n'a été exécuté, et rien ne le sera avant qu'un plan à jour ait été relu et confirmé.";
+  return `Ce plan ne décrit plus ce qui a été approuvé. Rien n'a été exécuté, et un plan confirmé ne se recalcule plus. ${issue}`;
 }
 
 // ---------------------------------------------------------------------------

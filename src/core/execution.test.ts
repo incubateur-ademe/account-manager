@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   decider,
+  ISSUE_DOSSIER,
+  ISSUE_GESTE,
   issueDeLEtape,
   issueDUneException,
   ordreDExecution,
@@ -115,17 +117,26 @@ describe("les gardes d'une exécution", () => {
   it("refuse en bloc ce qui n'est plus le plan approuvé, et ne part que d'un plan confirmé", () => {
     // Given un plan confirmé sous une empreinte
     // When le recalcul rend la même
-    expect(refusDEcart("abcd1234", "abcd1234")).toBeNull();
+    expect(refusDEcart("abcd1234", "abcd1234", ISSUE_DOSSIER)).toBeNull();
 
     // When il en rend une autre : une collecte est passée entre l'approbation et le
     // départ, et ce qu'on exécuterait n'est plus ce qui a été relu
-    const ecart = refusDEcart("abcd1234", "0000ffff");
+    const ecart = refusDEcart("abcd1234", "0000ffff", ISSUE_DOSSIER);
     expect(ecart).toContain("plus ce qui a été approuvé");
     expect(ecart).toContain("Rien n'a été exécuté");
 
+    // Then il dit aussi ce qu'il reste à faire, et le geste nommé est celui que l'écran
+    // offre : un plan confirmé ne se recalcule plus, donc un refus qui s'arrêterait au
+    // constat laisserait le dossier sans sortie
+    expect(ecart).toContain(ISSUE_DOSSIER);
+    expect(ISSUE_DOSSIER).toContain("clôturez ce dossier");
+
+    // Then un geste hors dossier reçoit la sienne, aucun dossier ne répondant de lui
+    expect(refusDEcart("abcd1234", "0000ffff", ISSUE_GESTE)).toContain("reposez ce geste");
+
     // When le plan ne porte aucune empreinte confirmée : rien ne dit ce qui a été
     // approuvé, donc il n'y a rien à comparer et rien à exécuter
-    expect(refusDEcart(null, "abcd1234")).toContain("aucune empreinte confirmée");
+    expect(refusDEcart(null, "abcd1234", ISSUE_DOSSIER)).toContain("aucune empreinte confirmée");
 
     // Then seul un plan engagé s'exécute, et un plan dont une étape a échoué se
     // reprend, sans quoi le dossier serait muré

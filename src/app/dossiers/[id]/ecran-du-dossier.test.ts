@@ -5,6 +5,7 @@ import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Acteur } from "@/core/dossier";
+import { ISSUE_DOSSIER } from "@/core/execution";
 import { LIBELLE_TIER } from "@/core/lexique";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 import { CLE_INCUBATEUR, SYSTEME_MODELE } from "@/core/modele-plan";
@@ -78,6 +79,10 @@ const { base, dans, EMPREINTE, OPERATRICE, PORTEUR } = vi.hoisted(() => ({
     etatDuDossier: "CONFIRMED" as "CONFIRMED" | "CANCELLED" | "DONE" | "WATCH",
     etatDuPlan: "DRAFT" as string,
     confirmePar: null as string | null,
+    /** Ce que le calcul du jour rend, et qui dit obsolète le plan dès qu'il en diffère. */
+    empreinteRecalculee: "empreinte-du-jour",
+    /** Dans combien de jours le plan cesse de valoir, négatif pour un plan périmé. */
+    validiteEnJours: 30,
     etapes: [] as unknown[],
     droits: [] as unknown[],
     startups: [] as { ghid: string; name: string }[],
@@ -125,7 +130,7 @@ vi.mock("@/lib/dossier", () => ({
       sens: "OFFBOARDING",
       etapes: [],
       ecartees: [],
-      empreinte: EMPREINTE,
+      empreinte: base.empreinteRecalculee,
       systemes: [],
       sansConnecteur: [],
       nonConfirmes: [],
@@ -160,7 +165,7 @@ vi.mock("@/lib/db", () => ({
                     id: "plan-du-depart",
                     state: base.etatDuPlan,
                     planDigest: EMPREINTE,
-                    expiresAt: dans(30),
+                    expiresAt: dans(base.validiteEnJours),
                     createdAt: new Date("2026-03-02T09:00:00Z"),
                     createdBy: OPERATRICE,
                     confirmedBy: base.confirmePar,
@@ -381,6 +386,8 @@ beforeEach(() => {
   base.etatDuDossier = "CONFIRMED";
   base.etatDuPlan = "DRAFT";
   base.confirmePar = null;
+  base.empreinteRecalculee = EMPREINTE;
+  base.validiteEnJours = 30;
   base.etapes = planDuDepart();
   base.startups = [{ ghid: "oxygene", name: "Oxygène" }];
   base.ghidsDemandes.length = 0;
@@ -645,5 +652,42 @@ describe("l'écran d'un dossier, avec un vrai plan", () => {
     expect(texte).not.toContain("Confirmer, c'est dire que vous répondez de cette liste.");
     expect(noeudsRendus(page, parType(BoutonConfirmer))).toEqual([]);
     expect(texte).toContain(LIBELLE_DOSSIER.OFFBOARDING.restant);
+  });
+});
+
+describe("ce que l'écran dit d'un plan confirmé que le calcul du jour dément", () => {
+  it("annonce que son lancement refusera, nomme la sortie, et ne la redit pas quand la date la porte déjà", async () => {
+    // Given un plan confirmé, dont le recalcul du jour rend une autre empreinte : une
+    // tolérance permanente livrée depuis, une collecte passée, peu importe la cause
+    base.etatDuPlan = "EXECUTING";
+    base.confirmePar = OPERATRICE;
+    base.empreinteRecalculee = "une-autre-empreinte";
+
+    // When l'écran du dossier se rend
+    const texte = texteRendu(await rendre());
+
+    // Then il dit que le plan ne partira pas, et non que ce qui a changé se traite
+    // ailleurs : le lancement refuse sur cette empreinte, et l'annoncer autrement ferait
+    // découvrir le refus au clic
+    expect(texte).toContain("Ce plan ne décrit plus la situation");
+    expect(texte).toContain("Il ne partira pas et ne se recalcule plus.");
+
+    // Then il nomme la sortie, la même que le refus du serveur : un plan confirmé n'a
+    // pas de recalcul, donc un écran qui s'arrêterait au constat laisserait le dossier
+    // sans geste
+    expect(texte).toContain(ISSUE_DOSSIER);
+    expect(texte.split(ISSUE_DOSSIER).length - 1).toBe(1);
+
+    // When ce même plan a aussi dépassé sa date de validité
+    base.validiteEnJours = -1;
+    const deuxCauses = texteRendu(await rendre());
+
+    // Then les deux encarts se disent, et la sortie ne s'écrit qu'une fois : elle est
+    // la même pour les deux causes, et deux encarts voisins qui la répètent se lisent
+    // comme deux gestes différents
+    expect(deuxCauses).toContain("Ce plan ne décrit plus la situation");
+    expect(deuxCauses).toContain("Ce plan a dépassé sa date de validité");
+    expect(deuxCauses.split(ISSUE_DOSSIER).length - 1).toBe(1);
+    expect(deuxCauses).toContain("L'issue est dite plus bas, avec la date qui la motive.");
   });
 });
