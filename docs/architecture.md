@@ -201,6 +201,15 @@ se dépensant que sur un passage complet. Sur les systèmes cibles, dont la réf
 décompte de lignes vivantes que la moindre datation corrige, elle lève quelle que soit l'ampleur :
 ce garde-fou-là ne s'entretient pas lui-même, et il n'a donc pas la même sortie.
 
+**Le plancher d'un système cible compte les ressources par les accès qu'elles portent.** Sa
+référence est le nombre de ressources qui portent encore un accès vivant, et le relevé du soir
+est celui du connecteur sans les contenants que la collecte a retenus. Un contenant qu'aucun
+accès ne vise, un projet Scalingo par exemple, ne pèse sur aucun des deux plateaux et ne peut
+pas masquer une chute réelle. La balance reste inexacte pour une ressource qui ne contient rien
+et ne porte aucun accès, une équipe sans membre par exemple, comptée au relevé et absente de la
+référence. Cette dette est antérieure, consentie le temps que la notion de projet se stabilise
+chez Scalingo (ADR-0002).
+
 **Une fiche qu'un passage sait ne pas avoir lue ne disparaît pas le soir même.** Une disparition
 ordinaire se conclut d'un silence : la personne n'est plus dans la réponse, et rien ne la nomme.
 Un refus de la source est autre chose, elle nomme la fiche qu'elle ne connaît pas, et en conclure
@@ -290,6 +299,11 @@ comptes continuent d'être examinés. Sans cette règle, la sortie forcée devie
 moyen le plus rapide de faire disparaître un écart gênant. Ce qui coupe des accès reste
 le dossier de départ, avec son plan, sa confirmation et son journal.
 
+**Ce qui ouvre un accès hors d'un dossier reste un plan.** Un geste hors dossier porte sa
+justification nominative, son empreinte, sa confirmation et son journal, au même titre
+qu'un plan d'arrivée. Il est refusé tant qu'un départ est ouvert sur la personne, à
+l'ouverture du geste comme à l'écriture qui le confirme. Son modèle est posé en §3.4.
+
 ### 2.4 Comptes non humains
 
 Bots, comptes de service, jetons d'intégration continue et clés d'API ne passent
@@ -297,10 +311,18 @@ Bots, comptes de service, jetons d'intégration continue et clés d'API ne passe
 et des dates de fin qui n'existent pas.
 
 **`ServiceAccount`** porte `key`, `label`, `purpose`, un `ownerUsername` obligatoire,
-et une revue périodique au lieu d'une échéance. Une revue en retard est un constat au
-même titre qu'un accès expiré. Sans ce modèle, ces comptes remonteraient comme sans
-propriétaire à chaque exécution, on s'habituerait au bruit et le rapport perdrait sa
-valeur.
+le système auquel le compte appartient, et une revue périodique. Une revue en retard
+est un constat au même titre qu'un accès expiré. Sans ce modèle, ces comptes
+remonteraient comme sans propriétaire à chaque exécution, on s'habituerait au bruit et
+le rapport perdrait sa valeur.
+
+**Un compte machine peut naître d'une décision et mourir de lui-même.** Un jeton
+restreint émis derrière le proxy porte un terme, posé au plus à cent quatre-vingts
+jours, ce que vaut la périodicité de revue par défaut. Ce terme éteint la revue
+périodique. Le proxy n'offre ni révocation ni introspection, donc il n'y a aucun geste
+à demander à quiconque, ni avant le terme ni après. L'état de la fiche reste « À jour »
+jusqu'au terme, puis passe à « Terme passé ». Ce que la fiche porte en plus se lit
+en §3.2.
 
 ### 2.5 Personne absente de l'espace-membre
 
@@ -416,9 +438,23 @@ l'écran propose des détenteurs possibles, recalculés à chaque affichage et j
 persistés : accepter une proposition est un geste d'opérateur, qui pose `DECLARED` et
 rend donc le compte révocable.
 
-**`Resource`** : `provider`, `externalId`, `label`, `url`. Les métadonnées vivent ici
-et pas sur l'accès : une page partagée avec N personnes ne duplique pas son titre N
-fois.
+**`Resource`** : `provider`, `externalId`, `label`, `url`, `parentId`. Les métadonnées
+vivent ici et pas sur l'accès : une page partagée avec N personnes ne duplique pas son
+titre N fois.
+
+`parentId` porte la contenance, par une clé étrangère nullable vers la même table, sur un
+seul niveau. Nul est le cas normal, et un connecteur qui ignore la notion n'a rien à
+remplir. Un contenant est une ressource ordinaire, qui peut porter ses propres accès comme
+l'organisation GitHub, ou n'en porter aucun comme un projet Scalingo. La suppression met
+la colonne à nul plutôt que de cascader, faute de quoi effacer un regroupement qui n'ouvre
+aucun droit effacerait tous les accès de ses contenues. La contenance se déclare par la
+contenue et jamais par le contenant, `ObservedResource` gagnant un `parentExternalId`
+facultatif.
+
+La contenance n'ouvre ni ne coupe aucun droit. Elle n'entre dans aucun plan, aucune
+empreinte, aucune étape. L'arbitrage et les deux autres rangements de ce qu'un connecteur
+stocke vivent dans
+[ADR-0002](adr/0002-trois-rangements-pour-ce-qu-un-connecteur-stocke.md).
 
 **`AccessGrant`** : `externalIdentityId`, `resourceId`, `role`, `lastActivityAt`,
 plus les horodatages. `vanishedAt` plutôt qu'une suppression : une colonne, et
@@ -442,6 +478,21 @@ les confondre fait proposer des suppressions absurdes.
 `itemsSeen`, `error`. Une ligne par exécution. Le run **s'ouvre en échec** et n'est
 promu qu'à la fin : un processus tué laisse une trace d'échec, pas un run vert.
 
+**`ServiceAccount`** : `key`, `label`, `purpose`, `ownerUsername`, `provider`,
+`reviewEveryDays`, `lastReviewedAt`, plus ce qu'un jeton émis ajoute, `fgpBlob`, `fgpTarget`,
+`fgpScopes`, `expiresAt` et `issuedBy`. Aucune collecte n'écrit cette table. Une fiche naît
+d'une déclaration d'opérateur ou de l'étape qui a émis le jeton, et le modèle est posé en §2.4.
+
+Un jeton émis derrière le proxy à jetons restreints s'y range plutôt que dans une table à lui,
+parce qu'il est déjà un compte machine, avec un détenteur et un objet. Une seconde table
+redirait ces colonnes et couperait en deux l'écran des comptes de service. Le proxy n'offrant
+aucune route d'introspection, cette ligne est le seul registre de ce qui a été émis.
+
+**La clé client ne s'y stocke jamais.** Le blob seul est inerte, sa clé de déchiffrement se
+dérivant du sel du serveur et d'une clé que rien n'écrit ici, et
+[ADR-0001](adr/0001-configuration-a-trois-niveaux.md) a refusé de faire de cette base le coffre
+des credentials du parc.
+
 ### 3.3 Décidé (PostgreSQL, immuable)
 
 **`AccessCase`**, **`Plan`**, **`PlanStep`**, **`CaseParticipation`**, **`Finding`**,
@@ -456,6 +507,13 @@ Les champs d'une étape de plan sont **dénormalisés et figés à la création*
 stocke la photo, pas une clé étrangère : ce qui a été approuvé doit rester lisible
 tel quel dans deux ans. Les libellés de constat, à l'inverse, se recalculent à
 l'affichage, puisqu'un constat décrit une situation présente et se réconcilie.
+
+**`Plan.subject` est la seule relation du schéma en `Restrict`.** Elle porte la personne
+que vise un plan sans dossier, et l'étape d'un tel plan est la seule trace d'un accès
+qu'aucune collecte ne rendra. Une cascade l'effacerait avec la fiche pendant que l'accès,
+lui, court jusqu'à son terme. `SetNull` ne vaut pas mieux, un geste sans sujet sortant du
+calcul du départ. Supprimer une fiche qui en porte un est donc refusé par la base, et la
+fusion déplace ces plans vers la cible avant de supprimer la source.
 
 Le journal est en écriture seule, à rétention indéfinie, exportable. Son écriture est
 sans attente avec capture d'erreur : une panne du journal ne doit jamais faire échouer
@@ -493,11 +551,34 @@ troisième dossier. Ni l'arrivée ni le départ ne sont des événements qui n'a
 qu'une fois par personne, et un modèle de plan s'applique donc autant de fois qu'il y a
 de dossiers.
 
+**Un plan n'a pas toujours un dossier.** Un geste hors dossier ouvre un accès en cours de
+mission, hors d'une arrivée et hors d'un départ. C'est un plan de genre `MANUAL_OP`, sans
+`accessCaseId`, qui porte la personne visée dans `Plan.subjectId`, en relation `Restrict`.
+Il porte aussi son intention gelée dans `Plan.intent`, le système visé, le scope, le terme
+et la justification. Cette intention est à son recalcul d'empreinte ce que
+`AccessCase.profileKey` est à celui d'une arrivée, la seule entrée dont l'empreinte
+redécoule. Aucun modèle ne répond pour ce genre de plan, dont les étapes viennent du seul
+connecteur visé. Il ouvre un accès et n'en coupe aucun, sous la même justification
+nominative, la même confirmation et le même journal qu'un plan de dossier. Il est refusé
+tant qu'un départ est ouvert sur la personne, un accès ouvert après la confirmation de ce
+départ déplaçant l'empreinte de son plan sans qu'aucun recalcul ne la rattrape. Voir
+[ADR-0003](adr/0003-le-geste-hors-dossier-et-la-cle-d-engagement.md).
+
 **Un plan est une suite d'étapes figées.** Il réunit trois origines, dans cet ordre : le
 modèle de l'incubateur, les modèles des startups de la personne, puis ce que les
-connecteurs proposent d'après les comptes réellement observés. Le type de plan choisit
-le sens de l'intent, `grant` pour une arrivée et `revoke` pour un départ, et chaque
-connecteur répond selon le tier que ses credentials lui donnent ce jour-là.
+connecteurs proposent. Le type de plan choisit le sens de l'intent, `grant` pour une
+arrivée et `revoke` pour un départ, et chaque connecteur répond selon le tier que ses
+credentials lui donnent ce jour-là.
+
+**Un départ lit deux sources et non une.** Les connecteurs y reçoivent les accès que la
+collecte a constatés, et les engagements ouverts, que le socle retrouve sur les étapes de
+plan qui les ont ouverts. La règle de lecture est que le dernier geste soldé gagne, une
+coupure fermant sous sa clé tout ce qui la précède et rien de ce qui la suit. Une
+différence d'ensembles entre clés ouvertes et clés fermées dirait fermé un accès ouvert,
+repris, puis rouvert. Un engagement dont le terme est passé ne ressort pas ouvert, son
+échéance l'ayant déjà repris, et c'est le seul mécanisme de reprise quand le système
+émetteur n'offre aucune révocation. La liste des connecteurs interrogés au départ ne se
+limite donc plus aux systèmes où la personne a un compte constaté.
 
 L'assemblage est **déterministe**, sinon l'empreinte changerait d'un calcul à l'autre
 sans que rien n'ait bougé. Le premier arrivé gagne et garde sa place, donc l'incubateur
@@ -531,6 +612,21 @@ inexécutable sans issue, le recalcul n'étant ouvert qu'à un brouillon. Le cal
 donc les tolérances telles qu'elles étaient à l'instant de la confirmation, que le plan
 porte déjà.
 
+**Une étape d'octroi porte une clé d'engagement si et seulement si ce qu'elle ouvre ne
+reparaîtra dans aucun `CollectResult` du connecteur qui l'a émise.** Sans clé, le départ
+retrouve l'accès par la collecte. Avec clé, il le retrouve par l'étape qui l'a ouvert, et
+il n'existe pas d'autre trace. La frontière est par action et non par système. Scalingo
+tombe des deux côtés à lui seul, sa collecte relisant une invitation de collaborateur et
+ne listant jamais un jeton émis. Le connecteur seul sait de quel côté une action tombe,
+parce que lui seul sait ce que son propre relevé rend. Le socle transporte la clé, la
+stocke et la compare à elle-même, sans jamais l'interpréter. Les deux fautes sont
+symétriques. Une clé de trop fait proposer deux coupures pour le même accès au départ,
+sous deux clés d'idempotence que le dédoublonnage ne rapproche pas. Une clé qui manque
+laisse un accès que plus rien ne nomme. Deux engagements peuvent vivre sous la même clé,
+une émission n'étant pas idempotente, et c'est au connecteur émetteur de les distinguer
+dans les étapes de reprise qu'il en tire. Voir
+[ADR-0003](adr/0003-le-geste-hors-dossier-et-la-cle-d-engagement.md).
+
 **L'état d'un plan se déduit de ses étapes** et ne se pose jamais à la main. Pointer une
 étape reste une déclaration humaine et non une exécution : l'outil ne touche aucun
 système à ce moment-là, et le dire à l'écran évite qu'une case cochée passe pour un accès
@@ -557,8 +653,19 @@ geste s'écrit seul et le conflit se journalise.
 ### 3.5 Reconstructibilité
 
 Tout est reconstructible en rejouant les connecteurs, sauf le journal, les dérogations,
-l'état décidé et la configuration réglée depuis l'outil. Le périmètre de sauvegarde
-critique compte donc quatre familles.
+l'état décidé, la configuration réglée depuis l'outil et ce qu'une émission de jeton
+restreint a produit. Le périmètre de sauvegarde critique compte donc cinq familles.
+
+**La cinquième ne se rattrape nulle part.** Émettre un jeton restreint derrière le
+proxy produit deux moitiés, une clé qui se remet à son détenteur et un blob chiffré
+qui se garde. Le blob vit dans la fiche du compte de service. Le journal ne le porte
+pas, étant en écriture seule et à rétention indéfinie. Aucune collecte ne le rend,
+aucun rejeu ne le refabrique, et le proxy n'offre aucune route d'introspection. Le
+réémettre fabrique un second jeton, le précédent vivant jusqu'à son terme sans que
+rien ne le révoque. Un dump perdu emporte donc le seul registre de ce qui a été émis,
+et plus rien ne dit qu'un jeton vit, ni pour qui, ni jusqu'à quand. Quand l'écriture
+de la fiche échoue, le blob remonte à l'écran d'exécution avec la clé, et cet écran en
+porte alors la seule copie.
 
 **La configuration y est entrée le jour où elle a cessé de vivre en git seul.** Ce que
 `git log` donnait gratuitement, le journal le donne maintenant : chaque réglage y laisse
@@ -764,10 +871,16 @@ Règle : si une fonctionnalité oblige à assouplir une règle du socle pour exi
 c'est qu'elle relève de cette section.
 
 **Où cela vit.** Un connecteur a une page à lui sous `/systemes/<clé>`, atteignable
-depuis l'écran Systèmes, qui porte sa configuration et ses fonctionnalités. Elle
-n'existe que quand il a quelque chose à montrer : un écran, une configuration ou au
+depuis l'écran Systèmes, qui porte son écran, sa configuration et ses fonctionnalités.
+Elle n'existe que quand il a quelque chose à montrer : un écran, une configuration ou au
 moins une fonctionnalité déclarée. Sinon pas de lien, et l'adresse rend 404.
 L'`entrypoint` d'une `ConnectorFeature` désigne un segment sous cette page.
+
+**Un écran n'est pas réservé à une fonctionnalité hors socle.** Un connecteur peut en
+porter un sans `configSchema` et sans `ConnectorFeature`, pour rendre lisible ce que la
+collecte a écrit sur ce système. C'est par là que Scalingo obtient sa page. Un tel écran
+lit le constaté, là où une tuile refait son propre chemin jusqu'au système. Il peut aussi
+porter un geste, et la page ne dit alors plus qu'elle se contente de lire.
 
 **Deux registres, un seul sens d'import.** Le contrat déclare la fonctionnalité, qui
 est de la donnée pure et se résout contre les mêmes sondes que les capacités : la
@@ -810,18 +923,49 @@ connecteur de plein droit : il ne sait ni lister ni exécuter, mais il sait dire
 l'arrivée de quelqu'un il faut faire telle chose, avec le lien et le critère de
 complétion.
 
+**Ce qu'un sujet porte.** `ConnectorContract` ne change pas quand un connecteur a
+besoin d'en savoir plus sur la personne, c'est `SubjectRef` qui s'élargit. Son bras
+`person` porte, pour un départ, les engagements ouverts sur le système interrogé, que
+le socle a retrouvés sur les étapes qui les ont ouverts.
+
 L'invariant de collecte est porté par le type de retour, pas par la discipline de
 chaque implémentation : `status: "ok"` implique l'absence d'erreurs.
+
+`PlannedStep` porte une clé d'engagement facultative, que le connecteur remplit
+selon la règle posée en §3.4. Elle reste hors de l'empreinte, comme le terme de
+l'octroi.
+
+La branche de succès de `StepOutcome` porte un credential émis. Aucun fichier de
+`src/connectors/` n'accède à la base, et il ne le doit pas. Le connecteur remet ce
+qu'il a obtenu, le socle écrit le compte machine et décide de ce qui se rend. La
+moitié périssable ne descend pas là où l'autre se range. Elle remonte jusqu'à l'écran
+par le résultat d'exécution, et elle n'entre ni dans `evidence`, qui devient le motif
+journalisé de l'étape dans un journal à rétention indéfinie, ni dans aucune valeur de
+formulaire que la revalidation rejouerait. Un passage interrompu par une écriture qui
+lève rend encore ce qu'il a émis, et le dit sous `passageIncomplet`. Le journal de
+l'émission ne porte que ce qui se reconnaît plus tard : le système, le détenteur, la
+cible, les scopes et le terme.
 
 ### 5.5 Où vivent les credentials
 
 Mixte, décidé système par système.
 
-`fgp` pour tout credential à portée large que le fournisseur ne sait pas cloisonner.
-Le triplet OVH en est le cas d'école : il porte le compte entier, et le cloisonnement
-reposerait sinon sur le fait que notre code ne se trompe pas. Derrière
-fine-grained-proxy, l'allowlist s'applique côté proxy, l'application ne détient
-jamais le jeton amont, et les appels sont journalisés au même endroit.
+`fgp` pour tout credential à portée large que le fournisseur ne sait pas
+cloisonner. Le triplet OVH en est le cas d'école. Il porte le compte entier, et le
+cloisonnement reposerait sinon sur le fait que notre code ne se trompe pas. Derrière
+fine-grained-proxy, l'allowlist s'applique côté proxy et les appels sont journalisés
+au même endroit. Le dispositif rétrécit ce que peut faire le porteur d'un blob, jamais
+ce que peut faire l'instance de proxy qui l'a émis. L'application ne détient le jeton
+amont que là où ce jeton est déjà celui de sa collecte.
+
+Le jeton de compte Scalingo est ce cas. L'application le détient, s'en sert pour la
+collecte, et l'envoie en clair au proxy à chaque émission. Il reste donc déclaré
+`env`, là où la règle du dessus prescrirait `fgp`. Une émission rend un blob, qui porte
+le jeton amont chiffré, et une clé client affichée une seule fois. Les deux ensemble
+valent l'accès, et séparément rien. Le proxy n'offre ni révocation ni introspection, si
+bien qu'un jeton émis se reprend en attendant son terme et par rien d'autre. L'échéance
+est donc obligatoire à l'émission, et la base de cet outil est le seul registre de ce
+qui a été émis.
 
 `env` pour les fournisseurs qui savent émettre des credentials nativement restreints,
 typiquement un jeton GitHub limité à une organisation.
@@ -836,6 +980,13 @@ mais durable quand il en existe un.
 une pagination tronquée qui remonte `ok` produirait de fausses conclusions de
 révocation. Et un run non `ok` ne fait rien disparaître, il conserve le dernier état
 constaté.
+
+Trois refus écartent une contenance sans écarter la ressource qui la déclare : un contenant
+absent du relevé, une ressource qui se contient elle-même, une contenance à plus d'un
+niveau. Chacun rend le run non `ok`. Jeter la ressource ferait tomber chacun de ses accès
+dans « accès sur une ressource absente de la collecte », donc perdrait ce que l'outil existe
+pour savoir. Une contenance perdue ne coûte rien, puisqu'elle n'ouvre aucun droit. Les trois
+refus se jugent sur ce que le connecteur a déclaré et non sur ce qui survit aux deux autres.
 
 **Exécution.** Précheck avant chaque étape, comparé à l'état attendu. « Déjà absent »
 compte comme un succès, c'est le cas nominal quand une autre automatisation est passée
@@ -888,7 +1039,7 @@ l'offboarding complet au lieu de partiel.
 | `github` | organisations déclarées sous `connectors.github.organisations` | `auto` |
 | `email-list` | alias et redirections, implémentation OVH | à établir |
 | `vaultwarden` | collections et accès | à établir |
-| `scalingo` | collaborateurs par application, sur les deux régions | `auto` |
+| `scalingo` | collaborations par application, rôle compris, et jetons restreints | `auto` |
 | `grafana` | comptes de l'instance auto-hébergée | à établir |
 | `sentry` | organisation, sur l'instance de beta.gouv | à établir |
 | `teams-o365` | appartenance Teams et compte `.ext@ademe.fr` | en attente |
@@ -898,11 +1049,15 @@ credential nativement restreint à une organisation, sans proxy. C'est aussi l'a
 plus critique du parc.
 
 `scalingo` n'a pas d'organisation à viser : l'API v1 n'en expose aucune, et la gestion
-des utilisateurs y reste au niveau de l'application. Son objet est donc une liste plate
-de collaborations, un couple personne fois application, dont le rôle tient dans un seul
-booléen. Son jeton hérite de tous les droits du compte qui l'a créé, sans que le
-fournisseur sache le restreindre : c'est le cas d'école inverse de `github`, et la seule
-raison pour laquelle il n'en porte qu'un là où `github` en porte deux.
+des utilisateurs y reste au niveau de l'application. Les collaborations restent donc au
+niveau de l'application, un couple personne fois application dont le rôle tient dans un
+seul booléen. Les applications se regroupent par projet, et un projet n'a pas de membres.
+Le parc se lit sur toutes les régions que le fournisseur annonce. Le connecteur émet en
+plus des jetons restreints pour un tiers, sous une seconde nature d'octroi. Son jeton
+hérite de tous les droits du compte qui l'a créé, sans que le fournisseur sache le
+restreindre : c'est le cas d'école inverse de `github`, et la seule raison pour laquelle
+il n'en porte qu'un seul jeton là où `github` en porte deux. Le second credential qu'il
+déclare est l'adresse de ce proxy, et non un second jeton.
 
 `email-list` n'est pas un connecteur OVH générique : son objet est le rattachement
 d'une personne à un alias. Un alias a plusieurs destinataires, donc retirer une
@@ -943,8 +1098,11 @@ un octroi et non une révocation, il produit une tâche lisible plutôt qu'un ap
 d'API, et il porte sur une référence où archiver ne veut pas dire supprimer. Si le
 contrat ne sait pas exprimer ce cas aussi bien qu'une révocation SCIM, il est faux.
 
-**`scalingo`**, tier `auto` sur les trois capacités : collaborateurs des applications,
-sur les deux régions. Il a demandé au socle deux choses qu'aucun connecteur n'avait
+**`scalingo`**, tier `auto` sur les trois capacités : collaborateurs des applications, sur
+toutes les régions que le fournisseur annonce. L'octroi y couvre deux natures, la
+collaboration et l'émission d'un jeton restreint derrière le proxy. La seconde n'est
+automatique que si l'adresse du proxy répond en plus du jeton de compte, et elle sort en
+étape manuelle sinon. Il a demandé au socle trois choses qu'aucun connecteur n'avait
 exigées jusque-là, et qui valent pour tous.
 
 D'abord, **ce qu'un connecteur reçoit au départ**. Il ne recevait que le `username`
@@ -964,6 +1122,19 @@ affirmerait donc une coupure qui n'a pas eu lieu : le connecteur en émet deux, 
 et la rotation des secrets, sous deux clés distinctes et sous le même système. C'est le
 premier cas où un geste automatique ne se suffit pas à lui-même, et le contrat l'exprime
 sans rien assouplir.
+
+Enfin, **ce qu'une étape remet**. Émettre un jeton fabrique un credential, et aucun
+fichier de `src/connectors/` n'écrit en base. L'étape le remet donc au socle, qui range la
+moitié durable en compte de service, pendant que la moitié périssable remonte jusqu'à
+l'écran par le résultat d'exécution pour n'être montrée qu'une fois. Un passage interrompu
+la remonte quand même, le jeton existant déjà chez le fournisseur.
+
+Ce lot apprend deux formes au socle. La contenance est une forme du constaté, une
+ressource pouvant en contenir d'autres sur un seul niveau. La clé d'engagement pose la
+frontière entre ce qu'une collecte relira et ce qu'aucune API ne listera jamais, et une
+étape d'octroi la porte quand ce qu'elle ouvre ne reparaîtra dans aucune collecte.
+Scalingo est le premier système à tomber des deux côtés de cette frontière, un
+collaborateur invité se relisant, un jeton émis non.
 
 Deux autres traits valent d'être notés parce qu'ils se reverront. Les environnements de
 revue sont écartés du périmètre sur leur seule ascendance : ils se détruisent en deux
