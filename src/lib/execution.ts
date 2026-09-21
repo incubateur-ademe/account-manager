@@ -12,6 +12,8 @@ import type {
 import { dossierVivant, type EtatEtape, type EtatValidation, estSoldee } from "@/core/dossier";
 import {
   decider,
+  ISSUE_DOSSIER,
+  ISSUE_GESTE,
   type IssueDEtape,
   issueDeLEtape,
   issueDUneException,
@@ -377,9 +379,14 @@ export async function executerPlan(
     return refuser(verdict.raison);
   }
 
+  // Ce qu'un refus laisse à faire dépend de l'ancrage : un plan confirmé ne se recalcule
+  // plus, et la seule sortie d'un geste hors dossier est de le reposer, aucun dossier ne
+  // répondant de lui.
+  const issue = ancrage.sorte === "dossier" ? ISSUE_DOSSIER : ISSUE_GESTE;
+
   // Avant le calcul, et non après : ce refus ne coûte aucune lecture, et un plan dont
   // la date est passée n'a pas à faire interroger les systèmes pour qu'on le lui dise.
-  const perime = refusDePeremption(plan.expiresAt, maintenant);
+  const perime = refusDePeremption(plan.expiresAt, maintenant, issue);
   if (perime) {
     return refuser(perime);
   }
@@ -442,7 +449,7 @@ export async function executerPlan(
 
   const sens = actuel.sens;
 
-  const ecart = refusDEcart(plan.confirmedDigest, actuel.empreinte);
+  const ecart = refusDEcart(plan.confirmedDigest, actuel.empreinte, issue);
   if (ecart) {
     return refuser(ecart);
   }

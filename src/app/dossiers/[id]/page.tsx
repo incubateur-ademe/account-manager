@@ -24,7 +24,7 @@ import {
   roleSurDossier,
   type SensDossier,
 } from "@/core/dossier";
-import { peutExecuter } from "@/core/execution";
+import { ISSUE_DOSSIER, peutExecuter } from "@/core/execution";
 import { motDuTier } from "@/core/lexique";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 import {
@@ -797,11 +797,14 @@ export default async function DossierPage({
             ) : (
               /* Sans bouton de recalcul : `peutRecalculer` refuse un plan engagé, à
                  raison, et un bouton qui répond toujours non serait pire que pas de
-                 bouton du tout. */
+                 bouton du tout. L'issue est celle que le lancement rendra, et elle ne se
+                 redit pas quand l'encart de péremption la porte déjà juste en dessous. */
               <>
                 <p className={fr.cx("fr-mb-1w")}>
-                  Ce plan reste celui qui a été confirmé et ne se recalcule plus. Ce qui a changé
-                  depuis se traite hors de lui, et la collecte suivante le redira.
+                  Il ne partira pas et ne se recalcule plus.{" "}
+                  {etat.perime
+                    ? "L'issue est dite plus bas, avec la date qui la motive."
+                    : ISSUE_DOSSIER}
                 </p>
                 {ecart && ecart.manquantes.length > 0 ? (
                   <>
@@ -860,8 +863,7 @@ export default async function DossierPage({
                 </p>
               ) : (
                 <p className={fr.cx("fr-mb-0")}>
-                  Il ne partira pas et ne se recalcule plus. Cochez à la main ce qui a été fait,
-                  clôturez ce dossier, et rouvrez-en un pour repartir d'un plan à jour.
+                  Il ne partira pas et ne se recalcule plus. {ISSUE_DOSSIER}
                 </p>
               )}
             </>

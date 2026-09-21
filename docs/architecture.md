@@ -612,6 +612,14 @@ inexécutable sans issue, le recalcul n'étant ouvert qu'à un brouillon. Le cal
 donc les tolérances telles qu'elles étaient à l'instant de la confirmation, que le plan
 porte déjà.
 
+**Une permanente échappe à ce gel, et c'est la décision.** Déclarée en git, elle n'a pas de
+date, donc l'instant de la confirmation ne la rejoue pas et la politique en vigueur
+l'emporte sur le plan approuvé. Une permanente livrée ou retirée depuis la confirmation
+déplace l'empreinte, et le plan refuse de partir. Le refus nomme alors ce qui reste à
+faire, cocher à la main ce qui a été fait, clore le dossier et en rouvrir un, et l'écran du
+dossier dit la même phrase. La figer ferait couper un accès que la politique vient
+d'admettre.
+
 **Une étape d'octroi porte une clé d'engagement si et seulement si ce qu'elle ouvre ne
 reparaîtra dans aucun `CollectResult` du connecteur qui l'a émise.** Sans clé, le départ
 retrouve l'accès par la collecte. Avec clé, il le retrouve par l'étape qui l'a ouvert, et
