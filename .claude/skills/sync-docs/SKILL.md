@@ -18,7 +18,7 @@ description: Synchronise la documentation (docs/architecture.md, CLAUDE.md, READ
 | `docs/architecture.md` | **La reference de conception.** Forme du systeme, objets metier, contrat de connecteur, invariants. Fait foi en cas de doute. | uniquement une decision explicitement validee par l'utilisateur |
 | `CLAUDE.md` | Le condense operationnel pour l'agent : stack, commandes, invariants, regles. Pas de duplication de `docs/architecture.md`, un renvoi suffit. | changement de stack, de commande, de regle |
 | `README.md` | L'onboarding humain : demarrage, commandes, invariants en trois lignes. | changement de prerequis ou de commande |
-| ADR (`docs/adr/`) | Trace d'une decision structurante avec ses alternatives. Le repertoire n'existe pas encore, le creer au premier ADR. | decision architecturale nouvelle |
+| ADR (`docs/adr/`) | Trace d'une decision structurante avec ses alternatives. Le repertoire existe, numeroter a la suite du dernier. | decision architecturale nouvelle |
 | memoire Claude | Apprentissages personnels et contextuels, non partageables. | gotcha, preference utilisateur |
 
 **Regle centrale** : `docs/architecture.md` n'est pas un journal. On ne le modifie pas parce qu'on a
@@ -43,12 +43,15 @@ variables d'environnement, nouveaux scripts pnpm, changements de schema Prisma.
 Avant de toucher quoi que ce soit, verifie la coherence dans ce sens :
 
 - Le code a-t-il introduit un comportement que le document interdit ou ne prevoit pas ?
-- Un invariant des sections 4.6 et 4.7 est-il contourne ?
-- Le catalogue de la section 4.9 est-il toujours exact (tiers vises, systemes) ?
-- Un point de la section 6 "Ce qui reste a trancher" a-t-il ete tranche dans la session ?
+- Un invariant des sections 5.6 et 5.7 est-il contourne ?
+- Le catalogue de la section 5.8 est-il toujours exact (tiers vises, systemes) ?
+- Un point de la section 8 "Ce qui reste a trancher" a-t-il ete tranche dans la session ?
 
 Chaque derive detectee se presente a l'utilisateur avec deux issues possibles : corriger le code, ou
 mettre a jour le document. **Ne choisis pas seul.**
+
+Un amendement deja valide par l'utilisateur ne repasse pas ici. C'est le cas de celui qu'un run de
+`/ticket` solde a son etape 6, et le reposer rouvrirait une question tranchee.
 
 ### 3. CLAUDE.md
 
