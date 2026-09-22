@@ -10,7 +10,7 @@ import type { TemplateKind } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/db";
 import { requireOperateur } from "@/lib/session";
 
-import { MOMENTS } from "./lecture";
+import { departSansSecondRegard, MOMENTS } from "./lecture";
 import { MODELE } from "./redaction";
 
 export const metadata: Metadata = { title: "Modèles de plan" };
@@ -29,7 +29,7 @@ function etapes(comptes: Comptes, moment: TemplateKind): string {
 export default async function ModelesPage() {
   await requireOperateur();
 
-  const [modeles, startups] = await Promise.all([
+  const [modeles, startups, sansSecondRegard] = await Promise.all([
     prisma.planTemplate.findMany({
       select: {
         ownerKey: true,
@@ -42,6 +42,7 @@ export default async function ModelesPage() {
       orderBy: { name: "asc" },
       select: { ghid: true, name: true, vanishedAt: true },
     }),
+    departSansSecondRegard(),
   ]);
 
   const parProprietaire = new Map<string, Comptes>();
@@ -98,7 +99,17 @@ export default async function ModelesPage() {
           ])}
         />
 
-        <p>
+        {sansSecondRegard ? (
+          <Alert
+            as="h3"
+            className={fr.cx("fr-mt-2w")}
+            severity="warning"
+            title={MODELE.secondRegard.titre}
+            description={MODELE.secondRegard.quoiFaire}
+          />
+        ) : null}
+
+        <p className={fr.cx("fr-mt-2w")}>
           <Link className={fr.cx("fr-link")} href="/modeles/incubateur">
             Éditer le modèle de l'incubateur
           </Link>

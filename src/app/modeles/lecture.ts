@@ -110,6 +110,25 @@ export async function autorisationsDeLIncubateur(): Promise<Record<TemplateKind,
 }
 
 /**
+ * Vrai quand aucune étape de départ de l'incubateur n'attend de second regard.
+ *
+ * La garantie « personne n'instruit son propre départ de bout en bout » est tenue par
+ * une donnée et non par du code, si bien qu'elle se défait sans bruit. Retirer le
+ * dernier contrôleur est une modification de modèle comme une autre, et ce compte est
+ * le seul endroit d'où l'écart se voit.
+ */
+export async function departSansSecondRegard(): Promise<boolean> {
+  const relues = await prisma.planTemplateStep.count({
+    where: {
+      template: { ownerKey: CLE_INCUBATEUR, kind: "OFFBOARDING" },
+      validationBy: { not: null },
+    },
+  });
+
+  return relues === 0;
+}
+
+/**
  * Le nombre d'étapes de startup qu'un moment fermé neutralise.
  *
  * Ce compte n'est pas décoratif : refermer l'autorisation ne supprime rien, si bien

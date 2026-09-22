@@ -309,7 +309,8 @@ regard est complet dans le code, mais il ne s'applique qu'aux étapes qui nommen
 contrôleur, et un modèle de plan est une **donnée**, pas du code. Une base neuve part donc
 d'une table vide : aucune étape ne nomme personne, et la garantie « personne n'instruit
 son propre départ de bout en bout » n'est tenue par rien tant que quelqu'un ne l'a pas
-posée à la main. Rien ne le signale à l'écran, d'où cette page.
+posée à la main. L'écran des modèles le signale depuis #121, et cette page reste ce qui dit
+quel contrôleur poser et pourquoi celui-là.
 
 **Le geste.** Sur `/modeles/incubateur`, moment « Départ », poser un contrôleur sur les
 étapes jugées sensibles. Les candidates naturelles sont celles que la personne fait
@@ -319,8 +320,8 @@ elle-même : rendre le matériel, restituer le badge, signer la décharge.
 Elle ne coûte rien au cas ordinaire : sur le dossier d'un tiers, un opérateur solde
 l'étape d'un seul geste par substitution, le pointage lui restant ouvert quel que soit
 l'acteur attendu. Elle ne mord que là où c'est justement le sujet : sur son propre
-dossier, il pointe, l'étape reste en attente, et la règle qui interdit de valider sa
-propre déclaration l'empêche de la signer.
+dossier, il pointe, l'étape reste en attente, et son rôle de personne concernée, reconnu
+avant celui d'opérateur, l'empêche de la signer.
 
 L'autre répartition possible, « un opérateur agit, un opérateur contrôle », ferme le même
 trou mais bloque **tous** les départs, y compris ceux qui ne posent aucun problème, et

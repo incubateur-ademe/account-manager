@@ -34,6 +34,16 @@ export const MODELE = {
     );
   },
 
+  /**
+   * Ce qui manque quand aucune étape de départ n'attend de second regard, et le geste
+   * qui le pose. La cause n'a pas sa place ici, un texte d'écran disant quoi faire.
+   */
+  secondRegard: {
+    titre: "Aucune étape de départ n'attend de second regard",
+    quoiFaire:
+      "Une étape de départ sans contrôleur se déclare faite par la personne même qu'elle concerne. Posez un contrôleur sur les étapes de départ confiées à la personne concernée.",
+  },
+
   orphelins: {
     plusieurs: `Les plans déjà calculés gardent leurs étapes, aucun nouveau ne les reprendra. Leur identifiant n'est plus rendu par le référentiel des startups. ${CAUSE_ORPHELIN} Rien d'autre que cette liste ne mène plus à eux.`,
     seul: `Aucun plan ne portera ses étapes. Cet identifiant n'est plus rendu par le référentiel des startups. ${CAUSE_ORPHELIN} Redéclarez ces étapes sous le bon identifiant, puis retirez celles-ci.`,
