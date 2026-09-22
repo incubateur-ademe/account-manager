@@ -66,8 +66,22 @@ function dossierDe(id: string): DossierEnBase | undefined {
   return base.dossiers.find((dossier) => dossier.id === id);
 }
 
+/**
+ * La moitié comptes de l'espace a son propre harnais, et celui-ci ne la joue pas : ce
+ * qu'il lui faut est qu'elle ne rende rien, sans quoi le rendu de la page échoue avant
+ * d'atteindre la liste des dossiers, qui est son sujet.
+ */
+vi.mock("@/lib/policy", () => ({ policy: () => ({ thresholds: { collectStaleHours: 24 } }) }));
+
+vi.mock("@/connectors", () => ({ CONNECTEURS: [] }));
+
 vi.mock("@/lib/db", () => ({
   prisma: {
+    person: { findUnique: () => Promise.resolve(null) },
+    syncRun: {
+      findFirst: () => Promise.resolve({ startedAt: new Date() }),
+      findMany: () => Promise.resolve([]),
+    },
     caseParticipation: {
       findUnique: ({
         where,
