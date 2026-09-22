@@ -1121,7 +1121,10 @@ un geste par ressource déclarée. `SubjectRef` porte donc les accès constatés
 interrogé, et seulement ceux dont le rattachement autorise déjà une coupure : une
 ressemblance n'en produit toujours aucune. Il porte aussi l'adresse dont le socle répond,
 pour les systèmes qui invitent sur une adresse et non sur un compte, lesquels n'ont rien à
-viser tant que la personne n'est pas venue.
+viser tant que la personne n'est pas venue. Le `role` de chaque accès en fait partie, et il
+décide de la nature du geste. Un accès `owner` ne se coupe pas, il se transfère. Un
+propriétaire ne figure dans aucune liste de collaborateurs, si bien qu'un retrait se
+solderait en succès sans que rien n'ait changé de main.
 
 Ensuite, **une révocation qui ne suffit pas**. Retirer un collaborateur ne change ni les
 variables d'environnement ni les identifiants de base, et le mot de passe de l'utilisateur

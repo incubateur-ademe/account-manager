@@ -71,6 +71,9 @@ const RUNBOOK_JETON =
 const RUNBOOK_REPRISE_JETON =
   "Ne pas faire tourner le jeton d'API Scalingo. Il est à portée compte entier, il est ce que chaque blob transporte chiffré, et il est celui de la collecte. Le faire tourner ne reprend pas un jeton à une personne, il éteint d'un coup tous les blobs vivants du parc, toutes les écritures et la lecture nocturne, jusqu'à ce que la nouvelle valeur soit posée et l'application redémarrée. Ce n'est pas une étape de départ, c'est un incident, et cela se décide ailleurs que dans un dossier. Le proxy n'offre ni révocation ni introspection. Il n'y a rien à appeler, rien à lister, et rien à couper. Attendre le terme est le seul recours, et un départ survenu avant ce terme ne se solde pas avant lui. Demander à la personne de détruire sa copie du blob et de sa clé, et vérifier que la fiche du compte machine porte bien le terme annoncé.";
 
+const RUNBOOK_TRANSFERT =
+  "Depuis Paramètres > Collaborateurs de l'application, transférer la propriété au repreneur, qui doit déjà en être collaborateur. Scalingo peut laisser l'ancien propriétaire en collaboration, à retirer depuis le même écran.";
+
 const RUNBOOK_ROTATION =
   "Faire tourner les variables d'environnement des applications concernées, et les mots de passe des bases dont la personne a pu relever les identifiants, qu'un retrait ne change pas. Le mot de passe de l'utilisateur par défaut d'une base se change par le support Scalingo, puis la variable et un redémarrage.";
 
@@ -1603,15 +1606,20 @@ function reprisesDesJetons(
 
 export function planifierDepartScalingo(
   username: string,
-  acces: readonly { resourceExternalId?: string; resourceLabel?: string }[],
+  acces: readonly { resourceExternalId?: string; resourceLabel?: string; role?: string }[],
   adresse: string | undefined,
   credential: boolean,
   engagements: readonly OpenEngagement[] = [],
 ): readonly PlannedStep[] {
-  const cibles = acces.filter((un) => un.resourceExternalId !== undefined);
+  const constates = acces.filter((un) => un.resourceExternalId !== undefined);
+  // Un propriétaire ne figure dans aucune liste de collaborateurs, si bien que le
+  // précheck du retrait rend `ALREADY_ABSENT` et solde l'étape en succès sans que rien
+  // n'ait été transféré. C'est la seule partition qui sépare une coupure d'un transfert.
+  const possedees = constates.filter((un) => un.role === ROLE_PROPRIETAIRE);
+  const cibles = constates.filter((un) => un.role !== ROLE_PROPRIETAIRE);
 
   const coupures: PlannedStep[] =
-    cibles.length === 0 || adresse === undefined
+    constates.length === 0 || adresse === undefined
       ? [
           {
             systemKey: "scalingo",
@@ -1632,10 +1640,7 @@ export function planifierDepartScalingo(
           },
         ]
       : cibles.map((un) => {
-          const application = un.resourceLabel ?? un.resourceExternalId ?? "";
-          // Le libellé porte « nom, région », et c'est la région qui donne l'hôte. Le nom
-          // d'une application Scalingo ne contient jamais de virgule.
-          const [nom = "", region = ""] = application.split(", ");
+          const { application, nom, region } = designer(un);
 
           return {
             systemKey: "scalingo",
@@ -1651,13 +1656,39 @@ export function planifierDepartScalingo(
               title: `Retirer ${username} de ${application}`,
               runbook: RUNBOOK,
               deeplink: pageDesCollaborateurs(region, nom),
-              doneWhen: `${username} n'apparaît plus dans les collaborateurs de ${application}, invitation en attente comprise. Si l'application lui appartient, sa propriété a été transférée : un propriétaire ne figure dans aucune liste de collaborateurs.`,
+              doneWhen: `${username} n'apparaît plus dans les collaborateurs de ${application}, invitation en attente comprise.`,
             },
           };
         });
 
+  const transferts: PlannedStep[] = possedees.map((un) => {
+    const { application, nom, region } = designer(un);
+
+    return {
+      systemKey: "scalingo",
+      capability: "revoke" as const,
+      // Manuelle quel que soit le jeton, et ses paramètres ne portent aucun bénéficiaire,
+      // ce qui suffit à ce que `cibleDeLEtape` ne la reconnaisse pas et que le précheck la
+      // laisse ouverte. Le repreneur est une décision, pas une lecture.
+      tier: "manual" as const,
+      action: "transferer-la-propriete",
+      label: `Transférer la propriété de ${application}`,
+      params: { region, application: nom, username },
+      riskLevel: "high" as const,
+      expectedState: { proprietaireTransfere: true },
+      idempotencyKey: `scalingo:${region}:${nom}:transfert:${username}`,
+      manual: {
+        title: `Transférer la propriété de ${application}`,
+        runbook: RUNBOOK_TRANSFERT,
+        deeplink: pageDesCollaborateurs(region, nom),
+        doneWhen: `${application} appartient à quelqu'un d'autre, et ${username} ne figure pas non plus dans ses collaborateurs. Scalingo peut laisser l'ancien propriétaire en collaboration, et les deux se constatent sur le même écran.`,
+      },
+    };
+  });
+
   return [
     ...coupures,
+    ...transferts,
     ...reprisesDesJetons(username, engagements),
     {
       systemKey: "scalingo",
@@ -1677,6 +1708,23 @@ export function planifierDepartScalingo(
       },
     },
   ];
+}
+
+/**
+ * Le nom et la région d'une application, tels que le libellé de ressource les porte.
+ *
+ * Le libellé s'écrit « nom, région », et c'est la région qui donne l'hôte. Le nom d'une
+ * application Scalingo ne contient jamais de virgule.
+ */
+function designer(un: { resourceExternalId?: string; resourceLabel?: string }): {
+  application: string;
+  nom: string;
+  region: string;
+} {
+  const application = un.resourceLabel ?? un.resourceExternalId ?? "";
+  const [nom = "", region = ""] = application.split(", ");
+
+  return { application, nom, region };
 }
 
 /** Ce qu'une étape vise, quand elle vise quelque chose de lisible. */

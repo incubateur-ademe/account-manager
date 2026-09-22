@@ -976,6 +976,122 @@ describe("ce que le connecteur Scalingo propose à un départ", () => {
     ]);
   });
 
+  it("transfère une application possédée au lieu d'en retirer un collaborateur qui n'en est pas un", async () => {
+    // Given le départ de quelqu'un qui possède une application et collabore à une autre.
+    // La collecte pose le rôle « owner » sur l'accès du propriétaire, et le socle le
+    // transmet au plan.
+    const etapes = await scalingo.plan(
+      {
+        kind: "revoke",
+        subject: {
+          kind: "person",
+          username: "camille.exemple",
+          handles: { scalingo: "camille@exemple.invalid" },
+          acces: [
+            {
+              identityExternalId: "us-camille",
+              resourceExternalId: "app-annuaire",
+              resourceLabel: "service-annuaire, osc-fr1",
+              role: "owner",
+            },
+            {
+              identityExternalId: "us-camille",
+              resourceExternalId: "app-paie",
+              resourceLabel: "service-paie, osc-secnum-fr1",
+              role: "collaborator",
+            },
+          ],
+        },
+      },
+      CONTEXTE,
+    );
+
+    // Then l'application possédée sort un transfert et non un retrait. C'est la
+    // régression que ce scénario garde : un retrait sur un propriétaire se solde en
+    // « déjà absent », donc en succès, et l'application reste à quelqu'un qui est parti.
+    expect(etapes.map(({ idempotencyKey }) => idempotencyKey)).toEqual([
+      "scalingo:osc-secnum-fr1:service-paie:revoke:camille.exemple",
+      "scalingo:osc-fr1:service-annuaire:transfert:camille.exemple",
+      "scalingo:rotation:camille.exemple",
+    ]);
+    expect(etapes.map(({ action }) => action)).toEqual([
+      "retirer-des-collaborateurs",
+      "transferer-la-propriete",
+      "renouveler-les-secrets",
+    ]);
+
+    const transfert = etapes.find(({ action }) => action === "transferer-la-propriete");
+
+    // Then le transfert vise l'application par sa région et son nom, et ne porte aucun
+    // bénéficiaire. Sans ce manque, le précheck le reconnaîtrait et le solderait sur une
+    // lecture de collaborateurs où un propriétaire ne figure pas.
+    expect(transfert?.params).toEqual({
+      region: "osc-fr1",
+      application: "service-annuaire",
+      username: "camille.exemple",
+    });
+
+    // Then il dit quoi constater, et les deux choses à constater, l'appartenance et la
+    // collaboration que Scalingo peut laisser derrière.
+    expect(transfert?.manual?.doneWhen).toContain("appartient à quelqu'un d'autre");
+    expect(transfert?.manual?.doneWhen).toContain("collaborateurs");
+    expect(transfert?.manual?.runbook).toContain("repreneur");
+    expect(transfert?.manual?.deeplink).toBe(
+      "https://dashboard.scalingo.com/apps/osc-fr1/service-annuaire/settings/collaborators",
+    );
+
+    // Given le même départ, cette fois avec un jeton qui répond,
+    const avecJeton = planifierDepartScalingo(
+      "camille.exemple",
+      [
+        {
+          resourceExternalId: "app-annuaire",
+          resourceLabel: "service-annuaire, osc-fr1",
+          role: "owner",
+        },
+        {
+          resourceExternalId: "app-paie",
+          resourceLabel: "service-paie, osc-secnum-fr1",
+          role: "collaborator",
+        },
+      ],
+      "camille@exemple.invalid",
+      true,
+    );
+
+    // Then le retrait passe en automatique et le transfert reste manuel. Aucune API ne
+    // désigne un repreneur, et le tier ne se lit pas sur le credential seul.
+    expect(
+      avecJeton
+        .filter(({ action }) => action !== "renouveler-les-secrets")
+        .map(({ action, tier }) => [action, tier]),
+    ).toEqual([
+      ["retirer-des-collaborateurs", "auto"],
+      ["transferer-la-propriete", "manual"],
+    ]);
+
+    // Given quelqu'un qui ne possède qu'une application et n'est collaborateur de rien,
+    const seulementProprietaire = planifierDepartScalingo(
+      "camille.exemple",
+      [
+        {
+          resourceExternalId: "app-annuaire",
+          resourceLabel: "service-annuaire, osc-fr1",
+          role: "owner",
+        },
+      ],
+      "camille@exemple.invalid",
+      false,
+    );
+
+    // Then aucun retrait ne sort, pas même celui de la vue consolidée. Le produire
+    // affirmerait une collaboration à couper là où il n'y en a aucune.
+    expect(seulementProprietaire.map(({ action }) => action)).toEqual([
+      "transferer-la-propriete",
+      "renouveler-les-secrets",
+    ]);
+  });
+
   it("n'ouvre un accès que sous un scope validé, et pèse le rôle qu'il accorde", async () => {
     // Given un octroi dont la portée manque
     const sansScope: Intent = {
