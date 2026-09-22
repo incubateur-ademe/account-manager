@@ -1,12 +1,18 @@
 import { fr } from "@codegouvfr/react-dsfr";
+import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import { Table } from "@codegouvfr/react-dsfr/Table";
 import type { Metadata } from "next";
 import Link from "next/link";
 
 import { LIBELLE_DOSSIER, LIBELLE_ETAT_DOSSIER } from "@/core/libelle-dossier";
+import { chargerMesComptes } from "@/lib/espace-perso";
 import { dossiersOuvertsPour } from "@/lib/participation";
+import { policy } from "@/lib/policy";
 import { requireUtilisateur } from "@/lib/session";
 import { dateFr } from "@/ui/dates";
+
+import { MesComptes } from "./MesComptes";
+import { MES_COMPTES } from "./redaction";
 
 export const metadata: Metadata = { title: "Mon espace" };
 
@@ -16,12 +22,30 @@ export const dynamic = "force-dynamic";
 
 export default async function MonEspacePage() {
   const utilisateur = await requireUtilisateur();
-  const dossiers = await dossiersOuvertsPour(utilisateur.personId);
+  const maintenant = new Date();
+  const [dossiers, mesComptes] = await Promise.all([
+    dossiersOuvertsPour(utilisateur.personId),
+    chargerMesComptes(utilisateur, maintenant),
+  ]);
+  const { perimetre } = mesComptes.observation;
 
   return (
     <main className={fr.cx("fr-container", "fr-my-6w")}>
       <h1>Mon espace</h1>
       <p>Vous êtes connecté en tant que {utilisateur.nom ?? utilisateur.username}.</p>
+
+      {perimetre.perimee ? (
+        <Alert
+          as="h2"
+          severity="warning"
+          className={fr.cx("fr-mb-3w")}
+          title={MES_COMPTES.perimetre.titre}
+          description={MES_COMPTES.perimetre.description(
+            perimetre.heures,
+            policy().thresholds.collectStaleHours,
+          )}
+        />
+      ) : null}
 
       <h2 className={fr.cx("fr-h4")}>Les dossiers qui vous sont ouverts</h2>
       {dossiers.length === 0 ? (
@@ -44,6 +68,8 @@ export default async function MonEspacePage() {
           ])}
         />
       )}
+
+      <MesComptes mesComptes={mesComptes} />
     </main>
   );
 }
