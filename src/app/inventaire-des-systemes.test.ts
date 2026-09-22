@@ -556,11 +556,12 @@ describe("ce que l'inventaire dit d'un système, et ce qu'il refuse d'en dire", 
     // résolu, libellé et sévérité compris, dans l'ordre des capacités. Une capacité
     // qu'aucune voie ne porte n'est pas tue : elle dit qu'il n'y a pas moyen de la
     // faire, ce qui est justement ce que cet écran existe pour montrer.
-    expect(lignes.length).toBe(4);
+    expect(lignes.length).toBe(5);
     expect(cellules.map((ligne) => badgeDe(ligne[1]))).toEqual([
       LIBELLE_TIER.auto,
       LIBELLE_TIER.manual,
       LIBELLE_TIER.assisted,
+      LIBELLE_TIER.none,
       LIBELLE_TIER.none,
     ]);
 
@@ -571,13 +572,31 @@ describe("ce que l'inventaire dit d'un système, et ce qu'il refuse d'en dire", 
       "sans objet",
       `${LIBELLE_TIER.auto.libelle} si : cle-absente`,
       "sans objet",
+      "sans objet",
+    ]);
+
+    // Then la cinquième capacité est là et ne se confond pas avec la lecture des accès.
+    // Aucun connecteur ne la déclare aujourd'hui, donc elle se résout à « aucun moyen »
+    // partout, et c'est précisément ce que cet écran existe pour montrer.
+    expect(lignes.map((ligne) => texteRendu(ligne[0]))).toEqual([
+      expect.stringContaining("relever les comptes et leurs accès"),
+      expect.stringContaining("couper un accès"),
+      expect.stringContaining("ouvrir un accès"),
+      expect.stringContaining("confirmer l'état après coup"),
+      expect.stringContaining("relever les objets possédés"),
     ]);
 
     // Then un système qui ne déclare aucune voie n'a pas d'autre mot que celui-là, sur
-    // ses quatre capacités
+    // ses cinq capacités
     expect(
       cellulesDuTableau(page, "Capacités sur Annuaire").map((ligne) => badgeDe(ligne[1])),
-    ).toEqual([LIBELLE_TIER.none, LIBELLE_TIER.none, LIBELLE_TIER.none, LIBELLE_TIER.none]);
+    ).toEqual([
+      LIBELLE_TIER.none,
+      LIBELLE_TIER.none,
+      LIBELLE_TIER.none,
+      LIBELLE_TIER.none,
+      LIBELLE_TIER.none,
+    ]);
 
     // Then le paragraphe sous chaque titre dit sa dernière lecture avec le mot du
     // lexique, et un système jamais lu le dit plutôt que d'afficher une ligne vide
