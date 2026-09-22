@@ -41,7 +41,7 @@ describe("ce que les écrans des modèles promettent", () => {
   });
 
   it("dit ce qui manque quand aucune étape de départ n'attend de second regard, puis le geste", () => {
-    // Given le seul avertissement de cet écran qu'aucune donnée ne chiffre : les autres
+    // Given le seul avertissement de cet écran qu'aucune donnée ne chiffre. Les autres
     // comptent des étapes ou des modèles, celui-ci constate une absence.
     const { titre, quoiFaire } = MODELE.secondRegard;
 

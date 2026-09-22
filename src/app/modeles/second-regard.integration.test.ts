@@ -44,7 +44,8 @@ async function semerModele(
 
 describe("l'écran des modèles signale un départ que personne ne relit", () => {
   it("ne compte que les étapes de départ de l'incubateur, et seulement celles qu'un contrôleur relit", async () => {
-    // Given une base où aucun modèle n'a encore été déclaré,
+    // Given une base vide, que le passage de mise en place pose avant chaque scénario,
+    // Then rien ne relit un départ qui n'a pas encore été déclaré.
     await expect(departSansSecondRegard()).resolves.toBe(true);
 
     // Given le départ de l'incubateur, déclaré sans contrôleur,
