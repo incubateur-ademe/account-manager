@@ -131,11 +131,11 @@ describe("un projet regroupe, il n'accueille personne", () => {
     expect(MOTS_DE_SCALINGO.role.proprietaire).toContain("ne se change pas ici");
     expect(MOTS_DE_SCALINGO.comptes.isole).toContain("comptes isolés");
 
-    // Then la phrase du succès s'arrête à ce qui a été écrit. Un brouillon n'est pas un
-    // geste exécuté, et aucun écran ne porte encore sa confirmation : annoncer un lien
-    // ou une exécution serait la seule phrase de cet écran qui mentirait.
+    // Then la phrase du succès s'arrête à ce qui a été écrit, et elle dit où finir. Un
+    // brouillon n'est pas un geste exécuté, et annoncer une exécution serait la seule
+    // phrase de cet écran qui mentirait.
     expect(MOTS_DE_SCALINGO.role.brouillon).toContain("rien n'est parti sur Scalingo");
-    expect(MOTS_DE_SCALINGO.role.brouillon).toContain("après confirmation");
+    expect(MOTS_DE_SCALINGO.role.brouillon).toContain("fiche de la personne");
     for (const mot of ["exécuté", "envoyé", "appliqué", "retiré", "accordé"]) {
       expect(MOTS_DE_SCALINGO.role.brouillon).not.toContain(mot);
     }

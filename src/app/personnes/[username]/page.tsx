@@ -6,6 +6,7 @@ import { Breadcrumb } from "@codegouvfr/react-dsfr/Breadcrumb";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { connecteur } from "@/connectors";
 import {
   estPhaseTerminale,
   LIBELLE_APPARTENANCE,
@@ -20,6 +21,7 @@ import {
   nonRendueAuDernierPassage,
 } from "@/core/collecte";
 import type { ConstatKind } from "@/core/constat";
+import type { ActeurNomme, Declarant } from "@/core/dossier";
 import { ETATS_VIVANTS } from "@/core/dossier";
 import { ficheEditable, RAISON_NON_EDITABLE } from "@/core/fiche-manuelle";
 import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
@@ -38,13 +40,14 @@ import { dateFr } from "@/ui/dates";
 import { SEVERITE_STATUT } from "@/ui/severites";
 import { TableCustom } from "@/ui/TableCustom";
 import { tolerance } from "@/ui/tolerance";
-
 import { ActionsDePage } from "./ActionsDePage";
 import { CeQuiAppelleUneAction } from "./CeQuiAppelleUneAction";
 import { Champ } from "./Champs";
+import { gesteEnAttente } from "./geste-en-attente";
 import { expliquerStatut, SEVERITE_APPARTENANCE, SOURCE, STATUT_A_TRAITER } from "./libelles";
 import { motifsDAction } from "./motifs";
 import { SectionComptesExternes } from "./SectionComptesExternes";
+import { SectionGeste } from "./SectionGeste";
 import { SectionStartups } from "./SectionStartups";
 
 export const dynamic = "force-dynamic";
@@ -67,7 +70,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function FichePersonnePage({ params, searchParams }: Props) {
-  await requireOperateur();
+  const operateur = await requireOperateur();
 
   const { username } = await params;
   const { edition } = await searchParams;
@@ -81,6 +84,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
     prisma.person.findUnique({
       where: { username },
       select: {
+        id: true,
         username: true,
         fullname: true,
         primaryEmail: true,
@@ -169,10 +173,19 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
 
   // Dix-neuf startups : une lecture complète coûte moins qu'une requête par
   // rattachement, et sert à la fois le tableau et la liste de saisie.
+  // Après la garde d'existence, et seulement là : une fiche sans geste ne paie aucun
+  // recalcul, et il n'y a rien à calculer pour une personne qui n'existe pas.
+  const geste = await gesteEnAttente(personne.id, personne.username, today);
+
   const startupsConnues = await prisma.startup.findMany({
     select: { ghid: true, name: true, currentPhase: true, phaseStart: true, vanishedAt: true },
     orderBy: { name: "asc" },
   });
+
+  // `requireOperateur` a muré cette page, donc qui la lit est de l'équipe transverse.
+  // Un geste n'a pas de porteur au sens d'un dossier, et son plan ne se pointe pas ici.
+  const valideur: ActeurNomme = { username: operateur.username, role: "OPERATOR" };
+  const declarant: Declarant = { role: "OPERATOR", operateur: true };
 
   const parGhid = new Map(startupsConnues.map((startup) => [startup.ghid, startup]));
   const phasesTerminales = new Set(reglesStartups.terminalPhases);
@@ -506,6 +519,15 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
         parEquipe={parEquipe}
         inconnues={inconnues}
       />
+
+      {geste ? (
+        <SectionGeste
+          geste={geste}
+          nomDuSysteme={connecteur(geste.systeme)?.contract.label ?? geste.systeme}
+          declarant={declarant}
+          valideur={valideur}
+        />
+      ) : null}
 
       <SectionComptesExternes comptes={comptes} systemesCollectes={systemesCollectes} />
 

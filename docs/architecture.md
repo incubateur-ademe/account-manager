@@ -561,7 +561,10 @@ redécoule. Aucun modèle ne répond pour ce genre de plan, dont les étapes vie
 connecteur visé. Il ouvre un accès et n'en coupe aucun, sous la même justification
 nominative, la même confirmation et le même journal qu'un plan de dossier. Il est refusé
 tant qu'un départ est ouvert sur la personne, un accès ouvert après la confirmation de ce
-départ déplaçant l'empreinte de son plan sans qu'aucun recalcul ne la rattrape. Voir
+départ déplaçant l'empreinte de son plan sans qu'aucun recalcul ne la rattrape. Il se lit
+sur la fiche de la personne qu'il vise, là où sa confirmation revalide déjà. Un brouillon
+périmé ou dont l'empreinte a bougé y retire sa confirmation et renvoie à l'écran qui a posé
+le geste, reposer le geste étant sa seule sortie. Voir
 [ADR-0003](adr/0003-le-geste-hors-dossier-et-la-cle-d-engagement.md).
 
 **Un plan est une suite d'étapes figées.** Il réunit trois origines, dans cet ordre : le

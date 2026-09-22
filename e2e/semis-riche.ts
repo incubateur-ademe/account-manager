@@ -161,6 +161,17 @@ export async function semerLesEcransPleins(client: Client): Promise<void> {
       ('pla-clos', '${DOSSIER_CLOS}', 'OFFBOARDING', 'EXECUTED', 'digest-c', 'digest-c', 'operatrice.exemple', 'operatrice.exemple', now() - interval '25 days', now() - interval '30 days', now() - interval '10 days')
   `);
 
+  /*
+   * Un geste hors dossier, brouillon, sur une fiche que le relevé ouvre. Son empreinte
+   * ne peut pas correspondre à ce que le calcul rendrait, les connecteurs étant ici sans
+   * credential : la section se relève donc dans son état écarté, qui est celui où elle
+   * retire la confirmation et nomme la sortie.
+   */
+  await client.query(`
+    INSERT INTO "Plan" (id, "accessCaseId", "subjectId", kind, state, intent, "planDigest", "createdBy", "createdAt", "expiresAt")
+    VALUES ('pla-geste', NULL, 'per-noor', 'MANUAL_OP', 'DRAFT', '{"systeme":"scalingo","scope":{"nature":"jeton","region":"osc-fr1","application":"service-annuaire","usage":"astreinte"},"justification":"Renfort pendant une astreinte"}'::jsonb, 'digest-geste', 'operatrice.exemple', now() - interval '1 days', now() + interval '6 days')
+  `);
+
   await client.query(`
     INSERT INTO "PlanStep" (id, "planId", "systemKey", tier, capability, action, label, params, "riskLevel", "expectedState", state, attempts, "lastError", "executedAt", "idempotencyKey", manual, ordre, "expectedActor", validation)
     VALUES
@@ -169,7 +180,8 @@ export async function semerLesEcransPleins(client: Client): Promise<void> {
       ('stp-b1', 'pla-depart', 'github', 'automated', 'revoke', 'remove', 'Retirer tao-gh de incubateur-ademe', '{}'::jsonb, 'HIGH', '"ALREADY_ABSENT"'::jsonb, 'SUCCEEDED', 1, NULL, now() - interval '3 days', 'idem-b1', NULL, 1, 'OPERATOR', 'ACCEPTED'),
       ('stp-b2', 'pla-depart', 'notion', 'automated', 'revoke', 'remove', 'Retirer tao@exemple.fr de l''espace Notion', '{}'::jsonb, 'HIGH', '"ALREADY_ABSENT"'::jsonb, 'FAILED', 3, 'La requête a expiré sans réponse du système', now() - interval '2 days', 'idem-b2', NULL, 2, 'OPERATOR', 'NONE'),
       ('stp-b3', 'pla-depart', 'scalingo', 'manual', 'revoke', 'remove', 'Retirer l''accès Scalingo à la main', '{}'::jsonb, 'MEDIUM', '"ALREADY_ABSENT"'::jsonb, 'PENDING', 0, NULL, NULL, 'idem-b3', '{"runbook":"Console Scalingo, onglet collaborateurs"}'::jsonb, 3, 'DELEGATE', 'AWAITING'),
-      ('stp-c1', 'pla-clos', 'github', 'automated', 'revoke', 'remove', 'Retirer remi de incubateur-ademe', '{}'::jsonb, 'HIGH', '"ALREADY_ABSENT"'::jsonb, 'SUCCEEDED', 1, NULL, now() - interval '24 days', 'idem-c1', NULL, 1, 'OPERATOR', 'ACCEPTED')
+      ('stp-c1', 'pla-clos', 'github', 'automated', 'revoke', 'remove', 'Retirer remi de incubateur-ademe', '{}'::jsonb, 'HIGH', '"ALREADY_ABSENT"'::jsonb, 'SUCCEEDED', 1, NULL, now() - interval '24 days', 'idem-c1', NULL, 1, 'OPERATOR', 'ACCEPTED'),
+      ('stp-g1', 'pla-geste', 'scalingo', 'manual', 'grant', 'emettre-un-jeton', 'Émettre un jeton restreint sur service-annuaire', '{}'::jsonb, 'HIGH', '"ALREADY_PRESENT"'::jsonb, 'PENDING', 0, NULL, NULL, 'idem-g1', '{"runbook":"Depuis le proxy, émettre le jeton et le porter dans la fiche du compte machine","doneWhen":"Le jeton figure dans la fiche du compte machine"}'::jsonb, 1, 'OPERATOR', 'NONE')
   `);
 
   /*

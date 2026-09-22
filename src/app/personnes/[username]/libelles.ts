@@ -67,3 +67,27 @@ export function expliquerStatut(
       return `Son échéance est dépassée depuis plus de ${staleDays} jours.`;
   }
 }
+
+/**
+ * Le brouillon de geste qui attend, et les deux états où il ne se confirme plus.
+ *
+ * Les deux disent la même sortie, reposer le geste, parce qu'un brouillon n'en a pas
+ * d'autre : il ne se recalcule ni ne s'annule.
+ */
+export const GESTE = {
+  titre: "Un geste attend votre confirmation",
+
+  terme: (expiresAt: Date, format: Intl.DateTimeFormat): string =>
+    `Ce brouillon vaut jusqu'au ${format.format(expiresAt)}.`,
+
+  avantDeConfirmer:
+    "Confirmer, c'est dire que vous répondez de cette liste. Elle ne bougera plus ensuite, et chaque étape pourra être exécutée.",
+
+  perime: (systeme: string): string =>
+    `Le terme de ce brouillon est passé, il ne se confirme plus. Reposez le geste depuis ${systeme}.`,
+
+  ecarte: (systeme: string): string =>
+    `Ce que ce geste vaut aujourd'hui a changé depuis l'écriture du brouillon. Reposez le geste depuis ${systeme}.`,
+
+  reposer: (systeme: string): string => `Reposer ce geste depuis ${systeme}`,
+} as const;
