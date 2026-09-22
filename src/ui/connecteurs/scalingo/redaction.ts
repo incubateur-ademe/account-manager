@@ -117,11 +117,11 @@ export const MOTS_DE_SCALINGO = {
     envoi: "Écrire le brouillon",
     attente: "Écriture…",
     /**
-     * Le brouillon écrit n'a encore aucun écran où se confirmer : le geste hors dossier
-     * a son action, pas sa page. La phrase dit donc où en est le geste et s'arrête là,
-     * plutôt que de poser un lien qui ne mènerait nulle part.
+     * La phrase renvoie vers la fiche de la personne sans poser de lien. Ce formulaire
+     * vit dans une modale, et un lien qui la quitte perdrait la saisie de qui ne voulait
+     * que lire la suite.
      */
     brouillon:
-      "Le brouillon est écrit, et rien n'est parti sur Scalingo. Un geste s'exécute depuis son plan, après confirmation.",
+      "Le brouillon est écrit, et rien n'est parti sur Scalingo. Confirmez-le sur la fiche de la personne.",
   },
 } as const;

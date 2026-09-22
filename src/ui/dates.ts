@@ -9,7 +9,17 @@ export const dateFr = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", time
  * Sans fuseau déclaré, donc dans celui du processus qui rend, et non dans celui du
  * lecteur qu'un composant serveur ne connaît pas. Il sert des `DateTime` complets, un
  * pointage ou une validation, là où `dateFr` sert des colonnes `@db.Date`. Une date
- * rendue près de minuit peut donc s'afficher la veille. Écart connu et non traité ici,
- * voir #127.
+ * rendue près de minuit peut donc s'afficher la veille, et aucun choix n'a été fait
+ * contre ça.
  */
 export const dateLocale = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long" });
+
+/**
+ * Avec l'heure, pour ce qui expire à un instant et non à la fin d'un jour. Un terme rendu
+ * en date seule laisse croire à une journée entière de validité là où il peut tomber le
+ * matin. Même fuseau que `dateLocale`, avec la même réserve.
+ */
+export const instantLocal = new Intl.DateTimeFormat("fr-FR", {
+  dateStyle: "long",
+  timeStyle: "short",
+});

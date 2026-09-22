@@ -44,7 +44,7 @@ export function ActionsDePage({
   return (
     <>
       <div className={fr.cx("fr-grid-row", "fr-grid-row--right", "fr-grid-row--middle")}>
-        <BoutonDossier username={username} sens="OFFBOARDING" />
+        <BoutonDossier username={username} sens="OFFBOARDING" priorite="secondary" />
         <BoutonDossier
           username={username}
           sens="ONBOARDING"
