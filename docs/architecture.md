@@ -828,7 +828,7 @@ credential disponible)**. Le connecteur déclare ce qu'il sait faire et sous que
 condition ; le tier effectif est résolu au démarrage selon les credentials présents.
 
 ```ts
-type Capability = "list" | "grant" | "revoke" | "verify";
+type Capability = "list" | "grant" | "revoke" | "verify" | "reference";
 type Tier = "auto" | "assisted" | "manual" | "none";
 
 interface CredentialRef {
@@ -850,7 +850,13 @@ interface CapabilityDecl {
 
 Résolution au démarrage : pour chaque capability, la première déclaration dont tous
 les credentials répondent donne le tier effectif. Si aucune ne répond, la capability
-tombe à `manual` s'il existe un runbook, à `none` sinon.
+tombe à `none`, en portant le runbook de la meilleure voie déclarée, et celui du contrat
+à défaut.
+
+**Lire la propriété est une capacité déclarée, distincte de lire les accès.** `reference`
+dit qu'un système sait rendre les objets qu'une personne possède, là où `list` rend ceux
+auxquels elle accède. Un système qui ne la déclare pas la résout à `none`, comme `verify`
+aujourd'hui.
 
 Le jour où un credential expire, le connecteur dégrade proprement, le plan l'affiche
 avec la raison, et le runbook prend le relais. Il ne plante pas, et surtout il ne

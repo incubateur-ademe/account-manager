@@ -27,6 +27,7 @@ const CAPACITES: { cle: Capability; libelle: string; quoi: string }[] = [
   { cle: "revoke", libelle: "Retirer", quoi: "couper un accès" },
   { cle: "grant", libelle: "Donner", quoi: "ouvrir un accès" },
   { cle: "verify", libelle: "Vérifier", quoi: "confirmer l'état après coup" },
+  { cle: "reference", libelle: "Inventorier", quoi: "relever les objets possédés" },
 ];
 
 interface AccesDeProfil {

@@ -4,7 +4,12 @@ import type { AuditInput } from "@/core/audit";
 import type { Acteur } from "@/core/dossier";
 import type { OrigineFigee } from "@/core/modele-plan";
 
-export type Capability = "list" | "grant" | "revoke" | "verify";
+/**
+ * Ce qu'un connecteur sait faire, et non ce qu'une étape demande. `reference` est la
+ * seule qui ne porte pas sur un accès : elle dit qu'un système sait rendre les objets
+ * qu'une personne possède, là où `list` rend ceux auxquels elle accède.
+ */
+export type Capability = "list" | "grant" | "revoke" | "verify" | "reference";
 
 export type Tier = "auto" | "assisted" | "manual" | "none";
 
