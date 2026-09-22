@@ -26,6 +26,13 @@ import { defaultExclude, defineConfig } from "vitest/config";
 
 const MORT = "127.0.0.1:1";
 
+/**
+ * Un fuseau qu'aucun poste de cette équipe n'a, pour la même raison que les adresses
+ * mortes. Un formateur qui oublie de déclarer le sien passe sur une machine à Paris, et
+ * se découvre faux en production, où l'image tourne en UTC.
+ */
+const FUSEAU_SENTINELLE = "Pacific/Honolulu";
+
 /** Ce qu'aucun étage n'a le droit d'atteindre. Posé avant les fichiers de mise en place. */
 const ADRESSES_MORTES = {
   ESPACE_MEMBRE_URL: `http://${MORT}`,
@@ -101,6 +108,7 @@ export default defineConfig({
           ],
           env: {
             ...ADRESSES_MORTES,
+            TZ: FUSEAU_SENTINELLE,
             DATABASE_URL: `postgresql://interdit:interdit@${MORT}/aucune-base-en-unitaire`,
           },
           setupFiles: ["./vitest.setup.unite.ts"],

@@ -1,5 +1,6 @@
 import type { PlannedStep, Tier } from "@/core/connector";
 import { type Acteur, combinaisonValide } from "@/core/dossier";
+import { jourMetier } from "@/core/statut";
 
 /**
  * Empreinte d'un plan, calculée sur ce qui engage : quelle action, sur quel système,
@@ -94,7 +95,7 @@ export interface Peremption {
  * recalculé ne dit plus la même chose.
  */
 export function plusValableApres(expiresAt: Date, maintenant: Date): boolean {
-  return expiresAt.getTime() <= maintenant.getTime();
+  return jourMetier(maintenant) > jourMetier(expiresAt);
 }
 
 export function peremptionDuPlan(

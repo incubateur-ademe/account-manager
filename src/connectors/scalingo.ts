@@ -18,6 +18,7 @@ import type {
 } from "@/core/connector";
 import { lireChaque } from "@/core/lecture";
 import type { ExamenDeScope } from "@/core/octroi";
+import { jourDeParis } from "@/core/statut";
 import { env } from "@/lib/env";
 import { type EmissionDeJeton, ErreurFgp, emettreUnJeton, type JetonEmis } from "@/lib/fgp";
 
@@ -1555,7 +1556,7 @@ export function planifierOctroiScalingo(
  * Sans aucun accès transmis, une seule étape pour tout le parc, manuelle, sur la vue
  * consolidée : c'est ce qui reste faisable quand on ne sait pas où la personne est.
  */
-const jour = (date: Date) => date.toISOString().slice(0, 10);
+const jour = (date: Date) => jourDeParis(date);
 
 /**
  * La reprise d'un jeton émis, qui ne peut être que manuelle et déclarative.

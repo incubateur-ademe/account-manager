@@ -1,4 +1,4 @@
-import { jourUTC } from "./statut";
+import { jourMetier } from "./statut";
 
 /**
  * Un rattachement décidé par un opérateur, réduit à ce qui décide.
@@ -22,7 +22,7 @@ export interface RattachementManuel {
  * au même titre qu'une fin de mission.
  */
 export function enCours(rattachement: RattachementManuel, aujourdHui: Date): boolean {
-  return rattachement.endedAt === null && jourUTC(rattachement.until) >= jourUTC(aujourdHui);
+  return rattachement.endedAt === null && jourMetier(rattachement.until) >= jourMetier(aujourdHui);
 }
 
 /**
@@ -59,7 +59,7 @@ export function echeanceEffective(
     if (!enCours(rattachement, aujourdHui)) {
       continue;
     }
-    if (echeance === null || jourUTC(rattachement.until) > jourUTC(echeance)) {
+    if (echeance === null || jourMetier(rattachement.until) > jourMetier(echeance)) {
       echeance = rattachement.until;
     }
   }
@@ -76,5 +76,5 @@ export function echeanceEffective(
  * elle, et lui poser une date de fin la borne au lieu de l'étendre.
  */
 export function prolongeLaMission(missionEnd: Date | null, until: Date): boolean {
-  return missionEnd !== null && jourUTC(until) > jourUTC(missionEnd);
+  return missionEnd !== null && jourMetier(until) > jourMetier(missionEnd);
 }

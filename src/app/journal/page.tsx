@@ -30,7 +30,7 @@ export const dynamic = "force-dynamic";
 const horodatageFr = new Intl.DateTimeFormat("fr-FR", {
   dateStyle: "short",
   timeStyle: "medium",
-  timeZone: "UTC",
+  timeZone: "Europe/Paris",
 });
 
 function celluleActeur(actorKind: ActorKind, actorUsername: string | null) {

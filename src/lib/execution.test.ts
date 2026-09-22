@@ -1034,8 +1034,10 @@ describe("l'exécution autorisée", () => {
 describe("les gardes qui précèdent la moindre lecture", () => {
   it("refuse un plan dont la date est passée, avant même de regarder quoi que ce soit", async () => {
     // Given un plan confirmé sur des accès constatés il y a longtemps : sa date de
-    // validité est derrière nous, mais son empreinte, elle, correspond toujours
-    await figerLePlan("developpeur", new Date(PLUS_TARD.getTime() - 60_000));
+    // validité est derrière nous, mais son empreinte, elle, correspond toujours. La
+    // veille et non une minute avant, un terme étant un jour entier depuis que les
+    // dates se comparent à Paris.
+    await figerLePlan("developpeur", new Date(PLUS_TARD.getTime() - 24 * 60 * 60 * 1000));
 
     // When on lance l'exécution
     const refuse = await lancer();

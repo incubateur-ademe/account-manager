@@ -9,6 +9,7 @@ import { ISSUE_DOSSIER } from "@/core/execution";
 import { LIBELLE_TIER } from "@/core/lexique";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 import { CLE_INCUBATEUR, SYSTEME_MODELE } from "@/core/modele-plan";
+import { dateLocale } from "@/ui/dates";
 import { BoutonClore, BoutonConfirmer, Pointage, Validation } from "./Pointage";
 import DossierPage from "./page";
 
@@ -186,7 +187,9 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-const enFrancais = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long" });
+// Importé plutôt que refabriqué : un formateur écrit ici prendrait le fuseau de la
+// machine, et ce fichier passerait ou tomberait selon l'endroit d'où on le joue.
+const enFrancais = dateLocale;
 
 interface Noeud {
   type?: unknown;

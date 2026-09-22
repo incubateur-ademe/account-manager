@@ -175,7 +175,10 @@ interface InvitationApi {
 }
 
 /** Le connecteur formate ses propres dates : le socle ne sait pas ce qu'elles disent. */
-const DATE_FR = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "UTC" });
+const DATE_FR = new Intl.DateTimeFormat("fr-FR", {
+  dateStyle: "long",
+  timeZone: "Europe/Paris",
+});
 
 /**
  * Une date que le fournisseur rend mal formée ne coûte pas la collecte entière :

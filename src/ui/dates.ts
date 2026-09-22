@@ -1,25 +1,26 @@
 /**
- * En UTC, et non dans le fuseau du lecteur : les échéances et les phases sont des
- * colonnes `@db.Date`, donc des minuits UTC. Les rendre à Paris les reculerait d'un
- * jour la moitié de l'année, sur les écrans mêmes où une date décide d'une coupure.
+ * À Paris, comme tout ce que cet outil rend et compare. Une colonne `@db.Date` est un
+ * minuit UTC, donc une ou deux heures du matin à Paris, donc le même jour : ce qui
+ * change ici sont les instants que l'outil calcule lui-même.
  */
-export const dateFr = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "UTC" });
+export const dateFr = new Intl.DateTimeFormat("fr-FR", {
+  dateStyle: "long",
+  timeZone: "Europe/Paris",
+});
 
 /**
- * Sans fuseau déclaré, donc dans celui du processus qui rend, et non dans celui du
- * lecteur qu'un composant serveur ne connaît pas. Il sert des `DateTime` complets, un
- * pointage ou une validation, là où `dateFr` sert des colonnes `@db.Date`. Une date
- * rendue près de minuit peut donc s'afficher la veille, et aucun choix n'a été fait
- * contre ça.
+ * Le même jour que `dateFr`, pour des `DateTime` complets plutôt que pour des colonnes
+ * `@db.Date`. Les deux existent encore parce que leurs usages diffèrent, pas leur
+ * fuseau.
  */
-export const dateLocale = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long" });
+export const dateLocale = new Intl.DateTimeFormat("fr-FR", {
+  dateStyle: "long",
+  timeZone: "Europe/Paris",
+});
 
-/**
- * Avec l'heure, pour ce qui expire à un instant et non à la fin d'un jour. Un terme rendu
- * en date seule laisse croire à une journée entière de validité là où il peut tomber le
- * matin. Même fuseau que `dateLocale`, avec la même réserve.
- */
+/** Avec l'heure, pour un horodatage que la date seule ne dirait pas assez. */
 export const instantLocal = new Intl.DateTimeFormat("fr-FR", {
   dateStyle: "long",
   timeStyle: "short",
+  timeZone: "Europe/Paris",
 });

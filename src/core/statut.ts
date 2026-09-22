@@ -16,21 +16,39 @@ export interface StatutOptions {
   staleDays?: number;
 }
 
+const PARIS = new Intl.DateTimeFormat("fr-CA", {
+  timeZone: "Europe/Paris",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
 /**
- * Minuit UTC du jour que porte cette date, sous forme comparable.
+ * Le jour de Paris que porte cette date, sous forme comparable.
  *
  * Comparer deux `Date` brutes fait dépendre le résultat de l'heure à laquelle on
- * regarde : une échéance arrive à minuit UTC, l'instant courant non. Le dernier
- * jour travaillé se retrouve alors déjà passé dès la première seconde de la
- * journée, et un accès se coupe un jour trop tôt.
+ * regarde : une échéance arrive à minuit, l'instant courant non. Le dernier jour
+ * travaillé se retrouve alors déjà passé dès la première seconde de la journée, et un
+ * accès se coupe un jour trop tôt.
+ *
+ * À Paris et non en UTC, parce que c'est le jour que les écrans rendent et celui que
+ * l'amont livre déjà. Une échéance stockée à minuit UTC tombe à une ou deux heures du
+ * matin à Paris, donc le même jour, et ce qui change ici sont les seuls instants que
+ * l'outil calcule lui-même, entre 22h ou 23h UTC et minuit.
  */
-export function jourUTC(date: Date): number {
-  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+/** Le même jour, écrit, pour un message ou pour un système tiers qui attend une date. */
+export function jourDeParis(date: Date): string {
+  return PARIS.format(date);
+}
+
+export function jourMetier(date: Date): number {
+  const [annee = "", mois = "", jour = ""] = PARIS.format(date).split("-");
+  return Date.UTC(Number(annee), Number(mois) - 1, Number(jour));
 }
 
 function daysBetween(from: Date, to: Date): number {
   const day = 24 * 60 * 60 * 1000;
-  return Math.round((jourUTC(to) - jourUTC(from)) / day);
+  return Math.round((jourMetier(to) - jourMetier(from)) / day);
 }
 
 /**

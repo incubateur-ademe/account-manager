@@ -20,7 +20,11 @@ export const metadata: Metadata = { title: "Systèmes couverts" };
 
 export const dynamic = "force-dynamic";
 
-const dateFr = new Intl.DateTimeFormat("fr-FR", { dateStyle: "short", timeStyle: "short" });
+const dateFr = new Intl.DateTimeFormat("fr-FR", {
+  dateStyle: "short",
+  timeStyle: "short",
+  timeZone: "Europe/Paris",
+});
 
 const CAPACITES: { cle: Capability; libelle: string; quoi: string }[] = [
   { cle: "list", libelle: "Lire", quoi: "relever les comptes et leurs accès" },

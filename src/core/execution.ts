@@ -1,6 +1,7 @@
 import type { PrecheckResult, RiskLevel, StepOutcome } from "@/core/connector";
 import type { EtatEtape, EtatPlan, Verdict } from "@/core/dossier";
 import { plusValableApres } from "@/core/plan";
+import { jourDeParis } from "@/core/statut";
 
 /**
  * Ce que le journal retient d'un geste : l'action a eu lieu, elle a échoué, ou elle
@@ -59,7 +60,7 @@ export function refusDePeremption(expiresAt: Date, maintenant: Date, issue: stri
     return null;
   }
 
-  return `Ce plan valait jusqu'au ${expiresAt.toISOString().slice(0, 10)}. Rien n'a été ni lu ni écrit. Un plan confirmé ne se recalcule plus. ${issue}`;
+  return `Ce plan valait jusqu'au ${jourDeParis(expiresAt)}. Rien n'a été ni lu ni écrit. Un plan confirmé ne se recalcule plus. ${issue}`;
 }
 
 /**

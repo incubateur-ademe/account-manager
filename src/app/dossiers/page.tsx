@@ -14,6 +14,7 @@ import {
 import { LIBELLE_DOSSIER, LIBELLE_ETAT_DOSSIER } from "@/core/libelle-dossier";
 import { prisma } from "@/lib/db";
 import { requireOperateur } from "@/lib/session";
+import { dateLocale } from "@/ui/dates";
 
 export const metadata: Metadata = { title: "Dossiers" };
 
@@ -26,8 +27,6 @@ const SEVERITE: Record<EtatDossier, "success" | "info" | "warning"> = {
   CANCELLED: "info",
   DONE: "success",
 };
-
-const dateLocale = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long" });
 
 export default async function DossiersPage() {
   await requireOperateur();
