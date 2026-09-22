@@ -25,7 +25,7 @@ import {
 } from "@/core/membre";
 import { canalDuDroit, participationVivante } from "@/core/participation";
 import { declaresManquants } from "@/core/perimetre";
-import { jourUTC } from "@/core/statut";
+import { jourMetier } from "@/core/statut";
 import type { PersonSource } from "@/generated/prisma/enums";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
@@ -515,7 +515,7 @@ export async function syncPerimetre(
           { identities: { some: { vanishedAt: null } } },
           {
             startupAssignments: {
-              some: { endedAt: null, until: { gte: new Date(jourUTC(now)) } },
+              some: { endedAt: null, until: { gte: new Date(jourMetier(now)) } },
             },
           },
         ],

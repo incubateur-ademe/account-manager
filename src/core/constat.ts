@@ -9,7 +9,7 @@ import {
   type RattachementManuel,
   startupsEffectives,
 } from "./rattachement-startup";
-import { jourUTC } from "./statut";
+import { jourMetier } from "./statut";
 
 export type ConstatKind =
   | "SCOPE_EXIT"
@@ -240,7 +240,7 @@ function startupsToutesTerminees(
   // est l'effective : prolonger un accès remet la personne en poste, et c'est
   // exactement la situation que ce constat doit rendre visible.
   const echeance = echeanceEffective(personne.missionEnd, personne.rattachementsManuels, today);
-  if (echeance !== null && jourUTC(echeance) < jourUTC(today)) {
+  if (echeance !== null && jourMetier(echeance) < jourMetier(today)) {
     return null;
   }
 

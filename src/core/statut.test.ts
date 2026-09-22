@@ -1,11 +1,41 @@
 import { describe, expect, it } from "vitest";
 
-import { statutDe, statutDePersonne } from "./statut";
+import { jourMetier, statutDe, statutDePersonne } from "./statut";
 
 const AUJOURDHUI = new Date("2026-08-08T10:00:00Z");
 const OPTIONS = { graceDays: 7, soonDays: 30, staleDays: 180 };
 
 const le = (iso: string) => new Date(`${iso}T00:00:00Z`);
+
+describe("le jour que le domaine compare", () => {
+  it("est celui de Paris, et laisse un minuit UTC sur son propre jour", () => {
+    // Given deux instants du même jour UTC, dont un après la bascule de Paris,
+    const midi = new Date("2026-03-05T12:00:00Z");
+    const avantMinuit = new Date("2026-03-05T23:30:00Z");
+
+    // Then ils ne sont pas du même jour métier : à 23h30 UTC, Paris est déjà au 6. C'est
+    // toute la raison de ce calcul, l'outil comparant ce que ses écrans rendent.
+    expect(jourMetier(avantMinuit)).toBeGreaterThan(jourMetier(midi));
+    expect(jourMetier(avantMinuit)).toBe(Date.UTC(2026, 2, 6));
+
+    // Given un minuit UTC, ce qu'est une colonne de date une fois relue,
+    const minuitUTC = new Date("2026-03-05T00:00:00Z");
+
+    // Then il reste sur son jour, Paris étant en avance sur UTC toute l'année. Les quatre
+    // colonnes de dates du schéma ne bougent donc pas, et une échéance ne se coupe pas la
+    // veille.
+    expect(jourMetier(minuitUTC)).toBe(Date.UTC(2026, 2, 5));
+
+    // Then la même chose en août, quand l'écart vaut deux heures et non une.
+    expect(jourMetier(new Date("2026-08-15T00:00:00Z"))).toBe(Date.UTC(2026, 7, 15));
+    expect(jourMetier(new Date("2026-08-15T22:30:00Z"))).toBe(Date.UTC(2026, 7, 16));
+
+    // Then une date invalide rend « pas un nombre » plutôt que de lever. Les appelants
+    // testent ce résultat pour refuser une saisie, et une exception passerait avant leur
+    // garde, donc avant le message qui dit quoi corriger.
+    expect(jourMetier(new Date("pas une date"))).toBeNaN();
+  });
+});
 
 describe("statut d'une personne selon son échéance de mission", () => {
   it("reste actif tant que l'échéance est lointaine", () => {

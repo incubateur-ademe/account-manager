@@ -1,5 +1,5 @@
 import type { Verdict } from "@/core/dossier";
-import { jourUTC } from "@/core/statut";
+import { jourMetier } from "@/core/statut";
 
 /**
  * Ce qu'une dérogation vise, et la seule forme sous laquelle elle le vise.
@@ -120,7 +120,7 @@ export function derogationsEnCours(
   derogations: readonly Derogation[],
   instant: Date,
 ): readonly Derogation[] {
-  const jour = jourUTC(instant);
+  const jour = jourMetier(instant);
   return derogations.filter((derogation) => {
     if (derogation.poseeLe !== null && derogation.poseeLe.getTime() > instant.getTime()) {
       return false;
@@ -128,7 +128,7 @@ export function derogationsEnCours(
     if (derogation.leveeLe !== null && derogation.leveeLe.getTime() <= instant.getTime()) {
       return false;
     }
-    return derogation.echeance === null || jourUTC(derogation.echeance) >= jour;
+    return derogation.echeance === null || jourMetier(derogation.echeance) >= jour;
   });
 }
 
@@ -225,8 +225,8 @@ export function poseAdmissible(
     return { possible: false, raison: "Dites pourquoi cet écart est admis." };
   }
 
-  const jour = jourUTC(maintenant);
-  const echeance = jourUTC(demande.echeance);
+  const jour = jourMetier(maintenant);
+  const echeance = jourMetier(demande.echeance);
   if (Number.isNaN(echeance)) {
     return { possible: false, raison: "Cette échéance n'est pas une date." };
   }

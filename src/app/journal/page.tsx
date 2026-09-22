@@ -30,7 +30,7 @@ export const dynamic = "force-dynamic";
 const horodatageFr = new Intl.DateTimeFormat("fr-FR", {
   dateStyle: "short",
   timeStyle: "medium",
-  timeZone: "UTC",
+  timeZone: "Europe/Paris",
 });
 
 function celluleActeur(actorKind: ActorKind, actorUsername: string | null) {
@@ -178,7 +178,7 @@ export default async function JournalPage(props: {
           </p>
 
           <Table
-            headers={["Horodatage (UTC)", "Acteur", "Action", "Résultat", "Exécution", "Détail"]}
+            headers={["Horodatage", "Acteur", "Action", "Résultat", "Exécution", "Détail"]}
             data={evenements.map((evenement) => [
               <span key="horodatage" className={fr.cx("fr-text--sm")}>
                 {horodatageFr.format(evenement.at)}

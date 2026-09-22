@@ -772,7 +772,7 @@ encore. Elle ne travaille donc plus sur rien au sein de l'incubateur.
 Trois garde-fous. Le constat épargne qui tient son appartenance d'une équipe (`DECLARED`,
 `BOTH`) : son titre ne dépend d'aucune startup, le lui opposer serait un contresens. Il
 ne se lève **pas** sur une échéance effective déjà passée, où elle dit la même chose et
-la dit mieux ; la comparaison tronque au jour UTC, si bien que le dernier jour travaillé
+la dit mieux ; la comparaison tronque au jour de Paris, si bien que le dernier jour travaillé
 compte encore comme travaillé. Et une **phase inconnue interdit de conclure** : on ne
 propose pas une coupure sur une supposition.
 

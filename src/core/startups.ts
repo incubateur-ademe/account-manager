@@ -7,7 +7,7 @@ import {
   type RattachementManuel,
   startupsEffectives,
 } from "./rattachement-startup";
-import { jourUTC, type Statut, type StatutOptions, statutDePersonne } from "./statut";
+import { jourMetier, type Statut, type StatutOptions, statutDePersonne } from "./statut";
 
 export type VueStartups = "actives" | "terminales" | "sorties" | "tout";
 
@@ -235,7 +235,7 @@ export function assemblerMembres(
       if (!enCours(rattachement, aujourdHui)) {
         continue;
       }
-      if (manuel === null || jourUTC(rattachement.until) > jourUTC(manuel.until)) {
+      if (manuel === null || jourMetier(rattachement.until) > jourMetier(manuel.until)) {
         manuel = rattachement;
       }
     }
@@ -256,7 +256,7 @@ export function assemblerMembres(
         if (rattachement.endedAt !== null) {
           continue;
         }
-        if (echu === null || jourUTC(rattachement.until) > jourUTC(echu.until)) {
+        if (echu === null || jourMetier(rattachement.until) > jourMetier(echu.until)) {
           echu = rattachement;
         }
       }

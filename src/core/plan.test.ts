@@ -156,9 +156,25 @@ describe("péremption d'un plan", () => {
     expect(peremptionDuPlan(plan, "9999ffff", MAINTENANT).obsolete).toBe(true);
   });
 
-  it("tient un plan pour périmé le jour même de son échéance", () => {
+  it("laisse un plan valable tout le jour de son échéance, et le périme le lendemain", () => {
+    // Given un plan dont le terme tombe aujourd'hui,
     const aLEcheance = { ...plan, expiresAt: MAINTENANT };
-    expect(peremptionDuPlan(aLEcheance, "abcd1234", MAINTENANT).perime).toBe(true);
+
+    // Then il vaut encore, parce qu'un terme est un jour et que le dernier jour compte
+    // en entier. L'instant exact ne décide de rien, sans quoi un plan écrit à quatorze
+    // heures cesserait de valoir à quatorze heures sept jours plus tard, à une minute
+    // que personne n'a choisie.
+    expect(peremptionDuPlan(aLEcheance, "abcd1234", MAINTENANT).perime).toBe(false);
+
+    // Then le jour du terme finit à Paris, et non en UTC : un plan jugé à 23h30 UTC est
+    // jugé le lendemain.
+    const finDuJourAParis = new Date("2026-03-05T23:30:00Z");
+    const termeLaVeille = { ...plan, expiresAt: new Date("2026-03-05T12:00:00Z") };
+    expect(peremptionDuPlan(termeLaVeille, "abcd1234", finDuJourAParis).perime).toBe(true);
+
+    // Then et il périme bien, le lendemain du jour de son terme.
+    const lendemain = new Date(MAINTENANT.getTime() + 24 * 60 * 60 * 1000);
+    expect(peremptionDuPlan(aLEcheance, "abcd1234", lendemain).perime).toBe(true);
   });
 });
 

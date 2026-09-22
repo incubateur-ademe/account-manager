@@ -9,8 +9,7 @@ import { dateFr } from "./dates";
  * chacun de leur côté finissent par dire deux choses différentes du même état, et c'est
  * précisément là qu'un opérateur cesse de croire ce qu'il lit.
  *
- * L'échéance passe par `dateFr`, en UTC : le dernier jour couvert est une date sans heure,
- * qu'un formateur du fuseau du lecteur reculerait d'un jour la moitié de l'année.
+ * L'échéance passe par `dateFr`, comme tout jour que cet outil rend.
  */
 export function tolerance(
   couverts: ReadonlyMap<string, Derogation>,

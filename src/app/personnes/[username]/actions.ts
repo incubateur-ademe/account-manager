@@ -1,7 +1,7 @@
 "use server";
 
 import { prolongeLaMission } from "@/core/rattachement-startup";
-import { jourUTC } from "@/core/statut";
+import { jourMetier } from "@/core/statut";
 import { actionTracee } from "@/lib/actions";
 import {
   appartenanceDeLaLigne,
@@ -163,7 +163,7 @@ export async function rattacherAStartup(
   }
 
   const maintenant = new Date();
-  if (jourUTC(until) < jourUTC(maintenant)) {
+  if (jourMetier(until) < jourMetier(maintenant)) {
     return {
       erreur: "Cette date est déjà passée. Indiquez aujourd'hui ou un jour à venir.",
     };

@@ -45,10 +45,18 @@ describe("une tolérance couvre un temps borné, et rien au-delà", () => {
     const derogation = toleree();
     const ecart = [constat(COMPTE, "UNREGISTERED:github:1042")];
 
-    // When on la juge au fil des jours,
-    const auDernierJourALAube = derogationsEnCours([derogation], dans(7, "00:00:01"));
-    const auDernierJourLeSoir = derogationsEnCours([derogation], dans(7, "23:59:59"));
-    const leLendemain = derogationsEnCours([derogation], dans(8, "00:00:01"));
+    // When on la juge au fil des jours. Les instants portent leur décalage, parce que le
+    // jour qui décide est celui de Paris : le 8 y finit à 21h59 UTC en septembre, et un
+    // instant écrit en UTC dirait le lendemain sans que personne ne le voie.
+    const auDernierJourALAube = derogationsEnCours(
+      [derogation],
+      new Date("2026-09-08T00:00:01+02:00"),
+    );
+    const auDernierJourLeSoir = derogationsEnCours(
+      [derogation],
+      new Date("2026-09-08T23:59:59+02:00"),
+    );
+    const leLendemain = derogationsEnCours([derogation], new Date("2026-09-09T00:00:01+02:00"));
 
     // Then elle couvre ce dernier jour du premier au dernier instant, parce que personne
     // n'écrit une date en pensant « jusqu'à cette nuit »,
