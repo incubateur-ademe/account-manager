@@ -1606,7 +1606,7 @@ function reprisesDesJetons(
 
 export function planifierDepartScalingo(
   username: string,
-  acces: readonly { resourceExternalId?: string; resourceLabel?: string; role?: string }[],
+  acces: readonly { resourceExternalId?: string; resourceLabel?: string; role: string }[],
   adresse: string | undefined,
   credential: boolean,
   engagements: readonly OpenEngagement[] = [],
@@ -1618,8 +1618,15 @@ export function planifierDepartScalingo(
   const possedees = constates.filter((un) => un.role === ROLE_PROPRIETAIRE);
   const cibles = constates.filter((un) => un.role !== ROLE_PROPRIETAIRE);
 
-  const coupures: PlannedStep[] =
-    constates.length === 0 || adresse === undefined
+  // Des applications constatées, et aucune collaboration parmi elles : il n'y a rien à
+  // couper, le transfert porte tout. Le geste consolidé affirmerait ici une
+  // collaboration à retirer qui n'existe pas, et il se solderait sur une liste où la
+  // personne ne figure pas.
+  const rienACouper = cibles.length === 0 && constates.length > 0;
+
+  const coupures: PlannedStep[] = rienACouper
+    ? []
+    : constates.length === 0 || adresse === undefined
       ? [
           {
             systemKey: "scalingo",

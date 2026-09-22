@@ -1090,6 +1090,27 @@ describe("ce que le connecteur Scalingo propose à un départ", () => {
       "transferer-la-propriete",
       "renouveler-les-secrets",
     ]);
+
+    // Given le même propriétaire, dont le socle ne connaît aucune adresse,
+    const sansAdresse = planifierDepartScalingo(
+      "camille.exemple",
+      [
+        {
+          resourceExternalId: "app-annuaire",
+          resourceLabel: "service-annuaire, osc-fr1",
+          role: "owner",
+        },
+      ],
+      undefined,
+      false,
+    );
+
+    // Then toujours aucun retrait. L'adresse manque pour viser une collaboration, et
+    // c'est sans effet ici puisqu'il n'y en a aucune à viser.
+    expect(sansAdresse.map(({ action }) => action)).toEqual([
+      "transferer-la-propriete",
+      "renouveler-les-secrets",
+    ]);
   });
 
   it("n'ouvre un accès que sous un scope validé, et pèse le rôle qu'il accorde", async () => {
