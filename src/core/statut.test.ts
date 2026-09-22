@@ -29,6 +29,11 @@ describe("le jour que le domaine compare", () => {
     // Then la même chose en août, quand l'écart vaut deux heures et non une.
     expect(jourMetier(new Date("2026-08-15T00:00:00Z"))).toBe(Date.UTC(2026, 7, 15));
     expect(jourMetier(new Date("2026-08-15T22:30:00Z"))).toBe(Date.UTC(2026, 7, 16));
+
+    // Then une date invalide rend « pas un nombre » plutôt que de lever. Les appelants
+    // testent ce résultat pour refuser une saisie, et une exception passerait avant leur
+    // garde, donc avant le message qui dit quoi corriger.
+    expect(jourMetier(new Date("pas une date"))).toBeNaN();
   });
 });
 

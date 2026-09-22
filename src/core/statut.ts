@@ -42,6 +42,12 @@ export function jourDeParis(date: Date): string {
 }
 
 export function jourMetier(date: Date): number {
+  // `Intl` lève sur une date invalide là où l'arithmétique rendait `NaN`. Les appelants
+  // testent ce `NaN` pour refuser une saisie, et lever ici passerait avant leur garde.
+  if (Number.isNaN(date.getTime())) {
+    return Number.NaN;
+  }
+
   // Par parts plutôt qu'en découpant la chaîne : un composant absent rend alors `NaN`,
   // qui se propage, là où un défaut de découpage vaudrait zéro et donnerait un jour faux
   // sans que rien ne le dise.

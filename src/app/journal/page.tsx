@@ -178,7 +178,7 @@ export default async function JournalPage(props: {
           </p>
 
           <Table
-            headers={["Horodatage (UTC)", "Acteur", "Action", "Résultat", "Exécution", "Détail"]}
+            headers={["Horodatage", "Acteur", "Action", "Résultat", "Exécution", "Détail"]}
             data={evenements.map((evenement) => [
               <span key="horodatage" className={fr.cx("fr-text--sm")}>
                 {horodatageFr.format(evenement.at)}
