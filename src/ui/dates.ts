@@ -6,8 +6,10 @@
 export const dateFr = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "UTC" });
 
 /**
- * Dans le fuseau du lecteur, et non en UTC : ce formateur rend des `DateTime` complets,
- * un pointage ou une validation, dont l'heure est celle d'un geste réel. Les reculer à
- * UTC afficherait la veille sur tout ce qui a eu lieu après une heure du matin.
+ * Sans fuseau déclaré, donc dans celui du processus qui rend, et non dans celui du
+ * lecteur qu'un composant serveur ne connaît pas. Il sert des `DateTime` complets, un
+ * pointage ou une validation, là où `dateFr` sert des colonnes `@db.Date`. Une date
+ * rendue près de minuit peut donc s'afficher la veille. Écart connu et non traité ici,
+ * voir #127.
  */
 export const dateLocale = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long" });

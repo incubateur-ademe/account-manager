@@ -58,13 +58,6 @@ import { LIBELLE_LANCEMENT } from "./redaction-execution";
 
 export const dynamic = "force-dynamic";
 
-/**
- * Sans fuseau, donc dans celui du lecteur, et c'est ce qu'il faut pour un horodatage :
- * un plan confirmé à minuit et demi s'est bien confirmé ce jour-là pour qui l'a fait.
- * Une échéance, elle, est une date sans heure côté base, que ce formateur reculerait
- * d'un jour la moitié de l'année : elle passe par `dateFr`, en UTC.
- */
-
 const ECART: Record<RaisonDEcart, string> = {
   doublon: "déjà demandée plus haut",
   "doublon-sans-controle": "déjà demandée plus haut, sans son second regard",

@@ -28,8 +28,26 @@ interface MarcheASuivre {
   doneWhen?: string;
 }
 
+/**
+ * Champ par champ, et non par un cast sur l'objet entier : `manual` est une colonne
+ * `Json` qu'un connecteur écrit, rien ne garantit ses types, et une valeur qui n'est pas
+ * une chaîne finirait rendue telle quelle ou dans un `href`. Un champ fautif se perd
+ * seul, les autres restant servis.
+ */
 function marche(valeur: unknown): MarcheASuivre {
-  return valeur && typeof valeur === "object" ? (valeur as MarcheASuivre) : {};
+  if (valeur === null || typeof valeur !== "object") {
+    return {};
+  }
+
+  const lu = valeur as Record<string, unknown>;
+  const chaine = (champ: keyof MarcheASuivre): string | undefined =>
+    typeof lu[champ] === "string" ? lu[champ] : undefined;
+
+  return {
+    runbook: chaine("runbook"),
+    deeplink: chaine("deeplink"),
+    doneWhen: chaine("doneWhen"),
+  };
 }
 
 export interface EtapeFigee {
