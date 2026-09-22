@@ -40,6 +40,42 @@ describe("ce que les écrans des modèles promettent", () => {
     expect(dit).not.toMatch(MOTS_DU_MODELE);
   });
 
+  it("dit ce qui manque quand aucune étape de départ n'attend de second regard, puis le geste", () => {
+    // Given le seul avertissement de cet écran qu'aucune donnée ne chiffre. Les autres
+    // comptent des étapes ou des modèles, celui-ci constate une absence.
+    const { titre, quoiFaire } = MODELE.secondRegard;
+
+    // Then le titre nomme l'absence sans la ponctuer, ce que le système de design refuse
+    // sur un en-tête,
+    expect(titre).toMatch(/Aucune étape de départ/u);
+    expect(titre).not.toMatch(/[.!?]$/u);
+
+    // Then la phrase constate d'abord ce qui se passe aujourd'hui, et elle ne promet pas
+    // plus que le code : sans contrôleur, `validationApresPointage` rend « NONE », donc
+    // l'étape est faite par qui la pointe, et rien n'attend derrière.
+    expect(quoiFaire).toMatch(/sans contrôleur/u);
+    expect(quoiFaire).toMatch(/la personne même qu'elle concerne/u);
+
+    // Then elle dit ensuite le geste, à l'impératif, et elle nomme le champ tel que le
+    // formulaire l'écrit : une aide qui invente son propre mot fait chercher ce qui
+    // n'existe pas.
+    expect(quoiFaire).toMatch(/Posez un contrôleur/u);
+    expect(quoiFaire).toMatch(/la personne concernée/u);
+
+    // Then elle ne dit pas pourquoi la règle existe. La garantie qu'elle tient a sa place
+    // dans l'architecture, pas dans un écran, et l'y recopier ferait lire un exposé à qui
+    // voulait savoir quoi faire.
+    expect(quoiFaire).not.toMatch(/bout en bout|garantie|second regard/iu);
+    expect(quoiFaire).not.toMatch(MOTS_DU_MODELE);
+
+    // Then aucun des deux n'ouvre une justification par deux-points, ni ne revient sur ce
+    // qu'il vient d'affirmer.
+    for (const phrase of [titre, quoiFaire]) {
+      expect(phrase).not.toMatch(/ :/u);
+      expect(phrase).not.toMatch(/ce qui ne|ce qui n'est pas|cela dit|pour autant/iu);
+    }
+  });
+
   it("ne laisse pas une étape neutralisée disparaître en silence, et le dit pareil des deux côtés", () => {
     // Given le même compte, annoncé depuis le modèle de l'incubateur qui referme et
     // depuis celui de la startup qui le subit. Les deux écrans disaient la phrase

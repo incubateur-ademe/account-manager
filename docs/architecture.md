@@ -1216,10 +1216,12 @@ serait indiscernable d'un doublon ordinaire.
 **Le porteur passe avant l'opérateur devant son propre dossier.** Sans cette priorité,
 quelqu'un instruirait son propre départ et validerait ses propres cases. Elle lui
 retire la signature et non le pointage : un opérateur qui part coche ses étapes, celles
-qu'un contrôleur attend restent en attente, et c'est la règle qui interdit de valider
-sa propre déclaration, comparée sur le nom et non sur le rôle, qui l'empêche de les
-signer. La lui retirer au pointage aussi rendait son propre départ non enregistrable,
-sur un outil qui compte un mainteneur.
+qu'un contrôleur attend restent en attente, et c'est son rôle de personne concernée,
+reconnu avant celui d'opérateur, qui l'empêche de les signer. La règle qui interdit de
+valider sa propre déclaration, comparée sur le nom et non sur le rôle, joue sur le
+dossier d'un tiers, contre l'opérateur qui validerait ce qu'il vient de déclarer. La lui
+retirer au pointage aussi rendait son propre départ non enregistrable, sur un outil qui
+compte un mainteneur.
 
 **Et sur un outil qui n'en compte qu'un, une étape sous contrôle rend son propre départ
 inclôturable.** Il la pointe, elle attend, il ne peut pas la signer, donc le plan ne se
@@ -1329,7 +1331,8 @@ paquet est donc à suivre, et à relever avant ce retrait.
   ni les connecteurs ni les profils n'en posent. La moitié « personne n'instruit son
   propre départ de bout en bout » est donc tenue par une donnée et non par du code : elle
   devient vraie le jour où un opérateur pose ce contrôleur sur les étapes de départ qu'il
-  juge sensibles, et ce geste n'est pas une livraison.
+  juge sensibles, et ce geste n'est pas une livraison. L'écran des modèles avertit tant
+  qu'aucune étape de départ n'attend de second regard, et se tait dès qu'une l'attend.
 - Rotation du triplet OVH avant toute mise en service d'un chemin d'écriture.
 - Porteur du jeton SCIM Notion : compte de service propriétaire de l'organisation, ou à
   défaut rotation avant toute mutation de rôle de son porteur.
