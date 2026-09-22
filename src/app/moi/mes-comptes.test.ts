@@ -261,9 +261,7 @@ describe("les comptes qu'on connaît à quelqu'un, et ce que leur absence vaut",
     expect(jamaisLu).toContain(MES_COMPTES.muets.titre(3));
     expect(jamaisLu).toContain(MES_COMPTES.muets.entete);
     expect(jamaisLu).toContain("n'a jamais été lu");
-    expect(jamaisLu).toContain(
-      "Aucun système couvert n'a encore été lu. Cette liste ne dit rien des accès que vous détenez.",
-    );
+    expect(jamaisLu).toContain(MES_COMPTES.aucunCompte([]));
 
     // Given un système lu à l'instant, un deuxième en échec, un troisième lu au-delà du
     // seuil admis
@@ -279,9 +277,15 @@ describe("les comptes qu'on connaît à quelqu'un, et ce que leur absence vaut",
     // Then seul le premier qualifie le vide, et les deux autres portent chacun sa
     // raison, celle du troisième avec son âge
     expect(partiel).toContain(
-      "Aucun compte ne vous est rattaché sur les systèmes déjà lus (GitHub).",
+      "Aucun compte ne vous est rattaché sur les systèmes lus dans les délais (GitHub).",
     );
     expect(partiel).toContain(MES_COMPTES.muets.titre(2));
+
+    // Then elle ne dit rien de ce qu'elle n'énumère pas : les deux absents ont bien été
+    // lus, l'un en échec et l'autre au-delà du seuil, et les déclarer jamais lus serait
+    // faux dès la première collecte ratée
+    expect(MES_COMPTES.aucunCompte(["GitHub"])).not.toMatch(/jamais|encore/u);
+    expect(MES_COMPTES.aucunCompte([])).not.toMatch(/jamais|encore/u);
     expect(partiel).toContain("Notion a échoué à la dernière collecte");
     expect(partiel).toContain("Scalingo n'a pas été lu depuis 50 heures");
 

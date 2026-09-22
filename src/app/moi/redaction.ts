@@ -26,10 +26,16 @@ export const MES_COMPTES = {
   ficheInconnue:
     "Aucune fiche suivie ici ne porte votre identifiant. Vos comptes sur les systèmes couverts ne peuvent donc pas vous être rattachés. Demandez à l'équipe transverse de l'incubateur de créer votre fiche.",
 
+  /**
+   * Ce que la liste énumère est ce qui a été lu **dans les délais**, et rien d'autre. Un
+   * système en échec ou périmé en est absent sans n'avoir jamais été lu, si bien qu'une
+   * phrase qui le dirait serait fausse dès la première collecte ratée. Ce qui manque à
+   * chacun, l'alerte des muets le nomme juste au-dessus.
+   */
   aucunCompte: (observes: readonly string[]): string =>
     observes.length === 0
-      ? "Aucun système couvert n'a encore été lu. Cette liste ne dit rien des accès que vous détenez."
-      : `Aucun compte ne vous est rattaché sur les systèmes déjà lus (${enumeration(observes)}). Un système absent de cette liste n'a jamais été lu.`,
+      ? "Aucun système couvert n'a été lu dans les délais. Cette liste ne dit rien des accès que vous détenez."
+      : `Aucun compte ne vous est rattaché sur les systèmes lus dans les délais (${enumeration(observes)}).`,
 
   /**
    * L'invariant du dépôt dit à voix haute plutôt que dissimulé. Un rattachement non sûr
