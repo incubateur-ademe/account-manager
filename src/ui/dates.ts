@@ -13,3 +13,13 @@ export const dateFr = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", time
  * contre ça.
  */
 export const dateLocale = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long" });
+
+/**
+ * Avec l'heure, pour ce qui expire à un instant et non à la fin d'un jour. Un terme rendu
+ * en date seule laisse croire à une journée entière de validité là où il peut tomber le
+ * matin. Même fuseau que `dateLocale`, avec la même réserve.
+ */
+export const instantLocal = new Intl.DateTimeFormat("fr-FR", {
+  dateStyle: "long",
+  timeStyle: "short",
+});

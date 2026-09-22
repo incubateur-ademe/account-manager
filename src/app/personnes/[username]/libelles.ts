@@ -77,6 +77,11 @@ export function expliquerStatut(
 export const GESTE = {
   titre: "Un geste attend votre confirmation",
 
+  /**
+   * Avec l'heure, parce que le terme est un instant : sept jours après l'écriture, et
+   * non la fin du septième jour. La date seule promettrait des heures de validité que le
+   * brouillon n'a pas.
+   */
   terme: (expiresAt: Date, format: Intl.DateTimeFormat): string =>
     `Ce brouillon vaut jusqu'au ${format.format(expiresAt)}.`,
 

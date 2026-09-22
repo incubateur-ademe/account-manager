@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { EtapeFigee } from "@/app/dossiers/[id]/EtapeOperateur";
+import { instantLocal } from "@/ui/dates";
 
 import type { GesteEnAttente } from "./geste-en-attente";
 import { GESTE } from "./libelles";
@@ -90,9 +91,11 @@ describe("le brouillon de geste sur la fiche de la personne", () => {
 
     // Then le terme se dit, parce qu'un brouillon périmé ne se confirme plus et que
     // rien d'autre ne l'annonce,
-    expect(
-      screen.getByText(GESTE.terme(TERME, new Intl.DateTimeFormat("fr-FR", { dateStyle: "long" }))),
-    ).toBeDefined();
+    // Then le terme se dit avec son heure, parce qu'il tombe à un instant : sept jours
+    // après l'écriture, et non la fin du septième jour. La date seule laisserait croire
+    // à des heures de validité que le brouillon n'a pas.
+    expect(screen.getByText(GESTE.terme(TERME, instantLocal))).toBeDefined();
+    expect(instantLocal.format(TERME)).toMatch(/\d{1,2}:\d{2}/u);
 
     // Then le chemin de retour est servi, et nommé par le système d'où le geste est parti,
     const retour = screen.getByRole("link", { name: GESTE.reposer("Scalingo") });

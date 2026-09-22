@@ -6,7 +6,7 @@ import { EtapeOperateur } from "@/app/dossiers/[id]/EtapeOperateur";
 import { BoutonConfirmer } from "@/app/dossiers/[id]/Pointage";
 import type { ActeurNomme, Declarant } from "@/core/dossier";
 import { SENS_D_UN_GESTE } from "@/core/geste";
-import { dateLocale } from "@/ui/dates";
+import { instantLocal } from "@/ui/dates";
 
 import type { GesteEnAttente } from "./geste-en-attente";
 import { GESTE } from "./libelles";
@@ -40,7 +40,7 @@ export function SectionGeste({
     <section className={fr.cx("fr-mt-4w")}>
       <h2 className={fr.cx("fr-h5")}>{GESTE.titre}</h2>
 
-      <p>{GESTE.terme(geste.expiresAt, dateLocale)}</p>
+      <p>{GESTE.terme(geste.expiresAt, instantLocal)}</p>
 
       {bloque ? (
         <Alert
