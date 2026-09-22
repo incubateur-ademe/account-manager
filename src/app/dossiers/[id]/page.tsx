@@ -9,7 +9,6 @@ import { notFound } from "next/navigation";
 import { CONNECTEURS } from "@/connectors";
 import { type Capability, type ResolvedCapability, resolveCapability } from "@/core/connector";
 import {
-  type Acteur,
   type ActeurNomme,
   type Declarant,
   dossierVivant,
@@ -19,10 +18,8 @@ import {
   estSoldee,
   peutAnnuler,
   peutClore,
-  peutValider,
   planPointable,
   roleSurDossier,
-  type SensDossier,
 } from "@/core/dossier";
 import { ISSUE_DOSSIER, peutExecuter } from "@/core/execution";
 import { motDuTier } from "@/core/lexique";
@@ -32,7 +29,6 @@ import {
   ecartDeModele,
   type OrigineFigee,
   origineFigeeSchema,
-  type SaisieAttendue,
 } from "@/core/modele-plan";
 import { etatDuCanal, participationVivante } from "@/core/participation";
 import {
@@ -48,8 +44,8 @@ import { calculerPlan } from "@/lib/dossier";
 import { env } from "@/lib/env";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
-import { dateFr } from "@/ui/dates";
-import { Etape } from "./Etape";
+import { dateFr, dateLocale } from "@/ui/dates";
+import { type EtapeFigee, EtapeOperateur } from "./EtapeOperateur";
 import { type DroitAffiche, Participations } from "./Participations";
 import {
   BoutonAnnuler,
@@ -57,7 +53,6 @@ import {
   BoutonConfirmer,
   BoutonExecuter,
   BoutonRecalculer,
-  Validation,
 } from "./Pointage";
 import { LIBELLE_LANCEMENT } from "./redaction-execution";
 
@@ -69,7 +64,6 @@ export const dynamic = "force-dynamic";
  * Une échéance, elle, est une date sans heure côté base, que ce formateur reculerait
  * d'un jour la moitié de l'année : elle passe par `dateFr`, en UTC.
  */
-const dateLocale = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long" });
 
 const ECART: Record<RaisonDEcart, string> = {
   doublon: "déjà demandée plus haut",
@@ -95,39 +89,6 @@ function origineLisible(origine: OrigineEtape, nomsDeStartup: ReadonlyMap<string
   }
   const ghid = origine.slice(PREFIXE_STARTUP.length);
   return `le modèle de la startup ${nomsDeStartup.get(ghid) ?? ghid}`;
-}
-
-interface MarcheASuivre {
-  runbook?: string;
-  deeplink?: string;
-  doneWhen?: string;
-}
-
-function marche(valeur: unknown): MarcheASuivre {
-  return valeur && typeof valeur === "object" ? (valeur as MarcheASuivre) : {};
-}
-
-interface EtapeFigee {
-  id: string;
-  label: string;
-  systemKey: string;
-  capability: string;
-  idempotencyKey: string;
-  tier: string;
-  riskLevel: string;
-  state: string;
-  validation: string;
-  expectedActor: string;
-  validationBy: string | null;
-  declaredBy: string | null;
-  validatedBy: string | null;
-  validatedAt: Date | null;
-  validationNote: string | null;
-  manual: unknown;
-  reponse: string | null;
-  lastError: string | null;
-  executedAt: Date | null;
-  grantExpiresAt: Date | null;
 }
 
 /**
@@ -306,142 +267,6 @@ function attenteDeControle(enAttente: number, restantes: number): string {
  * champ de plus sur lui : c'est ce qui garantit qu'aucun de ces ajouts n'atteindra la
  * route d'un participant sans qu'on l'ait décidé.
  */
-function EtapeOperateur({
-  etape,
-  saisie,
-  voie,
-  pointable,
-  etatPlan,
-  sens,
-  declarant,
-  valideur,
-}: {
-  etape: EtapeFigee;
-  saisie: SaisieAttendue | null;
-  /** L'écart entre le tier figé et la voie du jour, ou ce qui manque pour faire mieux. */
-  voie: string | null;
-  pointable: boolean;
-  /** L'état du plan, tel que la garde de pointage a besoin de le lire. */
-  etatPlan: EtatPlan;
-  sens: SensDossier;
-  /** Celui qui lit, tel que la garde de pointage a besoin de le connaître. */
-  declarant: Declarant;
-  /** Le même, tel que la garde de validation a besoin de le connaître. */
-  valideur: ActeurNomme;
-}) {
-  const aide = marche(etape.manual);
-  const tier = motDuTier(etape.tier);
-  const validation = etape.validation as EtatValidation;
-
-  // Adossé à la garde plutôt que rejoué ici : l'écran qui connaît la règle de son côté
-  // est ce qui a muré ce dossier le jour où une étape a échoué.
-  const controle =
-    validation === "AWAITING"
-      ? peutValider(
-          {
-            validation,
-            validationBy: etape.validationBy as Acteur | null,
-            declaredBy: etape.declaredBy,
-          },
-          valideur,
-        )
-      : null;
-
-  return (
-    <Etape
-      etape={etape}
-      saisie={saisie}
-      pointable={pointable}
-      etatPlan={etatPlan}
-      sens={sens}
-      declarant={declarant}
-      badges={
-        <>
-          <Badge severity={tier.severite} small noIcon>
-            {tier.libelle}
-          </Badge>{" "}
-          {etape.riskLevel === "HIGH" ? (
-            <Badge severity="error" small noIcon>
-              risque élevé
-            </Badge>
-          ) : null}
-        </>
-      }
-      details={
-        <>
-          {voie ? <p className={fr.cx("fr-text--sm", "fr-mb-1v", "fr-mt-1v")}>{voie}</p> : null}
-          {aide.runbook ? (
-            <p className={fr.cx("fr-text--sm", "fr-mb-1v", "fr-mt-1v")}>{aide.runbook}</p>
-          ) : null}
-          {aide.deeplink ? (
-            <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-              <a
-                href={aide.deeplink}
-                target="_blank"
-                rel="noreferrer"
-                title="Ouvrir la page concernée, nouvelle fenêtre"
-              >
-                Ouvrir la page concernée
-              </a>
-            </p>
-          ) : null}
-          {aide.doneWhen ? (
-            <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-              <em>C'est fait quand : {aide.doneWhen}</em>
-            </p>
-          ) : null}
-          {etape.grantExpiresAt ? (
-            <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-              <strong>Accès accordé jusqu'au {dateLocale.format(etape.grantExpiresAt)}.</strong> Ce
-              terme est compté depuis le calcul de ce plan. Une prolongation de mission ne le
-              repousse pas, et reconduire cet accès demandera un nouveau plan.
-            </p>
-          ) : null}
-        </>
-      }
-      journal={
-        <>
-          {etape.lastError ? (
-            <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-              <strong>Note :</strong> {etape.lastError}
-            </p>
-          ) : null}
-          {etape.executedAt ? (
-            <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-              Déclarée le {dateLocale.format(etape.executedAt)}
-              {etape.declaredBy ? ` par ${etape.declaredBy}` : ""}.
-            </p>
-          ) : null}
-          {validation === "REFUSED" ? (
-            <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-              <strong>Déclaration refusée</strong>
-              {etape.validatedBy ? ` par ${etape.validatedBy}` : ""}
-              {etape.validatedAt ? ` le ${dateLocale.format(etape.validatedAt)}` : ""}
-              {etape.validationNote ? ` : ${etape.validationNote}` : ""}. L'étape est de nouveau à
-              faire.
-            </p>
-          ) : null}
-          {validation === "ACCEPTED" && etape.validatedBy ? (
-            <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>
-              Validée par {etape.validatedBy}
-              {etape.validatedAt ? ` le ${dateLocale.format(etape.validatedAt)}` : ""}.
-            </p>
-          ) : null}
-        </>
-      }
-      controle={
-        pointable && controle ? (
-          <Validation
-            etapeId={etape.id}
-            ecart={etape.state === "SKIPPED"}
-            possible={controle.possible}
-            raison={controle.possible ? null : controle.raison}
-          />
-        ) : null
-      }
-    />
-  );
-}
 
 export async function generateMetadata({
   params,

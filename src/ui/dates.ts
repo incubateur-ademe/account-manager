@@ -4,3 +4,10 @@
  * jour la moitié de l'année, sur les écrans mêmes où une date décide d'une coupure.
  */
 export const dateFr = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "UTC" });
+
+/**
+ * Dans le fuseau du lecteur, et non en UTC : ce formateur rend des `DateTime` complets,
+ * un pointage ou une validation, dont l'heure est celle d'un geste réel. Les reculer à
+ * UTC afficherait la veille sur tout ce qui a eu lieu après une heure du matin.
+ */
+export const dateLocale = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long" });
