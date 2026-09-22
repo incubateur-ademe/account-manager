@@ -52,8 +52,12 @@ export async function gesteEnAttente(
   username: string,
   maintenant: Date,
 ): Promise<GesteEnAttente | null> {
+  // Trié, bien que l'unicité du brouillon soit tenue par le code : aucun index ne la
+  // double, l'index partiel laissant libres les plans sans dossier, et deux écritures
+  // concurrentes laisseraient la fiche en rendre un au hasard.
   const plan = await prisma.plan.findFirst({
     where: { subjectId: personId, kind: "MANUAL_OP", state: "DRAFT" },
+    orderBy: { createdAt: "desc" },
     select: {
       id: true,
       intent: true,
@@ -78,7 +82,10 @@ export async function gesteEnAttente(
 
   return {
     planId: plan.id,
-    systeme: intention.success ? intention.data.systeme : "",
+    // Sur l'étape à défaut de l'intention : une intention illisible vaut écart, et le
+    // chemin de retour est justement ce dont on a alors le plus besoin. Le laisser vide
+    // renverrait vers la liste des systèmes.
+    systeme: intention.success ? intention.data.systeme : (plan.steps[0]?.systemKey ?? ""),
     etapes: plan.steps,
     expiresAt: plan.expiresAt,
     perime: plan.expiresAt.getTime() <= maintenant.getTime(),

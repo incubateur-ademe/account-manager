@@ -117,9 +117,9 @@ export const MOTS_DE_SCALINGO = {
     envoi: "Écrire le brouillon",
     attente: "Écriture…",
     /**
-     * La fiche de la personne porte la confirmation depuis #128, et la phrase y renvoie
-     * sans poser de lien. Ce formulaire vit dans une modale, et un lien qui la quitte
-     * perdrait la saisie de qui ne voulait que lire la suite.
+     * La phrase renvoie vers la fiche de la personne sans poser de lien. Ce formulaire
+     * vit dans une modale, et un lien qui la quitte perdrait la saisie de qui ne voulait
+     * que lire la suite.
      */
     brouillon:
       "Le brouillon est écrit, et rien n'est parti sur Scalingo. Confirmez-le sur la fiche de la personne.",
