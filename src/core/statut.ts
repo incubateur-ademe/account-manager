@@ -42,8 +42,13 @@ export function jourDeParis(date: Date): string {
 }
 
 export function jourMetier(date: Date): number {
-  const [annee = "", mois = "", jour = ""] = PARIS.format(date).split("-");
-  return Date.UTC(Number(annee), Number(mois) - 1, Number(jour));
+  // Par parts plutôt qu'en découpant la chaîne : un composant absent rend alors `NaN`,
+  // qui se propage, là où un défaut de découpage vaudrait zéro et donnerait un jour faux
+  // sans que rien ne le dise.
+  const parts = PARIS.formatToParts(date);
+  const valeur = (type: string) => Number(parts.find((part) => part.type === type)?.value);
+
+  return Date.UTC(valeur("year"), valeur("month") - 1, valeur("day"));
 }
 
 function daysBetween(from: Date, to: Date): number {

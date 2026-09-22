@@ -11,7 +11,7 @@ import { dateFr, dateLocale, instantLocal } from "./dates";
  * lectures du même instant donnent deux jours différents sans que rien ne le dise.
  */
 
-/** Une demie-heure avant minuit UTC, donc déjà le lendemain à Paris. */
+/** Une demi-heure avant minuit UTC, donc déjà le lendemain à Paris. */
 const AVANT_MINUIT_UTC = new Date("2026-03-05T23:30:00Z");
 
 /** Un minuit UTC, tel qu'une colonne `@db.Date` le rend. */
