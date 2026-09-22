@@ -372,6 +372,10 @@ function planDuDepart(): EtapeFigeeEnBase[] {
       label: "Retirer de l'organisation GitHub",
       systemKey: "github",
       idempotencyKey: "cle-github",
+      // `manual` est une colonne `Json` qu'un connecteur écrit, et rien ne garantit ses
+      // types. Le lien fautif est ici un nombre, ce qu'un cast sur l'objet entier
+      // laisserait atteindre `href`.
+      manual: { doneWhen: "Le compte ne figure plus dans les membres", deeplink: 404 },
     }),
   ];
 }
@@ -469,6 +473,13 @@ describe("l'écran d'un dossier, avec un vrai plan", () => {
     expect(texte).toContain(LIBELLE_DOSSIER.OFFBOARDING.aFaire);
     expect(texte).not.toContain(LIBELLE_DOSSIER.OFFBOARDING.restant);
     expect(texte).not.toContain(LIBELLE_DOSSIER.ONBOARDING.cocher);
+
+    // Then la marche à suivre d'une étape se lit champ par champ : le critère de
+    // complétion, qui est bien une chaîne, est servi, et le lien, qui n'en est pas une,
+    // se perd seul au lieu d'atteindre un `href` ou de se rendre tel quel.
+    const github = lignes.find(({ id }) => id === "etape-github");
+    expect(github?.texte).toContain("Le compte ne figure plus dans les membres");
+    expect(github?.texte).not.toContain("404");
     expect(texte).toContain(LIBELLE_DOSSIER.OFFBOARDING.cocher);
 
     // Then les quatre étapes sont là, dans l'ordre figé, et aucune n'a disparu en route
