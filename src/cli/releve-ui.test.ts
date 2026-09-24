@@ -138,6 +138,11 @@ describe("ce que le relevé compte, et ce qu'il refuse de compter", () => {
     const explicatif = `const T = \`Le compte \${nom} est fermé : personne ne le relit.\`;`;
     expect(compter("deux-points-explicatifs", ECRAN, explicatif)).toBe(1);
 
+    // Then un gabarit qui s'ouvre sur une valeur se lit aussi, même sans aucun accent pour dire
+    // qu'il est en français.
+    const ouvertSurUneValeur = `const T = \`\${n} comptes en trop : il faut les retirer.\`;`;
+    expect(compter("deux-points-explicatifs", ECRAN, ouvertSurUneValeur)).toBe(1);
+
     // Then un deux-points suivi d'une valeur introduit une donnée, et ne se compte pas.
     const donnee = `const T = \`L'espace-membre n'a pas répondu : \${erreur}\`;`;
     expect(compter("deux-points-explicatifs", ECRAN, donnee)).toBe(0);

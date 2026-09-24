@@ -144,7 +144,8 @@ function estTexteOperateur(brut: string): boolean {
   if (/^[\d\s%.,:;+*/=<>()[\]{}|&-]+$/.test(s)) return false;
   const motsAlphabetiques = s.split(/\s+/).filter((m) => /[a-zà-ÿ]{2}/i.test(m));
   if (motsAlphabetiques.length < 2) return false;
-  return /[à-ÿ]/i.test(s) || /^[A-ZÀ-Ý]/.test(s);
+  /* Un gabarit qui s'ouvre sur une valeur commence par son neutre, qui tient lieu de majuscule. */
+  return /[à-ÿ]/i.test(s) || /^[A-ZÀ-Ý…]/.test(s);
 }
 
 interface Litteral extends Site {
