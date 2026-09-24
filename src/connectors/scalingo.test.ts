@@ -1036,6 +1036,13 @@ describe("ce que le connecteur Scalingo propose à un départ", () => {
     expect(transfert?.manual?.doneWhen).toContain("appartient à quelqu'un d'autre");
     expect(transfert?.manual?.doneWhen).toContain("collaborateurs");
     expect(transfert?.manual?.runbook).toContain("repreneur");
+
+    // Then le pointage réclame le repreneur, faute de quoi le journal dirait qu'un
+    // transfert a eu lieu sans dire à qui
+    expect(transfert?.manual?.saisie).toEqual({
+      libelle: "Compte Scalingo du repreneur",
+      obligatoire: true,
+    });
     expect(transfert?.manual?.deeplink).toBe(
       "https://dashboard.scalingo.com/apps/osc-fr1/service-annuaire/settings/collaborators",
     );

@@ -53,6 +53,8 @@ export function EtapeDuParticipant({
   /** Ce que la garde de validation répond à ce lecteur, ou rien s'il ne contrôle pas. */
   controle: Verdict | null;
 }) {
+  // Sans la saisie qu'un connecteur déclare dans `manual`, colonne que cette route ne
+  // lit pas : aucun connecteur ne confie d'étape à la personne ni à un délégué.
   const origine = origineFigeeSchema.safeParse(template);
   const validation = etape.validation as EtatValidation;
 

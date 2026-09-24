@@ -706,9 +706,10 @@ model PlanStep {
   /// Forme { owner, stepKey, saisie? }. Nulle signifie « vient d'un connecteur ».
   template Json?
 
-  /// Ce que l'operateur a saisi au pointage, quand l'etape declaree attendait une
-  /// valeur. Une saisie obligatoire refuse le pointage tant que cette colonne est
-  /// vide, sur le modele du refus de note.
+  /// Ce que l'operateur a saisi au pointage, quand l'etape attendait une valeur,
+  /// declaree par un modele dans `template` ou par un connecteur dans `manual`. Une
+  /// saisie obligatoire refuse le pointage tant que cette colonne est vide, sur le
+  /// modele du refus de note.
   reponse String?
 
   /// L'echeance decidee d'un octroi. Elle vit ici et pas sur AccessGrant : cette

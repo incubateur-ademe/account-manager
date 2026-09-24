@@ -29,6 +29,8 @@ import {
   ecartDeModele,
   type OrigineFigee,
   origineFigeeSchema,
+  type SaisieAttendue,
+  saisieAAfficher,
 } from "@/core/modele-plan";
 import { etatDuCanal, participationVivante } from "@/core/participation";
 import {
@@ -172,6 +174,7 @@ function origineFigee(valeur: unknown): OrigineFigee | null {
 interface LigneDEtape {
   etape: EtapeFigee;
   origine: OrigineFigee | null;
+  saisie: SaisieAttendue | null;
 }
 
 interface GroupeDEtapes {
@@ -491,6 +494,7 @@ export default async function DossierPage({
   const lignes: LigneDEtape[] = (plan?.steps ?? []).map((etape) => ({
     etape,
     origine: origineFigee(etape.template),
+    saisie: saisieAAfficher(etape),
   }));
   const groupes = grouperParOrigine(lignes);
 
@@ -794,11 +798,11 @@ export default async function DossierPage({
                 </h3>
               ) : null}
               <ol className={fr.cx("fr-mt-2w")} start={groupe.premier + 1}>
-                {groupe.lignes.map(({ etape, origine }) => (
+                {groupe.lignes.map(({ etape, saisie }) => (
                   <EtapeOperateur
                     key={etape.id}
                     etape={etape}
-                    saisie={origine?.saisie ?? null}
+                    saisie={saisie}
                     voie={voieLisible(
                       etape.tier,
                       tiersDuJour.get(etape.idempotencyKey),

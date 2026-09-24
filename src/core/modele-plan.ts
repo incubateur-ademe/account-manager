@@ -89,7 +89,7 @@ export function cleDEtape(titre: string): string {
 export const lienDEtapeSchema = z.url({ protocol: /^https?$/ });
 
 /**
- * Ce qu'une étape déclarée réclame en plus d'une case cochée.
+ * Ce qu'une étape réclame en plus d'une case cochée.
  *
  * Deux champs et pas un de plus : le libellé de ce qu'on demande, et si l'on peut
  * pointer sans. La réponse arrive dans `PlanStep.reponse`, une colonne de texte : un
@@ -128,6 +128,37 @@ export const origineFigeeSchema = z.strictObject({
 });
 
 export type OrigineFigee = z.infer<typeof origineFigeeSchema>;
+
+const saisieFigeeSchema = z
+  .object({
+    template: origineFigeeSchema.nullish(),
+    manual: z.object({ saisie: saisieAttendueSchema.optional() }).nullish(),
+  })
+  .transform(({ template, manual }) => template?.saisie ?? manual?.saisie ?? null);
+
+/**
+ * La valeur qu'une étape figée réclame au pointage, ou `null` si elle n'en réclame
+ * aucune. Un modèle la gèle dans l'origine, un connecteur dans la marche à suivre.
+ *
+ * Un échec ne peut venir que d'une écriture faite hors de cet outil. L'écran tait alors
+ * la saisie, le pointage refuse : une étape qui réclamait une valeur se cocherait sinon
+ * sans elle.
+ *
+ * Typée sur ses deux colonnes et non sur `unknown` : une requête qui oublierait d'en
+ * sélectionner une lirait une étape qui ne réclame rien, sans que rien ne le dise.
+ */
+export function lireSaisieFigee(etape: { template: unknown; manual: unknown }) {
+  return saisieFigeeSchema.safeParse(etape);
+}
+
+/** La même, pour un écran : illisible, elle se tait, et le pointage la refuse. */
+export function saisieAAfficher(etape: {
+  template: unknown;
+  manual: unknown;
+}): SaisieAttendue | null {
+  const lue = lireSaisieFigee(etape);
+  return lue.success ? lue.data : null;
+}
 
 /** Une étape telle qu'un modèle la déclare, avant qu'un plan ne la gèle. */
 export interface EtapeDeModele {

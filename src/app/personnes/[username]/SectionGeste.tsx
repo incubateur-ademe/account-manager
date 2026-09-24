@@ -6,6 +6,7 @@ import { EtapeOperateur } from "@/app/dossiers/[id]/EtapeOperateur";
 import { BoutonConfirmer } from "@/app/dossiers/[id]/Pointage";
 import type { ActeurNomme, Declarant } from "@/core/dossier";
 import { SENS_D_UN_GESTE } from "@/core/geste";
+import { saisieAAfficher } from "@/core/modele-plan";
 import { instantLocal } from "@/ui/dates";
 
 import type { GesteEnAttente } from "./geste-en-attente";
@@ -56,7 +57,7 @@ export function SectionGeste({
           <EtapeOperateur
             key={etape.id}
             etape={etape}
-            saisie={null}
+            saisie={saisieAAfficher({ template: null, manual: etape.manual })}
             voie={null}
             pointable={false}
             etatPlan="DRAFT"

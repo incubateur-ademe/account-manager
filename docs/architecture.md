@@ -937,8 +937,9 @@ interface Connector {
 
 `plan` est le seul obligatoire. C'est ce qui fait d'un système purement manuel un
 connecteur de plein droit : il ne sait ni lister ni exécuter, mais il sait dire qu'à
-l'arrivée de quelqu'un il faut faire telle chose, avec le lien et le critère de
-complétion.
+l'arrivée de quelqu'un il faut faire telle chose, avec le lien, le critère de
+complétion et, quand cocher ne dit pas ce qui a été fait, la valeur que le pointage
+réclame. Elle se fige avec la marche à suivre et reste hors de l'empreinte.
 
 **Ce qu'un sujet porte.** `ConnectorContract` ne change pas quand un connecteur a
 besoin d'en savoir plus sur la personne, c'est `SubjectRef` qui s'élargit. Son bras
@@ -1131,7 +1132,8 @@ interrogé, et seulement ceux dont le rattachement autorise déjà une coupure :
 ressemblance n'en produit toujours aucune. Il porte aussi l'adresse dont le socle répond,
 pour les systèmes qui invitent sur une adresse et non sur un compte, lesquels n'ont rien à
 viser tant que la personne n'est pas venue. Le `role` de chaque accès en fait partie, et il
-décide de la nature du geste. Un accès `owner` ne se coupe pas, il se transfère. Un
+décide de la nature du geste. Un accès `owner` ne se coupe pas, il se transfère, et le
+pointage du transfert réclame le compte du repreneur, que le journal garde. Un
 propriétaire ne figure dans aucune liste de collaborateurs, si bien qu'un retrait se
 solderait en succès sans que rien n'ait changé de main.
 

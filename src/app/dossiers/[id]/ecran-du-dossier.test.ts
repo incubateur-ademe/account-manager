@@ -580,7 +580,15 @@ describe("l'écran d'un dossier, avec un vrai plan", () => {
               executedAt: declaree,
               reponse: "5 mars 2026",
             }
-          : ligne,
+          : ligne.id === "etape-github"
+            ? {
+                ...ligne,
+                manual: {
+                  doneWhen: "Le dépôt appartient à quelqu'un d'autre",
+                  saisie: { libelle: "Compte du repreneur", obligatoire: true },
+                },
+              }
+            : ligne,
     );
 
     // When l'écran se rend
@@ -589,6 +597,7 @@ describe("l'écran d'un dossier, avec un vrai plan", () => {
     const lignes = lignesRendues(page);
     const badge = lignes.find(({ id }) => id === "etape-badge");
     const charte = lignes.find(({ id }) => id === "etape-charte");
+    const github = lignes.find(({ id }) => id === "etape-github");
 
     // Then l'étape déclarée porte le badge de l'attente en plus de son état, et la
     // voie figée reste la sienne
@@ -638,6 +647,12 @@ describe("l'écran d'un dossier, avec un vrai plan", () => {
       pointage: "fait",
       reponse: "5 mars 2026",
     });
+
+    // Then l'étape d'un système réclame la valeur que son connecteur déclare dans sa
+    // marche à suivre, et son formulaire la porte. L'action la refuserait sinon sans
+    // que l'écran offre de quoi la saisir.
+    expect(github?.texte).toContain("Valeur demandée : Compte du repreneur");
+    expect(monterLePointage(github).getByLabelText("Compte du repreneur")).toBeDefined();
 
     // Then les deux étapes qui n'attendent rien n'offrent aucun avis : un second
     // regard se demande sur une déclaration, pas sur une étape à faire

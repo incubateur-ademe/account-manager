@@ -219,7 +219,7 @@ export function Pointage({
               aria-label={saisie.libelle}
               autoComplete="off"
               {...messageObligatoire(
-                `Renseignez « ${saisie.libelle} » : sans elle, personne ne saura ce qui a été fait.`,
+                `Le champ « ${saisie.libelle} » est vide. Renseignez-le avant d'enregistrer.`,
               )}
             />
           </div>
