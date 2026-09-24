@@ -1444,7 +1444,7 @@ export async function executerEmissionScalingo(
     state: "SUCCEEDED",
     // Ce qui devient le motif journalisé de l'étape, dans un journal en écriture seule à
     // rétention indéfinie : la clé client n'y entre pas, et le blob non plus.
-    evidence: `Jeton restreint émis pour ${demande.beneficiaire} sur ${demande.cible}, borné à ${demande.scopes.length} chemins et au terme du ${terme.toISOString()}. Sa clé se remet une seule fois et ne s'écrit nulle part. Aucune révocation n'existe côté proxy, il expire à son terme.`,
+    evidence: `Jeton restreint émis pour ${demande.beneficiaire} sur ${demande.cible}, borné à ${demande.scopes.length} chemins et au terme du ${terme.toISOString()}. Sa clé se remet une seule fois et ne s'écrit nulle part. Aucune révocation n'existe côté proxy. Ce jeton expire à son terme.`,
     credential: {
       // Dérivée de la clé d'idempotence stockée, qui porte l'identifiant du plan et est
       // unique en base : une réémission après un échec ambigu produit une seconde ligne
@@ -1599,7 +1599,7 @@ function reprisesDesJetons(
             terme === undefined
               ? "Le terme du jeton est passé"
               : `Le terme du jeton est passé, soit après le ${jour(terme)}`
-          }, et aucune émission nouvelle n'a été faite sous cet engagement depuis. Le proxy n'offre ni révocation ni introspection. Le jeton d'API Scalingo n'a pas été renouvelé.`,
+          }, et aucune émission nouvelle n'a été faite sous cet engagement depuis. Rien d'autre ne se constate, le proxy n'offrant ni révocation ni introspection. Le jeton d'API Scalingo n'a pas été renouvelé.`,
         },
       };
     });

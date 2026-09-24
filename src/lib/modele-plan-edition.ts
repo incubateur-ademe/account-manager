@@ -323,7 +323,7 @@ export async function ajouterEtape(
       throw erreur;
     }
     return refus(
-      `Ce modèle porte déjà une étape sous la clé « ${etape.cle} ». Changez le titre de celle-ci.`,
+      `Ce modèle porte déjà une étape sous la clé « ${etape.cle} ». Changez les mots du titre de l'étape que vous ajoutez.`,
     );
   }
 

@@ -157,7 +157,7 @@ export async function creerFichePourCompte(
     select: { username: true },
   });
   if (existante) {
-    return { erreur: `« ${username} » existe déjà. Rattachez le compte à cette fiche.` };
+    return { erreur: `La fiche « ${username} » existe déjà. Rattachez-lui ce compte.` };
   }
 
   await actionTracee({

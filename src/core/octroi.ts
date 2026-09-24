@@ -214,7 +214,7 @@ function verdictDAcces(
 
   if (examen?.risque === "high" && acces.expiresInDays === undefined) {
     motifs.push(
-      `${examen.libelle} est un accès à risque élevé, il exige une échéance sous expiresInDays. Sans terme, il ne se referme jamais de lui-même.`,
+      `${examen.libelle} est un accès à risque élevé. Posez son échéance sous expiresInDays.`,
     );
   }
 
