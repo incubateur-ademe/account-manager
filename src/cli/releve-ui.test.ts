@@ -170,6 +170,8 @@ describe("ce que le relevé compte, et ce qu'il refuse de compter", () => {
     expect(compter("libelles-d-attente-muets", ECRAN, date)).toBe(0);
     const dateEnFinDeLigne = `const T = \`En cours depuis \${jour}\n\`;`;
     expect(compter("libelles-d-attente-muets", ECRAN, dateEnFinDeLigne)).toBe(0);
+    const dateEtSautEchappe = `const T = \`En cours depuis \${jour}\\n\`;`;
+    expect(compter("libelles-d-attente-muets", ECRAN, dateEtSautEchappe)).toBe(0);
 
     // Then un `/*` écrit dans un gabarit n'ouvre aucun commentaire. Il cachait au relevé les
     // quarante lignes qui le suivaient dans le connecteur Scalingo, jusqu'au `*/` suivant.

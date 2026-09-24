@@ -255,9 +255,10 @@ function lectureDe(source: Source): Lecture {
         finitParUneInterpolation = true;
         continue;
       }
-      texte += caractere === "\\" ? echappe(contenu[index + 1] ?? "") : caractere;
+      const ajout = caractere === "\\" ? echappe(contenu[index + 1] ?? "") : (caractere ?? "");
+      texte += ajout;
       index += caractere === "\\" ? 2 : 1;
-      if (!/\s/.test(caractere ?? "")) finitParUneInterpolation = false;
+      if (!/\s/.test(ajout)) finitParUneInterpolation = false;
     }
     return index;
   };
