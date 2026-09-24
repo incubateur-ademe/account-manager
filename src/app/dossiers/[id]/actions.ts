@@ -448,7 +448,7 @@ export async function pointerEtape(
   if (!lue.success) {
     return {
       erreur:
-        "La valeur que réclame cette étape est illisible en base. Faites-la corriger avant de la cocher.",
+        "La valeur que réclame cette étape est illisible en base. Faites corriger l'étape avant de la cocher.",
     };
   }
 
