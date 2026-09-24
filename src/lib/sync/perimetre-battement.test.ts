@@ -1429,7 +1429,7 @@ describe("ce qu'un passage dit du relevé qu'il n'a pas renouvelé", () => {
     expect(ageDuReleveDit(installe.runId)).toBe(3);
     expect(releveFige(3)).toBe(true);
     expect(ceQuiAEteDit(installe.runId).at(-1)).toBe(
-      `${RELEVE_NON_RENOUVELE} : les règles adossées au périmètre décident toujours contre le relevé du 2026-09-01, laissé 3 passages en arrière : ce n'est plus un incident, et plus rien de ce qui s'y adosse ne décide sur l'état du jour`,
+      `${RELEVE_NON_RENOUVELE} : les règles adossées au périmètre décident toujours contre le relevé du 2026-09-01, laissé 3 passages en arrière, ce n'est plus un incident et plus rien de ce qui s'y adosse ne décide sur l'état du jour`,
     );
 
     // Then rien n'a été daté pendant les trois nuits, ce qui est exactement l'état que
@@ -1470,7 +1470,7 @@ describe("ce qu'un passage dit du relevé qu'il n'a pas renouvelé", () => {
     expect(ageDuReleveDit(vieux.runId)).toBe(10);
     expect(PASSAGES_RELUS).toBeLessThan(10);
     expect(ceQuiAEteDit(vieux.runId).at(-1)).toBe(
-      `${RELEVE_NON_RENOUVELE} : les règles adossées au périmètre décident toujours contre le relevé du 2026-09-05, laissé 10 passages en arrière : ce n'est plus un incident, et plus rien de ce qui s'y adosse ne décide sur l'état du jour`,
+      `${RELEVE_NON_RENOUVELE} : les règles adossées au périmètre décident toujours contre le relevé du 2026-09-05, laissé 10 passages en arrière, ce n'est plus un incident et plus rien de ce qui s'y adosse ne décide sur l'état du jour`,
     );
   });
 });
@@ -1593,7 +1593,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     // des collectes le porte en tête au lieu de le laisser dans une ligne de journal
     // parmi soixante.
     expect(ceQuiAEteDit(installe.runId).at(0)).toBe(
-      "chute du périmètre : 9 personnes contre 13 au dernier relevé complet, aucune disparition datée : ce refus retombe à l'identique depuis 3 passages, il ne se dénouera pas seul",
+      "chute du périmètre : 9 personnes contre 13 au dernier relevé complet, aucune disparition datée, ce refus retombe à l'identique depuis 3 passages et ne se dénouera pas seul",
     );
     expect(blocagesAnnonces()).toEqual([
       {
@@ -2829,7 +2829,7 @@ describe("ce qui sort le plancher du périmètre du refus qu'il s'entretient", (
     expect(ageDuReleveDit(refus.runId)).toBe(4);
     expect(releveFige(4)).toBe(true);
     expect(ceQuiAEteDit(refus.runId)).toContain(
-      `${RELEVE_NON_RENOUVELE} : aucun passage ne s'est encore dit complet, et les règles adossées au périmètre décident donc sans relevé depuis 4 passages : ce n'est plus un incident, et plus rien de ce qui s'y adosse ne décide sur l'état du jour`,
+      `${RELEVE_NON_RENOUVELE} : aucun passage ne s'est encore dit complet, et les règles adossées au périmètre décident donc sans relevé depuis 4 passages, ce n'est plus un incident et plus rien de ce qui s'y adosse ne décide sur l'état du jour`,
     );
     expect(blocagesAnnonces()).toEqual([
       {

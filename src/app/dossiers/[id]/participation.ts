@@ -127,7 +127,7 @@ export async function octroyerParticipation(
   }
   if (estOperateur(personne.username, webEnv.OPERATORS, webEnv.BREAK_GLASS_USERNAMES)) {
     return {
-      erreur: `« ${personne.username} » est un opérateur de l'outil : ce dossier lui est déjà ouvert.`,
+      erreur: `« ${personne.username} » est un opérateur de l'outil, ce dossier lui est déjà ouvert.`,
     };
   }
 

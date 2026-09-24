@@ -101,12 +101,12 @@ describe("ce que l'écran des droits dit à qui saisit", () => {
     // When l'aide du champ d'adresse se compose
     // Then ils se lisent comme une phrase, et non comme une liste jointe par des virgules
     expect(aideDuCanal(["beta.gouv.fr", "ademe.fr"])).toBe(
-      `${LIBELLE_OCTROI.canal.manquante} Évitez une adresse en beta.gouv.fr ou ademe.fr : ces boîtes se ferment au départ de leur titulaire.`,
+      `${LIBELLE_OCTROI.canal.manquante} Évitez une adresse en beta.gouv.fr ou ademe.fr, ces boîtes se ferment au départ de leur titulaire.`,
     );
     expect(aideDuCanal(["beta.gouv.fr", "ademe.fr", "exemple.org"])).toContain(
       "beta.gouv.fr, ademe.fr ou exemple.org",
     );
-    expect(aideDuCanal(["beta.gouv.fr"])).toContain("Évitez une adresse en beta.gouv.fr :");
+    expect(aideDuCanal(["beta.gouv.fr"])).toContain("Évitez une adresse en beta.gouv.fr,");
 
     // Then une politique qui n'en déclare aucun ne laisse pas une phrase à trou
     expect(aideDuCanal([])).toBe(LIBELLE_OCTROI.canal.manquante);
@@ -120,7 +120,7 @@ describe("ce que l'écran des droits dit à qui saisit", () => {
       "Le lien de connexion part sur lead@exemple.org, déclarée avec ce droit.",
     );
     expect(LIBELLE_DROITS.canal.deduit("lead@exemple.org")).toBe(
-      "Le lien de connexion part sur lead@exemple.org, lue sur sa fiche : personne ne l'a choisie pour ce dossier, et une collecte peut la remplacer.",
+      "Le lien de connexion part sur lead@exemple.org, lue sur sa fiche et non choisie pour ce dossier. Une collecte peut la remplacer.",
     );
 
     // Given un droit dont plus rien ne résout l'adresse, sur une personne qui porte un
@@ -154,10 +154,10 @@ describe("ce que l'écran des droits dit à qui saisit", () => {
     // le sens du dossier, si bien qu'une arrivée close lisait qu'un droit ne se donne
     // que sur un départ
     expect(LIBELLE_DROITS.ferme(LIBELLE_DOSSIER.OFFBOARDING.droitPossibleSur)).toBe(
-      "Ce dossier ne s'ouvre plus à personne : un droit ne se donne que sur un départ décidé et pas encore clos.",
+      "Ce dossier ne s'ouvre plus à personne. Un droit ne se donne que sur un départ décidé et pas encore clos.",
     );
     expect(LIBELLE_DROITS.ferme(LIBELLE_DOSSIER.ONBOARDING.droitPossibleSur)).toBe(
-      "Ce dossier ne s'ouvre plus à personne : un droit ne se donne que sur une arrivée décidée et pas encore close.",
+      "Ce dossier ne s'ouvre plus à personne. Un droit ne se donne que sur une arrivée décidée et pas encore close.",
     );
   });
 

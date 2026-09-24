@@ -13,7 +13,7 @@ export const LOT = {
   titre: "Traiter ses membres en une fois",
 
   intro: (nomStartup: string): string =>
-    `${nomStartup} s'arrête, et ses membres se traitent le même jour pour la même raison. Une phase terminale ne sort personne d'elle-même ; c'est vous qui décidez, ligne par ligne. Les lignes cochées d'avance sont celles pour qui la question se pose ; les autres restent cochables, et la colonne « Ce qui la retient » dit pourquoi elles ne l'étaient pas.`,
+    `${nomStartup} s'arrête. Une phase terminale ne sort personne d'elle-même, c'est vous qui décidez. Les lignes cochées d'avance sont celles pour qui la question se pose. La colonne « Ce qui la retient » dit pourquoi les autres ne l'étaient pas.`,
 
   colonneRetient: "Ce qui la retient",
 

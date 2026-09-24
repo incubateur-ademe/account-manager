@@ -40,7 +40,7 @@ async function ouvrir(sens: SensDossier, formData: FormData): Promise<EtatDossie
 
   if (profilChoisi && !profil) {
     return {
-      erreur: `Le profil « ${profilChoisi} » n'existe pas dans la politique : choisissez-en un dans la liste, ou déclarez-le sous profiles.`,
+      erreur: `Le profil « ${profilChoisi} » n'existe pas dans la politique. Choisissez-en un dans la liste, ou déclarez-le sous profiles.`,
     };
   }
 

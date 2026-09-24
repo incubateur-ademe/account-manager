@@ -252,7 +252,7 @@ function attenteDeControle(enAttente: number, restantes: number): string {
     sujet = `${enAttente} d'entre elles attendent`;
   }
 
-  return ` ${sujet} un second regard : une déclaration que personne n'a contrôlée ne termine pas son étape.`;
+  return ` ${sujet} un second regard.`;
 }
 
 /**
@@ -751,7 +751,7 @@ export default async function DossierPage({
           severity="warning"
           className={fr.cx("fr-mb-3w")}
           title="Des comptes sont hors des systèmes couverts"
-          description={`${actuel.sansConnecteur.join(", ")}. Ces accès existent, mais rien ici ne sait quoi en faire : ils sont à traiter hors de l'outil.`}
+          description={`${actuel.sansConnecteur.join(", ")}. Ces accès sont à traiter hors de l'outil.`}
         />
       ) : null}
 

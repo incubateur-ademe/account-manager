@@ -388,7 +388,7 @@ describe("La file des comptes isolés", () => {
     // à un identifiant déjà pris, et dont le rattachement réclamera une confirmation.
     const utilisateur = userEvent.setup();
     doubles.creer.mockResolvedValue({
-      erreur: "« camille.esteve » existe déjà : rattachez le compte à cette fiche.",
+      erreur: "« camille.esteve » existe déjà. Rattachez le compte à cette fiche.",
     });
     doubles.rattacher.mockResolvedValue({
       erreur:
@@ -436,7 +436,7 @@ describe("La file des comptes isolés", () => {
     // And son refus se lit, sans fermer la modale : la fiche n'a pas été créée.
     expect(
       await within(modale).findByText(
-        "« camille.esteve » existe déjà : rattachez le compte à cette fiche.",
+        "« camille.esteve » existe déjà. Rattachez le compte à cette fiche.",
       ),
     ).toBeDefined();
 

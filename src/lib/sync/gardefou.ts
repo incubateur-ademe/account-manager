@@ -96,7 +96,7 @@ export async function messageDeChute(
     return `${quoi}, aucune disparition datée`;
   }
 
-  return `${quoi}, aucune disparition datée : ce refus retombe à l'identique depuis ${repetitions} passages, il ne se dénouera pas seul`;
+  return `${quoi}, aucune disparition datée, ce refus retombe à l'identique depuis ${repetitions} passages et ne se dénouera pas seul`;
 }
 
 /** Une autorisation posée à la main, et ce qu'il faut d'elle pour la journaliser. */

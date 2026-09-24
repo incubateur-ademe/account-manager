@@ -79,10 +79,10 @@ function ampleur(blocage: BlocageInstalle): string {
   const personnes = `${blocage.datables} ${blocage.datables > 1 ? "personnes" : "personne"}`;
 
   if (blocage.cote === "population") {
-    return `Une datation constaterait aujourd'hui le départ de ${personnes}, et c'est cette ampleur-là que votre décision emporte : c'est elle que ce déclencheur mesure, et la différence entre les deux nombres ci-dessus ne dit rien d'autre.`;
+    return `Une datation constaterait aujourd'hui le départ de ${personnes}, et c'est cette ampleur-là que votre décision emporte, et que ce déclencheur mesure.`;
   }
 
-  return `Une datation constaterait aujourd'hui le départ de ${personnes}, et c'est cette ampleur-là que votre décision emporte. Elle ne se lit pas dans la différence entre les deux nombres ci-dessus : ceux-là comparent deux tailles de listes, celle-ci compte les fiches encore tenues pour présentes qu'aucune source ne réclame plus, et une nuit dégradée en fait naître sans que la comparaison des deux listes en dise rien.`;
+  return `Une datation constaterait aujourd'hui le départ de ${personnes}, et c'est cette ampleur-là que votre décision emporte. Elle ne se lit pas dans la différence des deux nombres ci-dessus, qui comparent deux tailles de listes.`;
 }
 
 /**
@@ -118,7 +118,7 @@ const COTE: Record<CoteDeChute, (blocage: BlocageInstalle) => string> = {
   releve: (blocage) =>
     `La dernière collecte complète comptait ${blocage.reference} personnes suivies, la plus récente n'en a résolu que ${blocage.observe}, une chute que le garde-fou juge trop forte pour conclure. ${ampleur(blocage)} ${GEL_DU_RELEVE(blocage.passages, "Or c'est la dernière collecte complète qui sert de référence à ce refus, si bien que le garde-fou compare chaque nuit à celle d'avant la chute, et y retrouve la même chute.")}`,
   population: (blocage) =>
-    `Ce n'est pas la liste rendue ce soir qui a fait parler le garde-fou, c'est la base : ${blocage.reference} personnes y sont tenues pour présentes, comptes de service exclus, et il n'en resterait que ${blocage.observe} après la datation de ce soir, une chute que le garde-fou juge trop forte pour conclure. ${ampleur(blocage)} Ce déclencheur compare ce qui est en base à ce qu'il en resterait, et non deux collectes. ${GEL_DU_RELEVE(blocage.passages, "La référence de ce refus-ci, elle, se corrigerait d'elle-même dès qu'une collecte daterait, et c'est justement la datation que le refus retient.")}`,
+    `Ce n'est pas la liste rendue ce soir qui a fait parler le garde-fou, c'est la base. ${blocage.reference} personnes y sont tenues pour présentes, comptes de service exclus, et il n'en resterait que ${blocage.observe} après la datation. ${ampleur(blocage)} ${GEL_DU_RELEVE(blocage.passages, "La référence de ce refus-ci, elle, se corrigerait d'elle-même dès qu'une collecte daterait, et c'est justement la datation que le refus retient.")}`,
 };
 
 /**

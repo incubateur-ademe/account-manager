@@ -664,7 +664,7 @@ describe("l'écran d'un dossier, avec un vrai plan", () => {
     // Then le compte des restantes tient l'attente pour non soldée, et le dit à part :
     // rien n'y reste à faire, c'est le contrôle qui manque
     expect(texte).toContain(
-      "4 étapes restantes. Le dossier se clôt quand il n'en reste aucune. 2 d'entre elles attendent un second regard : une déclaration que personne n'a contrôlée ne termine pas son étape.",
+      "4 étapes restantes. Le dossier se clôt quand il n'en reste aucune. 2 d'entre elles attendent un second regard.",
     );
 
     // Then aucun bouton de clôture n'est offert : un dossier dont une déclaration

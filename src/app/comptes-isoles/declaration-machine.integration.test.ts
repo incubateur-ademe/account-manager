@@ -160,7 +160,7 @@ describe("déclarer une machine depuis la file des comptes isolés", () => {
 
     // Then le refus nomme le geste qui reste ouvert. Sans lui, la clé déjà prise se
     // lirait comme une impasse alors que le rattachement, lui, est encore possible.
-    expect(refus?.erreur).toContain("rattachez-lui ce compte");
+    expect(refus?.erreur).toContain("Rattachez-lui ce compte");
 
     // Then le compte constaté n'a pas bougé : il est toujours dans la file, et le
     // compte de service existant n'a pas été réécrit.

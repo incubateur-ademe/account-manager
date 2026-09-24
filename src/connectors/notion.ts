@@ -191,7 +191,7 @@ export async function lireMembres(lire: LecteurScim): Promise<LectureMembres> {
       lecture.erreurs.push({
         scope: "membres",
         itemRef: `startIndex=${startIndex}`,
-        message: `le total annoncé est passé de ${lecture.total} à ${enveloppe.data.totalResults} en cours de pagination : l'inventaire a changé pendant la lecture`,
+        message: `le total annoncé est passé de ${lecture.total} à ${enveloppe.data.totalResults} en cours de pagination, l'inventaire a changé pendant la lecture`,
       });
     }
 
@@ -539,7 +539,7 @@ export const notion: Connector = {
           title: `Retirer ${username} du workspace Notion`,
           runbook: RUNBOOK,
           deeplink: MEMBRES,
-          doneWhen: `Aucun compte au nom de ${username} n'apparaît plus dans la liste des membres du workspace. Le compte peut y porter une adresse personnelle plutôt que son adresse beta.gouv : chercher aussi sur le nom affiché.`,
+          doneWhen: `Aucun compte au nom de ${username} n'apparaît plus dans la liste des membres du workspace. Le compte peut y porter une adresse personnelle plutôt que son adresse beta.gouv. Chercher aussi sur le nom affiché.`,
         },
       },
     ]);

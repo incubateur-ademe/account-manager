@@ -224,7 +224,7 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
       cle: "releve-fige",
       severite: "warning",
       titre: "Aucune sortie du référentiel des personnes n'est constatée en ce moment",
-      description: `Aucune collecte ne s'est dite complète depuis ${etat.ageDuReleve} collectes, et ce qu'affiche cette fiche vient bien de la dernière. Aucune disparition n'est datée pendant ce temps, pour personne. Que rien ici ne signale un départ ne dit donc rien du sien. Ce qui se lit plus bas a été constaté par la dernière collecte qui s'est dite complète, et non par celle de cette nuit. Ce qui bloque est nommé sur l'écran des collectes.`,
+      description: `Aucune collecte ne s'est dite complète depuis ${etat.ageDuReleve} collectes, et aucune disparition n'est datée pour personne. Ce qui se lit plus bas vient de la dernière collecte qui s'est dite complète. Ce qui bloque est nommé sur l'écran des collectes.`,
     });
   }
 

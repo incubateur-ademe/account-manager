@@ -201,7 +201,7 @@ export function decider(
     return {
       geste: "aucun",
       etat: "STALE",
-      motif: `L'état constaté diffère de l'état attendu : attendu ${JSON.stringify(precheck.expected)}, constaté ${JSON.stringify(precheck.actual)}. Rien n'est exécuté, un octroi n'étant pas idempotent.`,
+      motif: `L'état constaté diffère de l'état attendu (attendu ${JSON.stringify(precheck.expected)}, constaté ${JSON.stringify(precheck.actual)}). Rien n'est exécuté, un octroi n'étant pas idempotent.`,
       resultat: "SKIPPED",
     };
   }

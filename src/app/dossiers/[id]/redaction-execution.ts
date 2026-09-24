@@ -78,7 +78,7 @@ export function compteRendu({
   const echec = echecs === 0 ? "" : ` ${echecs} ${pluriel(echecs, "étape", "étapes")} en échec.`;
 
   if (simulation) {
-    return `Simulation : rien n'a été écrit. ${soldees} ${pluriel(soldees, "étape terminée", "étapes terminées")} par la vérification, sans aucun appel d'écriture. Les étapes prêtes restent à faire, leur état ne bouge pas, et le journal dit étape par étape ce qui aurait été appelé.${echec}`;
+    return `Simulation, rien n'a été écrit. ${soldees} ${pluriel(soldees, "étape terminée", "étapes terminées")} par la vérification, sans aucun appel d'écriture. Les étapes prêtes restent à faire, leur état ne bouge pas, et le journal dit étape par étape ce qui aurait été appelé.${echec}`;
   }
 
   return `${executees} ${pluriel(executees, "appel parti", "appels partis")} vers les systèmes couverts. ${soldees} ${pluriel(soldees, "étape terminée", "étapes terminées")} en tout, celles que la vérification a trouvées déjà en place comprises.${echec}`;

@@ -44,7 +44,7 @@ function brut(fichier: string): Record<string, unknown> {
 
   const lu: unknown = parse(readFileSync(chemin, "utf8"));
   if (typeof lu !== "object" || lu === null || Array.isArray(lu)) {
-    throw new Error(`Fichier de politique illisible (${chemin}) : un objet était attendu.`);
+    throw new Error(`Fichier de politique illisible (${chemin}), un objet était attendu.`);
   }
 
   return lu as Record<string, unknown>;

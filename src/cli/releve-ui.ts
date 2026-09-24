@@ -158,35 +158,125 @@ interface Litteral extends Site {
  */
 const estLigneDeCommentaire = (ligne: string): boolean => /^\s*(\/\/|\*|\/\*)/.test(ligne);
 
+interface Gabarit {
+  readonly ligne: number;
+  /* Le code qui précède l'accent grave ouvrant, sur sa ligne. */
+  readonly avant: string;
+  readonly texte: string;
+  readonly finitParUneInterpolation: boolean;
+}
+
+interface Lecture {
+  /* Le code du fichier ligne pour ligne, ses commentaires effacés. */
+  readonly lignes: readonly string[];
+  readonly gabarits: readonly Gabarit[];
+}
+
 /*
- * Un commentaire JSX s'ouvre sur `{` avant son `/*`, et ses lignes de continuation ne portent aucun
- * astérisque : les reconnaître ligne à ligne laissait lire les phrases qu'il porte comme du texte
- * d'écran. Le balayage suit donc l'ouverture et la fermeture des blocs à travers le fichier.
+ * Une lecture qui connaît les chaînes, les gabarits et les commentaires, parce que chacun peut
+ * contenir ce qui ouvre les autres. Un `/*` écrit dans le chemin d'un gabarit ouvrait un faux
+ * commentaire qui cachait les quarante lignes suivantes du connecteur Scalingo, et un commentaire
+ * JSX, qui s'ouvre sur `{` et dont les lignes de continuation ne portent aucun astérisque, ne se
+ * reconnaît pas ligne à ligne.
  *
- * Seule la plage du commentaire est effacée, et non la ligne : un littéral d'écran posé avant ou
- * après un commentaire de fin de ligne reste à compter.
+ * Un gabarit se lit comme un texte nu : chaque `${...}` devient un caractère neutre, et ce qui reste
+ * est la partie écrite à la main, la seule qu'une règle de rédaction puisse viser. Les écarter tous
+ * laissait la moitié des textes du dépôt hors de toute mesure. Les gabarits imbriqués sont suivis :
+ * `${n > 1 ? `${n} comptes` : `un compte`}` ouvrait sinon un faux texte entre deux gabarits
+ * voisins, où le « : » du ternaire se comptait.
+ *
+ * Une chaîne entre guillemets est sautée sans sortir de sa ligne, pour qu'un guillemet isolé dans un
+ * texte JSX n'emporte pas la suite du fichier. Un `//` ne commente que précédé d'un blanc, sans quoi
+ * chaque adresse écrite en clair couperait sa ligne.
  */
-function lignesHorsCommentaire(source: Source): string[] {
-  let ouvert = false;
-  return source.lignes.map((ligne) => {
-    let nettoyee = "";
-    let position = 0;
-    while (position < ligne.length) {
-      if (ouvert) {
-        const fin = ligne.indexOf("*/", position);
-        if (fin === -1) return nettoyee;
-        ouvert = false;
-        position = fin + 2;
+const lectures = new WeakMap<Source, Lecture>();
+
+function lectureDe(source: Source): Lecture {
+  const dejaLue = lectures.get(source);
+  if (dejaLue !== undefined) return dejaLue;
+
+  const contenu = source.contenu;
+  const code = contenu.split("");
+  const gabarits: Gabarit[] = [];
+
+  const effacer = (debut: number, fin: number): number => {
+    for (let index = debut; index < fin; index += 1) if (code[index] !== "\n") code[index] = " ";
+    return fin;
+  };
+  const jusquA = (motif: string, depuis: number, inclus: boolean): number => {
+    const trouve = contenu.indexOf(motif, depuis);
+    if (trouve === -1) return contenu.length;
+    return inclus ? trouve + motif.length : trouve;
+  };
+
+  const sauterLaChaine = (debut: number): number => {
+    let index = debut + 1;
+    while (index < contenu.length && contenu[index] !== "\n") {
+      if (contenu[index] === "\\") index += 2;
+      else if (contenu[index] === '"') return index + 1;
+      else index += 1;
+    }
+    return index;
+  };
+
+  const lireLeGabarit = (debut: number): number => {
+    let texte = "";
+    let finitParUneInterpolation = false;
+    let index = debut + 1;
+    while (index < contenu.length) {
+      const caractere = contenu[index];
+      if (caractere === "`") {
+        gabarits.push({
+          ligne: contenu.slice(0, debut).split("\n").length,
+          avant: code.slice(contenu.lastIndexOf("\n", debut - 1) + 1, debut).join(""),
+          texte: texte.replace(/\s+/g, " ").trim(),
+          finitParUneInterpolation,
+        });
+        return index + 1;
+      }
+      if (caractere === "$" && contenu[index + 1] === "{") {
+        index = lireLeCode(index + 2, true);
+        texte += "…";
+        finitParUneInterpolation = true;
+        continue;
+      }
+      texte += caractere === "\\" ? (contenu[index + 1] ?? "") : caractere;
+      index += caractere === "\\" ? 2 : 1;
+      finitParUneInterpolation = false;
+    }
+    return index;
+  };
+
+  const lireLeCode = (debut: number, dansUneInterpolation: boolean): number => {
+    let profondeur = 0;
+    let index = debut;
+    while (index < contenu.length) {
+      const caractere = contenu[index];
+      const suivant = contenu[index + 1];
+      if (caractere === "/" && suivant === "*") {
+        index = effacer(index, jusquA("*/", index + 2, true));
+      } else if (caractere === "/" && suivant === "/" && /^\s?$/.test(contenu[index - 1] ?? "")) {
+        index = effacer(index, jusquA("\n", index, false));
+      } else if (caractere === "`") {
+        index = lireLeGabarit(index);
+      } else if (caractere === '"') {
+        index = sauterLaChaine(index);
       } else {
-        const debut = ligne.indexOf("/*", position);
-        if (debut === -1) return nettoyee + ligne.slice(position);
-        nettoyee += ligne.slice(position, debut);
-        ouvert = true;
-        position = debut + 2;
+        if (caractere === "{") profondeur += 1;
+        else if (caractere === "}") {
+          if (profondeur === 0 && dansUneInterpolation) return index + 1;
+          profondeur -= 1;
+        }
+        index += 1;
       }
     }
-    return nettoyee;
-  });
+    return index;
+  };
+
+  lireLeCode(0, false);
+  const lecture = { lignes: code.join("").split("\n"), gabarits };
+  lectures.set(source, lecture);
+  return lecture;
 }
 
 function litterauxDe(source: Source): Litteral[] {
@@ -197,35 +287,37 @@ function litterauxDe(source: Source): Litteral[] {
    */
   const ouvreUnSchema = /\.meta\(/;
   const finitParUneDescription = /description:\s*$/;
-  const horsCommentaire = lignesHorsCommentaire(source);
-  horsCommentaire.forEach((ligne, index) => {
-    if (estLigneDeCommentaire(source.lignes[index] ?? "")) return;
-    const precedente = horsCommentaire[index - 1] ?? "";
-    if (index > 0 && (ouvreUnSchema.test(precedente) || finitParUneDescription.test(precedente))) {
-      return;
-    }
+  const { lignes: code, gabarits } = lectureDe(source);
+  const decritUnSchema = (index: number): boolean => {
+    const precedente = code[index - 1] ?? "";
+    return index > 0 && (ouvreUnSchema.test(precedente) || finitParUneDescription.test(precedente));
+  };
+  const retenir = (ligne: number, texte: string): void => {
+    if (!estTexteOperateur(texte)) return;
+    trouves.push({
+      chemin: source.chemin,
+      ligne,
+      extrait: texte.length > 110 ? `${texte.slice(0, 110)}…` : texte,
+      texte,
+    });
+  };
+
+  code.forEach((ligne, index) => {
+    if (decritUnSchema(index)) return;
     /*
-     * Les gabarits porteurs d'une interpolation sont écartés, leur texte rendu n'étant pas celui-ci.
      * La borne haute doit dépasser le plus long texte du dépôt, faute de quoi le compteur des textes
      * longs est aveugle aux pires cas, qui sont précisément les plus longs. À 400, il en cachait sept.
      */
-    const motifs = [/"([^"\\]{8,2000})"/g, /`([^`\\$]{8,2000})`/g];
-    for (const motif of motifs) {
-      let trouve = motif.exec(ligne);
-      while (trouve !== null) {
-        const texte = trouve[1];
-        if (texte !== undefined && estTexteOperateur(texte)) {
-          trouves.push({
-            chemin: source.chemin,
-            ligne: index + 1,
-            extrait: texte.length > 110 ? `${texte.slice(0, 110)}…` : texte,
-            texte,
-          });
-        }
-        trouve = motif.exec(ligne);
-      }
+    const motif = /"([^"\\]{8,2000})"/g;
+    let trouve = motif.exec(ligne);
+    while (trouve !== null) {
+      if (trouve[1] !== undefined) retenir(index + 1, trouve[1]);
+      trouve = motif.exec(ligne);
     }
   });
+  for (const gabarit of gabarits) {
+    if (!decritUnSchema(gabarit.ligne - 1)) retenir(gabarit.ligne, gabarit.texte);
+  }
   return trouves;
 }
 
@@ -301,6 +393,16 @@ function textesNusDe(source: Source): Litteral[] {
   return trouves;
 }
 
+/*
+ * Un diagnostic s'écrit « objet : ce qui lui arrive », et son deux-points sépare deux données.
+ * `scope.region : ...` refuse un champ de politique, `chute du périmètre : ...` ouvre une trace de
+ * collecte qui se relit par ce préfixe. L'étiquette se reconnaît à sa tête, une valeur interpolée ou
+ * un mot en minuscule, et à sa longueur, trois mots au plus. Seul ce premier deux-points est écarté,
+ * un second plus loin se compte. Une valeur en tête qui porte à elle seule une phrase entière échappe
+ * ainsi à la mesure.
+ */
+const ETIQUETTE_EN_TETE = /^(?:…|[a-zà-ÿ])[^\s,;!?:]*(?: [^\s,;!?:]+){0,2} : /;
+
 const compterMots = (texte: string): number => texte.trim().split(/\s+/).filter(Boolean).length;
 
 function tousLesTextes(sources: readonly Source[]): Litteral[] {
@@ -373,20 +475,29 @@ function refusDe(source: Source): Litteral[] {
   const dansUnVerdict = (position: number): boolean =>
     verdicts.some((plage) => position >= plage.debut && position < plage.fin);
 
+  const retenir = (cle: string, position: number, ligne: number, texte: string): boolean => {
+    const retenu = cle === "erreur" || dansUnVerdict(position);
+    if (!retenu || !estTexteOperateur(texte)) return false;
+    trouves.push({ chemin: source.chemin, ligne, extrait: texte, texte });
+    return true;
+  };
+
   source.lignes.forEach((ligne, index) => {
     if (estLigneDeCommentaire(ligne)) return;
     const cles = /\b(erreur|raison):\s*"([^"\\]{8,400})"/g;
     let trouve = cles.exec(ligne);
     while (trouve !== null) {
-      const texte = trouve[2];
-      const retenu = trouve[1] === "erreur" || dansUnVerdict((debuts[index] ?? 0) + trouve.index);
-      if (retenu && texte !== undefined && estTexteOperateur(texte)) {
-        trouves.push({ chemin: source.chemin, ligne: index + 1, extrait: texte, texte });
-        return;
-      }
+      const position = (debuts[index] ?? 0) + trouve.index;
+      if (retenir(trouve[1] ?? "", position, index + 1, trouve[2] ?? "")) return;
       trouve = cles.exec(ligne);
     }
   });
+  for (const gabarit of lectureDe(source).gabarits) {
+    const cle = /\b(erreur|raison):\s*$/.exec(gabarit.avant);
+    if (cle === null) continue;
+    const position = (debuts[gabarit.ligne - 1] ?? 0) + cle.index;
+    retenir(cle[1] ?? "", position, gabarit.ligne, gabarit.texte);
+  }
   return trouves;
 }
 
@@ -832,7 +943,11 @@ export const MESURES: readonly Mesure[] = [
     libelle: "Textes dont les deux-points ouvrent une explication",
     cible: "Les deux-points introduisent une consigne ou une donnée, jamais un pourquoi.",
     compter: (sources) =>
-      resultat(tousLesTextes(sources).filter((t) => / : [a-zà-ÿ]/.test(t.texte))),
+      resultat(
+        tousLesTextes(sources).filter((t) =>
+          / : [a-zà-ÿ]/.test(t.texte.replace(ETIQUETTE_EN_TETE, "")),
+        ),
+      ),
   },
   {
     id: "clauses-de-nuance",
@@ -865,22 +980,29 @@ export const MESURES: readonly Mesure[] = [
       "Un libellé d'attente se dérive du verbe de son bouton. Il y en a donc un par action, et compter les formes distinctes punirait justement le fait de les nommer. Ce qui se compte est le générique, qui laisse l'opérateur devant un bouton muet.",
     compter: (sources) => {
       const vus = new Map<string, Site>();
+      /* « Chargement », « En cours », « Patientez » : aucun ne dit ce qu'on attend. */
+      const muet = /^(en cours|chargement|patient|veuillez|traitement|envoi en cours)/i;
+      /* Un exemple de saisie finit par des points de suspension sans rien faire attendre. */
+      const estUnExemple = (ligne: string): boolean => /placeholder|[Ee]xemple/.test(ligne);
+      const retenir = (chemin: string, ligne: number, texte: string): void => {
+        if (muet.test(texte) && !vus.has(texte)) vus.set(texte, { chemin, ligne, extrait: texte });
+      };
       for (const source of sources) {
         source.lignes.forEach((ligne, index) => {
-          /* Un exemple de saisie finit par des points de suspension sans rien faire attendre. */
-          if (/placeholder|[Ee]xemple/.test(ligne)) return;
+          if (estUnExemple(ligne)) return;
           const motif = /"([^"\\]{3,80}…)"/g;
           let trouve = motif.exec(ligne);
           while (trouve !== null) {
-            const texte = trouve[1];
-            /* « Chargement », « En cours », « Patientez » : aucun ne dit ce qu'on attend. */
-            const muet = /^(en cours|chargement|patient|veuillez|traitement|envoi en cours)/i;
-            if (texte !== undefined && muet.test(texte) && !vus.has(texte)) {
-              vus.set(texte, { chemin: source.chemin, ligne: index + 1, extrait: texte });
-            }
+            if (trouve[1] !== undefined) retenir(source.chemin, index + 1, trouve[1]);
             trouve = motif.exec(ligne);
           }
         });
+        for (const gabarit of lectureDe(source).gabarits) {
+          /* Le neutre d'une interpolation finale s'écrit lui aussi « … », sans rien faire attendre. */
+          if (gabarit.finitParUneInterpolation || !gabarit.texte.endsWith("…")) continue;
+          if (estUnExemple(source.lignes[gabarit.ligne - 1] ?? "")) continue;
+          retenir(source.chemin, gabarit.ligne, gabarit.texte);
+        }
       }
       return resultat([...vus.values()]);
     },
