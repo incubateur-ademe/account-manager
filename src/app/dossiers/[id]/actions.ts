@@ -22,7 +22,7 @@ import {
 } from "@/core/dossier";
 import { ancrageLu, intentionDUnGeste, SENS_D_UN_GESTE } from "@/core/geste";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
-import { origineFigeeSchema } from "@/core/modele-plan";
+import { lireSaisieFigee } from "@/core/modele-plan";
 import { peremptionDuPlan } from "@/core/plan";
 import { actionTracee } from "@/lib/actions";
 import { profilDeLaPolitique } from "@/lib/arrivee";
@@ -352,6 +352,7 @@ export async function pointerEtape(
       systemKey: true,
       state: true,
       template: true,
+      manual: true,
       expectedActor: true,
       validationBy: true,
       validation: true,
@@ -442,18 +443,16 @@ export async function pointerEtape(
     };
   }
 
-  // Une origine gelée illisible ne peut venir que d'une écriture faite hors de cet
-  // outil. La taire ferait pointer « fait » sur une étape qui réclamait une valeur,
-  // et lever ici ôterait toute issue à l'écran : le pointage se refuse, et le dit.
-  const origine = origineFigeeSchema.nullish().safeParse(etape.template);
-  if (!origine.success) {
+  // Lever ici ôterait toute issue à l'écran : le pointage se refuse, et le dit.
+  const lue = lireSaisieFigee(etape);
+  if (!lue.success) {
     return {
       erreur:
-        "L'origine déclarée de cette étape est illisible. Reprenez-la depuis son modèle avant de la cocher.",
+        "La valeur que réclame cette étape est illisible en base. Faites-la corriger avant de la cocher.",
     };
   }
 
-  const saisie = origine.data?.saisie ?? null;
+  const saisie = lue.data;
 
   // « Déjà présent » et « déjà absent » affirment que le geste a eu lieu, quelqu'un
   // d'autre étant passé avant : ils le déclarent au même titre que « fait », donc ils
@@ -468,7 +467,7 @@ export async function pointerEtape(
   // demandait, l'étape ne dit pas ce qui a été fait.
   if (critereConstate && saisie?.obligatoire === true && reponse.length === 0) {
     return {
-      erreur: `Renseignez « ${saisie.libelle} » : sans elle, personne ne saura ce qui a été fait.`,
+      erreur: `Le champ « ${saisie.libelle} » est vide. Renseignez-le avant d'enregistrer.`,
     };
   }
 

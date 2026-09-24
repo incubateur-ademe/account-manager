@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { notion } from "@/connectors/notion";
+import { scalingo } from "@/connectors/scalingo";
 import type { Connector, Intent, PlannedStep } from "@/core/connector";
 import type {
   Acteur,
@@ -36,6 +37,9 @@ interface IdentiteEnBase {
   provider: string;
   matchMethod: string;
   vanishedAt: Date | null;
+  externalId?: string;
+  /** Les accès vivants de ce compte, tels que la collecte les a constatés. */
+  grants?: readonly { role: string; resource: { externalId: string; label: string } }[];
 }
 
 interface EtapeEnBase {
@@ -47,6 +51,7 @@ interface EtapeEnBase {
   state: EtatEtape;
   lastError: string | null;
   template: unknown;
+  manual: unknown;
   reponse: string | null;
   attempts: number;
   expectedActor: Acteur;
@@ -258,6 +263,7 @@ vi.mock("@/lib/db", () => ({
               label: string;
               ordre: number;
               template?: unknown;
+              manual?: unknown;
               expectedActor?: Acteur;
               validationBy?: Acteur;
             }[];
@@ -282,6 +288,7 @@ vi.mock("@/lib/db", () => ({
             state: "PENDING",
             lastError: null,
             template: etape.template ?? null,
+            manual: etape.manual ?? null,
             reponse: null,
             attempts: 0,
             // Les défauts de la colonne, et non ceux du test : une étape muette est
@@ -1069,6 +1076,70 @@ describe("pointer une étape qui réclame une valeur", () => {
     expect(echec.erreur).toBeUndefined();
     expect(etape?.state).toBe("FAILED");
     expect(etape?.reponse).toBeNull();
+  });
+
+  it("refuse de solder un transfert Scalingo sans repreneur, et garde au journal qui a hérité de quoi", async () => {
+    // Given le départ d'une personne que la collecte a vue propriétaire d'une
+    // application Scalingo. Le plan vient du vrai connecteur, sans réseau : le
+    // transfert ne lit rien, il se déclare.
+    base.identites.push({
+      personId: PERSONNE,
+      provider: "scalingo",
+      matchMethod: "DECLARED",
+      vanishedAt: null,
+      externalId: "us-camille",
+      grants: [
+        {
+          role: "owner",
+          resource: { externalId: "app-annuaire", label: "service-annuaire, osc-fr1" },
+        },
+      ],
+    });
+    base.connecteurs.length = 0;
+    base.connecteurs.push(scalingo);
+
+    const { plan } = await dossierAvecPlan("OFFBOARDING");
+    plan.state = "EXECUTING";
+    const transfert = base.etapes.find(({ label }) => label.startsWith("Transférer"));
+    expect(transfert?.label).toBe("Transférer la propriété de service-annuaire, osc-fr1");
+    const etapeId = transfert?.id ?? "";
+
+    // When on la déclare faite sans nommer personne
+    const muette = await pointerEtape(null, formulaire({ etapeId, pointage: "fait" }));
+
+    // Then le refus dit quoi saisir, et rien n'a bougé, journal compris
+    expect(muette.erreur).toBe(
+      "Le champ « Compte Scalingo du repreneur » est vide. Renseignez-le avant d'enregistrer.",
+    );
+    expect(transfert?.state).toBe("PENDING");
+    expect(base.journal).toHaveLength(0);
+
+    // When on constate que la propriété avait déjà changé de main, toujours sans repreneur
+    const constat = await pointerEtape(null, formulaire({ etapeId, pointage: "deja-absent" }));
+
+    // Then même refus : le constat affirme le transfert autant que « fait »
+    expect(constat.erreur).toBe(muette.erreur);
+    expect(transfert?.state).toBe("PENDING");
+
+    // When le repreneur vient
+    const pointee = await pointerEtape(
+      null,
+      formulaire({ etapeId, pointage: "fait", reponse: "dominique@exemple.invalid" }),
+    );
+
+    // Then l'étape est soldée, et la trace nomme l'application et celui qui en hérite
+    expect(pointee.erreur).toBeUndefined();
+    expect(transfert?.state).toBe("SUCCEEDED");
+    expect(transfert?.reponse).toBe("dominique@exemple.invalid");
+    expect(base.journal.at(-1)).toMatchObject({
+      action: "dossier.pointage",
+      targetId: "scalingo:Transférer la propriété de service-annuaire, osc-fr1",
+      after: { sens: "OFFBOARDING", etat: "SUCCEEDED", reponse: "dominique@exemple.invalid" },
+    });
+    expect(base.gestes.slice(0, 2)).toEqual([
+      "journal:dossier.pointage:SUCCESS",
+      "etape:SUCCEEDED:NONE",
+    ]);
   });
 
   it("laisse une étape de connecteur se pointer sans rien réclamer", async () => {
@@ -2381,6 +2452,7 @@ describe("un délégué entre, agit, et son droit s'éteint sous lui", () => {
       state: "PENDING",
       lastError: null,
       template: null,
+      manual: null,
       reponse: null,
       attempts: 0,
       expectedActor: "OPERATOR",

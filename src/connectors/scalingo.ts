@@ -1677,7 +1677,8 @@ export function planifierDepartScalingo(
       capability: "revoke" as const,
       // Manuelle quel que soit le jeton, et ses paramètres ne portent aucun bénéficiaire,
       // ce qui suffit à ce que `cibleDeLEtape` ne la reconnaisse pas et que le précheck la
-      // laisse ouverte. Le repreneur est une décision, pas une lecture.
+      // laisse ouverte. Le repreneur est une décision, pas une lecture : il se saisit au
+      // pointage.
       tier: "manual" as const,
       action: "transferer-la-propriete",
       label: `Transférer la propriété de ${application}`,
@@ -1690,6 +1691,7 @@ export function planifierDepartScalingo(
         runbook: RUNBOOK_TRANSFERT,
         deeplink: pageDesCollaborateurs(region, nom),
         doneWhen: `${application} appartient à quelqu'un d'autre, et ${username} ne figure pas non plus dans ses collaborateurs. Scalingo peut laisser l'ancien propriétaire en collaboration, et les deux se constatent sur le même écran.`,
+        saisie: { libelle: "Compte Scalingo du repreneur", obligatoire: true },
       },
     };
   });

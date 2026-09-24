@@ -2,7 +2,7 @@ import type { z } from "zod";
 
 import type { AuditInput } from "@/core/audit";
 import type { Acteur } from "@/core/dossier";
-import type { OrigineFigee } from "@/core/modele-plan";
+import type { OrigineFigee, SaisieAttendue } from "@/core/modele-plan";
 
 /**
  * Ce qu'un connecteur sait faire, et non ce qu'une étape demande. `reference` est la
@@ -359,6 +359,14 @@ export interface ManualTask {
   deeplink?: string;
   /** Ce que l'opérateur doit constater pour cocher. Sans ça, « fait » ne veut rien dire. */
   doneWhen: string;
+  /**
+   * La valeur que le pointage réclame quand cocher ne dit pas ce qui a été fait.
+   *
+   * Hors de l'empreinte comme le reste de la marche à suivre, à la différence de celle
+   * d'un modèle : un opérateur réécrit un modèle entre deux plans, un connecteur ne
+   * change la sienne qu'à une livraison.
+   */
+  saisie?: SaisieAttendue;
 }
 
 export interface PlannedStep {
@@ -388,7 +396,8 @@ export interface PlannedStep {
   /**
    * L'origine déclarée de l'étape : quel modèle l'a demandée, sous quelle clé, et
    * quelle saisie elle attendait. Un connecteur ne le pose jamais, et son absence
-   * signifie exactement « cette étape vient d'un système ».
+   * signifie exactement « cette étape vient d'un système ». La saisie d'un connecteur
+   * vit dans `manual`.
    */
   template?: OrigineFigee;
   /**
