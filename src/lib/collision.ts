@@ -15,11 +15,11 @@ export type EcritureEnCollision = "identifiant" | "adresse" | "fiche";
  */
 const PHRASE: Record<EcritureEnCollision, (valeur: string) => string> = {
   identifiant: (valeur) =>
-    `« ${valeur} » vient d'être pris, ou l'un de ses constats l'a été. Rien n'a été écrit : refaites la demande pour repartir de l'état courant.`,
+    `« ${valeur} » vient d'être pris, ou l'un de ses constats l'a été. Rien n'a été écrit. Refaites la demande pour repartir de l'état courant.`,
   adresse: (valeur) =>
-    `« ${valeur} » est déjà l'adresse de communication d'une autre fiche locale. Rien n'a été écrit : corrigez-la, ou reprenez l'autre fiche.`,
+    `« ${valeur} » est déjà l'adresse de communication d'une autre fiche locale. Rien n'a été écrit. Corrigez-la, ou reprenez l'autre fiche.`,
   fiche: (valeur) =>
-    `Aucune fiche n'a été créée pour « ${valeur} » : une autre porte déjà son identifiant, son identifiant beta.gouv ou son adresse de communication. Rien n'a été écrit.`,
+    `Aucune fiche n'a été créée pour « ${valeur} », une autre porte déjà son identifiant, son identifiant beta.gouv ou son adresse de communication. Rien n'a été écrit.`,
 };
 
 /**

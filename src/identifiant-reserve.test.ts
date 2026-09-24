@@ -102,7 +102,7 @@ function champs(valeurs: Record<string, string>): FormData {
 }
 
 const REFUS =
-  "« operatrice.exemple » nomme un opérateur de l'outil : aucune fiche ne peut porter cet identifiant.";
+  "« operatrice.exemple » nomme un opérateur de l'outil. Aucune fiche ne peut porter cet identifiant.";
 
 beforeEach(() => {
   base.operateurs = [];

@@ -29,7 +29,7 @@ export const LIBELLE_DROITS = {
    * et un dossier d'arrivée lisait ici qu'un droit se donne sur un départ.
    */
   ferme: (possibleSur: string) =>
-    `Ce dossier ne s'ouvre plus à personne : un droit ne se donne que sur ${possibleSur}.`,
+    `Ce dossier ne s'ouvre plus à personne. Un droit ne se donne que sur ${possibleSur}.`,
   retrait: {
     raison: "Pourquoi ce retrait (facultatif)",
     lecteurDEcran: "Raison du retrait",
@@ -52,7 +52,7 @@ export const LIBELLE_DROITS = {
     declare: (adresse: string) =>
       `Le lien de connexion part sur ${adresse}, déclarée avec ce droit.`,
     deduit: (adresse: string) =>
-      `Le lien de connexion part sur ${adresse}, lue sur sa fiche : personne ne l'a choisie pour ce dossier, et une collecte peut la remplacer.`,
+      `Le lien de connexion part sur ${adresse}, lue sur sa fiche et non choisie pour ce dossier. Une collecte peut la remplacer.`,
   },
 } as const;
 
@@ -101,7 +101,7 @@ export const LIBELLE_OCTROI = {
     manquante:
       "Renseignez-la pour qui n'a pas de compte beta.gouv. Sans elle, le lien part sur l'adresse de contact de sa fiche, quand l'outil peut la servir.",
     aEviter: (domainesMenaces: readonly string[]) =>
-      `Évitez une adresse en ${enumeration(domainesMenaces)} : ces boîtes se ferment au départ de leur titulaire.`,
+      `Évitez une adresse en ${enumeration(domainesMenaces)}, ces boîtes se ferment au départ de leur titulaire.`,
   },
   /**
    * Rendues à côté des champs, l'accord fait : ce sont les phrases qui retiennent la

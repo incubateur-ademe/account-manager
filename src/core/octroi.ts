@@ -123,7 +123,7 @@ function motifDeScope(probleme: z.core.$ZodIssue, scope: unknown): string {
     const cles = probleme.keys.map((cle) => `« ${cle} »`).join(", ");
     const plusieurs = probleme.keys.length > 1;
 
-    return `${champ} : ${plusieurs ? "les clés" : "la clé"} ${cles} ${plusieurs ? "ne sont pas attendues" : "n'est pas attendue"} sur ce système. Une clé inconnue dans un profil écrit à la main est une faute de frappe : corrigez son orthographe, ou retirez-la.`;
+    return `${champ} : ${plusieurs ? "les clés" : "la clé"} ${cles} ${plusieurs ? "ne sont pas attendues" : "n'est pas attendue"} sur ce système. Une clé inconnue dans un profil écrit à la main est une faute de frappe. Corrigez son orthographe, ou retirez-la.`;
   }
 
   const admises =
@@ -214,7 +214,7 @@ function verdictDAcces(
 
   if (examen?.risque === "high" && acces.expiresInDays === undefined) {
     motifs.push(
-      `${examen.libelle} est un accès à risque élevé : il exige une échéance, sous expiresInDays. Sans terme, il ne se referme jamais de lui-même.`,
+      `${examen.libelle} est un accès à risque élevé. Posez son échéance sous expiresInDays.`,
     );
   }
 

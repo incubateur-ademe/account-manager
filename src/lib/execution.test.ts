@@ -1150,7 +1150,7 @@ describe("le plafond de masse", () => {
     // faire
     expect(refuse.refus).toContain("3 étapes");
     expect(refuse.refus).toContain("plafond de 2");
-    expect(refuse.refus).toContain("relisez la liste");
+    expect(refuse.refus).toContain("Relisez la liste");
     expect(refuse.masse).toEqual({ executables: 3, seuil: 2, depasse: true });
     expect(base.journal).toHaveLength(1);
     expect(base.journal[0]?.after).toMatchObject({ voie: "ADRESSE", masse: refuse.masse });

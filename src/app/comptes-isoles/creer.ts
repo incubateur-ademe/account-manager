@@ -38,7 +38,7 @@ class CompteDejaTranche extends Error {}
 
 /** Le refus d'une clé prise nomme le geste qui reste : sans lui, il se lit comme une impasse. */
 const cleDejaPrise = (cle: string) =>
-  `Un compte de service porte déjà la clé « ${cle} » : rattachez-lui ce compte.`;
+  `Un compte de service porte déjà la clé « ${cle} ». Rattachez-lui ce compte.`;
 
 /**
  * Les trois refus que partagent les deux gestes de cet écran : le compte a disparu, il
@@ -157,7 +157,7 @@ export async function creerFichePourCompte(
     select: { username: true },
   });
   if (existante) {
-    return { erreur: `« ${username} » existe déjà : rattachez le compte à cette fiche.` };
+    return { erreur: `La fiche « ${username} » existe déjà. Rattachez-lui ce compte.` };
   }
 
   await actionTracee({

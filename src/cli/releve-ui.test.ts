@@ -132,6 +132,105 @@ describe("ce que le relevé compte, et ce qu'il refuse de compter", () => {
     expect(compter("textes-de-plus-de-quarante-mots", "src/connectors/x.ts", pile)).toBe(0);
   });
 
+  it("lit le texte d'un gabarit interpolé sous les cinq mesures de rédaction", () => {
+    // Given un deux-points explicatif écrit dans un gabarit porteur d'une valeur. Écarter tout
+    // gabarit interpolé laissait la moitié des textes du dépôt hors de toute mesure.
+    const explicatif = `const T = \`Le compte \${nom} est fermé : personne ne le relit.\`;`;
+    expect(compter("deux-points-explicatifs", ECRAN, explicatif)).toBe(1);
+
+    // Then un gabarit qui s'ouvre sur une valeur se lit aussi, même sans aucun accent pour dire
+    // qu'il est en français.
+    const ouvertSurUneValeur = `const T = \`\${n} comptes en trop : il faut les retirer.\`;`;
+    expect(compter("deux-points-explicatifs", ECRAN, ouvertSurUneValeur)).toBe(1);
+
+    // Then un deux-points suivi d'une valeur introduit une donnée, et ne se compte pas.
+    const donnee = `const T = \`L'espace-membre n'a pas répondu : \${erreur}\`;`;
+    expect(compter("deux-points-explicatifs", ECRAN, donnee)).toBe(0);
+
+    // Then le texte d'un gabarit imbriqué dans une interpolation se lit aussi.
+    const imbrique = [
+      `const T = \`\${liste}\${`,
+      `  vide ? "" : \`, et \${n} abandonnés faute de place : le plus récent survit\``,
+      "}`;",
+    ].join("\n");
+    expect(compter("deux-points-explicatifs", ECRAN, imbrique)).toBe(1);
+
+    // Then les quatre autres mesures le lisent de même.
+    const nuance = `const T = \`La liste de \${x} est vide, ce qui ne dit rien des accès réels.\`;`;
+    expect(compter("clauses-de-nuance", ECRAN, nuance)).toBe(1);
+    const long = `const R = \`${"été ".repeat(20)}\${x} ${"été ".repeat(21)}\`;`;
+    expect(compter("textes-de-plus-de-quarante-mots", "src/connectors/x.ts", long)).toBe(1);
+    const refus = `return { erreur: \`Compte \${nom} introuvable.\` };`;
+    expect(compter("refus-en-forme-d-etiquette", "src/app/x/actions.ts", refus)).toBe(1);
+    const attente = `{pending ? \`Chargement de \${quoi}…\` : "Charger"}`;
+    expect(compter("libelles-d-attente-muets", ECRAN, attente)).toBe(1);
+
+    // Then une interpolation finale n'est pas une attente, son neutre s'écrivant « … » lui aussi.
+    const date = `const T = \`En cours depuis \${jour}\`;`;
+    expect(compter("libelles-d-attente-muets", ECRAN, date)).toBe(0);
+    const dateEnFinDeLigne = `const T = \`En cours depuis \${jour}\n\`;`;
+    expect(compter("libelles-d-attente-muets", ECRAN, dateEnFinDeLigne)).toBe(0);
+    const dateEtSautEchappe = `const T = \`En cours depuis \${jour}\\n\`;`;
+    expect(compter("libelles-d-attente-muets", ECRAN, dateEtSautEchappe)).toBe(0);
+
+    // Then un `/*` écrit dans un gabarit n'ouvre aucun commentaire. Il cachait au relevé les
+    // quarante lignes qui le suivaient dans le connecteur Scalingo, jusqu'au `*/` suivant.
+    const joker = [
+      `const chemin = \`PATCH:/v1/apps/\${application}/collaborators/*\`;`,
+      'const T = "Aucune collecte : la liste est vide.";',
+      "/** Un commentaire qui ferme. */",
+    ].join("\n");
+    expect(compter("deux-points-explicatifs", ECRAN, joker)).toBe(1);
+
+    // Then les guillemets s'apparient chaîne par chaîne. Une expression régulière posée sur la
+    // ligne lisait `", libelle: "` comme un texte dès qu'une chaîne courte précédait, et perdait
+    // celui qui suivait.
+    const apresUneChaineCourte = `const L = { cle: "list", quoi: "Aucune collecte : la liste est vide." };`;
+    expect(compter("deux-points-explicatifs", ECRAN, apresUneChaineCourte)).toBe(1);
+
+    // Then un accord posé dans une interpolation ne fabrique aucun second texte entre deux
+    // interpolations voisines.
+    const accords = `description={\`Le compte\${n > 1 ? "s" : ""} reste isolé : personne ne le relit\${n > 1 ? "nt" : ""}.\`}`;
+    expect(compter("deux-points-explicatifs", ECRAN, accords)).toBe(1);
+
+    // Then un saut de ligne écrit `\n` sépare deux mots, il ne colle pas un « n » au suivant.
+    const saut = `const T = \`Aucune collecte :\\nla liste est vide pour \${x}.\`;`;
+    expect(compter("deux-points-explicatifs", ECRAN, saut)).toBe(1);
+
+    // Then un gabarit étiqueté est du code, une requête SQL par exemple, et non un texte.
+    const requete = `await prisma.$executeRaw\`SELECT ${"colonne ".repeat(45)}FROM personne\`;`;
+    expect(compter("textes-de-plus-de-quarante-mots", ECRAN, requete)).toBe(0);
+  });
+
+  it("écarte l'étiquette d'un diagnostic, et rien qu'elle", () => {
+    // Given les trois formes d'étiquette du dépôt, une valeur, un mot et un chemin de champ,
+    // qui séparent l'objet visé de ce qui lui arrive.
+    const etiquettes = [
+      `const A = \`\${champ} : ce champ ne peut pas être vide.\`;`,
+      `const B = \`chute du périmètre : la datation ferait partir \${n} personnes\`;`,
+      `const C = \`scope.region : l'usage « \${usage} » interroge une région.\`;`,
+    ];
+    for (const etiquette of etiquettes) {
+      expect(compter("deux-points-explicatifs", "src/core/x.ts", etiquette)).toBe(0);
+    }
+
+    // Then un second deux-points, plus loin dans le même texte, se compte.
+    const second = `const A = \`\${champ} : cette clé est une faute de frappe : corrigez-la.\`;`;
+    expect(compter("deux-points-explicatifs", "src/core/x.ts", second)).toBe(1);
+
+    // Then une phrase qui s'ouvre en majuscule n'est pas une étiquette, ni un sujet de plus de
+    // trois mots.
+    const phrase = `const T = \`Simulation : rien n'a été écrit pour \${x}.\`;`;
+    expect(compter("deux-points-explicatifs", ECRAN, phrase)).toBe(1);
+    const sujet = `const T = \`\${n} d'entre elles attendent un second regard : personne ne l'a donné.\`;`;
+    expect(compter("deux-points-explicatifs", ECRAN, sujet)).toBe(1);
+
+    // Then un texte nu n'en porte jamais. Le fragment qui suit un lien s'ouvre en minuscule
+    // sans rien étiqueter.
+    const apresUnLien = `<p>Relancez <Link href="/collectes">la collecte</Link> depuis l'écran : elle seule remplit ce tableau.</p>`;
+    expect(compter("deux-points-explicatifs", ECRAN, apresUnLien)).toBe(1);
+  });
+
   it("sépare l'affirmation de la clause qui revient dessus", () => {
     // Given deux phrases qui disent la même chose, dont une seule se reprend après coup.
     const affirme = `<p>Cette liste ne dit rien des accès réels.</p>`;

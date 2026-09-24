@@ -924,7 +924,7 @@ async function ageDuReleveLaisse(
   return {
     passages,
     message: releveFige(passages)
-      ? `${dit} : ce n'est plus un incident, et plus rien de ce qui s'y adosse ne décide sur l'état du jour`
+      ? `${dit}, ce n'est plus un incident et plus rien de ce qui s'y adosse ne décide sur l'état du jour`
       : dit,
   };
 }

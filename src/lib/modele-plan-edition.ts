@@ -209,7 +209,7 @@ function valider(valeurs: EtapeSaisie, cleFigee: string | null): EtapeValidee | 
   // valide, d'où le test qui le laisse passer avant d'interroger la paire.
   if (valeurs.controleur !== null && !combinaisonValide(valeurs.acteur, valeurs.controleur)) {
     return refus(
-      `Cette répartition n'existe pas : ce que fait ${LIBELLE_ACTEUR[valeurs.acteur]} ne peut pas être contrôlé par ${LIBELLE_ACTEUR[valeurs.controleur]}. La personne concernée ne contrôle jamais, et un délégué ne relit que la personne concernée.`,
+      `Cette répartition n'existe pas. Ce que fait ${LIBELLE_ACTEUR[valeurs.acteur]} ne peut pas être contrôlé par ${LIBELLE_ACTEUR[valeurs.controleur]}. La personne concernée ne contrôle jamais, et un délégué ne relit que la personne concernée.`,
     );
   }
 
@@ -323,7 +323,7 @@ export async function ajouterEtape(
       throw erreur;
     }
     return refus(
-      `Ce modèle porte déjà une étape sous la clé « ${etape.cle} » : deux titres qui se ressemblent à ce point n'en font qu'un.`,
+      `Ce modèle porte déjà une étape sous la clé « ${etape.cle} ». Changez les mots du titre de l'étape que vous ajoutez.`,
     );
   }
 

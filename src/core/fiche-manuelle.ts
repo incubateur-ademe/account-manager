@@ -42,7 +42,7 @@ export function identifiantReserve(
   breakGlass: readonly string[],
 ): string | null {
   return estOperateur(identifiant, operateurs, breakGlass)
-    ? `« ${identifiant} » nomme un opérateur de l'outil : aucune fiche ne peut porter cet identifiant.`
+    ? `« ${identifiant} » nomme un opérateur de l'outil. Aucune fiche ne peut porter cet identifiant.`
     : null;
 }
 

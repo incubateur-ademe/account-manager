@@ -548,7 +548,7 @@ export function planifierOctroiGithub(
 
   const pourquoi =
     compte === null
-      ? ` Aucun identifiant GitHub sûr n'est connu pour ${qui} : c'est à l'opérateur de désigner le compte, personne ici ne le devine.`
+      ? ` Aucun identifiant GitHub sûr n'est connu pour ${qui}. C'est à l'opérateur de désigner le compte.`
       : ` Aucune voie automatique n'est praticable, il manque : ${CREDENTIAL_ADMIN}.`;
 
   return [
@@ -575,7 +575,7 @@ export function planifierOctroiGithub(
               title: `Inviter ${qui} dans ${organisation} avec le rôle ${role}`,
               runbook: `${RUNBOOK_OCTROI}${pourquoi}`,
               deeplink: `https://github.com/orgs/${organisation}/people`,
-              doneWhen: `${qui} figure parmi les membres de ${organisation} avec le rôle ${role}, ou parmi les invitations en attente de l'organisation : une invitation en attente est un accès accordé, elle n'attend qu'une acceptation.`,
+              doneWhen: `${qui} figure parmi les membres de ${organisation} avec le rôle ${role}, ou parmi les invitations en attente de l'organisation. Une invitation en attente est un accès accordé.`,
             },
           }),
     },
@@ -777,7 +777,7 @@ export function interpreterOctroi(statut: number, corps: unknown, maintenant: Da
       ? `Invitation envoyée avec le rôle ${role}. Elle reste en attente tant que la personne ne l'a pas acceptée, et c'est déjà un accès accordé.`
       : lue.etat === "active"
         ? `Adhésion active avec le rôle ${role}.`
-        : `GitHub a répondu ${statut} sans état lisible : l'écriture a eu lieu, l'état constaté reste à vérifier.`;
+        : `GitHub a répondu ${statut} sans état lisible. L'écriture a eu lieu, l'état constaté reste à vérifier.`;
 
   return {
     state: "SUCCEEDED",
@@ -811,7 +811,7 @@ export async function executerOctroi(
   if (!ecriturePossible) {
     return {
       state: "FAILED",
-      error: `${CREDENTIAL_ADMIN} n'est pas configuré : aucune écriture n'est possible sur les membres de l'organisation, et l'étape est à faire à la main. ${RUNBOOK_OCTROI}`,
+      error: `${CREDENTIAL_ADMIN} n'est pas configuré, aucune écriture n'est possible sur les membres de l'organisation. L'étape est à faire à la main. ${RUNBOOK_OCTROI}`,
       retryable: false,
     };
   }
@@ -819,7 +819,7 @@ export async function executerOctroi(
   if (step.action !== ACTION_OCTROI) {
     return {
       state: "FAILED",
-      error: `Le connecteur GitHub ne sait pas exécuter l'action « ${step.action} » : elle ne vient pas de lui, et la reprendre telle quelle échouerait de la même façon.`,
+      error: `Le connecteur GitHub ne sait pas exécuter l'action « ${step.action} », qui ne vient pas de lui. La reprendre telle quelle échouerait de la même façon.`,
       retryable: false,
     };
   }
@@ -829,7 +829,7 @@ export async function executerOctroi(
   if (!cible) {
     return {
       state: "FAILED",
-      error: `Cette étape ne désigne aucun compte GitHub sûr : il n'y a personne à inviter, et c'est à l'opérateur de le faire. ${RUNBOOK_OCTROI}`,
+      error: `Cette étape ne désigne aucun compte GitHub sûr. C'est à l'opérateur de désigner qui inviter. ${RUNBOOK_OCTROI}`,
       retryable: false,
     };
   }

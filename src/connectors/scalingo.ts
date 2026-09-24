@@ -1293,7 +1293,7 @@ export function planifierJetonScalingo(
       manual: {
         title: `Émettre un jeton restreint pour ${qui}`,
         runbook: RUNBOOK_JETON,
-        doneWhen: `${qui} détient un blob émis sur ${cible}, borné aux chemins ${scopes.join(", ")} et au terme porté par cette étape, et la fiche de son compte machine est saisie depuis l'écran « Comptes de service », terme compris : sans lui, la fiche réclamera une revue que personne ne peut éteindre.`,
+        doneWhen: `${qui} détient un blob émis sur ${cible}, borné aux chemins ${scopes.join(", ")} et au terme porté par cette étape, et la fiche de son compte machine est saisie depuis l'écran « Comptes de service », terme compris.`,
       },
     },
   ];
@@ -1396,7 +1396,7 @@ export async function executerEmissionScalingo(
   if (demande === undefined) {
     return {
       state: "FAILED",
-      error: `Étape « ${step.action} » sans cible ni chemins lisibles : rien n'a été émis.`,
+      error: `Étape « ${step.action} » sans cible ni chemins lisibles. Rien n'a été émis.`,
       retryable: false,
     };
   }
@@ -1435,7 +1435,7 @@ export async function executerEmissionScalingo(
       state: "FAILED",
       error: aucunBlob
         ? `L'émission a été refusée (${message}). Rien n'a été émis.`
-        : `L'émission n'a pas abouti (${message}). Un jeton a pu naître : rien ne le liste, rien ne le révoque, et sa clé n'a atteint personne. Il est inutilisable et meurt à son terme. Ne relancez pas à l'aveugle, une seconde tentative en ajouterait un second.`,
+        : `L'émission n'a pas abouti (${message}). Un jeton a pu naître, inutilisable faute de clé remise. Rien ne le liste, rien ne le révoque, il meurt à son terme. Ne relancez pas à l'aveugle, une seconde tentative en ajouterait un second.`,
       retryable: false,
     };
   }
@@ -1444,7 +1444,7 @@ export async function executerEmissionScalingo(
     state: "SUCCEEDED",
     // Ce qui devient le motif journalisé de l'étape, dans un journal en écriture seule à
     // rétention indéfinie : la clé client n'y entre pas, et le blob non plus.
-    evidence: `Jeton restreint émis pour ${demande.beneficiaire} sur ${demande.cible}, borné à ${demande.scopes.length} chemins et au terme du ${terme.toISOString()}. Sa clé se remet une seule fois et ne s'écrit nulle part. Aucune révocation n'existe côté proxy : ce jeton se reprend en attendant son terme, et par rien d'autre.`,
+    evidence: `Jeton restreint émis pour ${demande.beneficiaire} sur ${demande.cible}, borné à ${demande.scopes.length} chemins et au terme du ${terme.toISOString()}. Sa clé se remet une seule fois et ne s'écrit nulle part. Aucune révocation n'existe côté proxy. Ce jeton expire à son terme.`,
     credential: {
       // Dérivée de la clé d'idempotence stockée, qui porte l'identifiant du plan et est
       // unique en base : une réémission après un échec ambigu produit une seconde ligne
@@ -1599,7 +1599,7 @@ function reprisesDesJetons(
             terme === undefined
               ? "Le terme du jeton est passé"
               : `Le terme du jeton est passé, soit après le ${jour(terme)}`
-          }, et aucune émission nouvelle n'a été faite sous cet engagement depuis. Rien d'autre ne se constate : le proxy n'offre ni révocation ni introspection, et son registre est la fiche du compte machine, pas une API. Le jeton d'API Scalingo n'a pas été renouvelé pour autant : le faire couperait tout le parc et la collecte.`,
+          }, et aucune émission nouvelle n'a été faite sous cet engagement depuis. Rien d'autre ne se constate, le proxy n'offrant ni révocation ni introspection. Le jeton d'API Scalingo n'a pas été renouvelé.`,
         },
       };
     });
@@ -1643,7 +1643,7 @@ export function planifierDepartScalingo(
               title: `Retirer ${username} des applications Scalingo`,
               runbook: RUNBOOK,
               deeplink: CONSOLIDEE,
-              doneWhen: `${username} n'apparaît plus dans la vue consolidée des collaborateurs, invitations en attente comprises. Si une application lui appartient, sa propriété a été transférée : ce chemin-là ne passe pas par la liste des collaborateurs, où un propriétaire ne figure jamais.`,
+              doneWhen: `${username} n'apparaît plus dans la vue consolidée des collaborateurs, invitations en attente comprises. Si une application lui appartient, sa propriété a été transférée. Un propriétaire ne figure jamais dans la liste des collaborateurs.`,
             },
           },
         ]
@@ -1779,7 +1779,7 @@ function hoteAutorise(adresse: string): boolean {
 }
 
 const refusDHote = (adresse: string) =>
-  `« ${adresse} » ne désigne aucun hôte Scalingo : rien n'est parti.`;
+  `« ${adresse} » ne désigne aucun hôte Scalingo. Rien n'est parti.`;
 
 const ACTIONS_LUES = new Set(["retirer-des-collaborateurs", "inviter-comme-collaborateur"]);
 
@@ -1853,7 +1853,7 @@ export async function executerScalingo(
   if (!cible || !ACTIONS_LUES.has(step.action)) {
     return {
       state: "FAILED",
-      error: `Étape « ${step.action} » sans voie automatique : elle attend la main d'un opérateur.`,
+      error: `Étape « ${step.action} » sans voie automatique. Elle attend la main d'un opérateur.`,
       retryable: false,
     };
   }

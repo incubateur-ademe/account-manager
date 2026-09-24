@@ -236,7 +236,7 @@ export function poseAdmissible(
   if (echeance > jour + TOLERANCE_MAX_JOURS * JOUR) {
     return {
       possible: false,
-      raison: `Une tolérance ne couvre pas plus de ${TOLERANCE_MAX_JOURS} jours : au-delà, elle ne se distingue plus d'un oubli.`,
+      raison: `Une tolérance ne couvre pas plus de ${TOLERANCE_MAX_JOURS} jours. Choisissez une échéance plus proche.`,
     };
   }
   if (dejaCouvertes.has(cleDeCible(demande.cible))) {

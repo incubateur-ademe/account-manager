@@ -138,7 +138,7 @@ describe("une adresse déjà prise se dit à l'écran, elle ne fait pas sortir l
     expect(base.ecrites).toEqual(["person.update"]);
     expect(edition).toEqual({
       erreur:
-        "« lead@exemple.org » est déjà l'adresse de communication d'une autre fiche locale. Rien n'a été écrit : corrigez-la, ou reprenez l'autre fiche.",
+        "« lead@exemple.org » est déjà l'adresse de communication d'une autre fiche locale. Rien n'a été écrit. Corrigez-la, ou reprenez l'autre fiche.",
     });
 
     // Given le même refus sur l'autre geste qui pose une adresse : la fiche créée pour
@@ -156,7 +156,7 @@ describe("une adresse déjà prise se dit à l'écran, elle ne fait pas sortir l
     expect(base.ecrites).toEqual(["person.create"]);
     expect(rattachement).toEqual({
       erreur:
-        "Aucune fiche n'a été créée pour « passante.exemple » : une autre porte déjà son identifiant, son identifiant beta.gouv ou son adresse de communication. Rien n'a été écrit.",
+        "Aucune fiche n'a été créée pour « passante.exemple », une autre porte déjà son identifiant, son identifiant beta.gouv ou son adresse de communication. Rien n'a été écrit.",
     });
 
     // Given une panne qui n'est pas une collision

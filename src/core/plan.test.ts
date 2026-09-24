@@ -379,7 +379,7 @@ describe("plafond de masse d'un plan", () => {
     expect(refus).not.toBeNull();
     expect(refus).toContain("34");
     expect(refus).toContain("20");
-    expect(refus).toContain("relisez la liste étape par étape");
+    expect(refus).toContain("Relisez la liste étape par étape");
 
     // When l'opérateur confirme la masse explicitement
     // Then le plan part, sans que rien d'autre n'ait changé
