@@ -1311,7 +1311,8 @@ précis où il le faudrait.
 
 Un document OpenAPI existe désormais et les réponses sont validées par un schéma en
 sortie, mais le dépôt a supprimé des pans entiers de fonctionnalités en quelques
-mois. D'où le test de contrat quotidien de la section 5.7.
+mois. D'où le test de contrat de la section 5.7, `src/lib/espace-membre.contrat.test.ts`,
+qui se lance à la main.
 
 **Rien n'est cru sur parole en entrée.** Ce que leur contrat déclare obligatoire est
 exigé à la lecture, sans quoi un champ renommé chez eux se lirait ici comme une
@@ -1323,8 +1324,8 @@ complète, donc elle ne date aucune disparition.
 Cette validation attrape un changement de structure, pas la disparition d'une valeur
 facultative. Une date de fin de mission peut légitimement manquer, celle d'une
 mission en cours : si ce champ était renommé sans rien changer d'autre, le silence
-serait indétectable ici. C'est au test de contrat de s'étonner que plus aucune
-échéance ne remonte.
+serait indétectable ici. C'est au test de contrat, quand on le lance, de s'étonner que
+plus aucune échéance ne remonte.
 
 **La connexion, elle, dépend encore d'une route dépréciée.** Le provider NextAuth
 utilisé pour le login a `/api/protected/member/{username}` en dur dans son client, et

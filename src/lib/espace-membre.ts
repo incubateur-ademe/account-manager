@@ -53,7 +53,7 @@ const missionSchema = z.object({
   startups: z.array(z.object({ ghid: z.string().nullish() })).nullish(),
 });
 
-const membreSchema = z.object({
+export const membreSchema = z.object({
   uuid: z.string(),
   username: z.string().min(1),
   fullname: z.string(),
@@ -64,14 +64,14 @@ const membreSchema = z.object({
   missions: z.array(missionSchema),
 });
 
-const membreIncubateurSchema = membreSchema.extend({
+export const membreIncubateurSchema = membreSchema.extend({
   attachment: z.enum(["startups", "teams", "both"]),
   teams: z.array(z.string()).nullish(),
 });
 
 const phaseSchema = z.object({ name: z.string().nullish(), start: z.string().nullish() });
 
-const startupSchema = z.object({
+export const startupSchema = z.object({
   ghid: z.string().min(1),
   name: z.string().nullish(),
   phases: z.array(phaseSchema).nullish(),
