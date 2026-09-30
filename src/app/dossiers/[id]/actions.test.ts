@@ -2730,6 +2730,23 @@ describe("lancer l'exécution d'un plan, et ce que l'opérateur emporte avec lui
     expect(base.lancements.map(({ planId }) => planId)).toEqual([geste.id]);
     expect(base.revalidations).toEqual([`/personnes/${USERNAME}`]);
 
+    // Given un passage qui remet une clé
+    base.revalidations.length = 0;
+    base.resultatDExecution = {
+      simulation: false,
+      executees: 1,
+      soldees: 1,
+      echecs: 0,
+      remises: [{ key: "atelier:jeton:astreinte", label: "Jeton d'atelier", aRemettre: "cle" }],
+    };
+
+    // When on relance le geste
+    await lancerExecution(null, formulaire({ planId: geste.id }));
+
+    // Then rien ne se rafraîchit : l'écran rendu solderait le geste et démonterait le
+    // bouton qui porte la clé, seule copie au monde
+    expect(base.revalidations).toEqual([]);
+
     // Given une session sans qualité d'opérateur
     base.lancements.length = 0;
     base.sessionOperateur = false;

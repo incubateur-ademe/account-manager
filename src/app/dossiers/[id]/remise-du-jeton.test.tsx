@@ -68,6 +68,7 @@ async function lancer(resultat: ResultatDExecution): Promise<void> {
       raisonDeMasse={null}
       simulation={false}
       priorite="primary"
+      titreDAlerte="h3"
     />,
   );
   await utilisateur.click(screen.getByRole("button", { name: LIBELLE_LANCEMENT.bouton.reel }));

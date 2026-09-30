@@ -107,6 +107,7 @@ export function Lancement({
         raisonDeMasse={refusDeMasse(masse, false)}
         simulation={simulation}
         priorite={priorite}
+        titreDAlerte={titreDAlerte}
       />
     </section>
   );

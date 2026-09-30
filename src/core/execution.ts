@@ -41,6 +41,9 @@ export function peutExecuter(etat: EtatPlan): Verdict {
 export const ISSUE_DOSSIER =
   "Cochez à la main ce qui a été fait, clôturez ce dossier, et rouvrez-en un pour repartir d'un plan à jour.";
 
+export const REFUS_SANS_CONFIRMATION =
+  "Ce plan ne porte pas l'instant de sa confirmation. Recalculez-le, puis confirmez-le.";
+
 export const ISSUE_GESTE =
   "Cochez à la main ce qui a été fait, puis reposez ce geste pour repartir d'un plan à jour.";
 

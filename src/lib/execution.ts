@@ -19,6 +19,7 @@ import {
   issueDUneException,
   ordreDExecution,
   peutExecuter,
+  REFUS_SANS_CONFIRMATION,
   refusDEcart,
   refusDePeremption,
 } from "@/core/execution";
@@ -397,9 +398,7 @@ export async function executerPlan(
   // confirmation écrivant l'instant et l'empreinte dans la même écriture, et c'est
   // précisément pourquoi il se refuse ici plutôt que de se replier en silence.
   if (plan.confirmedAt === null) {
-    return refuser(
-      "Ce plan ne porte pas l'instant de sa confirmation. Recalculez-le, puis confirmez-le.",
-    );
+    return refuser(REFUS_SANS_CONFIRMATION);
   }
 
   /**

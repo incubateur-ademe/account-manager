@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ISSUE_GESTE, refusDEcart } from "@/core/execution";
+import { ISSUE_GESTE, REFUS_SANS_CONFIRMATION, refusDEcart } from "@/core/execution";
 import { prisma } from "@/lib/db";
 import { calculerGeste, REFUS_DEPART_OUVERT } from "@/lib/geste";
 
@@ -26,7 +26,12 @@ const INTENTION = {
     role: "collaborator",
   },
   justification: "Renfort pendant une astreinte",
+  expiresInDays: 30,
 };
+
+function ilYA(jours: number): Date {
+  return new Date(MAINTENANT.getTime() - jours * JOUR);
+}
 
 async function semerPersonne(): Promise<string> {
   const { id } = await prisma.person.create({
@@ -36,18 +41,25 @@ async function semerPersonne(): Promise<string> {
   return id;
 }
 
+interface EtapeSemee {
+  idempotencyKey: string;
+  tier: string;
+  state: "PENDING" | "SUCCEEDED" | "SKIPPED";
+  grantExpiresAt?: Date;
+}
+
 async function semerGeste(
   personId: string,
   champs: {
     id: string;
     state: "EXECUTING" | "PARTIALLY_EXECUTED" | "EXECUTED";
     confirmedDigest: string;
-    confirmeIlYA: number;
+    creeIlYA: number;
+    confirmeIlYA: number | null;
     termeDans: number;
-    grantExpiresAt?: Date;
+    etapes: readonly EtapeSemee[];
   },
 ): Promise<void> {
-  const confirmedAt = new Date(MAINTENANT.getTime() - champs.confirmeIlYA * JOUR);
   await prisma.plan.create({
     data: {
       id: champs.id,
@@ -57,26 +69,26 @@ async function semerGeste(
       intent: INTENTION,
       planDigest: champs.confirmedDigest,
       confirmedDigest: champs.confirmedDigest,
-      confirmedAt,
-      confirmedBy: "operatrice.exemple",
+      confirmedAt: champs.confirmeIlYA === null ? null : ilYA(champs.confirmeIlYA),
+      confirmedBy: champs.confirmeIlYA === null ? null : "operatrice.exemple",
       createdBy: "operatrice.exemple",
-      createdAt: confirmedAt,
+      createdAt: ilYA(champs.creeIlYA),
       expiresAt: new Date(MAINTENANT.getTime() + champs.termeDans * JOUR),
       steps: {
-        create: {
+        create: champs.etapes.map((etape, rang) => ({
           systemKey: "scalingo",
-          tier: "manual",
+          tier: etape.tier,
           capability: "grant",
           action: "collaborer",
           label: "Inviter sur service-annuaire",
           params: {},
           riskLevel: "HIGH",
           expectedState: "ALREADY_PRESENT",
-          idempotencyKey: `idem-${champs.id}`,
-          ordre: 1,
-          state: champs.state === "EXECUTED" ? "SUCCEEDED" : "PENDING",
-          grantExpiresAt: champs.grantExpiresAt ?? null,
-        },
+          idempotencyKey: etape.idempotencyKey,
+          ordre: rang + 1,
+          state: etape.state,
+          grantExpiresAt: etape.grantExpiresAt ?? null,
+        })),
       },
     },
   });
@@ -93,48 +105,85 @@ describe("les gestes confirmés que la fiche lit", () => {
       soldes: [],
     });
 
-    // Given l'empreinte que le geste vaut aujourd'hui, telle que l'exécution la recalcule,
+    // Given ce que le geste vaut aujourd'hui, tel que l'exécution le recalcule : une étape à
+    // faire à la main, faute de credential Scalingo ici,
     const actuel = await calculerGeste(
       INTENTION as Parameters<typeof calculerGeste>[0],
       personId,
       USERNAME,
       MAINTENANT,
     );
+    const [recalculee] = actuel.etapes;
+    expect(actuel.etapes).toHaveLength(1);
+    expect(recalculee?.etape.tier).toBe("manual");
 
-    // Given un geste soldé qui a posé un terme, un geste en cours fidèle à ce qui a été
-    // approuvé, et un autre dont l'empreinte a bougé depuis,
+    // Given un geste soldé dont une étape a été écartée, un geste en cours fidèle à ce qui a
+    // été approuvé mais figé en automatique, et un autre dont l'empreinte a bougé. Le
+    // premier créé n'est pas le premier confirmé, et le dernier confirmé est semé en
+    // dernier : seul le tri sur la confirmation les range.
     const terme = new Date("2027-03-01T12:00:00Z");
     await semerGeste(personId, {
       id: "pla-solde",
       state: "EXECUTED",
       confirmedDigest: "digest-solde",
+      creeIlYA: 21,
       confirmeIlYA: 20,
       termeDans: -13,
-      grantExpiresAt: terme,
-    });
-    await semerGeste(personId, {
-      id: "pla-fidele",
-      state: "EXECUTING",
-      confirmedDigest: actuel.empreinte,
-      confirmeIlYA: 1,
-      termeDans: 6,
+      etapes: [
+        {
+          idempotencyKey: "idem-solde-1",
+          tier: "manual",
+          state: "SUCCEEDED",
+          grantExpiresAt: terme,
+        },
+        {
+          idempotencyKey: "idem-solde-2",
+          tier: "manual",
+          state: "SUCCEEDED",
+          grantExpiresAt: terme,
+        },
+        {
+          idempotencyKey: "idem-solde-3",
+          tier: "manual",
+          state: "SKIPPED",
+          grantExpiresAt: new Date("2027-06-01T12:00:00Z"),
+        },
+      ],
     });
     await semerGeste(personId, {
       id: "pla-deplace",
       state: "PARTIALLY_EXECUTED",
       confirmedDigest: "digest-d-avant-la-collecte",
+      creeIlYA: 2,
       confirmeIlYA: 2,
       termeDans: 5,
+      etapes: [{ idempotencyKey: "idem-deplace", tier: "manual", state: "PENDING" }],
+    });
+    await semerGeste(personId, {
+      id: "pla-fidele",
+      state: "EXECUTING",
+      confirmedDigest: actuel.empreinte,
+      creeIlYA: 3,
+      confirmeIlYA: 1,
+      termeDans: 6,
+      etapes: [
+        {
+          idempotencyKey: `${recalculee?.etape.idempotencyKey}:pla-fidele`,
+          tier: "auto",
+          state: "PENDING",
+        },
+      ],
     });
 
     const lus = await gestesConfirmes(personId, USERNAME, MAINTENANT);
 
-    // Then le soldé se résume, terme compris, et ne paie aucun recalcul,
+    // Then le soldé se résume avec les seuls termes des accès ouverts, une fois chacun :
+    // l'étape écartée n'a rien ouvert,
     expect(lus.soldes).toEqual([
       expect.objectContaining({
         planId: "pla-solde",
         systeme: "scalingo",
-        etapes: 1,
+        etapes: 3,
         confirmePar: "operatrice.exemple",
         termes: [terme],
       }),
@@ -144,10 +193,15 @@ describe("les gestes confirmés que la fiche lit", () => {
     expect(lus.enCours.map(({ planId }) => planId)).toEqual(["pla-fidele", "pla-deplace"]);
     const [fidele, deplace] = lus.enCours;
 
-    // Then le geste fidèle se lance : aucun refus, et sa masse est mesurée sur le recalcul,
+    // Then le geste fidèle se lance, et sa masse se mesure sur le recalcul comme au
+    // lancement : aucune étape que l'outil ferait lui-même, bien que le plan figé en
+    // porte une,
     expect(fidele?.refus).toBeNull();
     expect(fidele?.pointable).toBe(true);
-    expect(fidele?.masse).toMatchObject({ depasse: false });
+    expect(fidele?.masse).toEqual({ executables: 0, seuil: expect.any(Number), depasse: false });
+
+    // Then son étape dit que la voie du jour n'est plus celle qui a été figée,
+    expect(fidele?.etapes[0]?.voie).toMatch(/aujourd'hui cette étape est à faire à la main/u);
 
     // Then le geste déplacé porte mot pour mot le refus de l'exécution, sans masse, et
     // reste pointable : écarter ses étapes est sa seule sortie,
@@ -158,13 +212,17 @@ describe("les gestes confirmés que la fiche lit", () => {
     expect(deplace?.masse).toBeNull();
     expect(deplace?.pointable).toBe(true);
 
-    // Given un départ ouvert sur la personne,
-    await prisma.accessCase.create({
+    // Given le geste déplacé devenu aussi périmé, puis un départ ouvert sur la personne,
+    await prisma.plan.update({
+      where: { id: "pla-deplace" },
+      data: { expiresAt: ilYA(2) },
+    });
+    const depart = await prisma.accessCase.create({
       data: { personId, kind: "OFFBOARDING", state: "CONFIRMED" },
     });
 
-    // Then chaque geste en cours oppose le refus du départ, avant tout autre, et plus rien
-    // ne s'y pointe, le pointage refusant pour la même raison,
+    // Then le départ passe avant tout autre refus, péremption comprise, et plus rien ne
+    // se pointe, le pointage refusant pour la même raison,
     const pendantLeDepart = await gestesConfirmes(personId, USERNAME, MAINTENANT);
     expect(pendantLeDepart.enCours.map(({ refus }) => refus)).toEqual([
       REFUS_DEPART_OUVERT,
@@ -172,18 +230,37 @@ describe("les gestes confirmés que la fiche lit", () => {
     ]);
     expect(pendantLeDepart.enCours.every(({ pointable }) => !pointable)).toBe(true);
 
-    // Given le départ abandonné, et le terme du geste fidèle passé,
-    await prisma.accessCase.updateMany({ where: { personId }, data: { state: "CANCELLED" } });
-    await prisma.plan.update({
-      where: { id: "pla-fidele" },
-      data: { expiresAt: new Date(MAINTENANT.getTime() - 2 * JOUR) },
+    // Given le départ abandonné,
+    await prisma.accessCase.update({ where: { id: depart.id }, data: { state: "CANCELLED" } });
+
+    // Then la péremption passe avant l'écart, comme au lancement, et le geste redevient
+    // pointable,
+    const apresLeDepart = await gestesConfirmes(personId, USERNAME, MAINTENANT);
+    const perime = apresLeDepart.enCours.find(({ planId }) => planId === "pla-deplace");
+    expect(perime?.refus).toMatch(/^Ce plan valait jusqu'au/u);
+    expect(perime?.pointable).toBe(true);
+
+    // Given un geste en cours sans instant de confirmation, fidèle par ailleurs,
+    await semerGeste(personId, {
+      id: "pla-sans-instant",
+      state: "EXECUTING",
+      confirmedDigest: actuel.empreinte,
+      creeIlYA: 1,
+      confirmeIlYA: null,
+      termeDans: 6,
+      etapes: [
+        {
+          idempotencyKey: `${recalculee?.etape.idempotencyKey}:pla-sans-instant`,
+          tier: "manual",
+          state: "PENDING",
+        },
+      ],
     });
 
-    // Then c'est la péremption qui refuse le geste fidèle, et il redevient pointable.
-    const perime = await gestesConfirmes(personId, USERNAME, MAINTENANT);
-    const fideleAPresent = perime.enCours.find(({ planId }) => planId === "pla-fidele");
-    expect(fideleAPresent?.refus).toMatch(/^Ce plan valait jusqu'au/u);
-    expect(fideleAPresent?.pointable).toBe(true);
-    expect(fideleAPresent?.masse).toBeNull();
+    // Then il vient en dernier, et oppose le refus que le lancement lui opposerait.
+    const sansInstant = (await gestesConfirmes(personId, USERNAME, MAINTENANT)).enCours.at(-1);
+    expect(sansInstant?.planId).toBe("pla-sans-instant");
+    expect(sansInstant?.refus).toBe(REFUS_SANS_CONFIRMATION);
+    expect(sansInstant?.masse).toBeNull();
   });
 });

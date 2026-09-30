@@ -144,13 +144,20 @@ describe("le brouillon de geste sur la fiche de la personne", () => {
 });
 
 const CONFIRME_LE = new Date("2026-09-20T08:00:00Z");
+const TERME_DE_L_ACCES = new Date("2026-12-01T12:00:00Z");
 
 function enCours(surcharge: Partial<GesteEnCours> = {}): GesteEnCours {
   return {
     planId: "pla-confirme",
     systeme: "scalingo",
     etat: "EXECUTING",
-    etapes: [{ ...ETAPE, voie: null }],
+    etapes: [
+      {
+        ...ETAPE,
+        grantExpiresAt: TERME_DE_L_ACCES,
+        voie: "Aujourd'hui cette étape est à faire à la main.",
+      },
+    ],
     confirmeLe: CONFIRME_LE,
     confirmePar: "operatrice.exemple",
     refus: null,
@@ -184,6 +191,15 @@ describe("le geste confirmé sur la fiche de la personne", () => {
       screen.getByText(GESTE_CONFIRME.confirme(CONFIRME_LE, "operatrice.exemple", dateLocale)),
     ).toBeDefined();
 
+    // Then l'étape dit sa voie du jour, et le terme de l'accès se lit avant le lancement,
+    // seul endroit où il se lit,
+    expect(screen.getByText("Aujourd'hui cette étape est à faire à la main.")).toBeDefined();
+    expect(
+      screen.getByText(
+        `Émettre un jeton restreint : jusqu'au ${dateLocale.format(TERME_DE_L_ACCES)}.`,
+      ),
+    ).toBeDefined();
+
     // Then le lancement n'est pas le bouton primaire de la fiche, qui peut porter un
     // brouillon à confirmer et d'autres gestes,
     const lancer = screen.getByRole("button", { name: "Lancer la simulation" });
@@ -207,6 +223,36 @@ describe("le geste confirmé sur la fiche de la personne", () => {
       vi.mocked(pointerEtape).mock.calls[0]?.[1] as unknown as FormData,
     );
     expect(pointe).toMatchObject({ etapeId: "etape-1", pointage: "fait" });
+  });
+
+  it("garde la clé remise sous les yeux, et ne laisse pas un second envoi l'effacer", async () => {
+    // Given un geste dont le lancement émet un jeton,
+    vi.mocked(lancerExecution).mockResolvedValueOnce({
+      execution: {
+        simulation: false,
+        executees: 1,
+        soldees: 1,
+        echecs: 0,
+        remises: [
+          {
+            key: "scalingo:jeton:pla-confirme",
+            label: "Jeton Scalingo sur service-annuaire",
+            aRemettre: "cle_inventee_pour_ce_test",
+          },
+        ],
+      },
+    });
+    monterEnCours();
+
+    // When on lance,
+    await userEvent.setup().click(screen.getByRole("button", { name: "Lancer la simulation" }));
+
+    // Then la clé se lit, et le bouton se ferme : un second envoi remplacerait l'état qui la
+    // porte, et elle ne se relit nulle part.
+    expect(await screen.findByText("cle_inventee_pour_ce_test", { exact: false })).toBeDefined();
+    expect(
+      (screen.getByRole("button", { name: "Lancer la simulation" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 
   it("remplace le lancement par son refus, et garde l'étape à écarter avec sa raison", async () => {

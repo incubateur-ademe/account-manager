@@ -18,9 +18,9 @@ import { GESTE, GESTE_CONFIRME } from "./libelles";
  * Un geste confirmé dont une étape au moins reste à solder, rendu là où il s'exécute et
  * se pointe.
  *
- * Quand l'exécution refuserait, le bouton cède la place à son refus, et les étapes
- * restent pointables : écarter une étape avec sa raison est alors la seule façon de
- * solder le geste, un plan sans dossier ne se recalculant ni ne s'annulant.
+ * Quand l'exécution refuserait, le bouton cède la place à son refus. Hors d'un départ
+ * ouvert, les étapes restent pointables : écarter une étape avec sa raison est alors la
+ * seule façon de solder le geste, un plan sans dossier ne se recalculant ni ne s'annulant.
  */
 export function SectionGesteEnCours({
   geste,

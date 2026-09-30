@@ -104,7 +104,7 @@ export const GESTE_CONFIRME = {
   confirme: (le: Date | null, par: string | null, format: Intl.DateTimeFormat): string =>
     `Confirmé${le ? ` le ${format.format(le)}` : ""}${par ? ` par ${par}` : ""}.`,
 
-  echec: "Une étape au moins a échoué. Relancez l'exécution, ou pointez l'étape à la main.",
+  echec: "Une étape au moins a échoué. Le geste reste en cours tant qu'elle n'est pas reprise.",
 
   soldes: (nombre: number): string => `Gestes soldés (${nombre})`,
 

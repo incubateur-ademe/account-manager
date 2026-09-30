@@ -1052,8 +1052,12 @@ export async function lancerExecution(
     maintenant: new Date(),
   });
 
-  for (const ecran of ecransDeLEtape(plan.accessCaseId, plan.subject)) {
-    revalidatePath(ecran);
+  // Une clé remise ne vit que dans l'état du bouton qui l'a reçue. Rafraîchir l'écran
+  // solderait le plan sous les yeux de l'opérateur et démonterait ce bouton, clé comprise.
+  if (resultat.remises.length === 0) {
+    for (const ecran of ecransDeLEtape(plan.accessCaseId, plan.subject)) {
+      revalidatePath(ecran);
+    }
   }
 
   return resultat.refus ? { erreur: resultat.refus } : { execution: resultat };

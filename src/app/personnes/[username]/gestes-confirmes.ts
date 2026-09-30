@@ -1,6 +1,11 @@
 import type { EtapeFigee } from "@/app/dossiers/[id]/EtapeOperateur";
 import { tiersDuJour, voieLisible, voiesDuJour } from "@/app/dossiers/[id]/voie";
-import { ISSUE_GESTE, refusDEcart, refusDePeremption } from "@/core/execution";
+import {
+  ISSUE_GESTE,
+  REFUS_SANS_CONFIRMATION,
+  refusDEcart,
+  refusDePeremption,
+} from "@/core/execution";
 import { intentionDUnGeste } from "@/core/geste";
 import { type Masse, masseDuPlan } from "@/core/plan";
 import { prisma } from "@/lib/db";
@@ -44,6 +49,9 @@ export interface GestesConfirmes {
 }
 
 const ETATS_CONFIRMES = ["EXECUTING", "PARTIALLY_EXECUTED", "EXECUTED"] as const;
+
+/** Une étape écartée solde le plan sans avoir rien ouvert : son terme n'a pas cours. */
+const ACCES_DONNE: ReadonlySet<string> = new Set(["SUCCEEDED", "ALREADY_PRESENT"]);
 
 /**
  * Les gestes que la personne a reçus après leur confirmation, tels que sa fiche doit les
@@ -92,8 +100,8 @@ export async function gestesConfirmes(
         confirmePar: plan.confirmedBy,
         termes: [
           ...new Set(
-            plan.steps.flatMap(({ grantExpiresAt }) =>
-              grantExpiresAt === null ? [] : [grantExpiresAt.getTime()],
+            plan.steps.flatMap(({ state, grantExpiresAt }) =>
+              grantExpiresAt === null || !ACCES_DONNE.has(state) ? [] : [grantExpiresAt.getTime()],
             ),
           ),
         ].map((instant) => new Date(instant)),
@@ -108,6 +116,7 @@ export async function gestesConfirmes(
     const refus = depart
       ? REFUS_DEPART_OUVERT
       : (refusDePeremption(plan.expiresAt, maintenant, ISSUE_GESTE) ??
+        (plan.confirmedAt === null ? REFUS_SANS_CONFIRMATION : null) ??
         (actuel === null
           ? REFUS_INTENTION_ILLISIBLE
           : refusDEcart(plan.confirmedDigest, actuel.empreinte, ISSUE_GESTE)));

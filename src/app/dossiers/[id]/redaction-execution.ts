@@ -95,7 +95,7 @@ export const LIBELLE_PASSAGE_INCOMPLET = {
   titre: "Ce passage s'est arrêté avant d'avoir tout traité",
   raison: (erreur: string) => `Une écriture a échoué en cours de passage : ${erreur}`,
   suite:
-    "Rechargez le dossier avant de relancer. Les étapes que ce passage n'a pas atteintes gardent leur état, et l'état du plan n'a pas été reposé.",
+    "Rechargez la page avant de relancer. Les étapes que ce passage n'a pas atteintes gardent leur état, et l'état du plan n'a pas été reposé.",
 } as const;
 
 /**
