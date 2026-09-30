@@ -369,12 +369,14 @@ export function BoutonExecuter({
   masse,
   raisonDeMasse,
   simulation,
+  priorite,
 }: {
   planId: string;
   masse: Masse;
   /** La phrase du plafond, telle que le noyau la rédige, ou rien si le plan tient dessous. */
   raisonDeMasse: string | null;
   simulation: boolean;
+  priorite: "primary" | "secondary";
 }) {
   const [etat, formAction, pending] = useActionState<EtatAction | null, FormData>(
     lancerExecution,
@@ -406,7 +408,7 @@ export function BoutonExecuter({
         </>
       ) : null}
 
-      <Button priority="primary" type="submit" disabled={pending || bloque}>
+      <Button priority={priorite} type="submit" disabled={pending || bloque}>
         {pending
           ? simulation
             ? LIBELLE_LANCEMENT.bouton.enCours.simulation

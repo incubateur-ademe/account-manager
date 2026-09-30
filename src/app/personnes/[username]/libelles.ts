@@ -96,3 +96,27 @@ export const GESTE = {
 
   reposer: (systeme: string): string => `Reposer ce geste depuis ${systeme}`,
 } as const;
+
+/** Un geste confirmé, en cours ou soldé. */
+export const GESTE_CONFIRME = {
+  titre: (systeme: string): string => `Geste en cours sur ${systeme}`,
+
+  confirme: (le: Date | null, par: string | null, format: Intl.DateTimeFormat): string =>
+    `Confirmé${le ? ` le ${format.format(le)}` : ""}${par ? ` par ${par}` : ""}.`,
+
+  echec: "Une étape au moins a échoué. Relancez l'exécution, ou pointez l'étape à la main.",
+
+  soldes: (nombre: number): string => `Gestes soldés (${nombre})`,
+
+  solde: (
+    systeme: string,
+    etapes: number,
+    le: Date | null,
+    par: string | null,
+    format: Intl.DateTimeFormat,
+  ): string =>
+    `${systeme}, ${etapes} étape${etapes > 1 ? "s" : ""}. ${GESTE_CONFIRME.confirme(le, par, format)}`,
+
+  terme: (terme: Date, format: Intl.DateTimeFormat): string =>
+    `Accès accordé jusqu'au ${format.format(terme)}.`,
+} as const;

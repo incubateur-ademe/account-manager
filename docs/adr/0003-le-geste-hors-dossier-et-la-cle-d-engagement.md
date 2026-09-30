@@ -160,9 +160,11 @@ faire, et il faudrait scinder encore au deuxième cas.
   sur `PlanKind`. Le commentaire y était déjà, mais il avait été écrit pour un cas résiduel,
   celui d'un plan dont le dossier a disparu ; ce lot en fait un cas nominal. Un octroi hors
   dossier n'a donc, comme contrôle, que le second regard porté sur sa déclaration, y compris
-  quand la collecte du système saurait le démentir dès le lendemain.
+  quand la collecte du système saurait le démentir dès le lendemain. **Soldé le 20 septembre
+  2026 par la PR 118** : la réconciliation lit l'ancrage du plan et confronte l'étape d'un
+  geste à la collecte dans le sens d'un octroi (`src/lib/sync/constats.ts:516-525`).
 - **Un brouillon de geste obsolète n'a pas d'issue.** `recalculerPlan`
-  (`src/app/dossiers/[id]/actions.ts:833-835`) refuse tout plan sans dossier, et aucune action
+  (`src/app/dossiers/[id]/actions.ts:937-944`) refuse tout plan sans dossier, et aucune action
   n'annule un plan seul. Il faut reposer le geste, ce que `ouvrirGeste` permet en passant les
   brouillons précédents à `STALE`. C'est un trou du découpage, acté et non résolu.
 - **Un geste confirmé sort par le pointage, et par lui seul.** Son exécution peut refuser pour
@@ -172,7 +174,9 @@ faire, et il faudrait scinder encore au deuxième cas.
   plan `EXECUTED`, avec son motif et son entrée au journal. Rien n'empêche par ailleurs
   d'ouvrir un geste de remplacement, l'unicité du plan courant ne portant que sur un dossier.
   La sortie est donc étroite et manuelle, pas absente, et elle suppose l'écran qui rend un
-  plan sans dossier, lequel n'existe pas encore.
+  plan sans dossier. **C'est la fiche de la personne visée** : le brouillon s'y confirme
+  depuis la PR 129, et le geste confirmé s'y exécute et s'y pointe depuis la PR qui a rendu
+  les gestes confirmés sur la fiche.
 - **Le plafond de masse ne mord pas** sur un plan d'une étape. Il passe toujours, et c'est la
   confirmation avec son empreinte qui porte réellement.
 - La liste des connecteurs interrogés au départ ne peut plus se limiter aux systèmes où la

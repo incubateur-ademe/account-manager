@@ -2662,7 +2662,7 @@ describe("le porteur qui n'est pas de l'équipe, et son dossier qui ne tient qu'
 describe("lancer l'exécution d'un plan, et ce que l'opérateur emporte avec lui", () => {
   it("remet au passage tracé la session résolue et le geste de masse, et rend son refus tel quel", async () => {
     // Given un plan confirmé, et une opératrice entrée par la porte de l'espace-membre
-    const { plan } = await dossierAvecPlan("ONBOARDING");
+    const { dossier, plan } = await dossierAvecPlan("ONBOARDING");
 
     // When elle lance l'exécution sans cocher la masse, qui est le cas nominal
     const rendu = await lancerExecution(null, formulaire({ planId: plan.id }));
@@ -2687,6 +2687,9 @@ describe("lancer l'exécution d'un plan, et ce que l'opérateur emporte avec lui
 
     // Then le compte rendu remonte à l'écran sous sa forme, et pas en erreur
     expect(rendu).toEqual({ execution: base.resultatDExecution });
+
+    // Then les deux écrans qui rendent le dossier se rafraîchissent
+    expect(base.revalidations).toEqual([`/dossiers/${dossier.id}`, `/moi/dossiers/${dossier.id}`]);
 
     // Given le même plan, la case de masse cochée, et un passage qui refuse
     base.lancements.length = 0;
@@ -2716,7 +2719,19 @@ describe("lancer l'exécution d'un plan, et ce que l'opérateur emporte avec lui
     });
     expect(base.lancements).toEqual([]);
 
+    // Given un geste confirmé, que nul dossier ne porte
+    const geste = await gesteAvecPlan();
+    base.revalidations.length = 0;
+
+    // When on le lance
+    await lancerExecution(null, formulaire({ planId: geste.id }));
+
+    // Then c'est la fiche de la personne qui se rafraîchit, seule page où un geste se voit
+    expect(base.lancements.map(({ planId }) => planId)).toEqual([geste.id]);
+    expect(base.revalidations).toEqual([`/personnes/${USERNAME}`]);
+
     // Given une session sans qualité d'opérateur
+    base.lancements.length = 0;
     base.sessionOperateur = false;
 
     // Then la garde casse avant la moindre lecture : un participant qui atteindrait

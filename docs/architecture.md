@@ -564,7 +564,10 @@ tant qu'un départ est ouvert sur la personne, un accès ouvert après la confir
 départ déplaçant l'empreinte de son plan sans qu'aucun recalcul ne la rattrape. Il se lit
 sur la fiche de la personne qu'il vise, là où sa confirmation revalide déjà. Un brouillon
 périmé ou dont l'empreinte a bougé y retire sa confirmation et renvoie à l'écran qui a posé
-le geste, reposer le geste étant sa seule sortie. Voir
+le geste, reposer le geste étant sa seule sortie. Confirmé, il s'y exécute et s'y pointe.
+Quand l'exécution refuserait, le refus qu'elle opposerait remplace le bouton de lancement,
+et écarter ses étapes avec une raison reste la sortie. Soldé, il s'y résume avec les termes
+qu'il a posés. Voir
 [ADR-0003](adr/0003-le-geste-hors-dossier-et-la-cle-d-engagement.md).
 
 **Un plan est une suite d'étapes figées.** Il réunit trois origines, dans cet ordre : le

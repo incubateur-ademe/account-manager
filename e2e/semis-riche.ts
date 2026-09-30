@@ -172,6 +172,19 @@ export async function semerLesEcransPleins(client: Client): Promise<void> {
     VALUES ('pla-geste', NULL, 'per-noor', 'MANUAL_OP', 'DRAFT', '{"systeme":"scalingo","scope":{"nature":"jeton","region":"osc-fr1","application":"service-annuaire","usage":"astreinte"},"justification":"Renfort pendant une astreinte"}'::jsonb, 'digest-geste', 'operatrice.exemple', now() - interval '1 days', now() + interval '6 days')
   `);
 
+  /*
+   * Deux gestes confirmés sur la même fiche, l'un en cours et l'autre soldé avec son terme.
+   * L'empreinte confirmée du premier ne peut pas plus correspondre que celle du brouillon :
+   * la section se relève donc avec le refus de l'exécution à la place du lancement, et ses
+   * étapes pointables.
+   */
+  await client.query(`
+    INSERT INTO "Plan" (id, "accessCaseId", "subjectId", kind, state, intent, "planDigest", "confirmedDigest", "createdBy", "confirmedBy", "confirmedAt", "createdAt", "expiresAt")
+    VALUES
+      ('pla-geste-en-cours', NULL, 'per-noor', 'MANUAL_OP', 'EXECUTING', '{"systeme":"scalingo","scope":{"nature":"collaboration","region":"osc-fr1","application":"service-annuaire","role":"collaborator"},"justification":"Renfort pendant une astreinte"}'::jsonb, 'digest-geste-en-cours', 'digest-geste-en-cours', 'operatrice.exemple', 'operatrice.exemple', now() - interval '2 days', now() - interval '3 days', now() + interval '4 days'),
+      ('pla-geste-solde', NULL, 'per-noor', 'MANUAL_OP', 'EXECUTED', '{"systeme":"scalingo","scope":{"nature":"jeton","region":"osc-fr1","application":"service-annuaire","usage":"astreinte"},"justification":"Renfort pendant une astreinte"}'::jsonb, 'digest-geste-solde', 'digest-geste-solde', 'operatrice.exemple', 'operatrice.exemple', now() - interval '40 days', now() - interval '41 days', now() - interval '34 days')
+  `);
+
   await client.query(`
     INSERT INTO "PlanStep" (id, "planId", "systemKey", tier, capability, action, label, params, "riskLevel", "expectedState", state, attempts, "lastError", "executedAt", "idempotencyKey", manual, ordre, "expectedActor", validation)
     VALUES
@@ -181,7 +194,13 @@ export async function semerLesEcransPleins(client: Client): Promise<void> {
       ('stp-b2', 'pla-depart', 'notion', 'automated', 'revoke', 'remove', 'Retirer tao@exemple.fr de l''espace Notion', '{}'::jsonb, 'HIGH', '"ALREADY_ABSENT"'::jsonb, 'FAILED', 3, 'La requête a expiré sans réponse du système', now() - interval '2 days', 'idem-b2', NULL, 2, 'OPERATOR', 'NONE'),
       ('stp-b3', 'pla-depart', 'scalingo', 'manual', 'revoke', 'remove', 'Retirer l''accès Scalingo à la main', '{}'::jsonb, 'MEDIUM', '"ALREADY_ABSENT"'::jsonb, 'PENDING', 0, NULL, NULL, 'idem-b3', '{"runbook":"Console Scalingo, onglet collaborateurs"}'::jsonb, 3, 'DELEGATE', 'AWAITING'),
       ('stp-c1', 'pla-clos', 'github', 'automated', 'revoke', 'remove', 'Retirer remi de incubateur-ademe', '{}'::jsonb, 'HIGH', '"ALREADY_ABSENT"'::jsonb, 'SUCCEEDED', 1, NULL, now() - interval '24 days', 'idem-c1', NULL, 1, 'OPERATOR', 'ACCEPTED'),
-      ('stp-g1', 'pla-geste', 'scalingo', 'manual', 'grant', 'emettre-un-jeton', 'Émettre un jeton restreint sur service-annuaire', '{}'::jsonb, 'HIGH', '"ALREADY_PRESENT"'::jsonb, 'PENDING', 0, NULL, NULL, 'idem-g1', '{"runbook":"Depuis le proxy, émettre le jeton et le porter dans la fiche du compte machine","doneWhen":"Le jeton figure dans la fiche du compte machine"}'::jsonb, 1, 'OPERATOR', 'NONE')
+      ('stp-g1', 'pla-geste', 'scalingo', 'manual', 'grant', 'emettre-un-jeton', 'Émettre un jeton restreint sur service-annuaire', '{}'::jsonb, 'HIGH', '"ALREADY_PRESENT"'::jsonb, 'PENDING', 0, NULL, NULL, 'idem-g1', '{"runbook":"Depuis le proxy, émettre le jeton et le porter dans la fiche du compte machine","doneWhen":"Le jeton figure dans la fiche du compte machine"}'::jsonb, 1, 'OPERATOR', 'NONE'),
+      ('stp-g2', 'pla-geste-en-cours', 'scalingo', 'manual', 'grant', 'collaborer', 'Inviter noor@exemple.fr sur service-annuaire', '{}'::jsonb, 'HIGH', '"ALREADY_PRESENT"'::jsonb, 'PENDING', 0, NULL, NULL, 'idem-g2', '{"runbook":"Console Scalingo, onglet collaborateurs","doneWhen":"L''invitation figure parmi les collaborateurs"}'::jsonb, 1, 'OPERATOR', 'NONE')
+  `);
+
+  await client.query(`
+    INSERT INTO "PlanStep" (id, "planId", "systemKey", tier, capability, action, label, params, "riskLevel", "expectedState", state, attempts, "executedAt", "idempotencyKey", ordre, "expectedActor", validation, "declaredBy", "grantExpiresAt")
+    VALUES ('stp-g3', 'pla-geste-solde', 'scalingo', 'manual', 'grant', 'emettre-un-jeton', 'Émettre un jeton restreint sur service-annuaire', '{}'::jsonb, 'HIGH', '"ALREADY_PRESENT"'::jsonb, 'SUCCEEDED', 0, now() - interval '39 days', 'idem-g3', 1, 'OPERATOR', 'NONE', 'operatrice.exemple', now() + interval '140 days')
   `);
 
   /*
