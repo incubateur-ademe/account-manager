@@ -175,8 +175,7 @@ faire, et il faudrait scinder encore au deuxième cas.
   d'ouvrir un geste de remplacement, l'unicité du plan courant ne portant que sur un dossier.
   La sortie est donc étroite et manuelle, pas absente, et elle suppose l'écran qui rend un
   plan sans dossier. **C'est la fiche de la personne visée** : le brouillon s'y confirme
-  depuis la PR 129, et le geste confirmé s'y exécute et s'y pointe depuis la PR qui a rendu
-  les gestes confirmés sur la fiche.
+  depuis la PR 129, et le geste confirmé s'y exécute et s'y pointe depuis la PR 136.
 - **Le plafond de masse ne mord pas** sur un plan d'une étape. Il passe toujours, et c'est la
   confirmation avec son empreinte qui porte réellement.
 - La liste des connecteurs interrogés au départ ne peut plus se limiter aux systèmes où la
