@@ -1343,11 +1343,13 @@ paquet est donc à suivre, et à relever avant ce retrait.
 - Ce que l'API de l'instance Vaultwarden expose réellement, avant de fixer son tier.
 - Frontière définitive avec `teams-auto` pour le volet Entra.
 - Un modèle de plan sait nommer un contrôleur, aucun n'en nomme sur ce déploiement, et
-  ni les connecteurs ni les profils n'en posent. La moitié « personne n'instruit son
-  propre départ de bout en bout » est donc tenue par une donnée et non par du code : elle
-  devient vraie le jour où un opérateur pose ce contrôleur sur les étapes de départ qu'il
-  juge sensibles, et ce geste n'est pas une livraison. L'écran des modèles avertit tant
-  qu'aucune étape de départ n'attend de second regard, et se tait dès qu'une l'attend.
+  les profils n'en posent pas. Un seul connecteur en pose un : `scalingo`, sur la reprise
+  d'un jeton émis (`reprisesDesJetons`, `src/connectors/scalingo.ts`). Hors de cette
+  étape, la moitié « personne n'instruit son propre départ de bout en bout » est donc
+  tenue par une donnée et non par du code : elle devient vraie le jour où un opérateur
+  pose ce contrôleur sur les étapes de départ qu'il juge sensibles, et ce geste n'est pas
+  une livraison. L'écran des modèles avertit tant qu'aucune étape de départ n'attend de
+  second regard, et se tait dès qu'une l'attend.
 - Rotation du triplet OVH avant toute mise en service d'un chemin d'écriture.
 - Porteur du jeton SCIM Notion : compte de service propriétaire de l'organisation, ou à
   défaut rotation avant toute mutation de rôle de son porteur.
