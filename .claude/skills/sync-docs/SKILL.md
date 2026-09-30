@@ -1,6 +1,6 @@
 ---
 name: sync-docs
-description: Synchronise la documentation (docs/architecture.md, CLAUDE.md, README, ADR, memoire) avec ce qui a ete implemente dans la session. Chaque modification est proposee avant d'etre appliquee.
+description: Synchronise la documentation (docs/architecture.md, CLAUDE.md, README, ADR, memoire) avec ce qui a ete implemente dans la session. Ce qui aligne un document sur le code s'applique, ce qui tranche est propose avant d'etre applique.
 ---
 
 # /sync-docs - Synchronisation de la documentation
@@ -15,16 +15,16 @@ description: Synchronise la documentation (docs/architecture.md, CLAUDE.md, READ
 
 | Document | Role | Qui le fait bouger |
 |---|---|---|
-| `docs/architecture.md` | **La reference de conception.** Forme du systeme, objets metier, contrat de connecteur, invariants. Fait foi en cas de doute. | uniquement une decision explicitement validee par l'utilisateur |
+| `docs/architecture.md` | **La reference de conception.** Forme du systeme, objets metier, contrat de connecteur, invariants. Fait foi en cas de doute. | une decision validee par l'utilisateur, ou un alignement sur ce que le code tient deja |
 | `CLAUDE.md` | Le condense operationnel pour l'agent : stack, commandes, invariants, regles. Pas de duplication de `docs/architecture.md`, un renvoi suffit. | changement de stack, de commande, de regle |
 | `README.md` | L'onboarding humain : demarrage, commandes, invariants en trois lignes. | changement de prerequis ou de commande |
-| ADR (`docs/adr/`) | Trace d'une decision structurante avec ses alternatives. Le repertoire existe, numeroter a la suite du dernier. | decision architecturale nouvelle |
+| ADR (`docs/adr/`) | Trace d'une decision structurante avec ses alternatives. Le repertoire existe, numeroter a la suite du dernier. | decision architecturale nouvelle, ou un alignement sur ce que le code tient deja |
 | memoire Claude | Apprentissages personnels et contextuels, non partageables. | gotcha, preference utilisateur |
 
-**Regle centrale** : `docs/architecture.md` n'est pas un journal. On ne le modifie pas parce qu'on a
-code quelque chose, on le modifie parce qu'une decision a change. Si l'implementation s'ecarte du
-document, le defaut est dans l'implementation jusqu'a preuve du contraire, et c'est ca qu'il faut
-remonter a l'utilisateur.
+**Regle centrale** : `docs/architecture.md` n'est pas un journal. On n'y raconte pas ce qu'on a
+code. On le modifie quand une decision a change, ou quand une de ses phrases ne decrit plus ce que
+le code tient. Si l'implementation s'ecarte d'une decision du document, le defaut est dans
+l'implementation jusqu'a preuve du contraire, et c'est ca qu'il faut remonter a l'utilisateur.
 
 ## Etapes
 
@@ -47,8 +47,17 @@ Avant de toucher quoi que ce soit, verifie la coherence dans ce sens :
 - Le catalogue de la section 5.8 est-il toujours exact (tiers vises, systemes) ?
 - Un point de la section 8 "Ce qui reste a trancher" a-t-il ete tranche dans la session ?
 
-Chaque derive detectee se presente a l'utilisateur avec deux issues possibles : corriger le code, ou
-mettre a jour le document. **Ne choisis pas seul.**
+Chaque derive detectee se range d'un cote ou de l'autre. La meme regle vaut pour un ADR.
+
+- **L'amendement tombe sous le sens** quand il aligne le document sur ce que le code tient deja,
+  preuve a la ligne, sans rien trancher : une description que le lot date, un point ouvert qu'il
+  referme, une affirmation que le code dement. Applique-le sans demander, et ecris-le dans la
+  description de PR, sous « Les decisions qui meritent une relecture », avec la section, la phrase
+  avant et la phrase apres.
+- **L'amendement tranche** quand il pose, change ou retire une decision, un invariant, un contrat
+  ou une regle, ou quand deux formulations engageraient deux choses differentes. Presente-le a
+  l'utilisateur par `AskUserQuestion`, formulation proposee comprise, avec deux issues possibles :
+  corriger le code, ou mettre a jour le document. **Ne choisis pas seul.**
 
 Un amendement deja valide par l'utilisateur ne repasse pas ici. C'est le cas de celui qu'un run de
 `/ticket` solde a son etape 6, et le reposer rouvrirait une question tranchee.
@@ -133,7 +142,7 @@ MEMORY.md doit rester sous 200 lignes.
 
 Diff analyse : <N commits>, <M fichiers>
 
-Derive vs docs/architecture.md : <aucune | liste des points + issue proposee>
+Derive vs docs/architecture.md : <aucune | liste des points, appliques ou proposes avec leur issue>
 
 | Document | Action |
 |---|---|
@@ -147,7 +156,9 @@ Derive vs docs/architecture.md : <aucune | liste des points + issue proposee>
 
 ## Regles dures
 
-- **`docs/architecture.md` ne se modifie pas sans validation explicite de l'utilisateur.**
+- **Un amendement qui tranche ne s'applique pas a `docs/architecture.md` ni a un ADR sans validation
+  explicite de l'utilisateur.** Celui qui tombe sous le sens s'applique sans question, et s'ecrit
+  quand meme dans la description de PR.
 - **Pas d'ADR redige sans validation.** On propose, on ne redige pas seul.
 - **Aucun secret dans un fichier versionne**, pas meme une valeur d'exemple realiste.
 - **Pas de duplication** entre `CLAUDE.md` et `docs/architecture.md`. Un renvoi, pas un copier-coller

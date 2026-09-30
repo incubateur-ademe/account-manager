@@ -7,7 +7,7 @@ description: Avance un ticket de bout en bout en autonomie complete - choix, imp
 
 Un seul tour de parole : l'utilisateur lance le skill, le skill rend un rapport final. Entre les
 deux, tu decides, tu implementes, tu ouvres, tu reponds, tu merges. Ce qui se demande quand meme
-tient aux trois cas de l'etape 3, et l'amendement a `docs/architecture.md` a son etape, la 6.
+tient aux trois cas de l'etape 3, et l'amendement qui tranche a son etape, la 6.
 
 **Ce skill EST la demande explicite de commit, de push, de PR et de merge** que le `CLAUDE.md`
 exige par ailleurs. Ne redemande pas l'autorisation a chaque etape.
@@ -16,7 +16,7 @@ exige par ailleurs. Ne redemande pas l'autorisation a chaque etape.
 
 | Regle | Ce que ca veut dire |
 |---|---|
-| Autonomie complete | Tu vas jusqu'au merge. Les seules validations intermediaires sont les trois cas de l'etape 3, dont l'amendement a `docs/architecture.md`, solde a l'etape 6. |
+| Autonomie complete | Tu vas jusqu'au merge. Les seules validations intermediaires sont les trois cas de l'etape 3, dont l'amendement qui tranche dans `docs/architecture.md` ou un ADR, pose a l'etape 6. |
 | Au plus simple | La solution d'un dev senior presse : le moins de code possible, rien de malin. |
 | Reutiliser d'abord | Avant d'ecrire, cherche ce qui existe deja. Composant, helper, hook, pattern, libelle. |
 | Trouvailles annexes | Un bug croise en chemin se corrige dans la MEME PR. Ni ticket, ni note, ni « pour plus tard ». |
@@ -53,12 +53,14 @@ au document d'architecture, dont l'etape 6 a besoin.
 
 ## 2. Comprendre avant d'ecrire
 
-- `docs/architecture.md` fait reference en cas de doute. **Il ne se modifie pas sans validation
-  explicite de l'utilisateur.** Une question separe deux situations. Le document enonce-t-il une
-  decision que ton lot enfreindrait, ou decrit-il un etat que ton lot change ? Une decision
-  enfreinte, arrete-toi ici et demande, le defaut est dans le code jusqu'a preuve du contraire, et
-  c'est le seul cas ou tu t'arretes avant d'ecrire. Une description que ton lot date, ou un point
-  laisse ouvert qu'il referme, continue et solde l'amendement a l'etape 6.
+- `docs/architecture.md` fait reference en cas de doute. **Un amendement qui tranche ne s'y
+  applique pas sans validation explicite de l'utilisateur**, pas plus que dans un ADR. Une question
+  separe deux situations. Le document enonce-t-il une decision que ton lot enfreindrait, ou
+  decrit-il un etat que ton lot change ? Une decision enfreinte, arrete-toi ici et demande, le
+  defaut est dans le code jusqu'a preuve du contraire, et c'est le seul cas ou tu t'arretes avant
+  d'ecrire. Une description que ton lot date, un point laisse ouvert qu'il referme ou une
+  affirmation que le code dement ne t'arretent pas. Continue, et applique l'amendement a l'etape 6
+  sans le demander.
 - Navigue le code avec le tool `LSP` avant grep.
 - Cherche le precedent : un ecran voisin, un connecteur voisin, un test voisin. Copie sa forme.
 
@@ -72,8 +74,8 @@ demandes pas.
 3. **Le choix est-il reversible ?** Un nommage, un libelle, un seuil se changent. Tranche et avance.
 
 Demander reste legitime pour : une decision produit qui engage le metier, une migration de donnees
-irreversible, un amendement a `docs/architecture.md`. Le dernier a son moment et sa forme, a
-l'etape 6.
+irreversible, un amendement a `docs/architecture.md` ou a un ADR qui tranche. Le dernier a son
+moment et sa forme, a l'etape 6. Un amendement qui tombe sous le sens ne se demande pas.
 
 ## 4. Implementer
 
@@ -149,38 +151,49 @@ se posent une fois, `CLAUDE.md` dit comment.
 Playwright vide `test-results/` au lancement suivant : copie le rapport ailleurs avant de relancer
 quoi que ce soit.
 
-## 6. Solder les amendements a `docs/architecture.md`
+## 6. Solder les amendements a `docs/architecture.md` et aux ADR
 
-Avant d'ouvrir la PR, parce qu'un amendement retenu part dans le meme lot que le code qui le rend
-vrai.
-
-**Un amendement se demande, il ne se reporte pas.** Ecrit en reserve, il n'a aucune date de
-reprise. Le document continue alors de decrire ce que le code ne tient plus, et c'est lui qui fait
-reference en cas de doute.
+Avant d'ouvrir la PR, parce qu'un amendement part dans le meme lot que le code qui le rend vrai.
 
 Ce qui entre ici est ce que **ton lot** a date ou a comble. Trois sources le portent deja. La
 section « Les amendements a `docs/architecture.md` » du plan, les liens et les consequences de
 l'ADR, et ce que tu as constate en ecrivant. Relis les trois, puis les sections du document que
 ton diff touche. Ce qu'un plan propose sans que tu y touches reste ou c'est ecrit.
 
+Chaque amendement se range d'un cote ou de l'autre.
+
+- **Il tombe sous le sens** quand il aligne le document sur ce que le code tient deja, preuve a la
+  ligne, sans rien trancher : une description que le lot date, un point ouvert qu'il referme, une
+  affirmation que le code dement. Applique-le sans question.
+- **Il tranche** quand il pose, change ou retire une decision, un invariant, un contrat ou une
+  regle, ou quand deux formulations engageraient deux choses differentes. Celui-la se demande.
+
+Un amendement applique sans question s'ecrit quand meme dans la description de PR, sous « Les
+decisions qui meritent une relecture », avec la section, la phrase avant et la phrase apres.
+
+**Un amendement qui tranche se demande, il ne se reporte pas.** Ecrit en reserve, il n'a aucune
+date de reprise. Le document continue alors de decrire ce que le code ne tient plus, et c'est lui
+qui fait reference en cas de doute.
+
 Un plan qui pose ses amendements « soumis, jamais appliques » decrit l'etat d'avant cette etape.
-Un accord obtenu ici s'applique.
+Ceux qui tombent sous le sens s'appliquent quand meme, et un accord obtenu ici aussi.
 
 Le geste est une `AskUserQuestion`, un amendement par question, quatre au plus par appel. Les
-appels se suivent jusqu'au dernier amendement, les descriptions devenues inexactes d'abord, et la
-premiere question dit combien suivent. Aucun amendement ne reste hors des questions. Chaque
-question porte la section visee, la phrase a reprendre et la formulation proposee. Trois options,
+appels se suivent jusqu'au dernier amendement qui tranche, et la premiere question dit combien
+suivent. Aucun amendement qui tranche ne reste hors des questions. Chaque question porte la
+section visee, la phrase a reprendre et la formulation proposee. Trois options,
 `Appliquer dans cette PR`, `Laisser ouvert` et `Reformuler`.
 
 - L'outil ne rend que le libelle choisi. Une autre formulation n'arrive que par la reponse libre.
-- Un accord vaut pour cette formulation et pour elle seule. Ecris-la dans `docs/architecture.md`
-  ici meme, sans passer par `/sync-docs`, dont l'etape 2 rouvrirait la question tranchee.
+- Un accord vaut pour cette formulation et pour elle seule. Ecris-la dans le document ici meme,
+  sans passer par `/sync-docs`, dont l'etape 2 rouvrirait la question tranchee.
 - `Reformuler` sans texte ouvre un second appel, un seul, qui propose une formulation revue.
 - Une question refusee se retente une fois, apres l'avoir dit.
 - Part en reserve ce qui n'a pas ete retenu, un `Reformuler` reste sans texte, et une question
   refusee deux fois ou restee sans reponse. La reserve, c'est « Ce qui reste ouvert » de la
   description de PR et « Reste ouvert » du rapport, avec la raison quand elle a ete donnee.
-- Aucun amendement : n'ouvre aucune question, et le rapport porte « sans objet ».
+- Aucun amendement qui tranche : n'ouvre aucune question. Aucun amendement du tout : le rapport
+  porte « sans objet ».
 
 ## 7. Ouvrir la PR
 
@@ -195,9 +208,9 @@ question porte la section visee, la phrase a reprendre et la formulation propose
 - `gh pr create --body-file -` pour passer la description sur l'entree standard. `--body -` publie
   un tiret.
 
-Si le lot a modifie la doc ou la memoire hors `docs/architecture.md`, passe par `/sync-docs`.
-Un amendement retenu a l'etape 6 s'ecrit dans « Les decisions qui meritent une relecture », avec sa
-section et la formulation validee.
+Si le lot a modifie la doc ou la memoire hors `docs/architecture.md` et des ADR, passe par
+`/sync-docs`. Chaque amendement de l'etape 6 s'ecrit dans « Les decisions qui meritent une
+relecture », avec sa section, la phrase avant et la phrase apres, qu'il ait ete demande ou non.
 
 ## 8. Attendre la review et repondre
 
@@ -251,13 +264,13 @@ et puces.
 ### Trouvailles corrigees en chemin
 - <une puce par bug annexe corrige dans la PR, ou « aucune »>
 
-### Amendements a `docs/architecture.md`
-- <une puce par amendement : la section visee, le verdict, applique ou mis en reserve. Ou
-  « sans objet ».>
+### Amendements a `docs/architecture.md` et aux ADR
+- <une puce par amendement : la section visee, le verdict, applique sans question, applique apres
+  accord ou mis en reserve. Ou « sans objet ».>
 
 ### Reste ouvert
 - <ce qui attend une decision, ou « rien ». Jamais un ecran que personne n'a regarde, jamais un
-  amendement au document d'architecture qu'aucune question n'a porte.>
+  amendement qui tranche qu'aucune question n'a porte.>
 ```
 
 Pas de recit, pas de narration des etapes, pas de liste de commandes lancees.
@@ -266,9 +279,11 @@ Pas de recit, pas de narration des etapes, pas de liste de commandes lancees.
 
 - Ne declare jamais terminee une tache dont la verification n'est pas verte.
 - Ne presente jamais une couverture partielle comme exhaustive.
-- Ne modifie pas `docs/architecture.md` sans validation explicite.
-- Ne mets pas en reserve un amendement a `docs/architecture.md` sans avoir pose la question, qu'il
-  vienne de l'ecriture ou d'une correction de review.
+- N'applique pas a `docs/architecture.md` ni a un ADR un amendement qui tranche sans validation
+  explicite. Celui qui tombe sous le sens s'applique sans question, et s'ecrit quand meme dans la
+  description de PR.
+- Ne mets pas en reserve un amendement qui tranche sans avoir pose la question, qu'il vienne de
+  l'ecriture ou d'une correction de review.
 - Ne merge pas une PR dont un thread reste ouvert.
 - Ne laisse pas un serveur ou un processus de test tourner derriere toi.
 - Ne rends jamais un rapport qui reporte une verification a l'oeil humain. Chaque ligne du tableau
@@ -276,5 +291,6 @@ Pas de recit, pas de narration des etapes, pas de liste de commandes lancees.
 
 Ce qu'un controle tient, et ce qui n'en a pas. `src/app/ecrans-releves.test.ts` refuse un ecran
 qu'aucun releve n'ouvre, et il tourne dans `pnpm verify`. Rien ne verifie que tu as lance le releve,
-ni que ton scenario assertait la bonne chose, ni que tu as pose les questions de l'etape 6. Ces
-trois-la tiennent a la relecture, et a elle seule.
+ni que ton scenario assertait la bonne chose, ni que tu as pose les questions de l'etape 6, ni qu'un
+amendement applique sans question ne tranchait rien. Ces quatre-la tiennent a la relecture, et a
+elle seule.
