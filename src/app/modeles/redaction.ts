@@ -45,8 +45,8 @@ export const MODELE = {
   },
 
   orphelins: {
-    plusieurs: `Les plans déjà calculés gardent leurs étapes, aucun nouveau ne les reprendra. ${CAUSE_ORPHELIN("leur identifiant")} Rien d'autre que cette liste ne mène à eux.`,
-    seul: `Aucun plan ne portera ses étapes. ${CAUSE_ORPHELIN("cet identifiant")} Redéclarez ces étapes sous le bon identifiant, puis retirez celles-ci.`,
+    plusieurs: `Les plans déjà calculés gardent leurs étapes. ${CAUSE_ORPHELIN("leur identifiant")} Rien d'autre que cette liste ne mène à eux.`,
+    seul: `${CAUSE_ORPHELIN("cet identifiant")} Redéclarez ces étapes sous le bon identifiant, puis retirez celles-ci.`,
   },
 
   champs: {
