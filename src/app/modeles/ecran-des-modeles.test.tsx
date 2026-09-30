@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MODELE } from "@/app/modeles/redaction";
@@ -22,7 +22,7 @@ interface ModeleLu {
 
 const lu = vi.hoisted(() => ({
   relues: 0,
-  startups: [] as { ghid: string }[],
+  startups: [] as { ghid: string; vanishedAt?: Date }[],
   modeles: [] as { ownerKey: string; kind: "ONBOARDING" | "OFFBOARDING" }[],
 }));
 
@@ -44,7 +44,13 @@ vi.mock("@/lib/db", async () => {
     },
     startup: {
       findMany: () =>
-        Promise.resolve(lu.startups.map(({ ghid }) => ({ ghid, name: ghid, vanishedAt: null }))),
+        Promise.resolve(
+          lu.startups.map(({ ghid, vanishedAt }) => ({
+            ghid,
+            name: ghid,
+            vanishedAt: vanishedAt ?? null,
+          })),
+        ),
     },
     planTemplateStep: { count: () => Promise.resolve(lu.relues) },
   });
@@ -89,33 +95,42 @@ describe("l'écran des modèles rend ce que la base lui dit", () => {
     expect(screen.getByRole("link", { name: "Éditer le modèle de l'incubateur" })).toBeDefined();
   });
 
-  it("montre l'avertissement des modèles orphelins, et n'y range ni l'incubateur ni une startup connue", async () => {
-    // Given deux modèles de startup, dont un seul sous un identifiant que le référentiel
-    // rend encore. Le rapprochement se fait sur le ghid, sans clé étrangère.
+  it("montre l'avertissement des modèles orphelins, et n'y range ni l'incubateur ni une startup connue, même sortie", async () => {
+    // Given trois modèles de startup. L'un vise une startup active, l'autre une startup
+    // sortie, que la collecte garde en base sous `vanishedAt` sans la supprimer, et le
+    // dernier un identifiant qu'aucune collecte n'a rendu. Le rapprochement se fait sur
+    // le ghid, sans clé étrangère.
     lu.relues = 1;
-    lu.startups = [{ ghid: "produit-exemple" }];
+    lu.startups = [
+      { ghid: "produit-exemple" },
+      { ghid: "produit-sorti", vanishedAt: new Date("2026-06-01") },
+    ];
     lu.modeles = [
       INCUBATEUR_DEPART,
       { ownerKey: "produit-exemple", kind: "ONBOARDING" },
-      { ownerKey: "produit-disparu", kind: "ONBOARDING" },
+      { ownerKey: "produit-sorti", kind: "OFFBOARDING" },
+      { ownerKey: "produit-jamais-vu", kind: "ONBOARDING" },
     ];
 
     // When on ouvre l'écran,
     await ouvrir();
 
-    // Then l'orphelin est signalé et nommé, avec le lien qui mène à ses étapes,
-    expect(screen.getByText(MODELE.orphelins.plusieurs)).toBeDefined();
-    expect(screen.getByRole("link", { name: "produit-disparu" })).toBeDefined();
-
-    // Then ni l'incubateur ni la startup connue n'y sont rangés. La clé de l'incubateur
-    // ne sera jamais un ghid, et l'y compter mettrait sous avertissement le modèle qui
-    // s'applique à tout le monde.
+    // Then seul l'identifiant jamais collecté est signalé et nommé, avec le lien qui
+    // mène à ses étapes. La clé de l'incubateur ne sera jamais un ghid, et l'y compter
+    // mettrait sous avertissement le modèle qui s'applique à tout le monde.
+    const titre = screen.getByRole("heading", {
+      name: /ne correspond(ent)? à aucune startup connue/u,
+    });
+    const alerte = within(titre.parentElement as HTMLElement);
+    expect(alerte.getByText(MODELE.orphelins.plusieurs)).toBeDefined();
+    expect(alerte.getAllByRole("link").map((lien) => lien.textContent)).toEqual([
+      "produit-jamais-vu",
+    ]);
     expect(screen.queryByRole("link", { name: CLE_INCUBATEUR })).toBeNull();
-    expect(screen.queryByRole("link", { name: "produit-exemple" })).not.toBeNull();
 
-    // When le référentiel rend de nouveau la startup disparue,
+    // When une collecte rend pour la première fois cet identifiant,
     cleanup();
-    lu.startups = [{ ghid: "produit-exemple" }, { ghid: "produit-disparu" }];
+    lu.startups = [...lu.startups, { ghid: "produit-jamais-vu" }];
     await ouvrir();
 
     // Then l'avertissement s'éteint.

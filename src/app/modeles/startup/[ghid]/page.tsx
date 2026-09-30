@@ -54,8 +54,8 @@ export default async function ModeleDeStartupPage({ params }: Props) {
   const declare = modeles.some((modele) => modele.existe);
 
   // Une startup inconnue qui ne porte aucun modèle n'a rien à éditer. Celle qui en
-  // porte un, en revanche, garde sa page : c'est là qu'on répare un modèle qu'un
-  // renommage amont a laissé orphelin.
+  // porte un garde sa page : c'est là qu'on répare un modèle posé sur un identifiant
+  // qu'aucune collecte n'a rendu.
   if (!startup && !declare) {
     notFound();
   }
