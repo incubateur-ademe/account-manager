@@ -552,7 +552,8 @@ export function etapeDUnAccesEchu(dedupKey: string): string | null {
  * autre application n'en reconduit aucun. Et comme pour une parole démentie, le constat
  * attend d'avoir relu le système après le terme.
  *
- * La clé finit par le nom d'usage, que la fusion de deux fiches réécrit en suffixe.
+ * La clé ne nomme que l'étape : elle survit ainsi au renommage d'une fiche comme à sa
+ * fusion, qui emportent le plan et son verrou de clôture avec elles.
  */
 export function constatsDAccesEchus(acces: readonly AccesAccorde[], maintenant: Date): Constat[] {
   const derniers = new Map<string, AccesAccorde>();
@@ -577,7 +578,7 @@ export function constatsDAccesEchus(acces: readonly AccesAccorde[], maintenant: 
       {
         kind: "EXPIRED_GRANT",
         cible: null,
-        dedupKey: `EXPIRED_GRANT:${un.systemKey}:${un.etapeId}:${un.username}`,
+        dedupKey: `EXPIRED_GRANT:${un.systemKey}:${un.etapeId}`,
         severity: un.risque,
         detail: `« ${un.label} » valait jusqu'au ${jourDeParis(termeLe)}, et l'accès est toujours constaté sur ${un.systemKey}`,
         username: un.username,

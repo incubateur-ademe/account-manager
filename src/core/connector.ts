@@ -509,6 +509,12 @@ export interface Diagnosis {
 /** Une ressource désignée comme la collecte la rend, par son identifiant ou par son libellé. */
 export type RessourceNommee = { externalId: string } | { label: string };
 
+export interface AccesDUnOctroi {
+  ressource: RessourceNommee;
+  /** Les rôles relevés qui tiennent l'accès accordé. */
+  roles: readonly string[];
+}
+
 export interface Connector {
   readonly contract: ConnectorContract;
 
@@ -557,16 +563,17 @@ export interface Connector {
   planifierOctroi?: (scope: unknown, subject: SubjectRef) => readonly PlannedStep[];
 
   /**
-   * La ressource qu'une étape d'octroi ouvre, telle que la collecte la nomme.
+   * Ce que la collecte relève quand l'accès qu'une étape d'octroi a ouvert est tenu : la
+   * ressource, et les rôles sous lesquels elle le range.
    *
    * Un même rôle se tient sur plusieurs ressources d'un système, deux applications ou deux
-   * organisations. Sans elle, un accès échu se jugerait sur le rôle seul : un octroi plus
-   * récent ailleurs le masquerait, et un accès gardé ailleurs le ferait croire tenu.
-   * Absente, ou `undefined` pour une étape, le système se juge sur le rôle seul.
+   * organisations : sans la ressource, un octroi plus récent ailleurs masquerait un accès
+   * échu, et un accès gardé ailleurs le ferait croire tenu. Et la collecte ne range pas
+   * toujours un accès accordé sous le rôle que l'étape nomme, une invitation en attente
+   * portant le sien chez GitHub. Absente, ou `undefined` pour une étape, le système se
+   * juge sur le rôle de l'étape seul.
    */
-  ressourceDeLOctroi?: (
-    step: Pick<PlannedStep, "action" | "params">,
-  ) => RessourceNommee | undefined;
+  accesDeLOctroi?: (step: Pick<PlannedStep, "action" | "params">) => AccesDUnOctroi | undefined;
 
   /** Séparé de execute pour que le socle traite ALREADY_ABSENT, ALREADY_PRESENT et STALE de façon uniforme, sans que chaque connecteur ait à le savoir. */
   precheck?: (step: PlannedStep, ctx: RunContext) => Promise<PrecheckResult>;

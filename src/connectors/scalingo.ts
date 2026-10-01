@@ -2164,12 +2164,18 @@ export const scalingo: Connector = {
 
   // La collecte nomme une application par son libellé « nom, région », l'octroi par les deux
   // séparément : l'identifiant de l'application n'est connu que de la collecte.
-  ressourceDeLOctroi: ({ action, params }) =>
-    action === "inviter-comme-collaborateur" &&
-    typeof params["application"] === "string" &&
-    typeof params["region"] === "string"
-      ? { label: `${params["application"]}, ${params["region"]}` }
-      : undefined,
+  accesDeLOctroi: ({ action, params }) => {
+    const { application, region, role } = params;
+    if (
+      action !== "inviter-comme-collaborateur" ||
+      typeof application !== "string" ||
+      typeof region !== "string" ||
+      typeof role !== "string"
+    ) {
+      return undefined;
+    }
+    return { ressource: { label: `${application}, ${region}` }, roles: [role] };
+  },
 };
 
 /**

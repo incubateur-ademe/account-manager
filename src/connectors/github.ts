@@ -1354,10 +1354,22 @@ export function creerGithub(lireConfig: () => ConfigGithub): Connector {
     planifierOctroi: (scope, sujet) =>
       planifierOctroiGithub(scope as ScopeGithub, sujet, Boolean(env.GITHUB_ADMIN_TOKEN)),
 
-    ressourceDeLOctroi: ({ action, params }) =>
-      action === ACTION_OCTROI && typeof params["organisation"] === "string"
-        ? { externalId: params["organisation"] }
-        : undefined,
+    // Une invitation en attente est un accès accordé, que la collecte range sous
+    // `invite:` et sous le vocabulaire des invitations, où un membre s'écrit direct_member.
+    accesDeLOctroi: ({ action, params }) => {
+      const { organisation, role } = params;
+      if (
+        action !== ACTION_OCTROI ||
+        typeof organisation !== "string" ||
+        typeof role !== "string"
+      ) {
+        return undefined;
+      }
+      return {
+        ressource: { externalId: organisation },
+        roles: [role, `invite:${role === "member" ? "direct_member" : role}`],
+      };
+    },
 
     precheck: (step) =>
       step.action === ACTION_RETRAIT

@@ -25,6 +25,7 @@ import {
 import { couvertureDesConstats, type Derogation, RAISON_COUVERT } from "@/core/derogation";
 import { dossierVivant, type SensDossier, sensOppose } from "@/core/dossier";
 import { ancrageLu, SENS_D_UN_GESTE } from "@/core/geste";
+import { autoriseUneRevocation } from "@/core/rapprochement";
 import type { FindingKind } from "@/generated/prisma/enums";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
@@ -572,6 +573,7 @@ async function accesAccordes(): Promise<AccesAccorde[]> {
         where: { vanishedAt: null },
         select: {
           provider: true,
+          matchMethod: true,
           grants: {
             where: { vanishedAt: null },
             select: { role: true, resource: { select: { externalId: true, label: true } } },
@@ -609,27 +611,45 @@ async function accesAccordes(): Promise<AccesAccorde[]> {
   });
 
   const relectures = await relecturesParSysteme();
+  const octrois = etapes.map((etape) => {
+    const parametres =
+      typeof etape.params === "object" && etape.params !== null
+        ? (etape.params as Record<string, unknown>)
+        : {};
+    const octroi = CONNECTEURS.find(
+      ({ contract }) => contract.key === etape.systemKey,
+    )?.accesDeLOctroi?.({ action: etape.action, params: parametres });
+    return { etape, parametres, octroi };
+  });
+  const connues = await ressourcesConnues(
+    new Set(octrois.flatMap(({ etape, octroi }) => (octroi ? [etape.systemKey] : []))),
+  );
 
-  return etapes.flatMap((etape): AccesAccorde[] => {
+  return octrois.flatMap(({ etape, parametres, octroi }): AccesAccorde[] => {
     const personne = etape.plan.accessCase?.person ?? etape.plan.subject;
     if (!personne) {
       return [];
     }
 
-    const parametres =
-      typeof etape.params === "object" && etape.params !== null
-        ? (etape.params as Record<string, unknown>)
-        : {};
     const role = typeof parametres["role"] === "string" ? parametres["role"] : null;
-    const ressource = CONNECTEURS.find(
-      ({ contract }) => contract.key === etape.systemKey,
-    )?.ressourceDeLOctroi?.({ action: etape.action, params: parametres });
-    const vises = personne.identities
-      .filter(({ provider }) => provider === etape.systemKey)
+    // Une ressource que plus aucune collecte ne nomme ainsi, une application renommée par
+    // exemple, ne se retrouve plus : le système se juge alors sur le rôle seul, plutôt que de
+    // refermer le constat sur un accès peut-être toujours tenu.
+    const ressource =
+      octroi && (connues.get(etape.systemKey) ?? []).some((lue) => designe(octroi.ressource, lue))
+        ? octroi.ressource
+        : undefined;
+    const roles = octroi?.roles ?? (role === null ? null : [role]);
+    // Une ressemblance n'ouvre aucune coupure, et ce constat demande d'en faire une : un
+    // compte rattaché ainsi ne tient l'accès de personne.
+    const comptes = personne.identities.filter(
+      ({ provider, matchMethod }) =>
+        provider === etape.systemKey && autoriseUneRevocation(matchMethod),
+    );
+    const vises = comptes
       .flatMap(({ grants }) => grants)
-      .filter((grant) => role === null || grant.role === role)
+      .filter((grant) => roles === null || roles.includes(grant.role))
       .filter((grant) => ressource === undefined || designe(ressource, grant.resource));
-    const comptes = personne.identities.filter(({ provider }) => provider === etape.systemKey);
 
     return [
       {
@@ -638,18 +658,35 @@ async function accesAccordes(): Promise<AccesAccorde[]> {
         systemKey: etape.systemKey,
         username: personne.username,
         role,
-        ressource: ressource === undefined ? null : JSON.stringify(ressource),
+        ressource: octroi === undefined ? null : JSON.stringify(octroi.ressource),
         // Un octroi soldé au précheck, l'accès étant déjà là, ne porte aucune date
         // d'exécution : il a été décidé à la confirmation de son plan.
         accordeLe: etape.executedAt ?? etape.plan.confirmedAt ?? etape.plan.createdAt,
         termeLe: etape.grantExpiresAt,
         risque: etape.riskLevel,
         encoreTenu:
-          role === null && ressource === undefined ? comptes.length > 0 : vises.length > 0,
+          roles === null && ressource === undefined ? comptes.length > 0 : vises.length > 0,
         relueLe: relectures.get(etape.systemKey) ?? null,
       },
     ];
   });
+}
+
+async function ressourcesConnues(
+  systemes: ReadonlySet<string>,
+): Promise<ReadonlyMap<string, readonly { externalId: string; label: string }[]>> {
+  if (systemes.size === 0) {
+    return new Map();
+  }
+  const lues = await prisma.resource.findMany({
+    where: { provider: { in: [...systemes] } },
+    select: { provider: true, externalId: true, label: true },
+  });
+  const parSysteme = new Map<string, { externalId: string; label: string }[]>();
+  for (const { provider, ...lue } of lues) {
+    parSysteme.set(provider, [...(parSysteme.get(provider) ?? []), lue]);
+  }
+  return parSysteme;
 }
 
 function designe(ressource: RessourceNommee, lue: { externalId: string; label: string }): boolean {

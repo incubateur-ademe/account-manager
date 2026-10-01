@@ -138,7 +138,7 @@ describe("un accès gardé au-delà de son terme", () => {
     // Then le constat se lève, sur la personne et sur cet octroi, avec la gravité de l'étape
     const [constat] = await echus();
     expect(constat).toMatchObject({ closedAt: null, severity: "HIGH" });
-    expect(constat?.dedupKey).toMatch(/^EXPIRED_GRANT:github:[^:]+:hugo\.exemple$/u);
+    expect(constat?.dedupKey).toMatch(/^EXPIRED_GRANT:github:[^:]+$/u);
     expect(
       await prisma.finding.count({
         where: { kind: "EXPIRED_GRANT", person: { username: USERNAME } },
@@ -250,6 +250,21 @@ describe("un accès gardé au-delà de son terme", () => {
       (await precisionsDesAccesEchus([constat?.dedupKey ?? ""])).get(constat?.dedupKey ?? ""),
     ).toContain("dans alpha");
 
+    // When alpha est renommée côté Scalingo, la collecte réécrivant son libellé
+    await prisma.resource.update({
+      where: { id: alpha?.id ?? "" },
+      data: { label: "alpha-v2, osc-fr1" },
+    });
+    await collecter(new Date("2026-09-10T10:00:00Z"));
+
+    // Then le constat reste ouvert : le système se juge sur le rôle seul plutôt que de
+    // refermer sur un accès toujours tenu
+    expect((await echus())[0]?.closedAt).toBeNull();
+    await prisma.resource.update({
+      where: { id: alpha?.id ?? "" },
+      data: { label: "alpha, osc-fr1" },
+    });
+
     // When alpha est retirée, beta restant tenue, et que la collecte repasse
     const tenueAlpha = compte.grants.find(({ resourceId }) => resourceId === alpha?.id);
     await prisma.accessGrant.update({
@@ -260,5 +275,58 @@ describe("un accès gardé au-delà de son terme", () => {
 
     // Then le constat se referme : l'accès gardé ailleurs n'est pas celui qui était échu
     expect((await echus())[0]?.closedAt).not.toBeNull();
+  });
+
+  it("ne compte jamais un compte rattaché par ressemblance, et compte une invitation en attente", async () => {
+    // Given Hugo, dont le seul compte GitHub admin de l'organisation lui ressemble sans plus,
+    // et un octroi admin échu
+    const personne = await prisma.person.create({
+      data: { username: USERNAME, fullname: "Hugo Exemple", source: "BETA" },
+    });
+    const organisation = await prisma.resource.create({
+      data: { provider: "github", externalId: "incubateur-ademe", label: "Organisation" },
+    });
+    const homonyme = await prisma.externalIdentity.create({
+      data: {
+        provider: "github",
+        externalId: "7777",
+        handle: "hugo-exemple-bis",
+        matchMethod: "HEURISTIC",
+        personId: personne.id,
+        grants: { create: { role: "admin", resourceId: organisation.id } },
+      },
+    });
+    await relire("github", RELU);
+    await octroyer(personne.id, {
+      id: "pla-admin",
+      accordeLe: new Date("2026-03-05"),
+      terme: TERME,
+    });
+
+    // Then rien ne se lève : ce constat demande une coupure, et une ressemblance n'en ouvre
+    // aucune
+    await collecter(MAINTENANT);
+    expect(await echus()).toEqual([]);
+
+    // Given le même octroi tenu par une invitation en attente, que la collecte range sous
+    // `invite:admin`, sur un compte rattaché par son login
+    await prisma.externalIdentity.update({
+      where: { id: homonyme.id },
+      data: { vanishedAt: RELU },
+    });
+    await prisma.externalIdentity.create({
+      data: {
+        provider: "github",
+        externalId: "invite-77",
+        handle: "hugo-exemple",
+        matchMethod: "GITHUB_LOGIN",
+        personId: personne.id,
+        grants: { create: { role: "invite:admin", resourceId: organisation.id } },
+      },
+    });
+
+    // Then l'accès est tenu, et le constat se lève
+    await collecter(new Date("2026-09-11T09:00:00Z"));
+    expect(await echus()).toEqual([expect.objectContaining({ closedAt: null })]);
   });
 });

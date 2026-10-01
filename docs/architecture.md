@@ -817,12 +817,13 @@ constaté après elle. Rien ne reprend de lui-même un accès à terme, sauf un 
 meurt à son terme et ne paraît dans aucun relevé : les étapes porteuses d'une clé
 d'engagement n'entrent donc pas dans ce constat. Seul le dernier octroi soldé compte, par
 personne, système, ressource et rôle, si bien qu'un accès reconduit par un nouveau plan
-n'est pas échu, et qu'un octroi sur une autre application n'en reconduit aucun. La
-ressource est celle que le connecteur nomme pour l'octroi (`ressourceDeLOctroi`) ; sans
-elle, le système se juge sur le rôle seul. Le rôle accordé doit être celui que la collecte
-relève sur cette ressource, et le système avoir été relu après le terme. Le constat se
-ferme seul quand l'accès cesse d'être constaté, et l'écran nomme l'étape d'octroi et son
-terme, le constat ne portant aucun compte.
+n'est pas échu, et qu'un octroi sur une autre application n'en reconduit aucun. Le
+connecteur dit ce que la collecte relève quand l'octroi est tenu, la ressource et les rôles
+(`accesDeLOctroi`) ; sans lui, ou quand plus aucune ressource collectée ne porte ce nom, le
+système se juge sur le rôle de l'étape seul. Seul un compte rattaché sans ressemblance tient
+un accès, ce constat demandant une coupure, et le système doit avoir été relu après le
+terme. Le constat se ferme seul quand l'accès cesse d'être constaté, et l'écran nomme
+l'étape d'octroi et son terme, le constat ne portant aucun compte.
 
 Poser ou retirer un rattachement manuel ne lève ni ne ferme ce constat sur le champ, et
 c'est délibéré : il dépend des phases de toutes les startups et d'une date qui passe

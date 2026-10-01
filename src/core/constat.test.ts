@@ -503,7 +503,7 @@ describe("ce qu'un accès échu laisse voir", () => {
     expect(constatsDAccesEchus([acces()], APRES)).toEqual([
       expect.objectContaining({
         kind: "EXPIRED_GRANT",
-        dedupKey: "EXPIRED_GRANT:github:etape-1:hugo.exemple",
+        dedupKey: "EXPIRED_GRANT:github:etape-1",
         severity: "HIGH",
         username: "hugo.exemple",
       }),
@@ -547,10 +547,10 @@ describe("ce qu'un accès échu laisse voir", () => {
         [acces(), acces({ etapeId: "etape-4", ressource: "betagouv", termeLe: null })],
         APRES,
       ).map(({ dedupKey }) => dedupKey),
-    ).toEqual(["EXPIRED_GRANT:github:etape-1:hugo.exemple"]);
+    ).toEqual(["EXPIRED_GRANT:github:etape-1"]);
 
-    // Then la clé désigne l'étape, et finit par le nom d'usage que la fusion réécrit
-    expect(etapeDUnAccesEchu("EXPIRED_GRANT:github:etape-1:hugo.exemple")).toBe("etape-1");
+    // Then la clé ne nomme que l'étape, qu'un renommage de fiche ne touche pas
+    expect(etapeDUnAccesEchu("EXPIRED_GRANT:github:etape-1")).toBe("etape-1");
     expect(etapeDUnAccesEchu("OVERDUE_MANUAL_ACTION:github:hugo.exemple")).toBeNull();
   });
 });
