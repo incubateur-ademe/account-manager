@@ -6,7 +6,17 @@ import {
   type RunContext,
   resolveCapability,
 } from "@/core/connector";
-import { CONTRAT_NOTION, collecter, diagnostiquer, type LecteurScim, notion } from "./notion";
+import {
+  CONTRAT_NOTION,
+  collecter,
+  constaterRetrait,
+  diagnostiquer,
+  executerRetrait,
+  type LecteurScim,
+  notion,
+  planifierRetraitNotion,
+  type ReponseScim,
+} from "./notion";
 import fixture from "./notion-scim.fixture.json";
 
 const PAGES = fixture.pages;
@@ -324,7 +334,7 @@ describe("ce que le connecteur Notion remonte du workspace", () => {
     expect(retrait.runbook).toContain("les invités n'y figurent pas");
   });
 
-  it("produit une tâche pointable au départ, jamais une action silencieuse", async () => {
+  it("produit une tâche pointable au départ quand aucun compte n'est relevé", async () => {
     const revocation: Intent = {
       kind: "revoke",
       subject: { kind: "person", username: "camille.rivet" },
@@ -344,12 +354,161 @@ describe("ce que le connecteur Notion remonte du workspace", () => {
     // croirait avoir tout retiré.
     expect(etape?.manual?.runbook).toContain("propriétaire qui a créé le jeton SCIM");
 
-    // Aucun moteur n'exécute quoi que ce soit : le connecteur ne porte pas `execute`.
-    expect(notion.execute).toBeUndefined();
-
     expect(await notion.plan({ ...revocation, kind: "grant" }, CONTEXTE)).toHaveLength(0);
     expect(
       await notion.plan({ kind: "revoke", subject: { kind: "service", key: "robot" } }, CONTEXTE),
     ).toHaveLength(0);
+  });
+});
+
+/** Un siège relevé, tel que le socle le transmet au départ. */
+function siege(
+  role = "member",
+  identityExternalId = "scim-1",
+  identityHandle = "camille@exemple.fr",
+) {
+  return { identityExternalId, identityHandle, role };
+}
+
+const EXECUTION: RunContext = { ...CONTEXTE, dryRun: false };
+
+function retraitDUnMembre() {
+  const [etape] = planifierRetraitNotion(
+    { kind: "person", username: "camille.rivet", acces: [siege()] },
+    true,
+  );
+  if (!etape) {
+    throw new Error("le retrait n'a produit aucune étape");
+  }
+  return etape;
+}
+
+const reponse = (statut: number, corps?: unknown) => () =>
+  Promise.resolve<ReponseScim>({ statut, corps });
+
+describe("le départ sur Notion", () => {
+  it("retire seul un membre ordinaire, et laisse à la main un propriétaire et plusieurs comptes", () => {
+    // Given un membre ordinaire, avec le jeton SCIM
+    const membre = retraitDUnMembre();
+
+    // Then l'étape part seule, nomme le compte visé, et garde sa clé
+    expect(membre.tier).toBe("auto");
+    expect(membre.manual).toBeUndefined();
+    expect(membre.label).toBe(
+      "Retirer camille.rivet (compte camille@exemple.fr) du workspace Notion",
+    );
+    expect(membre.idempotencyKey).toBe("notion:revoke:camille.rivet");
+    expect(membre.params).toMatchObject({ identifiant: "scim-1", role: "member" });
+
+    // Then un membre restreint part seul aussi
+    expect(
+      planifierRetraitNotion(
+        { kind: "person", username: "camille.rivet", acces: [siege("restricted_member")] },
+        true,
+      )[0]?.tier,
+    ).toBe("auto");
+
+    // Then un propriétaire, deux comptes, ou un jeton absent restent à la main, chacun avec
+    // sa raison
+    const proprietaire = planifierRetraitNotion(
+      { kind: "person", username: "camille.rivet", acces: [siege("owner")] },
+      true,
+    )[0];
+    expect(proprietaire?.tier).toBe("manual");
+    expect(proprietaire?.manual?.runbook).toContain("Le rôle owner se retire à la main");
+    expect(proprietaire?.manual?.doneWhen).toBe(
+      "camille@exemple.fr n'apparaît plus dans la liste des membres du workspace.",
+    );
+    const deuxComptes = planifierRetraitNotion(
+      {
+        kind: "person",
+        username: "camille.rivet",
+        acces: [siege(), siege("member", "scim-2", "camille.perso@exemple.fr")],
+      },
+      true,
+    )[0];
+    expect(deuxComptes?.tier).toBe("manual");
+    expect(deuxComptes?.manual?.runbook).toContain("Plusieurs comptes de la personne siègent");
+    expect(deuxComptes?.label).toContain("camille@exemple.fr, camille.perso@exemple.fr");
+    const sansJeton = planifierRetraitNotion(
+      { kind: "person", username: "camille.rivet", acces: [siege()] },
+      false,
+    )[0];
+    expect(sansJeton?.tier).toBe("manual");
+    expect(sansJeton?.manual?.runbook).toContain("il manque : notion:scim");
+
+    // Then le contrat déclare la voie automatique du retrait, et sa voie manuelle dessous
+    expect(CONTRAT_NOTION.capabilities.revoke?.map(({ tier }) => tier)).toEqual(["auto", "manual"]);
+    expect(
+      resolveCapability(
+        "revoke",
+        CONTRAT_NOTION.capabilities.revoke,
+        [sonde(true)],
+        CONTRAT_NOTION.runbook,
+      ).tier,
+    ).toBe("auto");
+  });
+
+  it("relit le membre avant de conclure, et refuse un membre promu entre-temps", async () => {
+    const etape = retraitDUnMembre();
+    const membre = (role: string, active = true) => ({
+      id: "scim-1",
+      userName: "camille@exemple.fr",
+      active,
+      [EXTENSION]: { role },
+    });
+
+    expect(await constaterRetrait(reponse(200, membre("member")), etape)).toEqual({
+      state: "READY",
+    });
+    // Chez Notion, `active: false` est le retrait lui-même
+    expect(await constaterRetrait(reponse(200, membre("member", false)), etape)).toEqual({
+      state: "ALREADY_ABSENT",
+    });
+    expect(await constaterRetrait(reponse(404), etape)).toEqual({ state: "ALREADY_ABSENT" });
+    expect(await constaterRetrait(reponse(200, membre("owner")), etape)).toMatchObject({
+      state: "STALE",
+      actual: { role: "owner" },
+    });
+    await expect(constaterRetrait(reponse(502), etape)).rejects.toThrow("502");
+  });
+
+  it("ne part jamais en simulation, et dit ce que Notion a répondu quand elle part", async () => {
+    const etape = retraitDUnMembre();
+    const appels: string[] = [];
+    const supprimer = (statut: number) => (identifiant: string) => {
+      appels.push(identifiant);
+      return Promise.resolve<ReponseScim>({ statut, corps: undefined });
+    };
+
+    await expect(executerRetrait(supprimer(204), true, etape, CONTEXTE)).rejects.toThrow(
+      "ACTIONS_ENABLED",
+    );
+    expect(appels).toEqual([]);
+    expect(await executerRetrait(supprimer(204), false, etape, EXECUTION)).toMatchObject({
+      state: "FAILED",
+      retryable: false,
+    });
+    const proprietaire = { ...etape, params: { ...etape.params, role: "owner" } };
+    expect(await executerRetrait(supprimer(204), true, proprietaire, EXECUTION)).toMatchObject({
+      state: "FAILED",
+      retryable: false,
+    });
+    expect(appels).toEqual([]);
+
+    expect(await executerRetrait(supprimer(204), true, etape, EXECUTION)).toMatchObject({
+      state: "SUCCEEDED",
+    });
+    expect(appels).toEqual(["scim-1"]);
+    expect(await executerRetrait(supprimer(404), true, etape, EXECUTION)).toEqual({
+      state: "ALREADY_ABSENT",
+    });
+    expect(await executerRetrait(supprimer(403), true, etape, EXECUTION)).toMatchObject({
+      state: "FAILED",
+      retryable: false,
+    });
+    expect(
+      await executerRetrait(() => Promise.reject(new Error("coupure")), true, etape, EXECUTION),
+    ).toMatchObject({ state: "FAILED", retryable: true });
   });
 });

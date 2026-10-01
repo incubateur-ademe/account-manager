@@ -1113,12 +1113,15 @@ cette section éprouvent le contrat chacun autrement : de part et d'autre de la 
 pas encore dire pour `scalingo`.
 
 **`notion`**, tier `auto` : membres du workspace par SCIM. Un siège attribué sans
-identité en face est un compte isolé. Son credential est **nominatif** : Notion révoque
-le jeton au départ de la personne qui l'a créé comme à son simple changement de rôle, et
-n'importe quel propriétaire de workspace peut le retirer. Il porte l'écriture sur le
-workspace entier et ne se cloisonne pas côté fournisseur ; il reste en `env` tant
-qu'aucun chemin d'écriture n'est livré. Le propriétaire qui l'a créé est le seul compte
-que l'API ne sait pas retirer, trou permanent du chemin de révocation.
+identité en face est un compte isolé. Son credential est généré par un **compte de
+service** propriétaire de l'organisation, parce que Notion révoque le jeton au départ de la
+personne qui l'a créé comme à son simple changement de rôle. N'importe quel propriétaire
+de workspace peut encore le retirer. Il porte l'écriture sur le workspace entier et ne se
+cloisonne pas côté fournisseur ; il reste en `env`, l'application le détenant déjà pour
+sa collecte. Le retrait part seul pour un membre ordinaire, `member` ou
+`restricted_member`. Restent à la main un propriétaire, un administrateur des membres et
+plusieurs comptes de la même personne. Le compte de service qui a créé le jeton est le
+seul que l'API ne sait pas retirer, trou permanent du chemin de révocation.
 
 La gestion des invités reste une fonctionnalité propre, portée depuis
 `n8n-automations`, mais elle ne peut pas reposer sur ce credential : SCIM ne sait ni les
@@ -1365,5 +1368,3 @@ paquet est donc à suivre, et à relever avant ce retrait.
   une livraison. L'écran des modèles avertit tant qu'aucune étape de départ n'attend de
   second regard, et se tait dès qu'une l'attend.
 - Rotation du triplet OVH avant toute mise en service d'un chemin d'écriture.
-- Porteur du jeton SCIM Notion : compte de service propriétaire de l'organisation, ou à
-  défaut rotation avant toute mutation de rôle de son porteur.
