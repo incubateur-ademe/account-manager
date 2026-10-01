@@ -61,7 +61,7 @@ const base = vi.hoisted(() => ({
    * encore un accès : la seule chose à laquelle le garde-fou des ressources se compare.
    * Posé par le scénario, parce que rien dans un relevé ne le fabrique.
    */
-  ressourcesVivantes: 0,
+  ressourcesVivantes: [] as string[],
   /** Chaque pose de contenance, pour dire si le second passage n'écrit que ce qui diffère. */
   contenances: [] as { ressource: string; parentId: string | null }[],
   /** Toute écriture qui date une disparition, pour dire si elle a eu lieu. */
@@ -213,7 +213,8 @@ vi.mock("@/lib/db", () => ({
         }
         return Promise.resolve(ligne);
       },
-      count: () => Promise.resolve(base.ressourcesVivantes),
+      findMany: () =>
+        Promise.resolve(base.ressourcesVivantes.map((externalId) => ({ externalId }))),
     },
     // Une autorisation n'est éligible que si elle attend encore et si elle a été posée
     // avant que ce passage ne commence : la seconde condition est ce qui empêche un
@@ -331,7 +332,7 @@ beforeEach(() => {
   base.autorisations.length = 0;
   base.ressources.length = 0;
   base.contenances.length = 0;
-  base.ressourcesVivantes = 0;
+  base.ressourcesVivantes = [];
   base.datations.length = 0;
   base.journal.length = 0;
   contextes.length = 0;
@@ -572,10 +573,10 @@ describe("la sortie nominative d'un plancher de chute", () => {
  * ressource absente de la collecte », c'est-à-dire qu'un contenant mal nommé effacerait
  * des accès réels.
  *
- * Et le relevé, lui, ne compte plus ses contenants. Un contenant ne porte souvent aucun
- * accès quand la référence à laquelle le garde-fou se compare ne retient que les
- * ressources qui en portent un : les compter gonflerait un seul des deux plateaux, donc
- * masquerait une chute réelle.
+ * Et le garde-fou ne compte pas ses contenants. Il ne compte que les ressources qu'il
+ * tenait pour vivantes, c'est-à-dire porteuses d'un accès, et un contenant n'en porte
+ * souvent aucun : le compter gonflerait un seul des deux plateaux, donc masquerait une
+ * chute réelle.
  */
 describe("ce qu'une contenance impossible a le droit de faire perdre", () => {
   const ACCES: readonly ObservedGrant[] = [
@@ -675,13 +676,13 @@ describe("ce qu'une contenance impossible a le droit de faire perdre", () => {
     expect(base.contenances).toHaveLength(1);
   });
 
-  it("compte le relevé sans ses contenants, de sorte qu'un projet ne masque pas une chute", async () => {
+  it("ne compte pas les contenants, de sorte qu'un projet ne masque pas une chute", async () => {
     // Given douze comptes connus, vingt ressources portant encore un accès, et une nuit
     // qui ne rend plus que douze applications, chacune rangée dans l'un des six projets
     // qui l'accompagnent. Les projets ne portent aucun accès : chez Scalingo, un projet
     // n'a pas de membres.
     peupler(12);
-    base.ressourcesVivantes = 20;
+    base.ressourcesVivantes = Array.from({ length: 20 }, (_, rang) => `app-${rang + 1}`);
 
     const projets: ObservedResource[] = Array.from({ length: 6 }, (_, rang) => ({
       externalId: `projet-${rang + 1}`,

@@ -85,7 +85,9 @@ faire.
 Elle ne pèse plus sur le relevé du garde-fou de chute, dont les contenants sortent. Elle
 continue en revanche de peser sur un cas qui lui préexiste, l'équipe GitHub sans membre, et
 c'est assumé : la spécification des projets n'est pas arrêtée du côté de Scalingo, et le
-comptage complet se reprendra quand elle le sera. Voir les conséquences négatives.
+comptage complet se reprendra quand elle le sera. Voir les conséquences négatives. **Soldé le
+1er octobre 2026** : le relevé ne compte plus que les ressources tenues pour vivantes que la
+lecture rend encore, si bien que ni un contenant ni une équipe vide ne pèsent sur lui.
 
 ### Justification
 
@@ -157,8 +159,9 @@ le libellé délibérément.
   seul des deux plateaux et peut masquer une chute réelle. C'est une dette consentie, et non
   un oubli : elle préexiste à cette décision, et le comptage complet attend que la
   spécification des projets soit arrêtée chez Scalingo. **Soldée le 1er octobre 2026** : le
-  relevé compte désormais les ressources que vise un accès relevé (`ressourcesVisees`), sans
-  attendre Scalingo, ce comptage valant que les projets portent des membres ou non.
+  relevé compte désormais les ressources tenues pour vivantes que la lecture rend encore
+  (`ressourcesRelues`), sans attendre Scalingo, ce comptage valant que les projets portent des
+  membres ou non.
 - **Un seul axe, un seul niveau.** Une application Scalingo appartient à un projet et vit dans
   une région : le modèle tient le premier, la région reste dans le libellé. Un système qui
   aurait deux regroupements orthogonaux devra en choisir un, et la profondeur, représentable en

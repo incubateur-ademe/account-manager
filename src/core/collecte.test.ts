@@ -21,6 +21,7 @@ import {
   type ReleveSysteme,
   refusRepete,
   releveFige,
+  ressourcesRelues,
   systemesMuets,
   verifierContenances,
 } from "./collecte";
@@ -777,6 +778,40 @@ describe("l'âge du relevé contre lequel le périmètre décide", () => {
     expect(ageDuReleveDeLaTrace(undefined)).toBeNull();
     expect(ageDuReleveDeLaTrace({ ageDuReleve: "4" })).toBeNull();
     expect(ageDuReleveDeLaTrace("relevé non renouvelé")).toBeNull();
+  });
+});
+
+describe("ce que le garde-fou de chute compte des ressources du soir", () => {
+  it("ne compte que les ressources tenues pour vivantes que la lecture rend encore", () => {
+    // Given quatre ressources tenues pour vivantes, dont la ressource du système entier
+    const tenues = ["equipe-1", "equipe-2", "equipe-3", "(systeme)"];
+
+    // When la lecture rend la première équipe en double, la deuxième vidée de ses membres,
+    // une équipe vide depuis toujours, et un accès sans ressource
+    const relues = ressourcesRelues(
+      tenues,
+      [
+        { externalId: "equipe-1", label: "Équipe 1" },
+        { externalId: "equipe-1", label: "Équipe 1" },
+        { externalId: "equipe-2", label: "Équipe 2" },
+        { externalId: "equipe-vide", label: "Équipe vide" },
+      ],
+      [
+        { identityExternalId: "compte-1", resourceExternalId: "equipe-1", role: "member" },
+        { identityExternalId: "compte-1", resourceExternalId: "equipe-1", role: "maintainer" },
+        { identityExternalId: "compte-2", role: "member" },
+      ],
+      "(systeme)",
+    );
+
+    // Then trois : la première équipe une fois, la deuxième bien que vide ce soir, la
+    // ressource du système parce qu'un accès sans ressource est revenu. L'équipe vide depuis
+    // toujours ne compte pas, la référence ne la comptant pas non plus, et la troisième
+    // manque à la réponse : c'est elle seule qui fait baisser le compte.
+    expect(relues).toBe(3);
+
+    // Then sans accès sans ressource, la ressource du système manque aussi
+    expect(ressourcesRelues(tenues, [], [], "(systeme)")).toBe(0);
   });
 });
 

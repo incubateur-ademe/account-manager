@@ -203,9 +203,10 @@ ce garde-fou-là ne s'entretient pas lui-même, et il n'a donc pas la même sort
 
 **Le plancher d'un système cible compte les ressources par les accès qu'elles portent.** Sa
 référence est le nombre de ressources qui portent encore un accès vivant, et le relevé du soir
-celui des ressources que vise au moins un accès relevé. Ce qui ne porte aucun accès, un projet
-Scalingo ou une équipe sans membre, ne pèse sur aucun des deux plateaux et ne peut pas masquer
-une chute réelle.
+le nombre de ces mêmes ressources que la lecture rend encore. Ce qui n'a jamais porté d'accès,
+un projet Scalingo ou une équipe vide, ne pèse sur aucun des deux plateaux et ne peut pas
+masquer une chute réelle. Une équipe vidée le soir même reste rendue, donc comptée : seule une
+ressource tenue pour vivante et absente de la réponse fait baisser le relevé.
 
 **Une fiche qu'un passage sait ne pas avoir lue ne disparaît pas le soir même.** Une disparition
 ordinaire se conclut d'un silence : la personne n'est plus dans la réponse, et rien ne la nomme.

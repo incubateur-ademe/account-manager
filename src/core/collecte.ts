@@ -72,17 +72,30 @@ export interface ContenancesVerifiees {
 }
 
 /**
- * Ce que le garde-fou de chute compte des ressources du soir : celles que vise au moins un
- * accès relevé.
+ * Ce que le garde-fou de chute compte des ressources du soir : celles qu'il tenait pour
+ * vivantes et que la lecture rend encore.
  *
- * La référence à laquelle il se compare ne retient que les ressources qui portent un accès
- * vivant. Compter tout le relevé gonflerait un seul des deux plateaux de ce qui n'en porte
- * aucun, un projet Scalingo ou une équipe sans membre, et masquerait une chute réelle.
- * `null` tient la ressource synthétique que le socle pose sous un accès sans ressource, et
- * qui porte donc des accès.
+ * La référence ne retient que les ressources qui portent un accès vivant. Compter tout le
+ * relevé gonflerait le plateau du soir de ce qui n'en porte aucun, un projet Scalingo ou
+ * une équipe vide depuis toujours, et masquerait une chute réelle. Ne compter que ce
+ * qu'un accès du soir vise ferait passer pour perdue une équipe vidée ce soir même, et le
+ * refus s'entretiendrait seul, puisque c'est lui qui garde ses accès vivants. Seule une
+ * ressource tenue pour vivante et absente de la réponse fait baisser ce compte.
+ *
+ * `synthetique` est la ressource que le socle pose sous un accès sans ressource : la
+ * lecture ne la rend jamais, elle la rend présente dès qu'un tel accès revient.
  */
-export function ressourcesVisees(acces: readonly ObservedGrant[]): number {
-  return new Set(acces.map(({ resourceExternalId }) => resourceExternalId ?? null)).size;
+export function ressourcesRelues(
+  tenues: readonly string[],
+  ressources: readonly ObservedResource[],
+  acces: readonly ObservedGrant[],
+  synthetique: string,
+): number {
+  const rendues = new Set(ressources.map(({ externalId }) => externalId));
+  if (acces.some(({ resourceExternalId }) => resourceExternalId === undefined)) {
+    rendues.add(synthetique);
+  }
+  return tenues.filter((cle) => rendues.has(cle)).length;
 }
 
 function refusDeContenance(

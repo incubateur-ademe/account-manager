@@ -4,7 +4,7 @@ import {
   champsConstates,
   chuteExcessive,
   type RefusDeDatation,
-  ressourcesVisees,
+  ressourcesRelues,
   verifierContenances,
 } from "@/core/collecte";
 import type {
@@ -274,10 +274,12 @@ async function identitesTenuesPourVivantes(provider: string): Promise<number> {
  * compter toutes ferait grossir la référence à chaque équipe supprimée ou renommée
  * jusqu'à ce que le garde-fou se déclenche sur une collecte parfaitement saine.
  */
-async function ressourcesTenuesPourVivantes(provider: string): Promise<number> {
-  return prisma.resource.count({
+async function ressourcesTenuesPourVivantes(provider: string): Promise<string[]> {
+  const tenues = await prisma.resource.findMany({
     where: { provider, grants: { some: { vanishedAt: null } } },
+    select: { externalId: true },
   });
+  return tenues.map(({ externalId }) => externalId);
 }
 
 /**
@@ -401,17 +403,18 @@ export async function executerCollecte(
 
   if (status === "OK") {
     const reference = await identitesTenuesPourVivantes(provider);
-    const referenceRessources = await ressourcesTenuesPourVivantes(provider);
+    const tenues = await ressourcesTenuesPourVivantes(provider);
+    const referenceRessources = tenues.length;
     const seuil = policy().thresholds.maxScopeDrop;
 
     const chuteIdentites = chuteExcessive(reference, lu.itemsSeen, seuil)
       ? ({ famille: "identites", observe: lu.itemsSeen, reference } as const)
       : null;
-    const visees = ressourcesVisees(lu.grants);
-    const chuteRessources = chuteExcessive(referenceRessources, visees, seuil)
+    const relues = ressourcesRelues(tenues, contenances.ressources, lu.grants, RESSOURCE_SYSTEME);
+    const chuteRessources = chuteExcessive(referenceRessources, relues, seuil)
       ? ({
           famille: "ressources",
-          observe: visees,
+          observe: relues,
           reference: referenceRessources,
         } as const)
       : null;
