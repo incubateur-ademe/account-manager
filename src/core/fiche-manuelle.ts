@@ -168,6 +168,7 @@ const ANCRES_SUR_LA_PERSONNE: readonly string[] = [
   "SCOPE_ENTRY",
   "INACTIVE_STARTUP",
   "OVERDUE_MANUAL_ACTION",
+  "EXPIRED_GRANT",
 ];
 
 export interface CompteDeFiche {

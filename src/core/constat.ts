@@ -9,7 +9,7 @@ import {
   type RattachementManuel,
   startupsEffectives,
 } from "./rattachement-startup";
-import { jourMetier } from "./statut";
+import { jourDeParis, jourMetier } from "./statut";
 
 export type ConstatKind =
   | "SCOPE_EXIT"
@@ -17,6 +17,7 @@ export type ConstatKind =
   | "INACTIVE_STARTUP"
   | "ORPHAN"
   | "UNREGISTERED"
+  | "EXPIRED_GRANT"
   | "OVERDUE_MANUAL_ACTION";
 
 export interface Constat {
@@ -56,15 +57,9 @@ export const SORTE_DE_CIBLE: Readonly<Record<FindingKind, Cible["type"] | null>>
   ORPHAN: "identite",
   UNREGISTERED: "identite",
   OVERDUE_MANUAL_ACTION: null,
-  // Les cinq que l'énumération déclare et qu'aucun code ne produit encore. Nulles plutôt
-  // qu'absentes : une ligne de base portant l'une d'elles ne se tolère pas, faute de
-  // savoir ce qu'elle viserait, et le jour où l'une se met à naître, c'est ici qu'on
-  // vient dire ce qu'elle laisse viser.
-  UNMATCHED_IDENTITY: null,
+  // Aucune, comme une parole démentie : ce constat porte sur un octroi et son terme, pas
+  // sur un compte qu'une tolérance pourrait taire.
   EXPIRED_GRANT: null,
-  DORMANT: null,
-  PRIVILEGE_DRIFT: null,
-  UNVERIFIABLE: null,
 };
 
 export interface PersonneConstatable {
@@ -329,6 +324,7 @@ export function typesReconcilies({
     "ORPHAN",
     "UNREGISTERED",
     "OVERDUE_MANUAL_ACTION",
+    "EXPIRED_GRANT",
   ];
 
   if (arriveesConcluantes) {
@@ -515,6 +511,65 @@ export function constatsDActionsDeclarees(actions: readonly ActionDeclaree[]): C
   }
 
   return constats;
+}
+
+export interface AccesAccorde {
+  etapeId: string;
+  /** L'étape d'octroi, telle que le plan la nommait. */
+  label: string;
+  systemKey: string;
+  username: string;
+  /** Le rôle accordé, quand l'étape en nomme un. */
+  role: string | null;
+  accordeLe: Date;
+  /** Le terme décidé à l'octroi, ou rien pour un accès sans terme. */
+  termeLe: Date | null;
+  risque: RiskLevel;
+  /** Un compte vivant de la personne sur le système, au rôle accordé quand il est nommé. */
+  encoreTenu: boolean;
+  relueLe: Date | null;
+}
+
+/**
+ * Un accès accordé jusqu'à une date ne se reprend pas de lui-même : seul un jeton émis
+ * meurt à son terme, et il ne se constate dans aucun relevé. Hugo reçoit le profil
+ * d'administration pour cent quatre-vingts jours, le terme passe, il reste administrateur,
+ * et rien ne le disait.
+ *
+ * Seul le dernier octroi soldé compte, par personne, système et rôle : un accès reconduit
+ * par un nouveau plan, avec ou sans terme, n'est pas échu. Et comme pour une parole
+ * démentie, le constat attend d'avoir relu le système après le terme.
+ */
+export function constatsDAccesEchus(acces: readonly AccesAccorde[], maintenant: Date): Constat[] {
+  const derniers = new Map<string, AccesAccorde>();
+  for (const un of acces) {
+    const cle = `${un.username}:${un.systemKey}:${un.role ?? ""}`;
+    const connu = derniers.get(cle);
+    if (!connu || un.accordeLe.getTime() > connu.accordeLe.getTime()) {
+      derniers.set(cle, un);
+    }
+  }
+
+  return [...derniers.values()].flatMap((un): Constat[] => {
+    const { termeLe } = un;
+    if (termeLe === null || jourMetier(maintenant) <= jourMetier(termeLe)) {
+      return [];
+    }
+    if (!un.encoreTenu || un.relueLe === null || un.relueLe.getTime() <= termeLe.getTime()) {
+      return [];
+    }
+
+    return [
+      {
+        kind: "EXPIRED_GRANT",
+        cible: null,
+        dedupKey: `EXPIRED_GRANT:${un.systemKey}:${un.username}:${un.etapeId}`,
+        severity: un.risque,
+        detail: `« ${un.label} » valait jusqu'au ${jourDeParis(termeLe)}, et l'accès est toujours constaté sur ${un.systemKey}`,
+        username: un.username,
+      },
+    ];
+  });
 }
 
 /**

@@ -156,7 +156,7 @@ export async function semerLesEcransPleins(client: Client): Promise<void> {
   await client.query(`
     INSERT INTO "Plan" (id, "accessCaseId", kind, state, "planDigest", "confirmedDigest", "createdBy", "confirmedBy", "confirmedAt", "createdAt", "expiresAt")
     VALUES
-      ('pla-arrivee', '${DOSSIER_ARRIVEE}', 'ONBOARDING', 'CONFIRMABLE', 'digest-a', NULL, 'operatrice.exemple', NULL, NULL, now() - interval '2 days', now() + interval '5 days'),
+      ('pla-arrivee', '${DOSSIER_ARRIVEE}', 'ONBOARDING', 'DRAFT', 'digest-a', NULL, 'operatrice.exemple', NULL, NULL, now() - interval '2 days', now() + interval '5 days'),
       ('pla-depart', '${DOSSIER_DEPART}', 'OFFBOARDING', 'PARTIALLY_EXECUTED', 'digest-b', 'digest-b', 'operatrice.exemple', 'operatrice.exemple', now() - interval '4 days', now() - interval '6 days', now() + interval '3 days'),
       ('pla-clos', '${DOSSIER_CLOS}', 'OFFBOARDING', 'EXECUTED', 'digest-c', 'digest-c', 'operatrice.exemple', 'operatrice.exemple', now() - interval '25 days', now() - interval '30 days', now() - interval '10 days')
   `);

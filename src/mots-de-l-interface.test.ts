@@ -96,9 +96,9 @@ describe("aucune valeur de la base n'arrive telle quelle sous les yeux d'un opé
       sansMot: table.valeurs.filter((valeur) => !table.dites.includes(valeur)),
     })).filter((table) => table.sansMot.length > 0);
 
-    // Then il y a bien une dette à surveiller, sans quoi ce test serait vert en
-    // n'exerçant rien et le resterait le jour où la dette apparaîtrait.
-    expect(dettes).not.toEqual([]);
+    // Then le relevé des écritures voit ce qu'il doit voir, une valeur que le code écrit,
+    // sans quoi ce test serait vert en n'exerçant rien le jour où une dette apparaîtrait.
+    expect(quiEcrit("SCOPE_EXIT")).not.toEqual([]);
 
     // Then aucune valeur laissée sans mot n'est écrite nulle part. C'est la seule
     // chose qui rende la dette tenable : `constats/page.tsx` retombe sur

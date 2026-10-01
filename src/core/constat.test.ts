@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  type AccesAccorde,
+  constatsDAccesEchus,
   constatsDActionsDeclarees,
   constatsDe,
   constatsDIdentites,
@@ -473,5 +475,67 @@ describe("chaque constat dit ce qu'une tolérance devrait viser", () => {
     ]) {
       expect([leve.kind, leve.cible?.type ?? null]).toEqual([leve.kind, SORTE_DE_CIBLE[leve.kind]]);
     }
+  });
+});
+
+describe("ce qu'un accès échu laisse voir", () => {
+  const TERME = new Date("2026-09-01T12:00:00Z");
+  const acces = (surcharge: Partial<AccesAccorde> = {}): AccesAccorde => ({
+    etapeId: "etape-1",
+    label: "Donner le rôle admin",
+    systemKey: "github",
+    username: "hugo.exemple",
+    role: "admin",
+    accordeLe: new Date("2026-03-05T09:00:00Z"),
+    termeLe: TERME,
+    risque: "HIGH",
+    encoreTenu: true,
+    relueLe: new Date("2026-09-10T02:00:00Z"),
+    ...surcharge,
+  });
+  const LENDEMAIN_DU_TERME = new Date("2026-09-02T09:00:00Z");
+  const APRES = new Date("2026-09-10T09:00:00Z");
+
+  it("ne se lève qu'après le jour du terme, sur un accès encore tenu, et relu depuis", () => {
+    // Then un accès tenu, relu après son terme, se signale
+    expect(constatsDAccesEchus([acces()], APRES)).toEqual([
+      expect.objectContaining({
+        kind: "EXPIRED_GRANT",
+        dedupKey: "EXPIRED_GRANT:github:hugo.exemple:etape-1",
+        severity: "HIGH",
+        username: "hugo.exemple",
+      }),
+    ]);
+
+    // Then le jour même du terme compte encore comme couvert
+    expect(constatsDAccesEchus([acces()], new Date("2026-09-01T20:00:00Z"))).toEqual([]);
+
+    // Then un système relu avant le terme n'a rien dit de ce qui a suivi
+    expect(
+      constatsDAccesEchus([acces({ relueLe: new Date("2026-08-30T02:00:00Z") })], APRES),
+    ).toEqual([]);
+    expect(constatsDAccesEchus([acces({ relueLe: null })], LENDEMAIN_DU_TERME)).toEqual([]);
+
+    // Then un accès qui n'est plus tenu, ou qui n'a pas de terme, ne dit rien
+    expect(constatsDAccesEchus([acces({ encoreTenu: false })], APRES)).toEqual([]);
+    expect(constatsDAccesEchus([acces({ termeLe: null })], APRES)).toEqual([]);
+
+    // Then seul le dernier octroi compte : reconduit avec un terme à venir, l'accès n'est
+    // pas échu, et l'ordre de lecture n'y change rien
+    const reconduit = acces({
+      etapeId: "etape-2",
+      accordeLe: new Date("2026-09-02T09:00:00Z"),
+      termeLe: new Date("2027-03-01T12:00:00Z"),
+    });
+    expect(constatsDAccesEchus([acces(), reconduit], APRES)).toEqual([]);
+    expect(constatsDAccesEchus([reconduit, acces()], APRES)).toEqual([]);
+
+    // Then deux rôles sur le même système se jugent chacun
+    expect(
+      constatsDAccesEchus(
+        [acces(), acces({ etapeId: "etape-3", role: "member", termeLe: null })],
+        APRES,
+      ),
+    ).toHaveLength(1);
   });
 });

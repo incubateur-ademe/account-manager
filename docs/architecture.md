@@ -808,6 +808,14 @@ droit, le constat se réconciliait à la sortie suivante, et revenait à l'entr�
 Un contrôle qui crie au loup sur des gestes corrects finit par ne plus être lu, et le
 vrai cas se noie avec lui.
 
+`EXPIRED_GRANT`, gravité de l'étape : un accès accordé jusqu'à une date est toujours
+constaté après elle. Rien ne reprend de lui-même un accès à terme, sauf un jeton émis, qui
+meurt à son terme et ne paraît dans aucun relevé : les étapes porteuses d'une clé
+d'engagement n'entrent donc pas dans ce constat. Seul le dernier octroi soldé compte, par
+personne, système et rôle, si bien qu'un accès reconduit par un nouveau plan n'est pas
+échu. Le rôle accordé doit être celui que la collecte relève, et le système avoir été relu
+après le terme. Le constat se ferme seul quand l'accès cesse d'être constaté.
+
 Poser ou retirer un rattachement manuel ne lève ni ne ferme ce constat sur le champ, et
 c'est délibéré : il dépend des phases de toutes les startups et d'une date qui passe
 toute seule. Le recalculer dans le geste créerait une seconde vérité, et resterait

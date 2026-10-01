@@ -5,9 +5,11 @@ import {
   REFUS_DE_VAGUE,
 } from "@/core/collecte";
 import {
+  type AccesAccorde,
   type ActionDeclaree,
   amorcageDesArrivees,
   type Constat,
+  constatsDAccesEchus,
   constatsDActionsDeclarees,
   constatsDe,
   constatsDIdentites,
@@ -197,6 +199,7 @@ export async function syncConstats(
       : constatsDe(observees, phaseParStartup, phasesTerminales, now, regleRetenue)),
     ...constatsDIdentites(identites),
     ...constatsDActionsDeclarees(await actionsDeclarees(traitees)),
+    ...constatsDAccesEchus(await accesAccordes(), now),
   ];
   // Le partage vient après le second calcul sans règle d'arrivée, et avant tout le
   // reste : ce qui est couvert ne s'ouvre pas, et se ferme en le disant.
@@ -501,15 +504,7 @@ async function actionsDeclarees(
     },
   });
 
-  const relectures = new Map<string, Date>();
-  for (const releve of await prisma.syncRun.findMany({
-    where: { capability: "list", status: "OK" },
-    distinct: ["provider"],
-    orderBy: { startedAt: "desc" },
-    select: { provider: true, startedAt: true },
-  })) {
-    relectures.set(releve.provider, releve.startedAt);
-  }
+  const relectures = await relecturesParSysteme();
 
   const declarees: ActionDeclaree[] = [];
 
@@ -545,4 +540,95 @@ async function actionsDeclarees(
   }
 
   return declarees;
+}
+
+/** La dernière lecture complète de chaque système, celle qui peut démentir ou confirmer. */
+async function relecturesParSysteme(): Promise<Map<string, Date>> {
+  const relectures = new Map<string, Date>();
+  for (const releve of await prisma.syncRun.findMany({
+    where: { capability: "list", status: "OK" },
+    distinct: ["provider"],
+    orderBy: { startedAt: "desc" },
+    select: { provider: true, startedAt: true },
+  })) {
+    relectures.set(releve.provider, releve.startedAt);
+  }
+  return relectures;
+}
+
+/**
+ * Les octrois soldés, à comparer à ce que la collecte voit encore.
+ *
+ * Jamais une étape qui porte une clé d'engagement : ce qu'elle ouvre ne paraît dans aucun
+ * relevé, et son terme la reprend de lui-même.
+ */
+async function accesAccordes(): Promise<AccesAccorde[]> {
+  const personneTenante = {
+    select: {
+      username: true,
+      identities: {
+        where: { vanishedAt: null },
+        select: {
+          provider: true,
+          grants: { where: { vanishedAt: null }, select: { role: true } },
+        },
+      },
+    },
+  } as const;
+
+  const etapes = await prisma.planStep.findMany({
+    where: {
+      capability: "grant",
+      state: { in: ["SUCCEEDED", "ALREADY_PRESENT"] },
+      executedAt: { not: null },
+      validation: { notIn: ["AWAITING", "REFUSED"] },
+      engagementKey: null,
+    },
+    select: {
+      id: true,
+      label: true,
+      systemKey: true,
+      params: true,
+      riskLevel: true,
+      executedAt: true,
+      grantExpiresAt: true,
+      plan: {
+        select: { accessCase: { select: { person: personneTenante } }, subject: personneTenante },
+      },
+    },
+  });
+
+  const relectures = await relecturesParSysteme();
+
+  return etapes.flatMap((etape): AccesAccorde[] => {
+    const personne = etape.plan.accessCase?.person ?? etape.plan.subject;
+    if (!personne || !etape.executedAt) {
+      return [];
+    }
+
+    const parametres =
+      typeof etape.params === "object" && etape.params !== null
+        ? (etape.params as Record<string, unknown>)
+        : {};
+    const role = typeof parametres["role"] === "string" ? parametres["role"] : null;
+    const comptes = personne.identities.filter(({ provider }) => provider === etape.systemKey);
+
+    return [
+      {
+        etapeId: etape.id,
+        label: etape.label,
+        systemKey: etape.systemKey,
+        username: personne.username,
+        role,
+        accordeLe: etape.executedAt,
+        termeLe: etape.grantExpiresAt,
+        risque: etape.riskLevel,
+        encoreTenu:
+          role === null
+            ? comptes.length > 0
+            : comptes.some(({ grants }) => grants.some((grant) => grant.role === role)),
+        relueLe: relectures.get(etape.systemKey) ?? null,
+      },
+    ];
+  });
 }
