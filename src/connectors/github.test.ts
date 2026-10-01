@@ -856,6 +856,28 @@ describe("le départ sur GitHub", () => {
     expect(sansJeton[0]?.tier).toBe("manual");
     expect(sansJeton[0]?.manual?.runbook).toContain("il manque : github-token-admin");
 
+    // When la personne siège dans une organisation sous deux comptes
+    const deuxComptes = planifierRetraitGithub(
+      ["incubateur-ademe"],
+      {
+        kind: "person",
+        username: "camille.rivet",
+        acces: [
+          siege("incubateur-ademe"),
+          { ...siege("incubateur-ademe"), identityExternalId: "2", identityHandle: "camille-bis" },
+        ],
+      },
+      true,
+    );
+
+    // Then une seule étape, à la main, qui les nomme tous les deux : la clé ne nomme pas le
+    // compte, et retirer le premier seul laisserait le second en place
+    expect(deuxComptes).toHaveLength(1);
+    expect(deuxComptes[0]?.tier).toBe("manual");
+    expect(deuxComptes[0]?.label).toBe(
+      "Retirer camille.rivet (comptes camille-rivet, camille-bis) de l'organisation incubateur-ademe",
+    );
+
     // Then le contrat déclare la voie automatique du retrait, et sa voie manuelle dessous
     expect(CONTRAT_GITHUB.capabilities.revoke?.map(({ tier }) => tier)).toEqual(["auto", "manual"]);
   });

@@ -877,20 +877,28 @@ export function planifierRetraitGithub(
   const acces = sujet.acces ?? [];
 
   return organisations.flatMap((organisation): PlannedStep[] => {
-    const siege = acces.find(({ resourceExternalId }) => resourceExternalId === organisation);
+    const sieges = acces.filter(({ resourceExternalId }) => resourceExternalId === organisation);
     const dansUneEquipe = acces.some(({ resourceExternalId }) =>
       resourceExternalId?.startsWith(`${organisation}#`),
     );
-    if (!siege && !dansUneEquipe) {
+    if (sieges.length === 0 && !dansUneEquipe) {
       return [];
     }
 
+    // Une étape par organisation et par personne, sous une clé qui ne nomme pas le compte :
+    // deux comptes qui y siègent se retirent donc ensemble, à la main, et l'étape les nomme.
+    const plusieurs = sieges.length > 1;
+    const siege = plusieurs ? undefined : sieges[0];
     const role = siege ? roleDuSiege(siege.role) : null;
     const parAdresse = siege?.identityExternalId.startsWith("email:") ?? false;
     const compte = siege && !parAdresse ? (siege.identityHandle ?? null) : null;
+    const comptes = sieges.map(
+      ({ identityHandle, identityExternalId }) => identityHandle ?? identityExternalId,
+    );
 
-    const raison =
-      role === null
+    const raison = plusieurs
+      ? ` Plusieurs comptes de la personne siègent dans l'organisation (${comptes.join(", ")}). Chacun se retire à la main.`
+      : role === null
         ? " Seule une appartenance à une équipe est constatée, et l'adhésion se vérifie à la main."
         : role === "admin"
           ? " Un administrateur de l'organisation se retire à la main."
@@ -909,7 +917,7 @@ export function planifierRetraitGithub(
         capability: "revoke",
         tier: auto ? "auto" : "manual",
         action: ACTION_RETRAIT,
-        label: `Retirer ${username}${compte === null ? "" : ` (compte ${compte})`} de l'organisation ${organisation}`,
+        label: `Retirer ${username}${plusieurs ? ` (comptes ${comptes.join(", ")})` : compte === null ? "" : ` (compte ${compte})`} de l'organisation ${organisation}`,
         params: {
           organisation,
           username,

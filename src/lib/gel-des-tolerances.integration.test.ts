@@ -70,7 +70,11 @@ async function semer(): Promise<string> {
     data: { username: USERNAME, fullname: "Nour Exemple", source: "BETA" },
   });
   // Deux comptes sur le même système : l'étape de révocation les coupe d'un seul geste,
-  // donc il faut les tolérer tous les deux pour qu'elle quitte le plan.
+  // donc il faut les tolérer tous les deux pour qu'elle quitte le plan. Chacun porte son
+  // adhésion, comme tout compte que la collecte relève.
+  const organisation = await prisma.resource.create({
+    data: { provider: "github", externalId: "incubateur-ademe", label: "Organisation" },
+  });
   for (const externalId of ["cpt-1", "cpt-2"]) {
     await prisma.externalIdentity.create({
       data: {
@@ -79,6 +83,7 @@ async function semer(): Promise<string> {
         handle: externalId,
         matchMethod: "GITHUB_LOGIN",
         personId: personne.id,
+        grants: { create: { role: "member", resourceId: organisation.id } },
       },
     });
   }
