@@ -6,8 +6,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { CONNECTEURS } from "@/connectors";
-import { type Capability, type ResolvedCapability, resolveCapability } from "@/core/connector";
 import {
   type ActeurNomme,
   type Declarant,
@@ -22,7 +20,6 @@ import {
   roleSurDossier,
 } from "@/core/dossier";
 import { ISSUE_DOSSIER, peutExecuter } from "@/core/execution";
-import { motDuTier } from "@/core/lexique";
 import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 import {
   CLE_INCUBATEUR,
@@ -33,13 +30,7 @@ import {
   saisieAAfficher,
 } from "@/core/modele-plan";
 import { etatDuCanal, participationVivante } from "@/core/participation";
-import {
-  masseDuPlan,
-  type OrigineEtape,
-  peremptionDuPlan,
-  type RaisonDEcart,
-  refusDeMasse,
-} from "@/core/plan";
+import { masseDuPlan, type OrigineEtape, peremptionDuPlan, type RaisonDEcart } from "@/core/plan";
 import { profilDeLaPolitique } from "@/lib/arrivee";
 import { prisma } from "@/lib/db";
 import { calculerPlan } from "@/lib/dossier";
@@ -48,15 +39,11 @@ import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
 import { dateFr, dateLocale } from "@/ui/dates";
 import { type EtapeFigee, EtapeOperateur } from "./EtapeOperateur";
+import { echeancesDuPlan, Lancement } from "./Lancement";
 import { type DroitAffiche, Participations } from "./Participations";
-import {
-  BoutonAnnuler,
-  BoutonClore,
-  BoutonConfirmer,
-  BoutonExecuter,
-  BoutonRecalculer,
-} from "./Pointage";
-import { LIBELLE_LANCEMENT } from "./redaction-execution";
+import { BoutonAnnuler, BoutonClore, BoutonConfirmer, BoutonRecalculer } from "./Pointage";
+import { PorteurDeRemises } from "./PorteurDeRemises";
+import { tiersDuJour, voieLisible, voiesDuJour } from "./voie";
 
 export const dynamic = "force-dynamic";
 
@@ -67,11 +54,6 @@ const ECART: Record<RaisonDEcart, string> = {
   "saisie-illisible": "saisie attendue illisible",
   tolere: "tolérée",
 };
-
-/** « GITHUB_TOKEN » et « OVH_APP_KEY » se lisent « GITHUB_TOKEN et OVH_APP_KEY ». */
-function enumeration(mots: readonly string[]): string {
-  return new Intl.ListFormat("fr", { type: "conjunction" }).format(mots);
-}
 
 const PREFIXE_STARTUP = "modele:startup:";
 
@@ -84,77 +66,6 @@ function origineLisible(origine: OrigineEtape, nomsDeStartup: ReadonlyMap<string
   }
   const ghid = origine.slice(PREFIXE_STARTUP.length);
   return `le modèle de la startup ${nomsDeStartup.get(ghid) ?? ghid}`;
-}
-
-/**
- * Ce que chaque geste du plan vaudrait aujourd'hui, credentials en main.
- *
- * Le plan affiche le tier figé, qui est celui qui a été approuvé, mais ce n'est pas
- * toujours celui qui s'appliquera : la boucle d'exécution recalcule le plan et suit la
- * voie du jour. Taire l'écart afficherait un tier théorique, exactement ce que ce
- * produit s'interdit, et un opérateur lirait « à faire à la main » sur une étape que la
- * machine s'apprête à exécuter.
- *
- * Les sondes ne regardent que l'environnement, sans appel sortant, et ne sont
- * interrogées que pour les systèmes que ce plan touche.
- */
-async function voiesDuJour(
-  etapes: readonly { systemKey: string; capability: string }[],
-): Promise<ReadonlyMap<string, ResolvedCapability>> {
-  const attendues = new Set(
-    etapes.map(({ systemKey, capability }) => `${systemKey}:${capability}`),
-  );
-  const resolues = new Map<string, ResolvedCapability>();
-
-  for (const connecteur of CONNECTEURS) {
-    const { contract } = connecteur;
-    const utiles = [...attendues].filter((cle) => cle.startsWith(`${contract.key}:`));
-    if (utiles.length === 0) {
-      continue;
-    }
-
-    const sondes = await connecteur.probe();
-    for (const cle of utiles) {
-      const capacite = cle.slice(contract.key.length + 1) as Capability;
-      resolues.set(
-        cle,
-        resolveCapability(capacite, contract.capabilities[capacite], sondes, contract.runbook),
-      );
-    }
-  }
-
-  return resolues;
-}
-
-/**
- * Ce qu'il faut dire d'une étape en plus de son tier figé : la voie du jour quand elle
- * diffère, et ce qui manque pour faire mieux quand une meilleure existe sans être
- * praticable.
- *
- * La voie du jour vient du plan recalculé et non de `resolveCapability`, et l'écart
- * n'est pas théorique : la résolution ne parle que de credentials, quand un connecteur
- * dégrade aussi pour une donnée qui manque, tel un identifiant GitHub sûr. Annoncer
- * « automatique » sur la foi du seul jeton ferait promettre un geste que la boucle
- * n'emprunterait pas. `degradedFrom`, lui, garde sa raison d'être : c'est le seul
- * endroit qui nomme le credential absent.
- */
-function voieLisible(
-  tierFige: string,
-  tierDuJour: string | undefined,
-  resolue: ResolvedCapability | undefined,
-): string | null {
-  const libelleDe = (tier: string) => motDuTier(tier).libelle;
-  const manquants = resolue?.degradedFrom?.missing ?? [];
-  const manque =
-    tierDuJour !== "auto" && resolue?.degradedFrom
-      ? `Elle serait ${libelleDe(resolue.degradedFrom.tier)} si ${enumeration(manquants)} ${manquants.length > 1 ? "étaient renseignés" : "était renseigné"}.`
-      : "";
-
-  if (tierDuJour === undefined || tierDuJour === tierFige) {
-    return manque === "" ? null : manque;
-  }
-
-  return `Ce plan a figé « ${libelleDe(tierFige)} » ; aujourd'hui cette étape est ${libelleDe(tierDuJour)}, et c'est ce qui vaudra au lancement. ${manque}`.trim();
 }
 
 /**
@@ -458,18 +369,7 @@ export default async function DossierPage({
   // recalcule : d'où l'écart que `voieLisible` dit ligne à ligne.
   const voies = await voiesDuJour(plan?.steps ?? []);
 
-  // Rapprochées sur la clé d'idempotence, comme la boucle d'exécution le fait :
-  // l'enregistrement la suffixe par l'identifiant du plan, ce qui la rend unique en
-  // base sans changer ce qu'elle désigne. Une clé qui ne se retrouve pas laisse l'écran
-  // muet sur la voie du jour plutôt que de la deviner.
-  const tiersDuJour = new Map<string, string>(
-    plan
-      ? (actuel?.etapes ?? []).map(({ etape }) => [
-          `${etape.idempotencyKey}:${plan.id}`,
-          etape.tier,
-        ])
-      : [],
-  );
+  const tiers = plan ? tiersDuJour(plan.id, actuel) : new Map<string, string>();
 
   const executable = plan !== undefined && !annule && peutExecuter(plan.state).possible;
   const simulation = !env.ACTIONS_ENABLED;
@@ -485,11 +385,7 @@ export default async function DossierPage({
         )
       : null;
 
-  // Hors de l'empreinte, donc invisible à la confrontation qui garde l'exécution :
-  // l'échéance se lit avant le lancement ou ne se lit pas du tout.
-  const echeances = (plan?.steps ?? []).flatMap((etape) =>
-    etape.grantExpiresAt ? [{ id: etape.id, label: etape.label, terme: etape.grantExpiresAt }] : [],
-  );
+  const echeances = echeancesDuPlan(plan?.steps ?? []);
 
   const lignes: LigneDEtape[] = (plan?.steps ?? []).map((etape) => ({
     etape,
@@ -805,7 +701,7 @@ export default async function DossierPage({
                     saisie={saisie}
                     voie={voieLisible(
                       etape.tier,
-                      tiersDuJour.get(etape.idempotencyKey),
+                      tiers.get(etape.idempotencyKey),
                       voies.get(`${etape.systemKey}:${etape.capability}`),
                     )}
                     pointable={pointable}
@@ -853,64 +749,18 @@ export default async function DossierPage({
         </>
       )}
 
-      {plan && masse ? (
-        <section className={fr.cx("fr-mt-4w")}>
-          <h2 className={fr.cx("fr-h5")}>
-            {simulation ? LIBELLE_LANCEMENT.titre.simulation : LIBELLE_LANCEMENT.titre.reel}
-          </h2>
-
-          {/* Avant le bouton et non après : une simulation qui ressemble à une
-              exécution réussie est un mensonge, et l'opérateur doit lire ce que son
-              clic fera avant de le faire. */}
-          {simulation ? (
-            <Alert
-              as="h3"
-              severity="info"
-              className={fr.cx("fr-mb-2w")}
-              small
-              title={LIBELLE_LANCEMENT.simulation.titre}
-              description={LIBELLE_LANCEMENT.simulation.description}
-            />
-          ) : (
-            <Alert
-              as="h3"
-              severity="warning"
-              className={fr.cx("fr-mb-2w")}
-              small
-              title={LIBELLE_LANCEMENT.reel.titre}
-              description={LIBELLE_LANCEMENT.reel.description}
-            />
-          )}
-
-          <p className={fr.cx("fr-text--sm")}>{LIBELLE_LANCEMENT.verification}</p>
-
-          {echeances.length > 0 ? (
-            <>
-              <p className={fr.cx("fr-text--sm", "fr-mb-1v")}>{LIBELLE_LANCEMENT.termes}</p>
-              <ul className={fr.cx("fr-text--sm")}>
-                {echeances.map(({ id, label, terme }) => (
-                  <li key={id}>
-                    {label} : jusqu'au {dateLocale.format(terme)}.
-                  </li>
-                ))}
-              </ul>
-            </>
-          ) : null}
-
-          <p className={fr.cx("fr-text--sm")}>
-            {masse.executables === 0
-              ? LIBELLE_LANCEMENT.masse.aucune
-              : LIBELLE_LANCEMENT.masse.quelques(masse.executables, masse.seuil)}
-          </p>
-
-          <BoutonExecuter
+      <PorteurDeRemises titre="h2">
+        {plan && masse ? (
+          <Lancement
             planId={plan.id}
             masse={masse}
-            raisonDeMasse={refusDeMasse(masse, false)}
             simulation={simulation}
+            echeances={echeances}
+            niveau={2}
+            priorite="primary"
           />
-        </section>
-      ) : null}
+        ) : null}
+      </PorteurDeRemises>
 
       {actuel && actuel.ecartees.length > 0 ? (
         <section className={fr.cx("fr-mt-4w")}>

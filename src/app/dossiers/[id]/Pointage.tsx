@@ -23,6 +23,7 @@ import {
   recalculerPlan,
   validerEtape,
 } from "./actions";
+import { useLancementPorte } from "./PorteurDeRemises";
 import { Remises } from "./Remises";
 import { compteRendu, LIBELLE_LANCEMENT, LIBELLE_PASSAGE_INCOMPLET } from "./redaction-execution";
 
@@ -369,19 +370,26 @@ export function BoutonExecuter({
   masse,
   raisonDeMasse,
   simulation,
+  priorite,
+  titreDAlerte,
 }: {
   planId: string;
   masse: Masse;
   /** La phrase du plafond, telle que le noyau la rédige, ou rien si le plan tient dessous. */
   raisonDeMasse: string | null;
   simulation: boolean;
+  priorite: "primary" | "secondary";
+  titreDAlerte: "h3" | "h4";
 }) {
+  const porte = useLancementPorte();
   const [etat, formAction, pending] = useActionState<EtatAction | null, FormData>(
-    lancerExecution,
+    porte ?? lancerExecution,
     null,
   );
   const [confirmee, setConfirmee] = useState(false);
   const bloque = masse.depasse && !confirmee;
+  // Sans porteur, la clé vit dans cet état, qu'un second envoi remplacerait.
+  const cleAffichee = porte === null && (etat?.execution?.remises.length ?? 0) > 0;
 
   return (
     <form action={formAction} className={fr.cx("fr-mt-2w")}>
@@ -406,7 +414,7 @@ export function BoutonExecuter({
         </>
       ) : null}
 
-      <Button priority="primary" type="submit" disabled={pending || bloque}>
+      <Button priority={priorite} type="submit" disabled={pending || bloque || cleAffichee}>
         {pending
           ? simulation
             ? LIBELLE_LANCEMENT.bouton.enCours.simulation
@@ -423,7 +431,7 @@ export function BoutonExecuter({
           </p>
           {etat.execution.passageIncomplet === undefined ? null : (
             <Alert
-              as="h3"
+              as={titreDAlerte}
               className={fr.cx("fr-mt-2w")}
               severity="error"
               title={LIBELLE_PASSAGE_INCOMPLET.titre}
@@ -435,7 +443,9 @@ export function BoutonExecuter({
               }
             />
           )}
-          <Remises remises={etat.execution.remises} />
+          {porte === null ? (
+            <Remises remises={etat.execution.remises} titre={titreDAlerte} />
+          ) : null}
         </>
       ) : null}
 

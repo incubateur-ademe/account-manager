@@ -61,7 +61,16 @@ const REMISE: RemiseDeCredential = {
 async function lancer(resultat: ResultatDExecution): Promise<void> {
   passage.resultat = resultat;
   const utilisateur = userEvent.setup();
-  render(<BoutonExecuter planId={PLAN} masse={MASSE} raisonDeMasse={null} simulation={false} />);
+  render(
+    <BoutonExecuter
+      planId={PLAN}
+      masse={MASSE}
+      raisonDeMasse={null}
+      simulation={false}
+      priorite="primary"
+      titreDAlerte="h3"
+    />,
+  );
   await utilisateur.click(screen.getByRole("button", { name: LIBELLE_LANCEMENT.bouton.reel }));
   // Le compte rendu vient d'un état que React pose dans une transition, et le clic ne
   // garantit pas qu'elle soit commitée quand il rend la main : l'attendre, sinon le

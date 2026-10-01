@@ -43,7 +43,7 @@ function ValeurARecopier({ intitule, valeur }: { intitule: string; valeur: strin
  * jour ne vient d'aucun gestionnaire React, et l'ordonnanceur la poserait sinon dans une
  * tâche que rien ne borne.
  */
-function Remise({ remise }: { remise: RemiseDeCredential }) {
+function Remise({ remise, titre }: { remise: RemiseDeCredential; titre: "h2" | "h3" | "h4" }) {
   const [caduque, setCaduque] = useState(false);
 
   useEffect(() => {
@@ -59,7 +59,7 @@ function Remise({ remise }: { remise: RemiseDeCredential }) {
   if (caduque) {
     return (
       <Alert
-        as="h3"
+        as={titre}
         className={fr.cx("fr-mt-2w")}
         severity="info"
         title={LIBELLE_REMISE.disparue.titre}
@@ -71,7 +71,7 @@ function Remise({ remise }: { remise: RemiseDeCredential }) {
   return (
     <>
       <Alert
-        as="h3"
+        as={titre}
         className={fr.cx("fr-mt-2w")}
         severity="warning"
         title={LIBELLE_REMISE.titre}
@@ -93,7 +93,7 @@ function Remise({ remise }: { remise: RemiseDeCredential }) {
 
       {remise.echecDeRangement === undefined ? null : (
         <Alert
-          as="h3"
+          as={titre}
           className={fr.cx("fr-mt-2w")}
           severity="error"
           title={LIBELLE_REMISE.echec.titre}
@@ -118,11 +118,17 @@ function Remise({ remise }: { remise: RemiseDeCredential }) {
  * Vide sur la quasi-totalité des passages, et c'est la forme normale : seule une étape
  * qui fabrique un credential remet quelque chose.
  */
-export function Remises({ remises }: { remises: readonly RemiseDeCredential[] }) {
+export function Remises({
+  remises,
+  titre,
+}: {
+  remises: readonly RemiseDeCredential[];
+  titre: "h2" | "h3" | "h4";
+}) {
   return (
     <>
       {remises.map((remise) => (
-        <Remise key={remise.key} remise={remise} />
+        <Remise key={remise.key} remise={remise} titre={titre} />
       ))}
     </>
   );

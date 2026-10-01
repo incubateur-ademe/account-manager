@@ -4,10 +4,12 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { EtapeFigee } from "@/app/dossiers/[id]/EtapeOperateur";
-import { instantLocal } from "@/ui/dates";
+import { REFUS_DEPART_OUVERT } from "@/lib/geste";
+import { dateLocale, instantLocal } from "@/ui/dates";
 
 import type { GesteEnAttente } from "./geste-en-attente";
-import { GESTE } from "./libelles";
+import type { GesteEnCours } from "./gestes-confirmes";
+import { GESTE, GESTE_CONFIRME } from "./libelles";
 
 /**
  * Ce que la fiche montre d'un brouillon de geste, et ce que son bouton envoie.
@@ -27,8 +29,12 @@ vi.mock("@/app/dossiers/[id]/actions", () => ({
   annulerDossier: vi.fn(() => Promise.resolve({})),
 }));
 
-const { confirmerPlan } = await import("@/app/dossiers/[id]/actions");
+const { confirmerPlan, lancerExecution, pointerEtape } = await import(
+  "@/app/dossiers/[id]/actions"
+);
 const { SectionGeste } = await import("./SectionGeste");
+const { GestesSoldes, SectionGesteEnCours } = await import("./SectionGestesConfirmes");
+const { PorteurDeRemises } = await import("@/app/dossiers/[id]/PorteurDeRemises");
 
 afterEach(cleanup);
 
@@ -135,5 +141,214 @@ describe("le brouillon de geste sur la fiche de la personne", () => {
 
     // Then le chemin de retour reste servi dans les deux cas, c'est lui qui porte la sortie.
     expect(screen.getByRole("link", { name: GESTE.reposer("Scalingo") })).toBeDefined();
+  });
+});
+
+const CONFIRME_LE = new Date("2026-09-20T08:00:00Z");
+const TERME_DE_L_ACCES = new Date("2026-12-01T12:00:00Z");
+
+function enCours(surcharge: Partial<GesteEnCours> = {}): GesteEnCours {
+  return {
+    planId: "pla-confirme",
+    systeme: "scalingo",
+    etat: "EXECUTING",
+    etapes: [
+      {
+        ...ETAPE,
+        grantExpiresAt: TERME_DE_L_ACCES,
+        voie: "Aujourd'hui cette étape est à faire à la main.",
+      },
+    ],
+    confirmeLe: CONFIRME_LE,
+    confirmePar: "operatrice.exemple",
+    refus: null,
+    pointable: true,
+    masse: { executables: 1, seuil: 20, depasse: false },
+    ...surcharge,
+  };
+}
+
+function monterEnCours(surcharge: Partial<GesteEnCours> = {}) {
+  return render(
+    <SectionGesteEnCours
+      geste={enCours(surcharge)}
+      nomDuSysteme="Scalingo"
+      declarant={{ role: "OPERATOR", operateur: true }}
+      valideur={{ username: "operatrice.exemple", role: "OPERATOR" }}
+      simulation
+    />,
+  );
+}
+
+describe("le geste confirmé sur la fiche de la personne", () => {
+  it("se pointe et se lance d'ici, en envoyant l'identifiant de son plan", async () => {
+    // Given un geste confirmé que l'exécution accepterait,
+    monterEnCours();
+    const utilisateur = userEvent.setup();
+
+    // Then il se nomme par son système, et dit qui en répond,
+    expect(screen.getByRole("heading", { name: GESTE_CONFIRME.titre("Scalingo") })).toBeDefined();
+    expect(
+      screen.getByText(GESTE_CONFIRME.confirme(CONFIRME_LE, "operatrice.exemple", dateLocale)),
+    ).toBeDefined();
+
+    // Then l'étape dit sa voie du jour, et le terme de l'accès se lit avant le lancement,
+    // seul endroit où il se lit,
+    expect(screen.getByText("Aujourd'hui cette étape est à faire à la main.")).toBeDefined();
+    expect(
+      screen.getByText(
+        `Émettre un jeton restreint : jusqu'au ${dateLocale.format(TERME_DE_L_ACCES)}.`,
+      ),
+    ).toBeDefined();
+
+    // Then le lancement n'est pas le bouton primaire de la fiche, qui peut porter un
+    // brouillon à confirmer et d'autres gestes,
+    const lancer = screen.getByRole("button", { name: "Lancer la simulation" });
+    expect(lancer.className).toContain("fr-btn--secondary");
+
+    // When on lance la simulation,
+    await utilisateur.click(lancer);
+
+    // Then c'est le plan du geste qui part, lu dans le formulaire rendu,
+    const lance = Object.fromEntries(
+      vi.mocked(lancerExecution).mock.calls[0]?.[1] as unknown as FormData,
+    );
+    expect(lance).toMatchObject({ planId: "pla-confirme" });
+
+    // When on pointe l'étape à la main,
+    await utilisateur.selectOptions(screen.getByLabelText("Ce qui a été fait"), "fait");
+    await utilisateur.click(screen.getByRole("button", { name: /Enregistrer/u }));
+
+    // Then c'est l'étape du geste qui est pointée, sans dossier pour la porter.
+    const pointe = Object.fromEntries(
+      vi.mocked(pointerEtape).mock.calls[0]?.[1] as unknown as FormData,
+    );
+    expect(pointe).toMatchObject({ etapeId: "etape-1", pointage: "fait" });
+  });
+
+  it("garde la clé remise quand un rafraîchissement retire le geste qui l'a émise", async () => {
+    // Given un geste dont le lancement émet un jeton, sous le porteur de la fiche,
+    vi.mocked(lancerExecution).mockResolvedValueOnce({
+      execution: {
+        simulation: false,
+        executees: 1,
+        soldees: 1,
+        echecs: 0,
+        remises: [
+          {
+            key: "scalingo:jeton:pla-confirme",
+            label: "Jeton Scalingo sur service-annuaire",
+            aRemettre: "cle_inventee_pour_ce_test",
+          },
+        ],
+      },
+    });
+    const fiche = (avecLeGeste: boolean) => (
+      <PorteurDeRemises titre="h2">
+        {avecLeGeste ? (
+          <SectionGesteEnCours
+            geste={enCours()}
+            nomDuSysteme="Scalingo"
+            declarant={{ role: "OPERATOR", operateur: true }}
+            valideur={{ username: "operatrice.exemple", role: "OPERATOR" }}
+            simulation
+          />
+        ) : null}
+      </PorteurDeRemises>
+    );
+    const { rerender } = render(fiche(true));
+
+    // When on lance,
+    await userEvent.setup().click(screen.getByRole("button", { name: "Lancer la simulation" }));
+
+    // Then la clé se lit,
+    expect(await screen.findByText("cle_inventee_pour_ce_test", { exact: false })).toBeDefined();
+
+    // When un rafraîchissement range le geste soldé hors des gestes en cours, ce que fait
+    // n'importe quelle action de la fiche,
+    rerender(fiche(false));
+
+    // Then la clé reste lisible : elle ne vivait pas dans le bouton qui vient de partir.
+    expect(screen.queryByRole("button", { name: "Lancer la simulation" })).toBeNull();
+    expect(screen.getByText("cle_inventee_pour_ce_test", { exact: false })).toBeDefined();
+  });
+
+  it("remplace le lancement par son refus, et garde l'étape à écarter avec sa raison", async () => {
+    // Given un geste dont l'empreinte a bougé depuis la confirmation, et une étape qui a
+    // échoué au passage précédent,
+    const refus = "Ce plan ne décrit plus ce qui a été approuvé. Reposez ce geste.";
+    monterEnCours({ refus, masse: null, etat: "PARTIALLY_EXECUTED" });
+    const utilisateur = userEvent.setup();
+
+    // Then aucun lancement n'est offert, et le refus se lit à sa place,
+    expect(screen.queryByRole("button", { name: "Lancer la simulation" })).toBeNull();
+    expect(screen.getByText(refus)).toBeDefined();
+    expect(screen.getByText(GESTE_CONFIRME.echec)).toBeDefined();
+    expect(screen.getByRole("link", { name: GESTE.reposer("Scalingo") })).toBeDefined();
+
+    // When on écarte l'étape avec sa raison, seule sortie d'un plan sans dossier,
+    await utilisateur.selectOptions(screen.getByLabelText("Ce qui a été fait"), "ignoree");
+    await utilisateur.type(screen.getByLabelText("Raison"), "Accès donné par un autre geste");
+    await utilisateur.click(screen.getByRole("button", { name: /Enregistrer/u }));
+
+    // Then l'écart part avec sa raison,
+    const ecarte = Object.fromEntries(
+      vi.mocked(pointerEtape).mock.calls.at(-1)?.[1] as unknown as FormData,
+    );
+    expect(ecarte).toMatchObject({
+      etapeId: "etape-1",
+      pointage: "ignoree",
+      note: "Accès donné par un autre geste",
+    });
+
+    // When un départ est ouvert sur la personne,
+    cleanup();
+    monterEnCours({ refus: REFUS_DEPART_OUVERT, masse: null, pointable: false });
+
+    // Then plus rien ne se pointe ni ne se repose : les deux refuseraient.
+    expect(screen.getByText(REFUS_DEPART_OUVERT)).toBeDefined();
+    expect(screen.queryByLabelText("Ce qui a été fait")).toBeNull();
+    expect(screen.queryByRole("link", { name: GESTE.reposer("Scalingo") })).toBeNull();
+  });
+
+  it("résume les gestes soldés avec les termes qu'ils ont posés", () => {
+    // Given deux gestes soldés, dont un a posé un terme,
+    const terme = new Date("2027-03-01T12:00:00Z");
+    render(
+      <GestesSoldes
+        gestes={[
+          {
+            planId: "pla-jeton",
+            systeme: "scalingo",
+            etapes: 2,
+            confirmeLe: CONFIRME_LE,
+            confirmePar: "operatrice.exemple",
+            termes: [terme],
+          },
+          {
+            planId: "pla-collaboration",
+            systeme: "inconnu",
+            etapes: 1,
+            confirmeLe: null,
+            confirmePar: null,
+            termes: [],
+          },
+        ]}
+        nomDuSysteme={(cle) => (cle === "scalingo" ? "Scalingo" : cle)}
+      />,
+    );
+
+    // Then ils se comptent, et chacun se lit avec son système et son terme.
+    expect(screen.getByRole("button", { name: GESTE_CONFIRME.soldes(2) })).toBeDefined();
+    expect(
+      screen.getByText(
+        GESTE_CONFIRME.solde("Scalingo", 2, CONFIRME_LE, "operatrice.exemple", dateLocale),
+        { exact: false },
+      ),
+    ).toBeDefined();
+    expect(
+      screen.getByText(GESTE_CONFIRME.terme(terme, dateLocale), { exact: false }),
+    ).toBeDefined();
+    expect(screen.getByText("inconnu, 1 étape. Confirmé.")).toBeDefined();
   });
 });

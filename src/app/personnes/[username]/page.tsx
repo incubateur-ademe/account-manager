@@ -6,6 +6,7 @@ import { Breadcrumb } from "@codegouvfr/react-dsfr/Breadcrumb";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { PorteurDeRemises } from "@/app/dossiers/[id]/PorteurDeRemises";
 import { connecteur } from "@/connectors";
 import {
   estPhaseTerminale,
@@ -44,10 +45,12 @@ import { ActionsDePage } from "./ActionsDePage";
 import { CeQuiAppelleUneAction } from "./CeQuiAppelleUneAction";
 import { Champ } from "./Champs";
 import { gesteEnAttente } from "./geste-en-attente";
+import { gestesConfirmes } from "./gestes-confirmes";
 import { expliquerStatut, SEVERITE_APPARTENANCE, SOURCE, STATUT_A_TRAITER } from "./libelles";
 import { motifsDAction } from "./motifs";
 import { SectionComptesExternes } from "./SectionComptesExternes";
 import { SectionGeste } from "./SectionGeste";
+import { GestesSoldes, SectionGesteEnCours } from "./SectionGestesConfirmes";
 import { SectionStartups } from "./SectionStartups";
 
 export const dynamic = "force-dynamic";
@@ -175,7 +178,10 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
   // rattachement, et sert à la fois le tableau et la liste de saisie.
   // Après la garde d'existence, et seulement là : une fiche sans geste ne paie aucun
   // recalcul, et il n'y a rien à calculer pour une personne qui n'existe pas.
-  const geste = await gesteEnAttente(personne.id, personne.username, today);
+  const [geste, confirmes] = await Promise.all([
+    gesteEnAttente(personne.id, personne.username, today),
+    gestesConfirmes(personne.id, personne.username, today),
+  ]);
 
   const startupsConnues = await prisma.startup.findMany({
     select: { ghid: true, name: true, currentPhase: true, phaseStart: true, vanishedAt: true },
@@ -183,7 +189,8 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
   });
 
   // `requireOperateur` a muré cette page, donc qui la lit est de l'équipe transverse.
-  // Un geste n'a pas de porteur au sens d'un dossier, et son plan ne se pointe pas ici.
+  // Un geste n'a pas de porteur au sens d'un dossier : `pointerEtape` y range tout
+  // opérateur sous `OPERATOR`, y compris sur sa propre fiche.
   const valideur: ActeurNomme = { username: operateur.username, role: "OPERATOR" };
   const declarant: Declarant = { role: "OPERATOR", operateur: true };
 
@@ -520,14 +527,27 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
         inconnues={inconnues}
       />
 
-      {geste ? (
-        <SectionGeste
-          geste={geste}
-          nomDuSysteme={connecteur(geste.systeme)?.contract.label ?? geste.systeme}
-          declarant={declarant}
-          valideur={valideur}
-        />
-      ) : null}
+      <PorteurDeRemises titre="h2">
+        {geste ? (
+          <SectionGeste
+            geste={geste}
+            nomDuSysteme={connecteur(geste.systeme)?.contract.label ?? geste.systeme}
+            declarant={declarant}
+            valideur={valideur}
+          />
+        ) : null}
+
+        {confirmes.enCours.map((enCours) => (
+          <SectionGesteEnCours
+            key={enCours.planId}
+            geste={enCours}
+            nomDuSysteme={connecteur(enCours.systeme)?.contract.label ?? enCours.systeme}
+            declarant={declarant}
+            valideur={valideur}
+            simulation={!env.ACTIONS_ENABLED}
+          />
+        ))}
+      </PorteurDeRemises>
 
       <SectionComptesExternes comptes={comptes} systemesCollectes={systemesCollectes} />
 
@@ -558,6 +578,13 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
             })}
           />
         </Accordion>
+      ) : null}
+
+      {confirmes.soldes.length > 0 ? (
+        <GestesSoldes
+          gestes={confirmes.soldes}
+          nomDuSysteme={(cle) => connecteur(cle)?.contract.label ?? cle}
+        />
       ) : null}
 
       <p className={fr.cx("fr-text--sm", "fr-mt-4w")}>

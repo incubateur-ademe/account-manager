@@ -21,6 +21,7 @@ import {
   peutExecuter,
   refusDEcart,
   refusDePeremption,
+  refusSansConfirmation,
 } from "@/core/execution";
 import { ancrageLu, intentionDUnGeste } from "@/core/geste";
 import type { Voie } from "@/core/participation";
@@ -397,9 +398,7 @@ export async function executerPlan(
   // confirmation écrivant l'instant et l'empreinte dans la même écriture, et c'est
   // précisément pourquoi il se refuse ici plutôt que de se replier en silence.
   if (plan.confirmedAt === null) {
-    return refuser(
-      "Ce plan ne porte pas l'instant de sa confirmation. Recalculez-le, puis confirmez-le.",
-    );
+    return refuser(refusSansConfirmation(issue));
   }
 
   /**

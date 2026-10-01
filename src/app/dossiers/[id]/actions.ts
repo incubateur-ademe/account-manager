@@ -1039,7 +1039,7 @@ export async function lancerExecution(
 
   const plan = await prisma.plan.findUnique({
     where: { id: planId },
-    select: { accessCaseId: true },
+    select: { accessCaseId: true, subject: { select: { id: true, username: true } } },
   });
 
   if (!plan) {
@@ -1052,8 +1052,8 @@ export async function lancerExecution(
     maintenant: new Date(),
   });
 
-  if (plan.accessCaseId) {
-    revalidatePath(`/dossiers/${plan.accessCaseId}`);
+  for (const ecran of ecransDeLEtape(plan.accessCaseId, plan.subject)) {
+    revalidatePath(ecran);
   }
 
   return resultat.refus ? { erreur: resultat.refus } : { execution: resultat };

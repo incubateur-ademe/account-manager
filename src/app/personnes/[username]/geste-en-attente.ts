@@ -24,7 +24,7 @@ export interface GesteEnAttente {
   ecarte: boolean;
 }
 
-const SELECTION_ETAPE = {
+export const SELECTION_ETAPE = {
   id: true,
   label: true,
   systemKey: true,
