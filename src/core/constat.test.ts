@@ -6,6 +6,7 @@ import {
   constatsDActionsDeclarees,
   constatsDe,
   constatsDIdentites,
+  etapeDUnAccesEchu,
   type PersonneConstatable,
   SORTE_DE_CIBLE,
   verrousDeCloture,
@@ -486,6 +487,7 @@ describe("ce qu'un accès échu laisse voir", () => {
     systemKey: "github",
     username: "hugo.exemple",
     role: "admin",
+    ressource: "incubateur-ademe",
     accordeLe: new Date("2026-03-05T09:00:00Z"),
     termeLe: TERME,
     risque: "HIGH",
@@ -501,7 +503,7 @@ describe("ce qu'un accès échu laisse voir", () => {
     expect(constatsDAccesEchus([acces()], APRES)).toEqual([
       expect.objectContaining({
         kind: "EXPIRED_GRANT",
-        dedupKey: "EXPIRED_GRANT:github:hugo.exemple:etape-1",
+        dedupKey: "EXPIRED_GRANT:github:etape-1:hugo.exemple",
         severity: "HIGH",
         username: "hugo.exemple",
       }),
@@ -537,5 +539,18 @@ describe("ce qu'un accès échu laisse voir", () => {
         APRES,
       ),
     ).toHaveLength(1);
+
+    // Then un octroi plus récent sur une autre organisation, au même rôle, ne reconduit
+    // pas celui-ci : chaque ressource se juge à part
+    expect(
+      constatsDAccesEchus(
+        [acces(), acces({ etapeId: "etape-4", ressource: "betagouv", termeLe: null })],
+        APRES,
+      ).map(({ dedupKey }) => dedupKey),
+    ).toEqual(["EXPIRED_GRANT:github:etape-1:hugo.exemple"]);
+
+    // Then la clé désigne l'étape, et finit par le nom d'usage que la fusion réécrit
+    expect(etapeDUnAccesEchu("EXPIRED_GRANT:github:etape-1:hugo.exemple")).toBe("etape-1");
+    expect(etapeDUnAccesEchu("OVERDUE_MANUAL_ACTION:github:hugo.exemple")).toBeNull();
   });
 });

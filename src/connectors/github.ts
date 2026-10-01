@@ -1354,6 +1354,11 @@ export function creerGithub(lireConfig: () => ConfigGithub): Connector {
     planifierOctroi: (scope, sujet) =>
       planifierOctroiGithub(scope as ScopeGithub, sujet, Boolean(env.GITHUB_ADMIN_TOKEN)),
 
+    ressourceDeLOctroi: ({ action, params }) =>
+      action === ACTION_OCTROI && typeof params["organisation"] === "string"
+        ? { externalId: params["organisation"] }
+        : undefined,
+
     precheck: (step) =>
       step.action === ACTION_RETRAIT
         ? constaterRetrait(sonder, sonderEnLecture, step)

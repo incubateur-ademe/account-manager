@@ -506,6 +506,9 @@ export interface Diagnosis {
   findings: readonly CollectError[];
 }
 
+/** Une ressource désignée comme la collecte la rend, par son identifiant ou par son libellé. */
+export type RessourceNommee = { externalId: string } | { label: string };
+
 export interface Connector {
   readonly contract: ConnectorContract;
 
@@ -552,6 +555,18 @@ export interface Connector {
    * ne rapprocherait pas.
    */
   planifierOctroi?: (scope: unknown, subject: SubjectRef) => readonly PlannedStep[];
+
+  /**
+   * La ressource qu'une étape d'octroi ouvre, telle que la collecte la nomme.
+   *
+   * Un même rôle se tient sur plusieurs ressources d'un système, deux applications ou deux
+   * organisations. Sans elle, un accès échu se jugerait sur le rôle seul : un octroi plus
+   * récent ailleurs le masquerait, et un accès gardé ailleurs le ferait croire tenu.
+   * Absente, ou `undefined` pour une étape, le système se juge sur le rôle seul.
+   */
+  ressourceDeLOctroi?: (
+    step: Pick<PlannedStep, "action" | "params">,
+  ) => RessourceNommee | undefined;
 
   /** Séparé de execute pour que le socle traite ALREADY_ABSENT, ALREADY_PRESENT et STALE de façon uniforme, sans que chaque connecteur ait à le savoir. */
   precheck?: (step: PlannedStep, ctx: RunContext) => Promise<PrecheckResult>;

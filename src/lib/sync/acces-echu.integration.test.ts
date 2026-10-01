@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { precisionsDesAccesEchus } from "@/lib/acces-echus";
 import { prisma } from "@/lib/db";
 import { syncConstats } from "@/lib/sync/constats";
 
@@ -15,6 +16,19 @@ const USERNAME = "hugo.exemple";
 const TERME = new Date("2026-09-01T12:00:00Z");
 const RELU = new Date("2026-09-10T02:00:00Z");
 const MAINTENANT = new Date("2026-09-10T09:00:00Z");
+
+async function relire(provider: string, le: Date): Promise<void> {
+  await prisma.syncRun.create({
+    data: {
+      provider,
+      capability: "list",
+      status: "OK",
+      startedAt: le,
+      finishedAt: le,
+      itemsSeen: 1,
+    },
+  });
+}
 
 async function semer(): Promise<{ personId: string; grantId: string }> {
   const personne = await prisma.person.create({
@@ -47,10 +61,25 @@ async function semer(): Promise<{ personId: string; grantId: string }> {
   return { personId: personne.id, grantId: compte.grants[0]?.id ?? "" };
 }
 
+const ADMIN_GITHUB = {
+  systemKey: "github",
+  action: "inviter-dans-l-organisation",
+  label: "Inviter hugo.exemple dans incubateur-ademe avec le rôle admin",
+  params: { organisation: "incubateur-ademe", role: "admin" },
+};
+
 async function octroyer(
   personId: string,
-  champs: { id: string; accordeLe: Date; terme: Date | null; engagementKey?: string },
+  champs: {
+    id: string;
+    accordeLe: Date;
+    terme: Date | null;
+    engagementKey?: string;
+    deja?: boolean;
+    geste?: { systemKey: string; action: string; label: string; params: object };
+  },
 ): Promise<void> {
+  const geste = champs.geste ?? ADMIN_GITHUB;
   await prisma.plan.create({
     data: {
       id: champs.id,
@@ -61,21 +90,20 @@ async function octroyer(
       planDigest: `digest-${champs.id}`,
       createdBy: "operatrice.exemple",
       createdAt: champs.accordeLe,
+      confirmedAt: champs.accordeLe,
       expiresAt: champs.accordeLe,
       steps: {
         create: {
-          systemKey: "github",
+          ...geste,
           tier: "auto",
           capability: "grant",
-          action: "inviter-dans-l-organisation",
-          label: "Inviter hugo.exemple dans incubateur-ademe avec le rôle admin",
-          params: { organisation: "incubateur-ademe", role: "admin" },
           riskLevel: "HIGH",
           expectedState: { membre: true },
           idempotencyKey: `idem-${champs.id}`,
           ordre: 1,
-          state: "SUCCEEDED",
-          executedAt: champs.accordeLe,
+          // Un accès déjà là se solde au précheck, sans date d'exécution
+          state: champs.deja ? "ALREADY_PRESENT" : "SUCCEEDED",
+          executedAt: champs.deja ? null : champs.accordeLe,
           grantExpiresAt: champs.terme,
           ...(champs.engagementKey === undefined ? {} : { engagementKey: champs.engagementKey }),
         },
@@ -110,12 +138,18 @@ describe("un accès gardé au-delà de son terme", () => {
     // Then le constat se lève, sur la personne et sur cet octroi, avec la gravité de l'étape
     const [constat] = await echus();
     expect(constat).toMatchObject({ closedAt: null, severity: "HIGH" });
-    expect(constat?.dedupKey).toMatch(/^EXPIRED_GRANT:github:hugo\.exemple:/u);
+    expect(constat?.dedupKey).toMatch(/^EXPIRED_GRANT:github:[^:]+:hugo\.exemple$/u);
     expect(
       await prisma.finding.count({
         where: { kind: "EXPIRED_GRANT", person: { username: USERNAME } },
       }),
     ).toBe(1);
+
+    // Then l'écran sait dire quel accès est échu, le constat ne portant aucun compte
+    const precisions = await precisionsDesAccesEchus([constat?.dedupKey ?? ""]);
+    expect(precisions.get(constat?.dedupKey ?? "")).toBe(
+      "Il s'agit de « Inviter hugo.exemple dans incubateur-ademe avec le rôle admin », accordé jusqu'au 1 septembre 2026.",
+    );
 
     // When le rôle cesse d'être constaté, et que la collecte repasse
     await prisma.accessGrant.update({ where: { id: grantId }, data: { vanishedAt: RELU } });
@@ -153,5 +187,78 @@ describe("un accès gardé au-delà de son terme", () => {
     // aucun relevé
     await collecter(MAINTENANT);
     expect(await echus()).toEqual([]);
+  });
+
+  it("se juge application par application, et compte un octroi soldé au précheck", async () => {
+    // Given Hugo, collaborateur de deux applications Scalingo : alpha jusqu'à un terme
+    // passé, puis beta sans terme, plus tard et au même rôle
+    const personne = await prisma.person.create({
+      data: { username: USERNAME, fullname: "Hugo Exemple", source: "BETA" },
+    });
+    const [alpha, beta] = await Promise.all(
+      ["alpha", "beta"].map((nom) =>
+        prisma.resource.create({
+          data: { provider: "scalingo", externalId: `app-${nom}`, label: `${nom}, osc-fr1` },
+        }),
+      ),
+    );
+    const compte = await prisma.externalIdentity.create({
+      data: {
+        provider: "scalingo",
+        externalId: "us-42",
+        handle: "hugo@exemple.fr",
+        matchMethod: "EMAIL_EXACT",
+        personId: personne.id,
+        grants: {
+          create: [alpha, beta].map((application) => ({
+            role: "collaborator",
+            resourceId: application?.id ?? "",
+          })),
+        },
+      },
+      select: { grants: { select: { id: true, resourceId: true } } },
+    });
+    await relire("scalingo", RELU);
+    const collaborer = (nom: string) => ({
+      systemKey: "scalingo",
+      action: "inviter-comme-collaborateur",
+      label: `Inviter hugo.exemple dans ${nom} comme collaborator`,
+      params: { region: "osc-fr1", application: nom, role: "collaborator" },
+    });
+    // L'octroi d'alpha trouve l'accès déjà là, et se solde au précheck
+    await octroyer(personne.id, {
+      id: "pla-alpha",
+      accordeLe: new Date("2026-03-05"),
+      terme: TERME,
+      deja: true,
+      geste: collaborer("alpha"),
+    });
+    await octroyer(personne.id, {
+      id: "pla-beta",
+      accordeLe: new Date("2026-06-01"),
+      terme: null,
+      geste: collaborer("beta"),
+    });
+
+    // When la collecte des constats passe
+    await collecter(MAINTENANT);
+
+    // Then alpha se signale : l'octroi de beta ne reconduit qu'elle-même
+    const [constat] = await echus();
+    expect(constat).toMatchObject({ closedAt: null });
+    expect(
+      (await precisionsDesAccesEchus([constat?.dedupKey ?? ""])).get(constat?.dedupKey ?? ""),
+    ).toContain("dans alpha");
+
+    // When alpha est retirée, beta restant tenue, et que la collecte repasse
+    const tenueAlpha = compte.grants.find(({ resourceId }) => resourceId === alpha?.id);
+    await prisma.accessGrant.update({
+      where: { id: tenueAlpha?.id ?? "" },
+      data: { vanishedAt: RELU },
+    });
+    await collecter(new Date("2026-09-11T09:00:00Z"));
+
+    // Then le constat se referme : l'accès gardé ailleurs n'est pas celui qui était échu
+    expect((await echus())[0]?.closedAt).not.toBeNull();
   });
 });

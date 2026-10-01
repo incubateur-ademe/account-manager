@@ -521,13 +521,24 @@ export interface AccesAccorde {
   username: string;
   /** Le rôle accordé, quand l'étape en nomme un. */
   role: string | null;
+  /** La ressource ouverte, quand le connecteur sait la nommer. */
+  ressource: string | null;
   accordeLe: Date;
   /** Le terme décidé à l'octroi, ou rien pour un accès sans terme. */
   termeLe: Date | null;
   risque: RiskLevel;
-  /** Un compte vivant de la personne sur le système, au rôle accordé quand il est nommé. */
+  /**
+   * Un compte vivant de la personne sur le système, au rôle accordé quand il est nommé, et
+   * sur la ressource ouverte quand elle l'est.
+   */
   encoreTenu: boolean;
   relueLe: Date | null;
+}
+
+/** L'étape d'octroi qu'un constat d'accès échu désigne, lue dans sa clé. */
+export function etapeDUnAccesEchu(dedupKey: string): string | null {
+  const [kind, , etapeId] = dedupKey.split(":");
+  return kind === "EXPIRED_GRANT" && etapeId ? etapeId : null;
 }
 
 /**
@@ -536,14 +547,17 @@ export interface AccesAccorde {
  * d'administration pour cent quatre-vingts jours, le terme passe, il reste administrateur,
  * et rien ne le disait.
  *
- * Seul le dernier octroi soldé compte, par personne, système et rôle : un accès reconduit
- * par un nouveau plan, avec ou sans terme, n'est pas échu. Et comme pour une parole
- * démentie, le constat attend d'avoir relu le système après le terme.
+ * Seul le dernier octroi soldé compte, par personne, système, ressource et rôle : un accès
+ * reconduit par un nouveau plan, avec ou sans terme, n'est pas échu, et un octroi sur une
+ * autre application n'en reconduit aucun. Et comme pour une parole démentie, le constat
+ * attend d'avoir relu le système après le terme.
+ *
+ * La clé finit par le nom d'usage, que la fusion de deux fiches réécrit en suffixe.
  */
 export function constatsDAccesEchus(acces: readonly AccesAccorde[], maintenant: Date): Constat[] {
   const derniers = new Map<string, AccesAccorde>();
   for (const un of acces) {
-    const cle = `${un.username}:${un.systemKey}:${un.role ?? ""}`;
+    const cle = `${un.username}:${un.systemKey}:${un.ressource ?? ""}:${un.role ?? ""}`;
     const connu = derniers.get(cle);
     if (!connu || un.accordeLe.getTime() > connu.accordeLe.getTime()) {
       derniers.set(cle, un);
@@ -563,7 +577,7 @@ export function constatsDAccesEchus(acces: readonly AccesAccorde[], maintenant: 
       {
         kind: "EXPIRED_GRANT",
         cible: null,
-        dedupKey: `EXPIRED_GRANT:${un.systemKey}:${un.username}:${un.etapeId}`,
+        dedupKey: `EXPIRED_GRANT:${un.systemKey}:${un.etapeId}:${un.username}`,
         severity: un.risque,
         detail: `« ${un.label} » valait jusqu'au ${jourDeParis(termeLe)}, et l'accès est toujours constaté sur ${un.systemKey}`,
         username: un.username,

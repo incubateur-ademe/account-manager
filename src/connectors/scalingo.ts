@@ -2161,6 +2161,15 @@ export const scalingo: Connector = {
   },
 
   planifierOctroi: (scope, sujet) => octroyer(scope as ScopeScalingo, sujet),
+
+  // La collecte nomme une application par son libellé « nom, région », l'octroi par les deux
+  // séparément : l'identifiant de l'application n'est connu que de la collecte.
+  ressourceDeLOctroi: ({ action, params }) =>
+    action === "inviter-comme-collaborateur" &&
+    typeof params["application"] === "string" &&
+    typeof params["region"] === "string"
+      ? { label: `${params["application"]}, ${params["region"]}` }
+      : undefined,
 };
 
 /**

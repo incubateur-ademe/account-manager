@@ -816,9 +816,13 @@ vrai cas se noie avec lui.
 constaté après elle. Rien ne reprend de lui-même un accès à terme, sauf un jeton émis, qui
 meurt à son terme et ne paraît dans aucun relevé : les étapes porteuses d'une clé
 d'engagement n'entrent donc pas dans ce constat. Seul le dernier octroi soldé compte, par
-personne, système et rôle, si bien qu'un accès reconduit par un nouveau plan n'est pas
-échu. Le rôle accordé doit être celui que la collecte relève, et le système avoir été relu
-après le terme. Le constat se ferme seul quand l'accès cesse d'être constaté.
+personne, système, ressource et rôle, si bien qu'un accès reconduit par un nouveau plan
+n'est pas échu, et qu'un octroi sur une autre application n'en reconduit aucun. La
+ressource est celle que le connecteur nomme pour l'octroi (`ressourceDeLOctroi`) ; sans
+elle, le système se juge sur le rôle seul. Le rôle accordé doit être celui que la collecte
+relève sur cette ressource, et le système avoir été relu après le terme. Le constat se
+ferme seul quand l'accès cesse d'être constaté, et l'écran nomme l'étape d'octroi et son
+terme, le constat ne portant aucun compte.
 
 Poser ou retirer un rattachement manuel ne lève ni ne ferme ce constat sur le champ, et
 c'est délibéré : il dépend des phases de toutes les startups et d'une date qui passe

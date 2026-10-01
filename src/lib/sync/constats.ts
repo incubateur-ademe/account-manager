@@ -1,9 +1,11 @@
+import { CONNECTEURS } from "@/connectors";
 import {
   arriveeMassive,
   chuteExcessive,
   FOURNISSEUR_PERIMETRE,
   REFUS_DE_VAGUE,
 } from "@/core/collecte";
+import type { RessourceNommee } from "@/core/connector";
 import {
   type AccesAccorde,
   type ActionDeclaree,
@@ -570,7 +572,10 @@ async function accesAccordes(): Promise<AccesAccorde[]> {
         where: { vanishedAt: null },
         select: {
           provider: true,
-          grants: { where: { vanishedAt: null }, select: { role: true } },
+          grants: {
+            where: { vanishedAt: null },
+            select: { role: true, resource: { select: { externalId: true, label: true } } },
+          },
         },
       },
     },
@@ -580,7 +585,6 @@ async function accesAccordes(): Promise<AccesAccorde[]> {
     where: {
       capability: "grant",
       state: { in: ["SUCCEEDED", "ALREADY_PRESENT"] },
-      executedAt: { not: null },
       validation: { notIn: ["AWAITING", "REFUSED"] },
       engagementKey: null,
     },
@@ -588,12 +592,18 @@ async function accesAccordes(): Promise<AccesAccorde[]> {
       id: true,
       label: true,
       systemKey: true,
+      action: true,
       params: true,
       riskLevel: true,
       executedAt: true,
       grantExpiresAt: true,
       plan: {
-        select: { accessCase: { select: { person: personneTenante } }, subject: personneTenante },
+        select: {
+          confirmedAt: true,
+          createdAt: true,
+          accessCase: { select: { person: personneTenante } },
+          subject: personneTenante,
+        },
       },
     },
   });
@@ -602,7 +612,7 @@ async function accesAccordes(): Promise<AccesAccorde[]> {
 
   return etapes.flatMap((etape): AccesAccorde[] => {
     const personne = etape.plan.accessCase?.person ?? etape.plan.subject;
-    if (!personne || !etape.executedAt) {
+    if (!personne) {
       return [];
     }
 
@@ -611,6 +621,14 @@ async function accesAccordes(): Promise<AccesAccorde[]> {
         ? (etape.params as Record<string, unknown>)
         : {};
     const role = typeof parametres["role"] === "string" ? parametres["role"] : null;
+    const ressource = CONNECTEURS.find(
+      ({ contract }) => contract.key === etape.systemKey,
+    )?.ressourceDeLOctroi?.({ action: etape.action, params: parametres });
+    const vises = personne.identities
+      .filter(({ provider }) => provider === etape.systemKey)
+      .flatMap(({ grants }) => grants)
+      .filter((grant) => role === null || grant.role === role)
+      .filter((grant) => ressource === undefined || designe(ressource, grant.resource));
     const comptes = personne.identities.filter(({ provider }) => provider === etape.systemKey);
 
     return [
@@ -620,15 +638,22 @@ async function accesAccordes(): Promise<AccesAccorde[]> {
         systemKey: etape.systemKey,
         username: personne.username,
         role,
-        accordeLe: etape.executedAt,
+        ressource: ressource === undefined ? null : JSON.stringify(ressource),
+        // Un octroi soldé au précheck, l'accès étant déjà là, ne porte aucune date
+        // d'exécution : il a été décidé à la confirmation de son plan.
+        accordeLe: etape.executedAt ?? etape.plan.confirmedAt ?? etape.plan.createdAt,
         termeLe: etape.grantExpiresAt,
         risque: etape.riskLevel,
         encoreTenu:
-          role === null
-            ? comptes.length > 0
-            : comptes.some(({ grants }) => grants.some((grant) => grant.role === role)),
+          role === null && ressource === undefined ? comptes.length > 0 : vises.length > 0,
         relueLe: relectures.get(etape.systemKey) ?? null,
       },
     ];
   });
+}
+
+function designe(ressource: RessourceNommee, lue: { externalId: string; label: string }): boolean {
+  return "externalId" in ressource
+    ? lue.externalId === ressource.externalId
+    : lue.label === ressource.label;
 }
