@@ -22,16 +22,41 @@ export class EspaceMembreError extends Error {
  */
 const DELAI_MS = 30_000;
 
-async function get(path: string): Promise<unknown> {
+/**
+ * La clé part dans un en-tête que `fetch` recopie d'une redirection à l'autre. Une seule
+ * est suivie, et seulement vers HTTPS : l'ancienne adresse de l'espace-membre redirige
+ * encore vers la nouvelle, et une redirection vers HTTP emporterait la clé en clair.
+ */
+async function appeler(adresse: string, path: string, redirection: boolean): Promise<Response> {
   let response: Response;
   try {
-    response = await fetch(`${env.ESPACE_MEMBRE_URL}${path}`, {
+    response = await fetch(adresse, {
       headers: { "X-Api-Key": env.ESPACE_MEMBRE_API_KEY, accept: "application/json" },
+      redirect: "manual",
       signal: AbortSignal.timeout(DELAI_MS),
     });
   } catch (cause: unknown) {
     throw new EspaceMembreError(path, null, cause instanceof Error ? cause.message : String(cause));
   }
+
+  if (response.status < 300 || response.status >= 400) {
+    return response;
+  }
+
+  const suite = response.headers.get("location");
+  const cible = suite === null ? null : new URL(suite, adresse);
+  if (cible === null || cible.protocol !== "https:" || redirection) {
+    throw new EspaceMembreError(
+      path,
+      response.status,
+      `redirection refusée vers ${cible?.origin ?? "une adresse absente"}`,
+    );
+  }
+  return appeler(cible.href, path, true);
+}
+
+async function get(path: string): Promise<unknown> {
+  const response = await appeler(`${env.ESPACE_MEMBRE_URL}${path}`, path, false);
 
   if (!response.ok) {
     throw new EspaceMembreError(path, response.status, `${response.status} ${response.statusText}`);
