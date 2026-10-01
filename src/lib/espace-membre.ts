@@ -27,6 +27,9 @@ async function get(path: string): Promise<unknown> {
   try {
     response = await fetch(`${env.ESPACE_MEMBRE_URL}${path}`, {
       headers: { "X-Api-Key": env.ESPACE_MEMBRE_API_KEY, accept: "application/json" },
+      // La clé part dans un en-tête que fetch recopie d'une redirection à l'autre, et
+      // l'adresse se configure : une réponse 3xx l'emporterait ailleurs, en clair au besoin.
+      redirect: "error",
       signal: AbortSignal.timeout(DELAI_MS),
     });
   } catch (cause: unknown) {

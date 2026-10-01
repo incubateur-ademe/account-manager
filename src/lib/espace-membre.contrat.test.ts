@@ -35,6 +35,7 @@ const INCONNU = "aucune-fiche.test-de-contrat";
 async function lire(chemin: string, cle = CLE ?? ""): Promise<Response> {
   return fetch(`${ADRESSE}${chemin}`, {
     headers: { "X-Api-Key": cle, accept: "application/json" },
+    redirect: "error",
   });
 }
 
