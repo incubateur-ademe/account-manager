@@ -123,6 +123,21 @@ describe("la déclaration d'un compte de service", () => {
     expect(premier.get("ownerUsername")).toBe("operatrice.exemple");
     expect(premier.get("reviewEveryDays")).toBe(String(REVUE_PAR_DEFAUT));
 
+    // Then la saisie survit au refus, liste comprise : React remet le formulaire à zéro
+    // quand l'action rend la main, et tout serait à retaper pour corriger la seule clé.
+    await vi.waitFor(() => {
+      const apresRefus = Object.fromEntries(
+        new FormData(within(modaleDe()).getByLabelText(/^Clé/).closest("form") as HTMLFormElement),
+      );
+      expect(apresRefus).toMatchObject({
+        provider: "github",
+        key: "github-robot-gabarits",
+        label: "GitHub · robot des gabarits",
+        purpose: "Publier les gabarits",
+        ownerUsername: "operatrice.exemple",
+      });
+    });
+
     // When on referme, puis on rouvre pour déclarer un autre compte
     fermer();
     ouvrir();
