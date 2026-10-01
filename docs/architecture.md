@@ -1091,7 +1091,12 @@ connecteur peut faire dépend des droits de l'incubateur sur sa propre organisat
 
 `teams-o365` figure par anticipation et dépendra de `teams-auto`, qui porte l'accès à
 Graph, le compte de service et le certificat. L'application appellera cette brique
-sans jamais détenir les credentials Microsoft.
+sans jamais détenir les credentials Microsoft. teams-auto lui expose, sous
+`/account-manager`, le relevé de l'équipe (`/snapshot`), l'octroi et le retrait (`PUT` et
+`DELETE` sur `/grants/{identité}/{ressource}`) et l'historique des retraits (`/removals`).
+L'annuaire reste hors de sa portée : retirer un invité de l'équipe ne supprime pas son
+compte `.ext@ademe.fr`, que teams-auto signale sans jamais l'effacer. Ce compte sera donc
+une étape manuelle du plan de départ, adossée à `/removals`.
 
 ### 5.9 Premiers connecteurs implémentés
 
@@ -1342,11 +1347,8 @@ paquet est donc à suivre, et à relever avant ce retrait.
 
 ## 8. Ce qui reste à trancher
 
-- Fermeture automatique d'un constat selon le métier de la personne, qui attend leur
-  catégorisation. La clôture à la main, elle, existe : voir la section 4.2.
 - Droits réels de l'incubateur sur son organisation Sentry, hébergée chez beta.gouv.
 - Ce que l'API de l'instance Vaultwarden expose réellement, avant de fixer son tier.
-- Frontière définitive avec `teams-auto` pour le volet Entra.
 - Un modèle de plan sait nommer un contrôleur, aucun n'en nomme sur ce déploiement, et
   les profils n'en posent pas. Un seul connecteur en pose un : `scalingo`, sur la reprise
   d'un jeton émis (`reprisesDesJetons`, `src/connectors/scalingo.ts`). Hors de cette

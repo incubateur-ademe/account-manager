@@ -3,28 +3,20 @@
 import { useEffect, useRef, useState } from "react";
 
 /**
- * Ce qui remonte les listes déroulantes d'un formulaire après chaque envoi.
+ * Ce qui rétablit les listes déroulantes d'un formulaire après chaque envoi.
  *
- * React remet un `<form action={...}>` à zéro quand l'action rend la main, et c'est son
- * comportement documenté. Les champs texte contrôlés s'en relèvent : React réapplique
- * leur valeur au commit suivant. Une liste déroulante, non : sa sélection se pose sur
- * les `<option>` au montage et à la mise à jour, et la remise à zéro la défait sans que
- * l'état de React ne bouge, donc sans qu'aucun rendu ne la rétablisse.
+ * React remet un `<form action={...}>` à zéro quand l'action rend la main, refus compris,
+ * et c'est son comportement documenté. Une liste déroulante contrôlée y perd sa sélection
+ * dans le DOM sans que son état ne bouge, et rien ne la rétablit tant qu'aucun rendu ne
+ * passe sur elle. Or un `FormData` se lit dans le DOM : qui corrige sa saisie après un
+ * refus et renvoie expédie la première option sans l'avoir choisie. Sur un pointage, cela
+ * veut dire déclarer autre chose que ce qu'on a fait.
  *
- * Le formulaire affiche alors sa première option pendant que l'état tient toujours la
- * bonne valeur. Le défaut ne se voit pas toujours, une interaction ultérieure suffisant
- * à resynchroniser l'affichage, et c'est ce qui le rend dangereux : il ne se reproduit
- * pas à volonté, mais il est là.
- *
- * Et il est là où ça coûte, parce qu'un `FormData` se lit dans le DOM et non dans
- * l'état : qui corrige sa saisie après un refus et renvoie expédie la première option
- * sans l'avoir choisie. Sur un pointage, cela veut dire déclarer autre chose que ce
- * qu'on a fait.
- *
- * Cette clé change à la fin de chaque envoi, refus compris. Posée en `key` sur une
- * liste, elle la remonte, et un montage repose la sélection depuis l'état. Le remède
- * vit ici plutôt que dans chaque écran : trois formulaires du dépôt portent une liste,
- * et le prochain n'aura pas à retrouver ce raisonnement.
+ * Ce compteur change à la fin de chaque envoi. Le rendu que ce changement provoque suffit
+ * aujourd'hui, React réappliquant la valeur d'une liste contrôlée à chaque mise à jour.
+ * Posé en `key` sur la liste, il la remonte en plus, ce qui tiendrait encore si elle était
+ * un jour mémoïsée et qu'aucun rendu ne l'atteignait. Le remède vit ici plutôt que dans
+ * chaque écran : quatre formulaires du dépôt portent une liste.
  */
 export function useListesApresEnvoi(pending: boolean): number {
   const [envois, setEnvois] = useState(0);
