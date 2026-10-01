@@ -24,6 +24,8 @@ interface IdentiteEnBase {
   externalId: string;
   matchMethod: string;
   vanishedAt: Date | null;
+  handle?: string;
+  grants?: readonly { role: string; resource: { externalId: string; label: string } }[];
 }
 
 interface DerogationEnBase {
@@ -251,12 +253,25 @@ const PERSONNE = "personne-1";
 const USERNAME = "camille.exemple";
 const MAINTENANT = new Date("2026-08-24T09:00:00Z");
 
+/**
+ * Un compte GitHub relevé porte toujours son adhésion à chaque organisation où il siège :
+ * la collecte n'en connaît aucun autrement. Sans elle, le connecteur n'aurait rien à
+ * retirer.
+ */
+const SIEGES_GITHUB = ["incubateur-ademe", "betagouv"].map((organisation) => ({
+  role: "member",
+  resource: { externalId: organisation, label: `Organisation ${organisation}` },
+}));
+
 const identite = (over: Partial<IdentiteEnBase>): IdentiteEnBase => ({
   personId: PERSONNE,
   provider: "github",
   externalId: `cpt-${base.identites.length + 1}`,
   matchMethod: "GITHUB_LOGIN",
   vanishedAt: null,
+  ...((over.provider ?? "github") === "github"
+    ? { handle: "camille-exemple", grants: SIEGES_GITHUB }
+    : {}),
   ...over,
 });
 
@@ -347,9 +362,29 @@ async function ancienCalcul(): Promise<{ etapes: PlannedStep[]; empreinte: strin
     if (!presente.has(connecteur.contract.key)) {
       continue;
     }
+    // Les accès constatés, tels que le socle les transmet à chaque connecteur.
+    const acces = base.identites
+      .filter(
+        (entree) =>
+          entree.personId === PERSONNE &&
+          entree.vanishedAt === null &&
+          entree.provider === connecteur.contract.key,
+      )
+      .flatMap((entree) =>
+        (entree.grants ?? []).map((grant) => ({
+          identityExternalId: entree.externalId,
+          ...(entree.handle === undefined ? {} : { identityHandle: entree.handle }),
+          resourceExternalId: grant.resource.externalId,
+          resourceLabel: grant.resource.label,
+          role: grant.role,
+        })),
+      );
     etapes.push(
       ...(await connecteur.plan(
-        { kind: "revoke", subject: { kind: "person", username: USERNAME } },
+        {
+          kind: "revoke",
+          subject: { kind: "person", username: USERNAME, ...(acces.length > 0 ? { acces } : {}) },
+        },
         ctx,
       )),
     );
@@ -1419,11 +1454,13 @@ describe("la répartition des rôles, au moment de figer les étapes", () => {
 });
 
 describe("une tolérance écarte du plan le système qu'elle couvre entièrement", () => {
-  it("ne retire rien tant qu'un compte coupable reste découvert, puis retire le système en le disant", async () => {
-    // Given quelqu'un qui tient deux comptes sur GitHub et un sur Notion,
+  it("écarte l'étape qui nomme le compte toléré, puis le système entier, en le disant", async () => {
+    // Given quelqu'un qui tient deux comptes sur GitHub, chacun seul dans son organisation,
+    // et un sur Notion,
+    const [incubateur, betagouv] = SIEGES_GITHUB;
     base.identites.push(
-      identite({ provider: "github", externalId: "cpt-1" }),
-      identite({ provider: "github", externalId: "cpt-2" }),
+      identite({ provider: "github", externalId: "cpt-1", grants: incubateur ? [incubateur] : [] }),
+      identite({ provider: "github", externalId: "cpt-2", grants: betagouv ? [betagouv] : [] }),
       identite({ provider: "notion", externalId: "cpt-3", matchMethod: "EMAIL_EXACT" }),
     );
 
@@ -1431,10 +1468,26 @@ describe("une tolérance écarte du plan le système qu'elle couvre entièrement
     base.derogations.push(toleree({ targetId: "github:cpt-1" }));
     const partiel = await calculerPlan("OFFBOARDING", PERSONNE, USERNAME, MAINTENANT);
 
-    // Then le plan ne perd rien : l'étape de révocation coupe la personne sur tout le
-    // système d'un seul geste, et la retirer épargnerait le compte que personne n'a admis,
-    expect(partiel.etapes).toHaveLength(3);
-    expect(partiel.ecartees.filter((ecart) => ecart.raison === "tolere")).toEqual([]);
+    // Then l'étape qui vise ce compte-là est écartée et le dit, et celle qui vise l'autre
+    // compte reste : la retirer n'épargne que le compte que quelqu'un a admis,
+    expect(partiel.etapes.map(({ etape }) => etape.idempotencyKey)).toEqual([
+      "github:betagouv:revoke:camille.exemple",
+      "notion:revoke:camille.exemple",
+    ]);
+    const ecartee = partiel.ecartees.filter((ecart) => ecart.raison === "tolere");
+    expect(ecartee.map((ecart) => ecart.etape.params["identifiant"])).toEqual(["cpt-1"]);
+    expect(ecartee[0]?.detail).toBe("compte partagé le temps de la campagne");
+
+    // Then deux comptes dans la même organisation, dont un seul toléré, laissent leur étape
+    // commune au plan : elle les vise ensemble, et l'écarter épargnerait l'autre
+    base.identites.push(
+      identite({ provider: "github", externalId: "cpt-4", grants: incubateur ? [incubateur] : [] }),
+    );
+    const commune = await calculerPlan("OFFBOARDING", PERSONNE, USERNAME, MAINTENANT);
+    expect(commune.etapes.map(({ etape }) => etape.idempotencyKey)).toContain(
+      "github:incubateur-ademe:revoke:camille.exemple",
+    );
+    base.identites.pop();
 
     // When son second compte GitHub l'est aussi,
     base.derogations.push(toleree({ targetId: "github:cpt-2", reason: "repris par l'équipe" }));

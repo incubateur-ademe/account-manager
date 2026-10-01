@@ -276,25 +276,6 @@ export interface CompteCouvrable {
 }
 
 /**
- * Les systèmes qu'une tolérance retire entièrement du calcul d'un plan.
- *
- * Tout ou rien, et c'est la seule règle sûre : une étape de révocation coupe la personne
- * sur tout un système d'un seul geste, si bien qu'un seul compte couvert ne retire rien.
- * La retirer épargnerait les comptes que personne n'a admis en même temps que celui qu'on
- * a admis.
- *
- * Les comptes non révocables ne pèsent d'aucun côté. Ils ne produisent aucune étape, donc
- * les couvrir ne retire rien, et ne pas les couvrir ne retient rien : la règle qui interdit
- * de couper sur une ressemblance est tenue ailleurs, et la recopier ici lui donnerait un
- * second exemplaire à maintenir.
- *
- * Une cible de personne ne retire jamais aucune étape, et c'est la comparaison sur la clé
- * entière qui le tient : « personne:untel » ne vaut jamais « identite:github:1042 ». Les
- * écarter d'abord serait un filtre qui a l'air de porter la garantie sans rien porter.
- * Couvrir quelqu'un fait taire ce qu'on signale à son sujet, ça ne décide pas de ce qu'on
- * lui coupe.
- */
-/**
  * Ce qui couvre chaque cible, et jusqu'où.
  *
  * Une cible visée par plusieurs tolérances est couverte jusqu'à la plus lointaine des
@@ -329,6 +310,25 @@ function couvrePlusLoin(candidate: Derogation, tenante: Derogation): boolean {
   return candidate.echeance.getTime() > tenante.echeance.getTime();
 }
 
+/**
+ * Les systèmes qu'une tolérance retire entièrement du calcul d'un plan.
+ *
+ * Tout ou rien, et c'est la seule règle sûre pour une étape qui coupe la personne sur tout
+ * un système d'un seul geste : un seul compte couvert n'y retire rien. La retirer
+ * épargnerait les comptes que personne n'a admis en même temps que celui qu'on a admis.
+ * Une étape qui nomme le compte qu'elle vise relève de `toleranceDuCompteVise`.
+ *
+ * Les comptes non révocables ne pèsent d'aucun côté. Ils ne produisent aucune étape, donc
+ * les couvrir ne retire rien, et ne pas les couvrir ne retient rien : la règle qui interdit
+ * de couper sur une ressemblance est tenue ailleurs, et la recopier ici lui donnerait un
+ * second exemplaire à maintenir.
+ *
+ * Une cible de personne ne retire jamais aucune étape, et c'est la comparaison sur la clé
+ * entière qui le tient : « personne:untel » ne vaut jamais « identite:github:1042 ». Les
+ * écarter d'abord serait un filtre qui a l'air de porter la garantie sans rien porter.
+ * Couvrir quelqu'un fait taire ce qu'on signale à son sujet, ça ne décide pas de ce qu'on
+ * lui coupe.
+ */
 export function systemesEntierementToleres(
   comptes: readonly CompteCouvrable[],
   derogations: readonly Derogation[],
@@ -371,4 +371,24 @@ export function systemesEntierementToleres(
     retenue.set(provider, premiere);
   }
   return retenue;
+}
+
+/**
+ * La tolérance qui couvre le compte qu'une étape de révocation nomme, quand elle en nomme un.
+ *
+ * Une étape qui vise un compte précis, par `params.identifiant`, n'épargne en s'écartant que
+ * ce compte-là, et l'écarter ne laisse personne d'autre en place. Une étape qui vise la
+ * personne sur tout le système relève de `systemesEntierementToleres`.
+ */
+export function toleranceDuCompteVise(
+  etape: { systemKey: string; capability: string; params: Record<string, unknown> },
+  derogations: readonly Derogation[],
+): Derogation | undefined {
+  const { identifiant } = etape.params;
+  if (etape.capability !== "revoke" || typeof identifiant !== "string") {
+    return undefined;
+  }
+  return couvertureParCible(derogations).get(
+    cleDeCible({ type: "identite", provider: etape.systemKey, externalId: identifiant }),
+  );
 }
