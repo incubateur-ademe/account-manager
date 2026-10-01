@@ -24,6 +24,8 @@ interface IdentiteEnBase {
   externalId: string;
   matchMethod: string;
   vanishedAt: Date | null;
+  handle?: string;
+  grants?: readonly { role: string; resource: { externalId: string; label: string } }[];
 }
 
 interface DerogationEnBase {
@@ -251,12 +253,25 @@ const PERSONNE = "personne-1";
 const USERNAME = "camille.exemple";
 const MAINTENANT = new Date("2026-08-24T09:00:00Z");
 
+/**
+ * Un compte GitHub relevé porte toujours son adhésion à chaque organisation où il siège :
+ * la collecte n'en connaît aucun autrement. Sans elle, le connecteur n'aurait rien à
+ * retirer.
+ */
+const SIEGES_GITHUB = ["incubateur-ademe", "betagouv"].map((organisation) => ({
+  role: "member",
+  resource: { externalId: organisation, label: `Organisation ${organisation}` },
+}));
+
 const identite = (over: Partial<IdentiteEnBase>): IdentiteEnBase => ({
   personId: PERSONNE,
   provider: "github",
   externalId: `cpt-${base.identites.length + 1}`,
   matchMethod: "GITHUB_LOGIN",
   vanishedAt: null,
+  ...((over.provider ?? "github") === "github"
+    ? { handle: "camille-exemple", grants: SIEGES_GITHUB }
+    : {}),
   ...over,
 });
 
@@ -347,9 +362,29 @@ async function ancienCalcul(): Promise<{ etapes: PlannedStep[]; empreinte: strin
     if (!presente.has(connecteur.contract.key)) {
       continue;
     }
+    // Les accès constatés, tels que le socle les transmet à chaque connecteur.
+    const acces = base.identites
+      .filter(
+        (entree) =>
+          entree.personId === PERSONNE &&
+          entree.vanishedAt === null &&
+          entree.provider === connecteur.contract.key,
+      )
+      .flatMap((entree) =>
+        (entree.grants ?? []).map((grant) => ({
+          identityExternalId: entree.externalId,
+          ...(entree.handle === undefined ? {} : { identityHandle: entree.handle }),
+          resourceExternalId: grant.resource.externalId,
+          resourceLabel: grant.resource.label,
+          role: grant.role,
+        })),
+      );
     etapes.push(
       ...(await connecteur.plan(
-        { kind: "revoke", subject: { kind: "person", username: USERNAME } },
+        {
+          kind: "revoke",
+          subject: { kind: "person", username: USERNAME, ...(acces.length > 0 ? { acces } : {}) },
+        },
         ctx,
       )),
     );

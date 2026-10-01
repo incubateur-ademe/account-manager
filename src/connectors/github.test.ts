@@ -7,16 +7,20 @@ import {
   CONTRAT_GITHUB,
   collecter,
   constaterAppartenance,
+  constaterRetrait,
   creerGithub,
   type Ecriture,
   executerOctroi,
+  executerRetrait,
   interpreterAppartenance,
   type Lecteur,
   lireOrganisation,
   planifierOctroiGithub,
+  planifierRetraitGithub,
   type ReponseGithub,
   type ScopeGithub,
   type Sonde,
+  type Suppression,
 } from "./github";
 
 /**
@@ -296,9 +300,24 @@ const CONTEXTE: RunContext = {
   audit: () => undefined,
 };
 
+/** Une adhésion constatée, telle que le socle la transmet au départ. */
+function siege(organisation: string, role = "member") {
+  return {
+    identityExternalId: "1",
+    identityHandle: "camille-rivet",
+    resourceExternalId: organisation,
+    resourceLabel: `Organisation ${organisation}`,
+    role,
+  };
+}
+
 const REVOCATION: Intent = {
   kind: "revoke",
-  subject: { kind: "person", username: "camille.rivet" },
+  subject: {
+    kind: "person",
+    username: "camille.rivet",
+    acces: [siege("incubateur-ademe"), siege("autre-incubateur")],
+  },
 };
 
 describe("les organisations que le connecteur GitHub suit sont celles qu'on lui déclare", () => {
@@ -604,9 +623,13 @@ describe("le précheck de GitHub, qui est une lecture", () => {
     expect(lecture.chemins).toEqual([`/orgs/incubateur-ademe/memberships/${CAMILLE_GITHUB}`]);
     expect(verdict).toEqual({ state: "ALREADY_PRESENT" });
 
-    // Given une étape que ce connecteur n'a pas écrite, ou qui ne désigne aucun compte
+    // Given une étape que l'octroi n'a pas écrite, ou qui ne désigne aucun compte
     const retrait = etapeUnique(
-      await creerGithub(() => ({ organisations: ["incubateur-ademe"] })).plan(REVOCATION, CONTEXTE),
+      planifierRetraitGithub(
+        ["incubateur-ademe"],
+        { kind: "person", username: "camille.rivet", acces: [siege("incubateur-ademe")] },
+        true,
+      ),
     );
     const muette = sonde({ statut: 404, corps: undefined });
 
@@ -617,9 +640,8 @@ describe("le précheck de GitHub, qui est une lecture", () => {
       etapeUnique(planifierOctroiGithub(MEMBRE, SANS_COMPTE, true)),
     );
 
-    // Then rien n'est lu et rien n'est conclu : une étape de retrait porte
-    // l'identifiant beta.gouv et non le login GitHub, et déduire l'un de l'autre serait
-    // la ressemblance sur laquelle ce produit refuse d'agir.
+    // Then rien n'est lu et rien n'est conclu : déduire un login de l'identifiant beta.gouv
+    // serait la ressemblance sur laquelle ce produit refuse d'agir.
     expect(surLeRetrait).toEqual({ state: "READY" });
     expect(surLOctroiSansCompte).toEqual({ state: "READY" });
     expect(muette.chemins).toEqual([]);
@@ -734,5 +756,225 @@ describe("l'exécution d'un octroi GitHub", () => {
       error: "connexion interrompue",
       retryable: true,
     });
+  });
+});
+
+/** Une sonde qui répond selon le chemin, et retient ce qu'on lui a demandé. */
+function sondeParChemin(reponses: Record<string, ReponseGithub>): {
+  sonder: Sonde;
+  chemins: string[];
+} {
+  const chemins: string[] = [];
+  return {
+    chemins,
+    sonder: (chemin) => {
+      chemins.push(chemin);
+      return Promise.resolve(reponses[chemin] ?? { statut: 404, corps: undefined });
+    },
+  };
+}
+
+function suppression(reponse: ReponseGithub | Error): {
+  supprimer: Suppression;
+  chemins: string[];
+} {
+  const chemins: string[] = [];
+  return {
+    chemins,
+    supprimer: (chemin) => {
+      chemins.push(chemin);
+      return reponse instanceof Error ? Promise.reject(reponse) : Promise.resolve(reponse);
+    },
+  };
+}
+
+const RENOMMEE = "camille-renommee";
+const ADHESION = `/orgs/incubateur-ademe/memberships/${RENOMMEE}`;
+
+/** Le retrait d'un membre, tel qu'un départ le planifie avec un jeton d'écriture. */
+function retraitDUnMembre(): PlannedStep {
+  return etapeUnique(
+    planifierRetraitGithub(
+      ["incubateur-ademe"],
+      { kind: "person", username: "camille.rivet", acces: [siege("incubateur-ademe")] },
+      true,
+    ),
+  );
+}
+
+describe("le départ sur GitHub", () => {
+  it("retire seul un membre, et laisse à la main un administrateur et une invitation par adresse", () => {
+    // Given une personne membre d'une organisation, administratrice d'une autre, invitée par
+    // adresse dans une troisième, et absente d'une quatrième
+    const sujet: Extract<SubjectRef, { kind: "person" }> = {
+      kind: "person",
+      username: "camille.rivet",
+      acces: [
+        siege("incubateur-ademe"),
+        { ...siege("autre-incubateur", "admin"), resourceLabel: "Organisation autre-incubateur" },
+        {
+          identityExternalId: "email:camille@exemple.fr",
+          identityHandle: "camille@exemple.fr",
+          resourceExternalId: "troisieme",
+          role: "invite:direct_member",
+        },
+      ],
+    };
+    const organisations = ["incubateur-ademe", "autre-incubateur", "troisieme", "quatrieme"];
+
+    // When le départ se planifie avec un jeton d'écriture
+    const etapes = planifierRetraitGithub(organisations, sujet, true);
+
+    // Then une étape par organisation où un accès est constaté, aucune ailleurs
+    expect(etapes.map(({ params }) => params["organisation"])).toEqual([
+      "incubateur-ademe",
+      "autre-incubateur",
+      "troisieme",
+    ]);
+    const [membre, administratrice, invitation] = etapes;
+
+    // Then le membre part seul, et l'étape nomme le compte qu'elle vise
+    expect(membre?.tier).toBe("auto");
+    expect(membre?.manual).toBeUndefined();
+    expect(membre?.label).toBe(
+      "Retirer camille.rivet (compte camille-rivet) de l'organisation incubateur-ademe",
+    );
+    expect(membre?.idempotencyKey).toBe("github:incubateur-ademe:revoke:camille.rivet");
+
+    // Then l'administratrice et l'invitation par adresse restent à la main, chacune avec sa
+    // raison
+    expect(administratrice?.tier).toBe("manual");
+    expect(administratrice?.manual?.runbook).toContain("Un administrateur");
+    expect(invitation?.tier).toBe("manual");
+    expect(invitation?.manual?.runbook).toContain("invitation par adresse");
+    expect(invitation?.label).toBe("Retirer camille.rivet de l'organisation troisieme");
+
+    // When le jeton d'écriture manque
+    const sansJeton = planifierRetraitGithub(organisations, sujet, false);
+
+    // Then le membre aussi reste à la main, et l'étape dit ce qui manque
+    expect(sansJeton[0]?.tier).toBe("manual");
+    expect(sansJeton[0]?.manual?.runbook).toContain("il manque : github-token-admin");
+
+    // Then le contrat déclare la voie automatique du retrait, et sa voie manuelle dessous
+    expect(CONTRAT_GITHUB.capabilities.revoke?.map(({ tier }) => tier)).toEqual(["auto", "manual"]);
+  });
+
+  it("relit le login par l'identifiant avant de conclure, et refuse un membre promu entre-temps", async () => {
+    // Given un membre dont le login a changé depuis la collecte
+    const etape = retraitDUnMembre();
+    const present = sondeParChemin({
+      "/user/1": { statut: 200, corps: { login: RENOMMEE } },
+      [ADHESION]: { statut: 200, corps: { state: "active", role: "member" } },
+    });
+
+    // Then le précheck lit l'adhésion du login actuel, et le retrait est à faire
+    expect(await constaterRetrait(present.sonder, etape)).toEqual({ state: "READY" });
+    expect(present.chemins).toEqual(["/user/1", ADHESION]);
+
+    // Given le même membre parti entre-temps, ou dont le compte n'existe plus
+    const parti = sondeParChemin({ "/user/1": { statut: 200, corps: { login: RENOMMEE } } });
+    const supprime = sondeParChemin({});
+
+    // Then l'étape se solde sans qu'un humain aille vérifier
+    expect(await constaterRetrait(parti.sonder, etape)).toEqual({ state: "ALREADY_ABSENT" });
+    expect(await constaterRetrait(supprime.sonder, etape)).toEqual({ state: "ALREADY_ABSENT" });
+    expect(supprime.chemins).toEqual(["/user/1"]);
+
+    // Given le même membre promu administrateur depuis le plan
+    const promu = sondeParChemin({
+      "/user/1": { statut: 200, corps: { login: RENOMMEE } },
+      [ADHESION]: { statut: 200, corps: { state: "active", role: "admin" } },
+    });
+
+    // Then le précheck refuse, et rien ne part sans qu'un humain le revoie
+    expect(await constaterRetrait(promu.sonder, etape)).toMatchObject({
+      state: "STALE",
+      actual: { role: "admin" },
+    });
+
+    // Given une organisation qui répond mal
+    const panne = sondeParChemin({
+      "/user/1": { statut: 200, corps: { login: RENOMMEE } },
+      [ADHESION]: { statut: 502, corps: undefined },
+    });
+
+    // Then rien n'est décidé
+    await expect(constaterRetrait(panne.sonder, etape)).rejects.toThrow("502");
+  });
+
+  it("ne part jamais en simulation, et dit ce que GitHub a répondu quand elle part", async () => {
+    const etape = retraitDUnMembre();
+    const relu = sondeParChemin({ "/user/1": { statut: 200, corps: { login: RENOMMEE } } });
+
+    // Given la simulation : rien ne part, et le refus le dit
+    const simulee = suppression({ statut: 204, corps: undefined });
+    await expect(
+      executerRetrait(relu.sonder, simulee.supprimer, true, etape, CONTEXTE),
+    ).rejects.toThrow("ACTIONS_ENABLED");
+    expect(simulee.chemins).toEqual([]);
+
+    // Given aucun jeton d'écriture : l'étape échoue sans reprise, et renvoie à la main
+    const sansJeton = await executerRetrait(
+      relu.sonder,
+      simulee.supprimer,
+      false,
+      etape,
+      EXECUTION,
+    );
+    expect(sansJeton).toMatchObject({ state: "FAILED", retryable: false });
+
+    // Given une étape qui vise un administrateur, même mal écrite en automatique
+    const administratrice = { ...etape, params: { ...etape.params, role: "admin" } };
+    const refusee = await executerRetrait(
+      relu.sonder,
+      simulee.supprimer,
+      true,
+      administratrice,
+      EXECUTION,
+    );
+    expect(refusee).toMatchObject({ state: "FAILED", retryable: false });
+    expect(simulee.chemins).toEqual([]);
+
+    // When le retrait part
+    const reussie = suppression({ statut: 204, corps: undefined });
+    const issue = await executerRetrait(relu.sonder, reussie.supprimer, true, etape, EXECUTION);
+
+    // Then il vise le login relu, et le dit
+    expect(reussie.chemins).toEqual([ADHESION]);
+    expect(issue).toMatchObject({ state: "SUCCEEDED" });
+
+    // Then un absent est un succès, un refus de droit ne se reprend pas, une panne si
+    expect(
+      await executerRetrait(
+        relu.sonder,
+        suppression({ statut: 404, corps: undefined }).supprimer,
+        true,
+        etape,
+        EXECUTION,
+      ),
+    ).toEqual({ state: "ALREADY_ABSENT" });
+    expect(
+      await executerRetrait(
+        relu.sonder,
+        suppression({ statut: 403, corps: { message: "Must have admin rights" } }).supprimer,
+        true,
+        etape,
+        EXECUTION,
+      ),
+    ).toEqual({
+      state: "FAILED",
+      error: "GitHub a répondu 403 : Must have admin rights",
+      retryable: false,
+    });
+    expect(
+      await executerRetrait(
+        relu.sonder,
+        suppression(new Error("connexion coupée")).supprimer,
+        true,
+        etape,
+        EXECUTION,
+      ),
+    ).toMatchObject({ state: "FAILED", retryable: true });
   });
 });

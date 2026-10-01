@@ -593,9 +593,8 @@ interface CibleDOctroi {
  *
  * Nul dès que l'étape n'est pas un octroi écrit par ce connecteur, ou qu'aucun compte
  * GitHub ne lui a été désigné : le précheck n'a alors rien à constater et l'exécution
- * n'a personne à inviter. Une étape de retrait porte l'identifiant beta.gouv et non le
- * login GitHub, et déduire l'un de l'autre serait exactement la ressemblance sur
- * laquelle ce produit refuse d'agir.
+ * n'a personne à inviter. Un login ne se déduit jamais de l'identifiant beta.gouv : ce
+ * serait exactement la ressemblance sur laquelle ce produit refuse d'agir.
  */
 function cibleDOctroi(step: PlannedStep): CibleDOctroi | null {
   if (step.action !== ACTION_OCTROI) {
@@ -619,7 +618,7 @@ function cibleDOctroi(step: PlannedStep): CibleDOctroi | null {
   return { organisation, compte, role };
 }
 
-function cheminDAppartenance(cible: CibleDOctroi): string {
+function cheminDAppartenance(cible: { organisation: string; compte: string }): string {
   return `/orgs/${encodeURIComponent(cible.organisation)}/memberships/${encodeURIComponent(cible.compte)}`;
 }
 
@@ -635,6 +634,8 @@ export interface ReponseGithub {
 export type Sonde = (chemin: string) => Promise<ReponseGithub>;
 
 export type Ecriture = (chemin: string, corps: unknown) => Promise<ReponseGithub>;
+
+export type Suppression = (chemin: string) => Promise<ReponseGithub>;
 
 interface Appartenance {
   etat: string | null;
@@ -846,13 +847,277 @@ export async function executerOctroi(
   return interpreterOctroi(reponse.statut, reponse.corps, ctx.now);
 }
 
+// ---------------------------------------------------------------------------
+// Le retrait : ce qu'un départ demande, et ce qui l'exécute
+// ---------------------------------------------------------------------------
+
+const ACTION_RETRAIT = "retirer-de-l-organisation";
+
+type Personne = Extract<SubjectRef, { kind: "person" }>;
+
+/** Le rôle qu'une adhésion ou une invitation donne, dans le vocabulaire des adhésions. */
+function roleDuSiege(role: string): string {
+  return roleLu(role.startsWith("invite:") ? role.slice("invite:".length) : role) ?? role;
+}
+
+/**
+ * Les étapes qu'un départ demande sur GitHub, une par organisation où un accès est
+ * constaté, décidées sans rien lire.
+ *
+ * Le retrait part seul pour un membre ou un invité dont le login est connu. Il reste à la
+ * main pour un administrateur, comme la propriété d'une application chez Scalingo, et pour
+ * une invitation par adresse, qu'aucun login ne désigne.
+ */
+export function planifierRetraitGithub(
+  organisations: readonly string[],
+  sujet: Personne,
+  ecriturePossible: boolean,
+): readonly PlannedStep[] {
+  const { username } = sujet;
+  const acces = sujet.acces ?? [];
+
+  return organisations.flatMap((organisation): PlannedStep[] => {
+    const siege = acces.find(({ resourceExternalId }) => resourceExternalId === organisation);
+    const dansUneEquipe = acces.some(({ resourceExternalId }) =>
+      resourceExternalId?.startsWith(`${organisation}#`),
+    );
+    if (!siege && !dansUneEquipe) {
+      return [];
+    }
+
+    const role = siege ? roleDuSiege(siege.role) : null;
+    const parAdresse = siege?.identityExternalId.startsWith("email:") ?? false;
+    const compte = siege && !parAdresse ? (siege.identityHandle ?? null) : null;
+
+    const raison =
+      role === null
+        ? " Seule une appartenance à une équipe est constatée, et l'adhésion se vérifie à la main."
+        : role === "admin"
+          ? " Un administrateur de l'organisation se retire à la main."
+          : role !== "member"
+            ? ` Le rôle ${role} se retire à la main.`
+            : compte === null
+              ? " Une invitation par adresse s'annule à la main, dans les invitations en attente."
+              : !ecriturePossible
+                ? ` Aucune voie automatique n'est praticable, il manque : ${CREDENTIAL_ADMIN}.`
+                : null;
+    const auto = raison === null;
+
+    return [
+      {
+        systemKey: "github",
+        capability: "revoke",
+        tier: auto ? "auto" : "manual",
+        action: ACTION_RETRAIT,
+        label: `Retirer ${username}${compte === null ? "" : ` (compte ${compte})`} de l'organisation ${organisation}`,
+        params: {
+          organisation,
+          username,
+          compte,
+          identifiant: siege?.identityExternalId ?? null,
+          role,
+        },
+        riskLevel: "high",
+        expectedState: { membre: false },
+        idempotencyKey: `github:${organisation}:revoke:${username}`,
+        ...(auto
+          ? {}
+          : {
+              manual: {
+                title: `Retirer ${username} de ${organisation}`,
+                runbook: `${RUNBOOK}${raison}`,
+                deeplink: `https://github.com/orgs/${organisation}/people`,
+                doneWhen: `${username} n'apparaît plus dans les membres de ${organisation}, ni dans les invitations en attente.`,
+              },
+            }),
+      },
+    ];
+  });
+}
+
+interface CibleDeRetrait {
+  organisation: string;
+  compte: string;
+  identifiant: string;
+  role: string;
+}
+
+function cibleDeRetrait(step: PlannedStep): CibleDeRetrait | null {
+  if (step.action !== ACTION_RETRAIT) {
+    return null;
+  }
+
+  const { organisation, compte, identifiant, role } = step.params;
+
+  if (
+    typeof organisation !== "string" ||
+    typeof compte !== "string" ||
+    typeof identifiant !== "string" ||
+    typeof role !== "string" ||
+    [organisation, compte, identifiant, role].some((valeur) => valeur.length === 0)
+  ) {
+    return null;
+  }
+
+  return { organisation, compte, identifiant, role };
+}
+
+/**
+ * Le login du compte visé, relu par son identifiant numérique quand l'étape en porte un.
+ *
+ * Un login se renomme. Lu tel qu'il était à la collecte, un compte renommé depuis passerait
+ * pour absent de l'organisation, et l'étape se solderait sur quelqu'un qui en est toujours
+ * membre. Une invitation par login n'a pas encore de compte à relire, et garde le sien.
+ * `null` dit que le compte n'existe plus.
+ */
+async function loginActuel(sonder: Sonde, cible: CibleDeRetrait): Promise<string | null> {
+  if (!/^\d+$/u.test(cible.identifiant)) {
+    return cible.compte;
+  }
+
+  const { statut, corps } = await sonder(`/user/${cible.identifiant}`);
+  if (statut === 404) {
+    return null;
+  }
+
+  const login =
+    statut === 200 && typeof corps === "object" && corps !== null
+      ? (corps as Record<string, unknown>)["login"]
+      : null;
+  if (typeof login !== "string" || login.length === 0) {
+    throw new GithubError(
+      `/user/${cible.identifiant}`,
+      `${statut} : le compte n'a pas pu être relu, rien n'est décidé dessus`,
+    );
+  }
+
+  return login;
+}
+
+/**
+ * Le précheck d'un retrait, qui est une lecture et rien d'autre.
+ *
+ * Un rôle qui a changé depuis le plan vaut écart : un membre promu administrateur entre la
+ * confirmation et l'exécution ne se retire pas sans qu'un humain le revoie.
+ */
+export async function constaterRetrait(sonder: Sonde, step: PlannedStep): Promise<PrecheckResult> {
+  const cible = cibleDeRetrait(step);
+
+  // Une invitation par adresse n'a pas de login à lire : la main qui la coche décidera.
+  if (!cible) {
+    return { state: "READY" };
+  }
+
+  const login = await loginActuel(sonder, cible);
+  if (login === null) {
+    return { state: "ALREADY_ABSENT" };
+  }
+
+  const { statut, corps } = await sonder(
+    cheminDAppartenance({ organisation: cible.organisation, compte: login }),
+  );
+
+  if (statut === 404) {
+    return { state: "ALREADY_ABSENT" };
+  }
+  if (statut !== 200) {
+    throw new GithubError(
+      "memberships",
+      `${statut} : l'appartenance n'a pas pu être constatée, rien n'est décidé dessus`,
+    );
+  }
+
+  const lue = appartenanceLue(corps);
+  if (lue.etat !== null && ETATS_PRESENTS.includes(lue.etat) && lue.role === cible.role) {
+    return { state: "READY" };
+  }
+
+  return {
+    state: "STALE",
+    expected: { etat: "active ou pending", role: cible.role },
+    actual: { etat: lue.etat, role: lue.role },
+  };
+}
+
+/** Ce qu'une suppression d'adhésion devient. Déjà absent est un succès, et le cas nominal. */
+export function interpreterRetraitGithub(statut: number, corps: unknown): StepOutcome {
+  if (statut === 404) {
+    return { state: "ALREADY_ABSENT" };
+  }
+
+  if (statut < 200 || statut >= 300) {
+    const dit = messageDuCorps(corps);
+    return {
+      state: "FAILED",
+      error: `GitHub a répondu ${statut}${dit === null ? "" : ` : ${dit}`}`,
+      retryable: reprenable(statut),
+    };
+  }
+
+  return {
+    state: "SUCCEEDED",
+    evidence:
+      "Retiré de l'organisation, équipes comprises. Une invitation en attente est annulée de la même façon.",
+  };
+}
+
+/**
+ * Le retrait écrit, et les refus qui le précèdent, dans l'ordre de l'octroi : simulation,
+ * credential, étape. Un administrateur est refusé ici aussi, l'étape qui le vise étant
+ * manuelle par construction.
+ */
+export async function executerRetrait(
+  sonder: Sonde,
+  supprimer: Suppression,
+  ecriturePossible: boolean,
+  step: PlannedStep,
+  ctx: RunContext,
+): Promise<StepOutcome> {
+  if (ctx.dryRun) {
+    throw new Error(REFUS_SIMULATION);
+  }
+
+  if (!ecriturePossible) {
+    return {
+      state: "FAILED",
+      error: `${CREDENTIAL_ADMIN} n'est pas configuré, aucune écriture n'est possible sur les membres de l'organisation. L'étape est à faire à la main. ${RUNBOOK}`,
+      retryable: false,
+    };
+  }
+
+  const cible = cibleDeRetrait(step);
+  if (cible?.role !== "member") {
+    return {
+      state: "FAILED",
+      error: `Cette étape ne vise pas un membre désigné par son login. Elle est à faire à la main. ${RUNBOOK}`,
+      retryable: false,
+    };
+  }
+
+  let reponse: ReponseGithub;
+  try {
+    const login = await loginActuel(sonder, cible);
+    if (login === null) {
+      return { state: "ALREADY_ABSENT" };
+    }
+    reponse = await supprimer(
+      cheminDAppartenance({ organisation: cible.organisation, compte: login }),
+    );
+  } catch (cause: unknown) {
+    // Une panne ne dit rien de l'écriture : la reprise repassera par le précheck.
+    return { state: "FAILED", error: message(cause), retryable: true };
+  }
+
+  return interpreterRetraitGithub(reponse.statut, reponse.corps);
+}
+
 /**
  * Un appel unitaire qui rend le statut au lieu de lever dessus : ce qu'une lecture
  * d'appartenance doit décider tient dans le code de retour, un 404 y disant « personne
  * n'est là » et non « la lecture a échoué ».
  */
 async function appeler(
-  methode: "GET" | "PUT",
+  methode: "GET" | "PUT" | "DELETE",
   chemin: string,
   jeton: string | undefined,
   corps?: unknown,
@@ -911,6 +1176,8 @@ const sonder: Sonde = (chemin) =>
 
 const ecrire: Ecriture = (chemin, corps) => appeler("PUT", chemin, env.GITHUB_ADMIN_TOKEN, corps);
 
+const supprimer: Suppression = (chemin) => appeler("DELETE", chemin, env.GITHUB_ADMIN_TOKEN);
+
 export const CONTRAT_GITHUB: ConnectorContract = {
   key: "github",
   label: "GitHub",
@@ -959,9 +1226,10 @@ export const CONTRAT_GITHUB: ConnectorContract = {
       },
       { requires: [], tier: "manual", runbook: RUNBOOK_OCTROI },
     ],
-    // Aucune voie automatique en v1 : retirer quelqu'un d'une organisation se fait
-    // à la main, et le socle rend la tâche plutôt qu'un appel d'API.
-    revoke: [{ requires: [], tier: "manual", runbook: RUNBOOK }],
+    revoke: [
+      { requires: [CREDENTIAL_ADMIN], tier: "auto", runbook: RUNBOOK },
+      { requires: [], tier: "manual", runbook: RUNBOOK },
+    ],
   },
   scopeSchema: SCOPE,
   configSchema: CONFIG,
@@ -1021,26 +1289,12 @@ export function creerGithub(lireConfig: () => ConfigGithub): Connector {
         );
       }
 
-      const username = intent.subject.username;
-
       return Promise.resolve(
-        lireConfig().organisations.map((org) => ({
-          systemKey: "github",
-          capability: "revoke" as const,
-          tier: "manual" as const,
-          action: "retirer-de-l-organisation",
-          label: `Retirer ${username} de l'organisation ${org}`,
-          params: { organisation: org, username },
-          riskLevel: "high" as const,
-          expectedState: { membre: false },
-          idempotencyKey: `github:${org}:revoke:${username}`,
-          manual: {
-            title: `Retirer ${username} de ${org}`,
-            runbook: RUNBOOK,
-            deeplink: `https://github.com/orgs/${org}/people`,
-            doneWhen: `${username} n'apparaît plus dans les membres de ${org}, ni dans les invitations en attente.`,
-          },
-        })),
+        planifierRetraitGithub(
+          lireConfig().organisations,
+          intent.subject,
+          Boolean(env.GITHUB_ADMIN_TOKEN),
+        ),
       );
     },
 
@@ -1052,8 +1306,14 @@ export function creerGithub(lireConfig: () => ConfigGithub): Connector {
     planifierOctroi: (scope, sujet) =>
       planifierOctroiGithub(scope as ScopeGithub, sujet, Boolean(env.GITHUB_ADMIN_TOKEN)),
 
-    precheck: (step) => constaterAppartenance(sonder, step),
+    precheck: (step) =>
+      step.action === ACTION_RETRAIT
+        ? constaterRetrait(sonder, step)
+        : constaterAppartenance(sonder, step),
 
-    execute: (step, ctx) => executerOctroi(ecrire, Boolean(env.GITHUB_ADMIN_TOKEN), step, ctx),
+    execute: (step, ctx) =>
+      step.action === ACTION_RETRAIT
+        ? executerRetrait(sonder, supprimer, Boolean(env.GITHUB_ADMIN_TOKEN), step, ctx)
+        : executerOctroi(ecrire, Boolean(env.GITHUB_ADMIN_TOKEN), step, ctx),
   };
 }

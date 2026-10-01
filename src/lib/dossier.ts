@@ -96,6 +96,7 @@ async function systemesDeLaPersonne(personId: string): Promise<ComptesDuDepart> 
       select: {
         provider: true,
         externalId: true,
+        handle: true,
         matchMethod: true,
         // Les accès vivants seulement : un accès disparu dit qu'il n'y a plus rien à couper,
         // et proposer de le retirer enverrait quelqu'un chercher ce qui n'est plus là.
@@ -124,6 +125,7 @@ async function systemesDeLaPersonne(personId: string): Promise<ComptesDuDepart> 
     for (const acces of identite.grants) {
       vus.push({
         identityExternalId: identite.externalId,
+        identityHandle: identite.handle,
         resourceExternalId: acces.resource.externalId,
         resourceLabel: acces.resource.label,
         role: acces.role,

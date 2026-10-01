@@ -281,6 +281,8 @@ export type CollectResult =
  */
 export interface ObservedAccess {
   identityExternalId: string;
+  /** Le nom relevé du compte, pour qu'une étape nomme celui qu'elle vise. */
+  identityHandle?: string;
   resourceExternalId?: string;
   /** Le libellé relevé, pour que l'étape se lise sans rien rouvrir. */
   resourceLabel?: string;
