@@ -41,6 +41,7 @@ const VOISIN = "atelier-voisin";
 const MARS = new Date("2026-03-01T02:00:00Z");
 const NUIT_1 = new Date("2026-08-24T02:00:00Z");
 const NUIT_2 = new Date("2026-08-25T02:00:00Z");
+const NUIT_3 = new Date("2026-08-26T02:00:00Z");
 
 /** Un connecteur dont la lecture est décidée par le scénario, et rien d'autre. */
 function connecteurQuiLit(releve: () => CollectResult): Connector {
@@ -290,6 +291,33 @@ describe("le garde-fou de chute, contre une vraie base", () => {
       where: { vanishedAt: null, externalIdentity: { provider: VOISIN } },
     });
     expect(accesDuVoisin).toBe(2);
+
+    // When une troisième nuit rend les trois comptes vivants, mais ne revoit qu'une équipe
+    // pourvue sur trois, au milieu de deux équipes sans membre. Le plancher reste à deux.
+    const troisieme = await executerCollecte(
+      connecteurQuiLit(() => ({
+        status: "ok",
+        itemsSeen: 3,
+        identities: [compte("compte-1"), compte("compte-2"), compte("compte-3")],
+        resources: [
+          { externalId: "equipe-1", label: "Équipe 1" },
+          { externalId: "equipe-vide-1", label: "Équipe vide 1" },
+          { externalId: "equipe-vide-2", label: "Équipe vide 2" },
+        ],
+        grants: [
+          { identityExternalId: "compte-1", resourceExternalId: "equipe-1", role: "membre" },
+        ],
+      })),
+      NUIT_3,
+      nouvelleExecution(),
+    );
+
+    // Then le relevé ne compte que l'équipe qu'un accès vise : les équipes vides ne
+    // portent rien, la référence ne les compte pas, et les compter masquerait la chute.
+    // Les deux accès que la nuit n'a pas revus restent vivants.
+    expect(troisieme.refus).toEqual([{ famille: "ressources", observe: 1, reference: 3 }]);
+    expect(troisieme.acces.disparus).toBe(0);
+    expect(await accesVivants()).toBe(3);
   });
 });
 

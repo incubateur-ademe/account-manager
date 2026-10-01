@@ -1,6 +1,7 @@
 import type {
   CollectError,
   ObservedDetail,
+  ObservedGrant,
   ObservedIdentity,
   ObservedResource,
 } from "@/core/connector";
@@ -68,19 +69,20 @@ export function chuteExcessive(reference: number, observe: number, partMax: numb
 export interface ContenancesVerifiees {
   ressources: readonly ObservedResource[];
   erreurs: readonly CollectError[];
-  /**
-   * Ce que le garde-fou de chute doit compter, c'est-à-dire le relevé sans ses contenants.
-   *
-   * La référence à laquelle il se compare ne retient que les ressources portant un accès
-   * vivant, quand un contenant n'en porte souvent aucun : un projet Scalingo n'a pas de
-   * membres. Le compter gonflerait un seul des deux plateaux, donc masquerait une chute
-   * réelle et autoriserait une datation que le garde-fou aurait refusée.
-   *
-   * La balance reste inexacte sur une ressource qui n'est contenant de rien et ne porte
-   * aucun accès, une équipe sans membre par exemple. C'est une dette antérieure, consentie
-   * le temps que la notion de projet se stabilise chez Scalingo (ADR-0002).
-   */
-  releve: number;
+}
+
+/**
+ * Ce que le garde-fou de chute compte des ressources du soir : celles que vise au moins un
+ * accès relevé.
+ *
+ * La référence à laquelle il se compare ne retient que les ressources qui portent un accès
+ * vivant. Compter tout le relevé gonflerait un seul des deux plateaux de ce qui n'en porte
+ * aucun, un projet Scalingo ou une équipe sans membre, et masquerait une chute réelle.
+ * `null` tient la ressource synthétique que le socle pose sous un accès sans ressource, et
+ * qui porte donc des accès.
+ */
+export function ressourcesVisees(acces: readonly ObservedGrant[]): number {
+  return new Set(acces.map(({ resourceExternalId }) => resourceExternalId ?? null)).size;
 }
 
 function refusDeContenance(
@@ -163,17 +165,7 @@ export function verifierContenances(ressources: readonly ObservedResource[]): Co
     };
   });
 
-  // Sur les contenances retenues et non sur les déclarées : une contenance écartée ne fait
-  // pas de son contenant prétendu un contenant.
-  const contenants = new Set(
-    retenues.map(({ parentExternalId }) => parentExternalId).filter((cle) => cle !== undefined),
-  );
-
-  return {
-    ressources: retenues,
-    erreurs,
-    releve: retenues.filter(({ externalId }) => !contenants.has(externalId)).length,
-  };
+  return { ressources: retenues, erreurs };
 }
 
 /**

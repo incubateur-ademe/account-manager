@@ -4,6 +4,7 @@ import {
   champsConstates,
   chuteExcessive,
   type RefusDeDatation,
+  ressourcesVisees,
   verifierContenances,
 } from "@/core/collecte";
 import type {
@@ -406,10 +407,11 @@ export async function executerCollecte(
     const chuteIdentites = chuteExcessive(reference, lu.itemsSeen, seuil)
       ? ({ famille: "identites", observe: lu.itemsSeen, reference } as const)
       : null;
-    const chuteRessources = chuteExcessive(referenceRessources, contenances.releve, seuil)
+    const visees = ressourcesVisees(lu.grants);
+    const chuteRessources = chuteExcessive(referenceRessources, visees, seuil)
       ? ({
           famille: "ressources",
-          observe: contenances.releve,
+          observe: visees,
           reference: referenceRessources,
         } as const)
       : null;

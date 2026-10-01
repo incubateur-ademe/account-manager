@@ -156,7 +156,9 @@ le libellé délibérément.
   seuls les contenants sortent du second. Une équipe GitHub vide continue donc de gonfler un
   seul des deux plateaux et peut masquer une chute réelle. C'est une dette consentie, et non
   un oubli : elle préexiste à cette décision, et le comptage complet attend que la
-  spécification des projets soit arrêtée chez Scalingo.
+  spécification des projets soit arrêtée chez Scalingo. **Soldée le 1er octobre 2026** : le
+  relevé compte désormais les ressources que vise un accès relevé (`ressourcesVisees`), sans
+  attendre Scalingo, ce comptage valant que les projets portent des membres ou non.
 - **Un seul axe, un seul niveau.** Une application Scalingo appartient à un projet et vit dans
   une région : le modèle tient le premier, la région reste dans le libellé. Un système qui
   aurait deux regroupements orthogonaux devra en choisir un, et la profondeur, représentable en

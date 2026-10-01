@@ -799,7 +799,7 @@ describe("contenance des ressources", () => {
       { externalId: "service-isole", label: "Isolé", url: "https://exemple.invalid/isole" },
     ];
 
-    const { ressources, erreurs, releve: compte } = verifierContenances(releve);
+    const { ressources, erreurs } = verifierContenances(releve);
 
     // Les neuf ressources ressortent, au complet et dans l'ordre : c'est la première
     // chose à tenir, et la mutation qui la casse est de rendre une liste filtrée.
@@ -845,12 +845,6 @@ describe("contenance des ressources", () => {
     // ce que le connecteur a déclaré, faute de quoi sa contradiction sortirait du relevé
     // sans un mot.
     expect(erreurs[2]?.message).toContain("service-boucle");
-
-    // Le garde-fou de chute ne compte pas les contenants : la référence à laquelle il se
-    // compare ne retient que les ressources portant un accès vivant, et un contenant n'en
-    // porte souvent aucun. Seul « regroupement » en est un ici, les autres contenances
-    // ayant été écartées.
-    expect(compte).toBe(8);
   });
 
   it("retient la dernière déclaration d'une clé répétée, une fois, et le dit", () => {
@@ -873,7 +867,7 @@ describe("contenance des ressources", () => {
       },
     ];
 
-    const { ressources, erreurs, releve: compte } = verifierContenances(releve);
+    const { ressources, erreurs } = verifierContenances(releve);
 
     // Then chaque clé ne ressort qu'une fois, et c'est la dernière déclaration entière qui
     // la porte, libellé et adresse comprises : la boucle d'upsert garde déjà la dernière
@@ -895,12 +889,6 @@ describe("contenance des ressources", () => {
     // la nomme : sans le dédoublonnage, la base gardait le parent écrit par la première
     // occurrence, la boucle d'écriture comparant à une valeur relue avant le passage.
     expect(ressources[2]).toEqual({ externalId: "service-boucle", label: "Autre dernière" });
-
-    // Then le relevé compte deux lignes, le contenant retiré : conservées en double, les
-    // deux clés en ajoutaient chacune une, quand la référence à laquelle le garde-fou de
-    // chute les compare compte des lignes distinctes. Le plateau observé s'alourdissait,
-    // donc une chute réelle passait et une datation refusée s'autorisait.
-    expect(compte).toBe(2);
 
     // Then chaque répétition est dite, en plus du refus de contenance : c'est une
     // contradiction du connecteur, et cette fonction existe pour qu'aucune ne sorte du
