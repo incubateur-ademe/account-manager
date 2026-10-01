@@ -61,8 +61,9 @@ export default async function ModelesPage() {
   const connues = new Set(startups.map((startup) => startup.ghid));
   // Aucune clé étrangère ne relie un modèle à une startup, et c'est voulu :
   // `Person.startups` porte déjà des ghid sans FK. Ce rapprochement est donc le seul
-  // endroit d'où un renommage amont se verra, un modèle orphelin cessant de
-  // contribuer sans qu'aucune erreur ne soit levée.
+  // endroit d'où se voit un modèle posé sur un identifiant qu'aucune collecte n'a rendu.
+  // Un renommage amont n'y paraît pas, la collecte gardant l'ancienne ligne sous
+  // `vanishedAt`.
   const orphelins = [...parProprietaire.keys()]
     .filter((proprietaire) => proprietaire !== CLE_INCUBATEUR && !connues.has(proprietaire))
     .sort((a, b) => a.localeCompare(b, "fr"));
@@ -162,7 +163,7 @@ export default async function ModelesPage() {
           as="h2"
           className={fr.cx("fr-mt-4w")}
           severity="warning"
-          title={`${orphelins.length} modèle${orphelins.length > 1 ? "s" : ""} ne correspond${orphelins.length > 1 ? "ent" : ""} plus à aucune startup connue`}
+          title={`${orphelins.length} modèle${orphelins.length > 1 ? "s" : ""} ne correspond${orphelins.length > 1 ? "ent" : ""} à aucune startup connue`}
           description={
             <>
               <p className={fr.cx("fr-mb-1w")}>{MODELE.orphelins.plusieurs}</p>

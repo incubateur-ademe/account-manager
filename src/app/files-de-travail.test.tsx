@@ -612,17 +612,24 @@ describe("La file des constats", () => {
     // And son refus s'affiche.
     expect(await within(modale).findByText("Ce constat est déjà clos.")).toBeDefined();
 
-    // When on referme et qu'on rouvre sur le même constat, celui-là même qui vient
-    // d'essuyer le refus. C'est la réouverture qui coûte : changer de ligne remonte le
-    // formulaire de toute façon, rester sur la sienne ne le remonte que si l'ouverture
-    // compte.
+    // When on commence une autre raison, puis on referme sans l'envoyer et on rouvre
+    // sur le même constat, celui-là même qui vient d'essuyer le refus. React a déjà
+    // vidé le champ envoyé, si bien qu'il faut une saisie postérieure au refus pour voir
+    // si le formulaire a été remonté. C'est la réouverture qui coûte, changer de ligne
+    // remonte le formulaire de toute façon.
+    const champ = within(modale).getByLabelText(/Ce qui a été fait/) as HTMLInputElement;
+    expect(champ.value).toBe("");
+    // user-event garde sa propre trace de la saisie, que la remise à zéro du formulaire
+    // n'efface pas. Sans `clear`, il taperait à la suite de la raison déjà envoyée.
+    await utilisateur.clear(champ);
+    await utilisateur.type(champ, "Brouillon abandonné");
+    expect(champ.value).toBe("Brouillon abandonné");
     fermer(MODALE_CLOTURE);
     await utilisateur.click(within(ligneCompteParti).getByRole("button", { name: "Clore" }));
     ouvrir(MODALE_CLOTURE);
 
-    // Then le refus est parti, et la raison saisie avec lui : les rejouer ferait lire
-    // le verdict de la tentative précédente au-dessus d'un champ que personne n'a
-    // rempli.
+    // Then le refus est parti, et la saisie abandonnée avec lui. Les garder ferait lire
+    // le verdict de la tentative précédente au-dessus d'un champ qu'on croit vierge.
     const rouverte = modaleDe(MODALE_CLOTURE);
     expect(within(rouverte).queryByText("Ce constat est déjà clos.")).toBeNull();
     expect((within(rouverte).getByLabelText(/Ce qui a été fait/) as HTMLInputElement).value).toBe(

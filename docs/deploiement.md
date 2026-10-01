@@ -155,11 +155,11 @@ base sans correctifs de sécurité amont. Et 24 est la version de `.nvmrc`, donc
 sur laquelle l'intégration continue vérifie ; construire sur une autre reviendrait à
 livrer ce qui n'a pas été testé.
 
-Node 24 distribue encore corepack, et le sien accepte le `packageManager` de ce dépôt
-(vérifié : corepack 0.35.0 active pnpm 10.34.5 sans rien télécharger de plus). Il n'y
-a donc rien à installer. Une remontée vers 25, qui ne le distribue plus, demandera de
-réintroduire `npm install --global --force corepack@latest`, le `--force` étant requis
-parce que l'image de base pose déjà ses propres relais `yarn` et `npx`.
+Node 24 distribue encore corepack, et le sien accepte le `packageManager` de ce dépôt,
+qui épingle pnpm 11.22.0. Il n'y a donc rien à installer. Une remontée vers 25, qui ne
+le distribue plus, demandera de réintroduire `npm install --global --force corepack@latest`,
+le `--force` étant requis parce que l'image de base pose déjà ses propres relais `yarn` et
+`npx`.
 
 Passer à Alpine n'est pas la piste d'allègement qu'on croit : l'écart entre les deux
 bases est de quelques dizaines de mégaoctets sur une image qui en pèse plus de mille,
@@ -285,22 +285,6 @@ le mécanisme automatique le temps de l'opération :
 
 C'est aussi le chemin de secours si le démarrage boucle à cause d'une migration : on
 coupe le mécanisme, on démarre, on diagnostique dans un conteneur vivant.
-
-### Avant la première mise en service
-
-**Le dossier `prisma/migrations` n'existe pas encore.** Le schéma est validé mais
-aucune migration n'a été générée. `prisma migrate deploy` sans migration ne crée aucune
-table : il n'a rien à appliquer. L'application démarrerait sur une base vide et
-échouerait à la première requête.
-
-Il faut donc, avant le premier déploiement, générer la migration initiale en local et
-la **committer** :
-
-```bash
-docker compose up -d
-pnpm db:migrate    # cree prisma/migrations/<timestamp>_init
-git add prisma/migrations && git commit
-```
 
 ### Le second regard ne s'installe pas tout seul
 
@@ -506,8 +490,10 @@ main :
 ssh scw-tools "docker exec \$(docker ps -qf name=<uuid-ressource>) sh -c 'cd /app/ops && node --import tsx src/cli/sync.ts'"
 ```
 
-Tant qu'aucun connecteur n'est enregistré, la commande sort en 0 avec
-`aucun connecteur enregistré, rien à collecter`. C'est le résultat attendu aujourd'hui.
+La commande sort en 1 si la politique ou la configuration d'un connecteur est
+illisible, si le périmètre ou un connecteur échoue, ou si la revue des comptes de service
+ou la collecte des startups lève une erreur. Un système non lu faute de credential ne la
+fait pas échouer, et la sortie le nomme sous `systèmes non lus`.
 
 ---
 
@@ -624,7 +610,6 @@ s'ouvrait sans qu'aucune bannière n'arrive.
 
 ### Prérequis
 
-- La migration initiale existe et est committée (section 3).
 - Le relais SMTP est choisi et ses credentials sont en main.
 - La clé de l'API espace-membre est en main.
 - Le dépôt de configuration porte une politique valide, vérifiée par

@@ -112,9 +112,8 @@ export default async function StartupsPage(props: {
         description={
           <>
             <p className={fr.cx("fr-mb-1w")}>
-              Un renommage amont, une sortie de l'incubateur ou une faute de frappe donnent ici le
-              même symptôme. Ailleurs, ces identifiants n'apparaissent que sur la fiche des
-              personnes qui les portent, sans lien vers une fiche de startup.
+              Ailleurs, ces identifiants n'apparaissent que sur la fiche des personnes qui les
+              portent, sans lien vers une fiche de startup.
             </p>
             <ul className={fr.cx("fr-mb-0")}>
               {ghidsInconnus.map((inconnu) => (

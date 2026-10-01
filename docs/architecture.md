@@ -938,8 +938,8 @@ interface Connector {
 }
 ```
 
-`plan` est le seul obligatoire. C'est ce qui fait d'un système purement manuel un
-connecteur de plein droit : il ne sait ni lister ni exécuter, mais il sait dire qu'à
+`probe` et `plan` sont les seuls obligatoires. C'est ce qui fait d'un système purement
+manuel un connecteur de plein droit : il ne sait ni lister ni exécuter, mais il sait dire qu'à
 l'arrivée de quelqu'un il faut faire telle chose, avec le lien, le critère de
 complétion et, quand cocher ne dit pas ce qui a été fait, la valeur que le pointage
 réclame. Elle se fige avec la marche à suivre et reste hors de l'empreinte.
@@ -1095,9 +1095,10 @@ sans jamais détenir les credentials Microsoft.
 
 ### 5.9 Premiers connecteurs implémentés
 
-Trois connecteurs éprouvent le contrat, et chacun l'éprouve autrement : de part et
-d'autre de la ligne `auto` contre `manual` pour les deux premiers, sur ce que le contrat
-ne savait pas encore dire pour le troisième.
+Trois connecteurs sont implémentés, `github`, `notion` et `scalingo`. Ceux que décrit
+cette section éprouvent le contrat chacun autrement : de part et d'autre de la ligne
+`auto` contre `manual` pour `notion` et `notion-trombi`, sur ce que le contrat ne savait
+pas encore dire pour `scalingo`.
 
 **`notion`**, tier `auto` : membres du workspace par SCIM. Un siège attribué sans
 identité en face est un compte isolé. Son credential est **nominatif** : Notion révoque
@@ -1113,8 +1114,9 @@ lire ni les gérer, et Notion les compte à part des membres. Conséquence à te
 où se décide une coupure : une fiche sans compte Notion ne signifie pas sans accès à
 Notion.
 
-**`notion-trombi`**, tier `manual` : créer ou mettre à jour la page d'une personne
-dans le trombinoscope à l'arrivée, l'archiver au départ. Le choix est délibéré : c'est
+**`notion-trombi`**, tier `manual`, n'est pas implémenté. Il est prévu pour créer ou
+mettre à jour la page d'une personne dans le trombinoscope à l'arrivée, l'archiver au
+départ. Le choix est délibéré : c'est
 un octroi et non une révocation, il produit une tâche lisible plutôt qu'un appel
 d'API, et il porte sur une référence où archiver ne veut pas dire supprimer. Si le
 contrat ne sait pas exprimer ce cas aussi bien qu'une révocation SCIM, il est faux.
@@ -1314,7 +1316,8 @@ précis où il le faudrait.
 
 Un document OpenAPI existe désormais et les réponses sont validées par un schéma en
 sortie, mais le dépôt a supprimé des pans entiers de fonctionnalités en quelques
-mois. D'où le test de contrat quotidien de la section 5.7.
+mois. D'où le test de contrat de la section 5.7, `src/lib/espace-membre.contrat.test.ts`,
+qui se lance à la main.
 
 **Rien n'est cru sur parole en entrée.** Ce que leur contrat déclare obligatoire est
 exigé à la lecture, sans quoi un champ renommé chez eux se lirait ici comme une
@@ -1326,8 +1329,8 @@ complète, donc elle ne date aucune disparition.
 Cette validation attrape un changement de structure, pas la disparition d'une valeur
 facultative. Une date de fin de mission peut légitimement manquer, celle d'une
 mission en cours : si ce champ était renommé sans rien changer d'autre, le silence
-serait indétectable ici. C'est au test de contrat de s'étonner que plus aucune
-échéance ne remonte.
+serait indétectable ici. C'est au test de contrat, quand on le lance, de s'étonner que
+plus aucune échéance ne remonte.
 
 **La connexion, elle, dépend encore d'une route dépréciée.** Le provider NextAuth
 utilisé pour le login a `/api/protected/member/{username}` en dur dans son client, et
@@ -1345,11 +1348,13 @@ paquet est donc à suivre, et à relever avant ce retrait.
 - Ce que l'API de l'instance Vaultwarden expose réellement, avant de fixer son tier.
 - Frontière définitive avec `teams-auto` pour le volet Entra.
 - Un modèle de plan sait nommer un contrôleur, aucun n'en nomme sur ce déploiement, et
-  ni les connecteurs ni les profils n'en posent. La moitié « personne n'instruit son
-  propre départ de bout en bout » est donc tenue par une donnée et non par du code : elle
-  devient vraie le jour où un opérateur pose ce contrôleur sur les étapes de départ qu'il
-  juge sensibles, et ce geste n'est pas une livraison. L'écran des modèles avertit tant
-  qu'aucune étape de départ n'attend de second regard, et se tait dès qu'une l'attend.
+  les profils n'en posent pas. Un seul connecteur en pose un : `scalingo`, sur la reprise
+  d'un jeton émis (`reprisesDesJetons`, `src/connectors/scalingo.ts`). Hors de cette
+  étape, la moitié « personne n'instruit son propre départ de bout en bout » est donc
+  tenue par une donnée et non par du code : elle devient vraie le jour où un opérateur
+  pose ce contrôleur sur les étapes de départ qu'il juge sensibles, et ce geste n'est pas
+  une livraison. L'écran des modèles avertit tant qu'aucune étape de départ n'attend de
+  second regard, et se tait dès qu'une l'attend.
 - Rotation du triplet OVH avant toute mise en service d'un chemin d'écriture.
 - Porteur du jeton SCIM Notion : compte de service propriétaire de l'organisation, ou à
   défaut rotation avant toute mutation de rôle de son porteur.

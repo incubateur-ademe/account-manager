@@ -14,8 +14,14 @@ tiers `assisted` et `manual` sont des citoyens de première classe, pas des cas 
 connecteur, invariants. Lis-le avant toute décision de conception. Ne le duplique pas ici : renvoie
 vers lui.
 
-Si le code s'écarte du document, le défaut est dans le code jusqu'à preuve du contraire. Le document
-ne se modifie pas sans validation explicite de l'utilisateur.
+Si le code s'écarte d'une décision du document, le défaut est dans le code jusqu'à preuve du
+contraire. Un amendement au document ou à un ADR qui tombe sous le sens s'applique sans demander. Il
+tombe sous le sens quand il aligne le texte sur ce que le code tient déjà, preuve à la ligne, sans
+rien trancher : une description qu'un lot date, un point ouvert qu'il referme, une affirmation que le
+code dément. Il se demande quand il tranche, c'est-à-dire quand il pose, change ou retire une
+décision, un invariant, un contrat ou une règle, ou quand deux formulations engageraient deux choses
+différentes. Appliqué sans question, il s'écrit quand même dans la description de PR, sous « Les
+décisions qui méritent une relecture », avec la section et la phrase avant et après.
 
 **Les arbitrages datés vivent dans `docs/adr/`**, et ce qu'ils ont refusé compte autant que ce qu'ils
 ont retenu : la configuration à trois niveaux (0001), les trois rangements de ce qu'un connecteur

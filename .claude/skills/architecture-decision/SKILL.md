@@ -176,7 +176,7 @@ Ecartee parce que <raison>.
 |---|---|---|
 | **Conception** | abstraction manquante, couplage fort | refactoring cible |
 | **Credential** | token nominatif, credential a portee large | declare dans `CredentialRef`, visible dans l'interface, remboursee par un chemin durable |
-| **Test** | connecteur sans test de contrat | ajout du test de contrat quotidien (section 4.8) |
+| **Test** | connecteur sans test de contrat | ajout du test de contrat (section 5.7) |
 | **Documentation** | ecart entre le code et `docs/architecture.md` | `/sync-docs` |
 
 Une dette assumee et **declaree** vaut mieux qu'une dette masquee. C'est le sens de `scopeNote`,

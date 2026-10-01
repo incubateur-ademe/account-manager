@@ -10,8 +10,8 @@
 import type { Acteur } from "@/core/dossier";
 import { LIBELLE_ACTEUR } from "@/core/libelle-dossier";
 
-const CAUSE_ORPHELIN =
-  "Un renommage amont, une sortie de l'incubateur ou une faute de frappe donnent ici le même symptôme.";
+const CAUSE_ORPHELIN = (identifiant: "leur identifiant" | "cet identifiant"): string =>
+  `Aucune collecte du référentiel des startups n'a rendu ${identifiant}.`;
 
 export const MODELE = {
   /** Ce qu'une modification fait, et ce qu'elle ne fait pas, aux plans qui existent. */
@@ -45,8 +45,8 @@ export const MODELE = {
   },
 
   orphelins: {
-    plusieurs: `Les plans déjà calculés gardent leurs étapes, aucun nouveau ne les reprendra. Leur identifiant n'est plus rendu par le référentiel des startups. ${CAUSE_ORPHELIN} Rien d'autre que cette liste ne mène plus à eux.`,
-    seul: `Aucun plan ne portera ses étapes. Cet identifiant n'est plus rendu par le référentiel des startups. ${CAUSE_ORPHELIN} Redéclarez ces étapes sous le bon identifiant, puis retirez celles-ci.`,
+    plusieurs: `Les plans déjà calculés gardent leurs étapes. ${CAUSE_ORPHELIN("leur identifiant")} Rien d'autre que cette liste ne mène à eux.`,
+    seul: `${CAUSE_ORPHELIN("cet identifiant")} Redéclarez ces étapes sous le bon identifiant, puis retirez celles-ci.`,
   },
 
   champs: {
