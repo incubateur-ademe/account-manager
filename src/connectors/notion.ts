@@ -7,6 +7,7 @@ import type {
   ConnectorContract,
   Diagnosis,
   NonEmptyArray,
+  ObservedAccess,
   ObservedGrant,
   ObservedIdentity,
   PlannedStep,
@@ -479,7 +480,15 @@ export function planifierRetraitNotion(
   ecriturePossible: boolean,
 ): readonly PlannedStep[] {
   const { username } = sujet;
-  const sieges = sujet.acces ?? [];
+  const parCompte = new Map<string, ObservedAccess>();
+  for (const un of sujet.acces ?? []) {
+    // Un passage partiel ne date aucun accès disparu : après un changement de rôle, le même
+    // compte peut garder l'ancien vivant à côté du nouveau, et le plus élevé décide.
+    if (!parCompte.has(un.identityExternalId) || !ROLES_ORDINAIRES.includes(un.role)) {
+      parCompte.set(un.identityExternalId, un);
+    }
+  }
+  const sieges = [...parCompte.values()];
   const siege = sieges.length === 1 ? sieges[0] : undefined;
   const comptes = sieges.map(
     ({ identityHandle, identityExternalId }) => identityHandle ?? identityExternalId,
@@ -505,10 +514,12 @@ export function planifierRetraitNotion(
       tier: auto ? "auto" : "manual",
       action: ACTION_RETRAIT,
       label: `Retirer ${username}${sieges.length > 1 ? ` (comptes ${comptes.join(", ")})` : compte === null ? "" : ` (compte ${compte})`} du workspace Notion`,
+      // Le compte relevé reste au libellé, hors de l'empreinte : un changement d'adresse vu
+      // par la collecte suivante ferait sinon refuser tout le plan confirmé, alors que
+      // l'exécution vise l'identifiant.
       params: {
         username,
         identifiant: siege?.identityExternalId ?? null,
-        compte,
         role: siege?.role ?? null,
       },
       riskLevel: "high",

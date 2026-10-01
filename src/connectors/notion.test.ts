@@ -429,6 +429,20 @@ describe("le départ sur Notion", () => {
     )[0];
     expect(deuxComptes?.tier).toBe("manual");
     expect(deuxComptes?.manual?.runbook).toContain("Plusieurs comptes de la personne siègent");
+
+    // Then un même compte qui garde son ancien rôle vivant à côté du nouveau est un seul
+    // compte, au rôle le plus élevé, et ses paramètres ne portent pas l'adresse, qu'un
+    // changement ferait bouger
+    const promu = planifierRetraitNotion(
+      { kind: "person", username: "camille.rivet", acces: [siege(), siege("owner")] },
+      true,
+    )[0];
+    expect(promu?.label).toBe(
+      "Retirer camille.rivet (compte camille@exemple.fr) du workspace Notion",
+    );
+    expect(promu?.tier).toBe("manual");
+    expect(promu?.manual?.runbook).toContain("Le rôle owner se retire à la main");
+    expect(promu?.params).not.toHaveProperty("compte");
     expect(deuxComptes?.label).toContain("camille@exemple.fr, camille.perso@exemple.fr");
     const sansJeton = planifierRetraitNotion(
       { kind: "person", username: "camille.rivet", acces: [siege()] },
