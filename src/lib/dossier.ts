@@ -10,9 +10,9 @@ import type {
   RunContext,
 } from "@/core/connector";
 import {
-  accesNonToleres,
   type CompteCouvrable,
   systemesEntierementToleres,
+  toleranceDuCompteVise,
 } from "@/core/derogation";
 import {
   ETATS_VIVANTS,
@@ -274,7 +274,6 @@ export async function calculerPlan(
       ? (await derogationsApplicables(tolerancesAu ?? maintenant)).applicables
       : [];
   const tolerances = systemesEntierementToleres(constates.comptes, derogations);
-  const accesVises = accesNonToleres(constates.accesParSysteme, derogations, tolerances);
 
   const ctx: RunContext = {
     runId: randomUUID(),
@@ -306,8 +305,8 @@ export async function calculerPlan(
             kind: "person",
             username,
             ...(adresse === undefined ? {} : { email: adresse }),
-            ...(accesVises.has(connecteur.contract.key)
-              ? { acces: accesVises.get(connecteur.contract.key) }
+            ...(constates.accesParSysteme.has(connecteur.contract.key)
+              ? { acces: constates.accesParSysteme.get(connecteur.contract.key) }
               : {}),
             ...(parSysteme.has(connecteur.contract.key)
               ? { engagements: parSysteme.get(connecteur.contract.key) }
@@ -340,7 +339,9 @@ export async function calculerPlan(
   const retenues: EtapeAssemblee[] = [];
   const tolerees: EtapeEcartee[] = [];
   for (const assemblee of assemblage.etapes) {
-    const couvrante = tolerances.get(assemblee.etape.systemKey);
+    const couvrante =
+      tolerances.get(assemblee.etape.systemKey) ??
+      toleranceDuCompteVise(assemblee.etape, derogations);
     if (couvrante === undefined) {
       // Renuméroté plutôt que conservé : le rang de lecture se dit strictement croissant
       // sur les étapes retenues, et un trou ferait mentir une liste numérotée.

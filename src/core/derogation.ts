@@ -315,9 +315,8 @@ function couvrePlusLoin(candidate: Derogation, tenante: Derogation): boolean {
  *
  * Tout ou rien, et c'est la seule règle sûre pour une étape qui coupe la personne sur tout
  * un système d'un seul geste : un seul compte couvert n'y retire rien. La retirer
- * épargnerait les comptes que personne n'a admis en même temps que celui qu'on a admis. Un
- * connecteur qui retire compte par compte ne reçoit pas les accès d'un compte toléré, et
- * `accesNonToleres` s'en charge.
+ * épargnerait les comptes que personne n'a admis en même temps que celui qu'on a admis.
+ * Une étape qui nomme le compte qu'elle vise relève de `toleranceDuCompteVise`.
  *
  * Les comptes non révocables ne pèsent d'aucun côté. Ils ne produisent aucune étape, donc
  * les couvrir ne retire rien, et ne pas les couvrir ne retient rien : la règle qui interdit
@@ -375,29 +374,21 @@ export function systemesEntierementToleres(
 }
 
 /**
- * Les accès qu'un départ peut viser, sans ceux d'un compte toléré.
+ * La tolérance qui couvre le compte qu'une étape de révocation nomme, quand elle en nomme un.
  *
- * Un connecteur qui retire compte par compte viserait sinon le compte qu'un humain a
- * admis, dès qu'un autre compte de la même personne ne l'est pas. Un système entièrement
- * toléré garde les siens : son étape se forme pour être écartée avec le libellé du geste.
+ * Une étape qui vise un compte précis, par `params.identifiant`, n'épargne en s'écartant que
+ * ce compte-là, et l'écarter ne laisse personne d'autre en place. Une étape qui vise la
+ * personne sur tout le système relève de `systemesEntierementToleres`.
  */
-export function accesNonToleres<A extends { identityExternalId: string }>(
-  acces: ReadonlyMap<string, readonly A[]>,
+export function toleranceDuCompteVise(
+  etape: { systemKey: string; capability: string; params: Record<string, unknown> },
   derogations: readonly Derogation[],
-  entierementToleres: ReadonlyMap<string, Derogation>,
-): ReadonlyMap<string, readonly A[]> {
-  const parCible = couvertureParCible(derogations);
-  return new Map(
-    [...acces].map(([provider, vus]) => [
-      provider,
-      entierementToleres.has(provider)
-        ? vus
-        : vus.filter(
-            ({ identityExternalId }) =>
-              !parCible.has(
-                cleDeCible({ type: "identite", provider, externalId: identityExternalId }),
-              ),
-          ),
-    ]),
+): Derogation | undefined {
+  const { identifiant } = etape.params;
+  if (etape.capability !== "revoke" || typeof identifiant !== "string") {
+    return undefined;
+  }
+  return couvertureParCible(derogations).get(
+    cleDeCible({ type: "identite", provider: etape.systemKey, externalId: identifiant }),
   );
 }

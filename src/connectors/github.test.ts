@@ -901,6 +901,27 @@ describe("le départ sur GitHub", () => {
       "camille-rivet, camille-bis n'apparaissent plus",
     );
 
+    // When le même compte garde son ancien rôle vivant à côté du nouveau, après une
+    // promotion vue par un passage partiel
+    const promue = planifierRetraitGithub(
+      ["incubateur-ademe"],
+      {
+        kind: "person",
+        username: "camille.rivet",
+        acces: [siege("incubateur-ademe"), siege("incubateur-ademe", "admin")],
+      },
+      true,
+    );
+
+    // Then c'est un seul compte, administrateur, à la main, et ses paramètres ne portent pas
+    // le login, qu'un renommage changerait
+    expect(promue[0]?.label).toBe(
+      "Retirer camille.rivet (compte camille-rivet) de l'organisation incubateur-ademe",
+    );
+    expect(promue[0]?.tier).toBe("manual");
+    expect(promue[0]?.manual?.runbook).toContain("Un administrateur");
+    expect(promue[0]?.params).not.toHaveProperty("compte");
+
     // Then le contrat déclare la voie automatique du retrait, et sa voie manuelle dessous
     expect(CONTRAT_GITHUB.capabilities.revoke?.map(({ tier }) => tier)).toEqual(["auto", "manual"]);
   });

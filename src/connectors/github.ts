@@ -892,16 +892,25 @@ export function planifierRetraitGithub(
 
     // Une étape par organisation et par personne, sous une clé qui ne nomme pas le compte :
     // deux comptes qui y siègent se retirent donc ensemble, à la main, et l'étape les nomme.
-    const plusieurs = sieges.length > 1;
-    const siege = plusieurs ? undefined : sieges[0];
+    const parCompte = new Map<string, ObservedAccess>();
+    for (const un of sieges) {
+      // Un passage partiel ne date aucun accès disparu : après une promotion, le même compte
+      // peut garder son ancien rôle vivant à côté du nouveau, et le plus élevé décide.
+      if (!parCompte.has(un.identityExternalId) || roleDuSiege(un.role) === "admin") {
+        parCompte.set(un.identityExternalId, un);
+      }
+    }
+    const vus = [...parCompte.values()];
+    const plusieurs = vus.length > 1;
+    const siege = plusieurs ? undefined : vus[0];
     const role = siege ? roleDuSiege(siege.role) : null;
     const parAdresse = siege?.identityExternalId.startsWith("email:") ?? false;
     const invitation = siege !== undefined && !COMPTE.test(siege.identityExternalId);
     const compte = siege && !parAdresse ? (siege.identityHandle ?? null) : null;
     const nom = ({ identityHandle, identityExternalId }: ObservedAccess) =>
       identityHandle ?? identityExternalId;
-    const comptes = sieges.map(nom);
-    const nommes = [...new Set((sieges.length > 0 ? sieges : equipes).map(nom))];
+    const comptes = vus.map(nom);
+    const nommes = [...new Set((vus.length > 0 ? vus : equipes).map(nom))];
 
     const raison = plusieurs
       ? ` Plusieurs comptes de la personne siègent dans l'organisation (${comptes.join(", ")}). Chacun se retire à la main.`
@@ -925,10 +934,12 @@ export function planifierRetraitGithub(
         tier: auto ? "auto" : "manual",
         action: ACTION_RETRAIT,
         label: `Retirer ${username}${plusieurs ? ` (comptes ${comptes.join(", ")})` : compte === null ? "" : ` (compte ${compte})`} de l'organisation ${organisation}`,
+        // Le login relevé reste au libellé, hors de l'empreinte : un renommage vu par la
+        // collecte suivante ferait sinon refuser tout le plan confirmé, alors que
+        // l'exécution relit le login par l'identifiant.
         params: {
           organisation,
           username,
-          compte,
           identifiant: siege?.identityExternalId ?? null,
           role,
         },
@@ -952,7 +963,6 @@ export function planifierRetraitGithub(
 
 interface CibleDeRetrait {
   organisation: string;
-  compte: string;
   identifiant: string;
   role: string;
 }
@@ -962,20 +972,19 @@ function cibleDeRetrait(step: PlannedStep): CibleDeRetrait | null {
     return null;
   }
 
-  const { organisation, compte, identifiant, role } = step.params;
+  const { organisation, identifiant, role } = step.params;
 
   if (
     typeof organisation !== "string" ||
-    typeof compte !== "string" ||
     typeof identifiant !== "string" ||
     typeof role !== "string" ||
-    [organisation, compte, role].some((valeur) => valeur.length === 0) ||
+    [organisation, role].some((valeur) => valeur.length === 0) ||
     !COMPTE.test(identifiant)
   ) {
     return null;
   }
 
-  return { organisation, compte, identifiant, role };
+  return { organisation, identifiant, role };
 }
 
 /**

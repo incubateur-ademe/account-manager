@@ -456,10 +456,10 @@ describe("un doute d'identité ne prive pas d'un accès, et n'autorise jamais un
     expect(retrait.params).toEqual({
       organisation: ORGANISATION,
       username: USERNAME,
-      compte: "cam-rvt",
       identifiant: "4242",
       role: "member",
     });
+    expect(retrait.label).toContain("(compte cam-rvt)");
     expect(coupure.nonConfirmes).toEqual([]);
   });
 });
