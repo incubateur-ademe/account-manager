@@ -21,6 +21,7 @@ import {
   type ReleveSysteme,
   refusRepete,
   releveFige,
+  ressourcesRelues,
   systemesMuets,
   verifierContenances,
 } from "./collecte";
@@ -780,6 +781,40 @@ describe("l'âge du relevé contre lequel le périmètre décide", () => {
   });
 });
 
+describe("ce que le garde-fou de chute compte des ressources du soir", () => {
+  it("ne compte que les ressources tenues pour vivantes que la lecture rend encore", () => {
+    // Given quatre ressources tenues pour vivantes, dont la ressource du système entier
+    const tenues = ["equipe-1", "equipe-2", "equipe-3", "(systeme)"];
+
+    // When la lecture rend la première équipe en double, la deuxième vidée de ses membres,
+    // une équipe vide depuis toujours, et un accès sans ressource
+    const relues = ressourcesRelues(
+      tenues,
+      [
+        { externalId: "equipe-1", label: "Équipe 1" },
+        { externalId: "equipe-1", label: "Équipe 1" },
+        { externalId: "equipe-2", label: "Équipe 2" },
+        { externalId: "equipe-vide", label: "Équipe vide" },
+      ],
+      [
+        { identityExternalId: "compte-1", resourceExternalId: "equipe-1", role: "member" },
+        { identityExternalId: "compte-1", resourceExternalId: "equipe-1", role: "maintainer" },
+        { identityExternalId: "compte-2", role: "member" },
+      ],
+      "(systeme)",
+    );
+
+    // Then trois : la première équipe une fois, la deuxième bien que vide ce soir, la
+    // ressource du système parce qu'un accès sans ressource est revenu. L'équipe vide depuis
+    // toujours ne compte pas, la référence ne la comptant pas non plus, et la troisième
+    // manque à la réponse : c'est elle seule qui fait baisser le compte.
+    expect(relues).toBe(3);
+
+    // Then sans accès sans ressource, la ressource du système manque aussi
+    expect(ressourcesRelues(tenues, [], [], "(systeme)")).toBe(0);
+  });
+});
+
 describe("contenance des ressources", () => {
   it("garde toute ressource, n'écarte que la contenance, et juge sur ce qui a été déclaré", () => {
     // Le relevé d'un connecteur qui se contredit de cinq façons différentes. Ce qui est
@@ -799,7 +834,7 @@ describe("contenance des ressources", () => {
       { externalId: "service-isole", label: "Isolé", url: "https://exemple.invalid/isole" },
     ];
 
-    const { ressources, erreurs, releve: compte } = verifierContenances(releve);
+    const { ressources, erreurs } = verifierContenances(releve);
 
     // Les neuf ressources ressortent, au complet et dans l'ordre : c'est la première
     // chose à tenir, et la mutation qui la casse est de rendre une liste filtrée.
@@ -845,12 +880,6 @@ describe("contenance des ressources", () => {
     // ce que le connecteur a déclaré, faute de quoi sa contradiction sortirait du relevé
     // sans un mot.
     expect(erreurs[2]?.message).toContain("service-boucle");
-
-    // Le garde-fou de chute ne compte pas les contenants : la référence à laquelle il se
-    // compare ne retient que les ressources portant un accès vivant, et un contenant n'en
-    // porte souvent aucun. Seul « regroupement » en est un ici, les autres contenances
-    // ayant été écartées.
-    expect(compte).toBe(8);
   });
 
   it("retient la dernière déclaration d'une clé répétée, une fois, et le dit", () => {
@@ -873,7 +902,7 @@ describe("contenance des ressources", () => {
       },
     ];
 
-    const { ressources, erreurs, releve: compte } = verifierContenances(releve);
+    const { ressources, erreurs } = verifierContenances(releve);
 
     // Then chaque clé ne ressort qu'une fois, et c'est la dernière déclaration entière qui
     // la porte, libellé et adresse comprises : la boucle d'upsert garde déjà la dernière
@@ -895,12 +924,6 @@ describe("contenance des ressources", () => {
     // la nomme : sans le dédoublonnage, la base gardait le parent écrit par la première
     // occurrence, la boucle d'écriture comparant à une valeur relue avant le passage.
     expect(ressources[2]).toEqual({ externalId: "service-boucle", label: "Autre dernière" });
-
-    // Then le relevé compte deux lignes, le contenant retiré : conservées en double, les
-    // deux clés en ajoutaient chacune une, quand la référence à laquelle le garde-fou de
-    // chute les compare compte des lignes distinctes. Le plateau observé s'alourdissait,
-    // donc une chute réelle passait et une datation refusée s'autorisait.
-    expect(compte).toBe(2);
 
     // Then chaque répétition est dite, en plus du refus de contenance : c'est une
     // contradiction du connecteur, et cette fonction existe pour qu'aucune ne sorte du

@@ -1,6 +1,7 @@
 import type {
   CollectError,
   ObservedDetail,
+  ObservedGrant,
   ObservedIdentity,
   ObservedResource,
 } from "@/core/connector";
@@ -68,19 +69,33 @@ export function chuteExcessive(reference: number, observe: number, partMax: numb
 export interface ContenancesVerifiees {
   ressources: readonly ObservedResource[];
   erreurs: readonly CollectError[];
-  /**
-   * Ce que le garde-fou de chute doit compter, c'est-à-dire le relevé sans ses contenants.
-   *
-   * La référence à laquelle il se compare ne retient que les ressources portant un accès
-   * vivant, quand un contenant n'en porte souvent aucun : un projet Scalingo n'a pas de
-   * membres. Le compter gonflerait un seul des deux plateaux, donc masquerait une chute
-   * réelle et autoriserait une datation que le garde-fou aurait refusée.
-   *
-   * La balance reste inexacte sur une ressource qui n'est contenant de rien et ne porte
-   * aucun accès, une équipe sans membre par exemple. C'est une dette antérieure, consentie
-   * le temps que la notion de projet se stabilise chez Scalingo (ADR-0002).
-   */
-  releve: number;
+}
+
+/**
+ * Ce que le garde-fou de chute compte des ressources du soir : celles qu'il tenait pour
+ * vivantes et que la lecture rend encore.
+ *
+ * La référence ne retient que les ressources qui portent un accès vivant. Compter tout le
+ * relevé gonflerait le plateau du soir de ce qui n'en porte aucun, un projet Scalingo ou
+ * une équipe vide depuis toujours, et masquerait une chute réelle. Ne compter que ce
+ * qu'un accès du soir vise ferait passer pour perdue une équipe vidée ce soir même, et le
+ * refus s'entretiendrait seul, puisque c'est lui qui garde ses accès vivants. Seule une
+ * ressource tenue pour vivante et absente de la réponse fait baisser ce compte.
+ *
+ * `synthetique` est la ressource que le socle pose sous un accès sans ressource : la
+ * lecture ne la rend jamais, elle la rend présente dès qu'un tel accès revient.
+ */
+export function ressourcesRelues(
+  tenues: readonly string[],
+  ressources: readonly ObservedResource[],
+  acces: readonly ObservedGrant[],
+  synthetique: string,
+): number {
+  const rendues = new Set(ressources.map(({ externalId }) => externalId));
+  if (acces.some(({ resourceExternalId }) => resourceExternalId === undefined)) {
+    rendues.add(synthetique);
+  }
+  return tenues.filter((cle) => rendues.has(cle)).length;
 }
 
 function refusDeContenance(
@@ -163,17 +178,7 @@ export function verifierContenances(ressources: readonly ObservedResource[]): Co
     };
   });
 
-  // Sur les contenances retenues et non sur les déclarées : une contenance écartée ne fait
-  // pas de son contenant prétendu un contenant.
-  const contenants = new Set(
-    retenues.map(({ parentExternalId }) => parentExternalId).filter((cle) => cle !== undefined),
-  );
-
-  return {
-    ressources: retenues,
-    erreurs,
-    releve: retenues.filter(({ externalId }) => !contenants.has(externalId)).length,
-  };
+  return { ressources: retenues, erreurs };
 }
 
 /**

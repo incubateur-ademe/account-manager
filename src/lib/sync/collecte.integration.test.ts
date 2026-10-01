@@ -41,6 +41,8 @@ const VOISIN = "atelier-voisin";
 const MARS = new Date("2026-03-01T02:00:00Z");
 const NUIT_1 = new Date("2026-08-24T02:00:00Z");
 const NUIT_2 = new Date("2026-08-25T02:00:00Z");
+const NUIT_3 = new Date("2026-08-26T02:00:00Z");
+const NUIT_4 = new Date("2026-08-27T02:00:00Z");
 
 /** Un connecteur dont la lecture est décidée par le scénario, et rien d'autre. */
 function connecteurQuiLit(releve: () => CollectResult): Connector {
@@ -101,6 +103,9 @@ async function semer(): Promise<void> {
     await prisma.accessGrant.create({
       data: {
         role: "membre",
+        // Vus avant les nuits du scénario : sans quoi la date réelle du jour, postérieure à
+        // chacune d'elles, les tiendrait pour revus et aucune nuit ne les daterait.
+        lastSeenAt: MARS,
         externalIdentity: {
           connect: { provider_externalId: { provider: PROVIDER, externalId: `compte-${rang}` } },
         },
@@ -290,6 +295,59 @@ describe("le garde-fou de chute, contre une vraie base", () => {
       where: { vanishedAt: null, externalIdentity: { provider: VOISIN } },
     });
     expect(accesDuVoisin).toBe(2);
+
+    // When une troisième nuit rend les trois comptes vivants, mais ne revoit qu'une équipe
+    // pourvue sur trois, au milieu de deux équipes sans membre. Le plancher reste à deux.
+    const troisieme = await executerCollecte(
+      connecteurQuiLit(() => ({
+        status: "ok",
+        itemsSeen: 3,
+        identities: [compte("compte-1"), compte("compte-2"), compte("compte-3")],
+        resources: [
+          { externalId: "equipe-1", label: "Équipe 1" },
+          { externalId: "equipe-vide-1", label: "Équipe vide 1" },
+          { externalId: "equipe-vide-2", label: "Équipe vide 2" },
+        ],
+        grants: [
+          { identityExternalId: "compte-1", resourceExternalId: "equipe-1", role: "membre" },
+        ],
+      })),
+      NUIT_3,
+      nouvelleExecution(),
+    );
+
+    // Then le relevé ne compte que les équipes tenues pour vivantes que la lecture rend
+    // encore, une sur trois : les équipes vides ne portent rien, la référence ne les compte
+    // pas, et les compter masquerait la chute. Les deux accès non revus restent vivants.
+    expect(troisieme.refus).toEqual([{ famille: "ressources", observe: 1, reference: 3 }]);
+    expect(troisieme.acces.disparus).toBe(0);
+    expect(await accesVivants()).toBe(3);
+
+    // When une quatrième nuit rend les trois équipes, mais deux d'entre elles vidées de
+    // leur membre ce jour-là
+    const quatrieme = await executerCollecte(
+      connecteurQuiLit(() => ({
+        status: "ok",
+        itemsSeen: 3,
+        identities: [compte("compte-1"), compte("compte-2"), compte("compte-3")],
+        resources: [1, 2, 3].map((rang) => ({
+          externalId: `equipe-${rang}`,
+          label: `Équipe ${rang}`,
+        })),
+        grants: [
+          { identityExternalId: "compte-1", resourceExternalId: "equipe-1", role: "membre" },
+        ],
+      })),
+      NUIT_4,
+      nouvelleExecution(),
+    );
+
+    // Then le garde-fou se tait : les trois équipes sont rendues, seuls leurs membres ont
+    // changé. Les deux accès retirés se datent, faute de quoi le refus s'entretiendrait
+    // seul, chaque nuit, en gardant vivants les accès qui le déclenchent.
+    expect(quatrieme.refus).toEqual([]);
+    expect(quatrieme.acces.disparus).toBe(2);
+    expect(await accesVivants()).toBe(1);
   });
 });
 
@@ -472,8 +530,9 @@ describe("la contenance d'une ressource, contre une vraie base", () => {
     );
 
     // Then le garde-fou refuse, et ce sont les deux nombres qu'il annonce qui portent la
-    // garantie. Observé vaut deux, le relevé sans son contenant, et non trois : compter les
-    // lignes du relevé ferait entrer le projet dans le plateau du soir. Référence vaut cinq,
+    // garantie. Observé vaut deux, les applications tenues pour vivantes que la lecture rend
+    // encore, et non trois : compter les lignes du relevé ferait entrer le projet dans le
+    // plateau du soir. Référence vaut cinq,
     // les applications qui portent encore un accès, et non six : le projet n'en porte aucun,
     // et le compter gonflerait le plateau de la base. Un contenant qui pèserait d'un seul
     // côté masquerait une chute réelle, donc autoriserait une datation que le garde-fou

@@ -203,12 +203,10 @@ ce garde-fou-là ne s'entretient pas lui-même, et il n'a donc pas la même sort
 
 **Le plancher d'un système cible compte les ressources par les accès qu'elles portent.** Sa
 référence est le nombre de ressources qui portent encore un accès vivant, et le relevé du soir
-est celui du connecteur sans les contenants que la collecte a retenus. Un contenant qu'aucun
-accès ne vise, un projet Scalingo par exemple, ne pèse sur aucun des deux plateaux et ne peut
-pas masquer une chute réelle. La balance reste inexacte pour une ressource qui ne contient rien
-et ne porte aucun accès, une équipe sans membre par exemple, comptée au relevé et absente de la
-référence. Cette dette est antérieure, consentie le temps que la notion de projet se stabilise
-chez Scalingo (ADR-0002).
+le nombre de ces mêmes ressources que la lecture rend encore. Ce qui n'a jamais porté d'accès,
+un projet Scalingo ou une équipe vide, ne pèse sur aucun des deux plateaux et ne peut pas
+masquer une chute réelle. Une équipe vidée le soir même reste rendue, donc comptée : seule une
+ressource tenue pour vivante et absente de la réponse fait baisser le relevé.
 
 **Une fiche qu'un passage sait ne pas avoir lue ne disparaît pas le soir même.** Une disparition
 ordinaire se conclut d'un silence : la personne n'est plus dans la réponse, et rien ne la nomme.
