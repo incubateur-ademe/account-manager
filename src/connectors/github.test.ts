@@ -803,9 +803,9 @@ function retraitDUnMembre(): PlannedStep {
 }
 
 describe("le départ sur GitHub", () => {
-  it("retire seul un membre, et laisse à la main un administrateur et une invitation par adresse", () => {
+  it("retire seul un membre, et laisse à la main un administrateur et une invitation", () => {
     // Given une personne membre d'une organisation, administratrice d'une autre, invitée par
-    // adresse dans une troisième, et absente d'une quatrième
+    // adresse dans une troisième, par login dans une quatrième, et absente d'une cinquième
     const sujet: Extract<SubjectRef, { kind: "person" }> = {
       kind: "person",
       username: "camille.rivet",
@@ -818,9 +818,21 @@ describe("le départ sur GitHub", () => {
           resourceExternalId: "troisieme",
           role: "invite:direct_member",
         },
+        {
+          identityExternalId: "invite-77",
+          identityHandle: "camille-rivet",
+          resourceExternalId: "quatrieme",
+          role: "invite:direct_member",
+        },
       ],
     };
-    const organisations = ["incubateur-ademe", "autre-incubateur", "troisieme", "quatrieme"];
+    const organisations = [
+      "incubateur-ademe",
+      "autre-incubateur",
+      "troisieme",
+      "quatrieme",
+      "cinquieme",
+    ];
 
     // When le départ se planifie avec un jeton d'écriture
     const etapes = planifierRetraitGithub(organisations, sujet, true);
@@ -830,8 +842,9 @@ describe("le départ sur GitHub", () => {
       "incubateur-ademe",
       "autre-incubateur",
       "troisieme",
+      "quatrieme",
     ]);
-    const [membre, administratrice, invitation] = etapes;
+    const [membre, administratrice, invitation, invitationParLogin] = etapes;
 
     // Then le membre part seul, et l'étape nomme le compte qu'elle vise
     expect(membre?.tier).toBe("auto");
@@ -841,13 +854,20 @@ describe("le départ sur GitHub", () => {
     );
     expect(membre?.idempotencyKey).toBe("github:incubateur-ademe:revoke:camille.rivet");
 
-    // Then l'administratrice et l'invitation par adresse restent à la main, chacune avec sa
-    // raison
+    // Then l'administratrice et les deux invitations restent à la main, chacune avec sa
+    // raison, et le critère nomme ce qu'on cherche dans la liste, pas l'identifiant beta.gouv
     expect(administratrice?.tier).toBe("manual");
     expect(administratrice?.manual?.runbook).toContain("Un administrateur");
+    expect(administratrice?.manual?.doneWhen).toBe(
+      "camille-rivet n'apparaît plus dans les membres de autre-incubateur, ni dans les invitations en attente.",
+    );
     expect(invitation?.tier).toBe("manual");
-    expect(invitation?.manual?.runbook).toContain("invitation par adresse");
+    expect(invitation?.manual?.runbook).toContain("Une invitation en attente");
     expect(invitation?.label).toBe("Retirer camille.rivet de l'organisation troisieme");
+    expect(invitation?.manual?.doneWhen).toContain("camille@exemple.fr n'apparaît plus");
+    // Un login d'invitation peut changer de porteur avant l'exécution : rien ne part seul
+    expect(invitationParLogin?.tier).toBe("manual");
+    expect(invitationParLogin?.manual?.runbook).toContain("Une invitation en attente");
 
     // When le jeton d'écriture manque
     const sansJeton = planifierRetraitGithub(organisations, sujet, false);
@@ -877,6 +897,9 @@ describe("le départ sur GitHub", () => {
     expect(deuxComptes[0]?.label).toBe(
       "Retirer camille.rivet (comptes camille-rivet, camille-bis) de l'organisation incubateur-ademe",
     );
+    expect(deuxComptes[0]?.manual?.doneWhen).toContain(
+      "camille-rivet, camille-bis n'apparaissent plus",
+    );
 
     // Then le contrat déclare la voie automatique du retrait, et sa voie manuelle dessous
     expect(CONTRAT_GITHUB.capabilities.revoke?.map(({ tier }) => tier)).toEqual(["auto", "manual"]);
@@ -889,19 +912,57 @@ describe("le départ sur GitHub", () => {
       "/user/1": { statut: 200, corps: { login: RENOMMEE } },
       [ADHESION]: { statut: 200, corps: { state: "active", role: "member" } },
     });
+    const lecture = sondeParChemin({});
 
     // Then le précheck lit l'adhésion du login actuel, et le retrait est à faire
-    expect(await constaterRetrait(present.sonder, etape)).toEqual({ state: "READY" });
+    expect(await constaterRetrait(present.sonder, lecture.sonder, etape)).toEqual({
+      state: "READY",
+    });
     expect(present.chemins).toEqual(["/user/1", ADHESION]);
 
-    // Given le même membre parti entre-temps, ou dont le compte n'existe plus
+    // Given le même membre parti entre-temps, ce que le jeton de collecte confirme, ou dont le
+    // compte n'existe plus
     const parti = sondeParChemin({ "/user/1": { statut: 200, corps: { login: RENOMMEE } } });
     const supprime = sondeParChemin({});
 
     // Then l'étape se solde sans qu'un humain aille vérifier
-    expect(await constaterRetrait(parti.sonder, etape)).toEqual({ state: "ALREADY_ABSENT" });
-    expect(await constaterRetrait(supprime.sonder, etape)).toEqual({ state: "ALREADY_ABSENT" });
+    expect(await constaterRetrait(parti.sonder, lecture.sonder, etape)).toEqual({
+      state: "ALREADY_ABSENT",
+    });
+    expect(lecture.chemins).toEqual([`/orgs/incubateur-ademe/members/${RENOMMEE}`]);
+    expect(await constaterRetrait(supprime.sonder, lecture.sonder, etape)).toEqual({
+      state: "ALREADY_ABSENT",
+    });
     expect(supprime.chemins).toEqual(["/user/1"]);
+
+    // Given un jeton d'écriture qui ne voit pas l'organisation, quand celui de collecte y voit
+    // le membre
+    const encoreLa = sondeParChemin({
+      [`/orgs/incubateur-ademe/members/${RENOMMEE}`]: { statut: 204, corps: undefined },
+    });
+
+    // Then rien ne se solde, et le refus nomme le jeton à vérifier
+    await expect(constaterRetrait(parti.sonder, encoreLa.sonder, etape)).rejects.toThrow(
+      "Vérifiez que github-token-admin couvre incubateur-ademe",
+    );
+
+    // Given une invitation à la main, qu'aucun compte ne désigne
+    const [invitation] = planifierRetraitGithub(
+      ["incubateur-ademe"],
+      {
+        kind: "person",
+        username: "camille.rivet",
+        acces: [{ ...siege("incubateur-ademe"), identityExternalId: "invite-77" }],
+      },
+      true,
+    );
+    const muette = sondeParChemin({});
+
+    // Then le précheck ne lit rien et laisse la main décider
+    expect(await constaterRetrait(muette.sonder, muette.sonder, invitation as PlannedStep)).toEqual(
+      { state: "READY" },
+    );
+    expect(muette.chemins).toEqual([]);
 
     // Given le même membre promu administrateur depuis le plan
     const promu = sondeParChemin({
@@ -910,7 +971,7 @@ describe("le départ sur GitHub", () => {
     });
 
     // Then le précheck refuse, et rien ne part sans qu'un humain le revoie
-    expect(await constaterRetrait(promu.sonder, etape)).toMatchObject({
+    expect(await constaterRetrait(promu.sonder, lecture.sonder, etape)).toMatchObject({
       state: "STALE",
       actual: { role: "admin" },
     });
@@ -922,7 +983,7 @@ describe("le départ sur GitHub", () => {
     });
 
     // Then rien n'est décidé
-    await expect(constaterRetrait(panne.sonder, etape)).rejects.toThrow("502");
+    await expect(constaterRetrait(panne.sonder, lecture.sonder, etape)).rejects.toThrow("502");
   });
 
   it("ne part jamais en simulation, et dit ce que GitHub a répondu quand elle part", async () => {

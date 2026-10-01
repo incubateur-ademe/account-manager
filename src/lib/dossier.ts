@@ -10,8 +10,8 @@ import type {
   RunContext,
 } from "@/core/connector";
 import {
+  accesNonToleres,
   type CompteCouvrable,
-  type Derogation,
   systemesEntierementToleres,
 } from "@/core/derogation";
 import {
@@ -267,6 +267,15 @@ export async function calculerPlan(
   }
   const engages = new Set(parSysteme.keys());
 
+  // Le sens n'est testé que pour épargner une requête : une arrivée ne lit aucun compte,
+  // donc elle n'a rien à écarter même si on la laissait passer ici.
+  const derogations =
+    sens === "OFFBOARDING"
+      ? (await derogationsApplicables(tolerancesAu ?? maintenant)).applicables
+      : [];
+  const tolerances = systemesEntierementToleres(constates.comptes, derogations);
+  const accesVises = accesNonToleres(constates.accesParSysteme, derogations, tolerances);
+
   const ctx: RunContext = {
     runId: randomUUID(),
     now: maintenant,
@@ -297,8 +306,8 @@ export async function calculerPlan(
             kind: "person",
             username,
             ...(adresse === undefined ? {} : { email: adresse }),
-            ...(constates.accesParSysteme.has(connecteur.contract.key)
-              ? { acces: constates.accesParSysteme.get(connecteur.contract.key) }
+            ...(accesVises.has(connecteur.contract.key)
+              ? { acces: accesVises.get(connecteur.contract.key) }
               : {}),
             ...(parSysteme.has(connecteur.contract.key)
               ? { engagements: parSysteme.get(connecteur.contract.key) }
@@ -328,17 +337,6 @@ export async function calculerPlan(
   // libellé exact du geste supprimé, là où un système absent du calcul ne laisserait
   // qu'un trou. Une étape déclarée n'est jamais atteinte, sa clé de système valant la
   // constante des modèles et non celle d'un connecteur.
-  //
-  // Le sens n'est testé que pour épargner une requête : une arrivée ne lit aucun compte,
-  // donc elle n'a rien à écarter même si on la laissait passer ici.
-  const tolerances =
-    sens === "OFFBOARDING"
-      ? systemesEntierementToleres(
-          constates.comptes,
-          (await derogationsApplicables(tolerancesAu ?? maintenant)).applicables,
-        )
-      : new Map<string, Derogation>();
-
   const retenues: EtapeAssemblee[] = [];
   const tolerees: EtapeEcartee[] = [];
   for (const assemblee of assemblage.etapes) {

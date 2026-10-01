@@ -1067,8 +1067,9 @@ l'offboarding complet au lieu de partiel.
 
 `github` vise `auto` : c'est le seul dont le fournisseur sait émettre un credential
 nativement restreint à une organisation, sans proxy. C'est aussi l'accès le plus critique
-du parc. Une seule réserve, au retrait : un administrateur de l'organisation se retire à la
-main, comme la propriété d'une application chez Scalingo.
+du parc. Au retrait, restent à la main un administrateur de l'organisation, comme la
+propriété d'une application chez Scalingo, plusieurs comptes de la personne dans une même
+organisation, une invitation en attente et une appartenance à une équipe seule.
 
 `scalingo` n'a pas d'organisation à viser : l'API v1 n'en expose aucune, et la gestion
 des utilisateurs y reste au niveau de l'application. Les collaborations restent donc au

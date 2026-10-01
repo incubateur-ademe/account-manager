@@ -5,6 +5,7 @@ import type {
   CollectResult,
   Connector,
   ConnectorContract,
+  ObservedAccess,
   ObservedDetail,
   ObservedGrant,
   ObservedIdentity,
@@ -853,6 +854,9 @@ export async function executerOctroi(
 
 const ACTION_RETRAIT = "retirer-de-l-organisation";
 
+/** L'identifiant d'un compte. Une invitation porte le sien, qui n'en désigne aucun. */
+const COMPTE = /^\d+$/u;
+
 type Personne = Extract<SubjectRef, { kind: "person" }>;
 
 /** Le rôle qu'une adhésion ou une invitation donne, dans le vocabulaire des adhésions. */
@@ -864,9 +868,10 @@ function roleDuSiege(role: string): string {
  * Les étapes qu'un départ demande sur GitHub, une par organisation où un accès est
  * constaté, décidées sans rien lire.
  *
- * Le retrait part seul pour un membre ou un invité dont le login est connu. Il reste à la
- * main pour un administrateur, comme la propriété d'une application chez Scalingo, et pour
- * une invitation par adresse, qu'aucun login ne désigne.
+ * Le retrait part seul pour un membre dont le compte est relevé. Il reste à la main pour un
+ * administrateur, comme la propriété d'une application chez Scalingo, et pour une
+ * invitation en attente, qu'aucun identifiant de compte ne désigne : son login peut changer
+ * de porteur avant l'exécution.
  */
 export function planifierRetraitGithub(
   organisations: readonly string[],
@@ -878,10 +883,10 @@ export function planifierRetraitGithub(
 
   return organisations.flatMap((organisation): PlannedStep[] => {
     const sieges = acces.filter(({ resourceExternalId }) => resourceExternalId === organisation);
-    const dansUneEquipe = acces.some(({ resourceExternalId }) =>
+    const equipes = acces.filter(({ resourceExternalId }) =>
       resourceExternalId?.startsWith(`${organisation}#`),
     );
-    if (sieges.length === 0 && !dansUneEquipe) {
+    if (sieges.length === 0 && equipes.length === 0) {
       return [];
     }
 
@@ -891,10 +896,12 @@ export function planifierRetraitGithub(
     const siege = plusieurs ? undefined : sieges[0];
     const role = siege ? roleDuSiege(siege.role) : null;
     const parAdresse = siege?.identityExternalId.startsWith("email:") ?? false;
+    const invitation = siege !== undefined && !COMPTE.test(siege.identityExternalId);
     const compte = siege && !parAdresse ? (siege.identityHandle ?? null) : null;
-    const comptes = sieges.map(
-      ({ identityHandle, identityExternalId }) => identityHandle ?? identityExternalId,
-    );
+    const nom = ({ identityHandle, identityExternalId }: ObservedAccess) =>
+      identityHandle ?? identityExternalId;
+    const comptes = sieges.map(nom);
+    const nommes = [...new Set((sieges.length > 0 ? sieges : equipes).map(nom))];
 
     const raison = plusieurs
       ? ` Plusieurs comptes de la personne siègent dans l'organisation (${comptes.join(", ")}). Chacun se retire à la main.`
@@ -904,8 +911,8 @@ export function planifierRetraitGithub(
           ? " Un administrateur de l'organisation se retire à la main."
           : role !== "member"
             ? ` Le rôle ${role} se retire à la main.`
-            : compte === null
-              ? " Une invitation par adresse s'annule à la main, dans les invitations en attente."
+            : invitation
+              ? " Une invitation en attente s'annule à la main, dans les invitations en attente."
               : !ecriturePossible
                 ? ` Aucune voie automatique n'est praticable, il manque : ${CREDENTIAL_ADMIN}.`
                 : null;
@@ -935,7 +942,7 @@ export function planifierRetraitGithub(
                 title: `Retirer ${username} de ${organisation}`,
                 runbook: `${RUNBOOK}${raison}`,
                 deeplink: `https://github.com/orgs/${organisation}/people`,
-                doneWhen: `${username} n'apparaît plus dans les membres de ${organisation}, ni dans les invitations en attente.`,
+                doneWhen: `${nommes.join(", ")} ${nommes.length > 1 ? "n'apparaissent" : "n'apparaît"} plus dans les membres de ${organisation}, ni dans les invitations en attente.`,
               },
             }),
       },
@@ -962,7 +969,8 @@ function cibleDeRetrait(step: PlannedStep): CibleDeRetrait | null {
     typeof compte !== "string" ||
     typeof identifiant !== "string" ||
     typeof role !== "string" ||
-    [organisation, compte, identifiant, role].some((valeur) => valeur.length === 0)
+    [organisation, compte, role].some((valeur) => valeur.length === 0) ||
+    !COMPTE.test(identifiant)
   ) {
     return null;
   }
@@ -971,18 +979,13 @@ function cibleDeRetrait(step: PlannedStep): CibleDeRetrait | null {
 }
 
 /**
- * Le login du compte visé, relu par son identifiant numérique quand l'étape en porte un.
+ * Le login du compte visé, relu par son identifiant numérique.
  *
  * Un login se renomme. Lu tel qu'il était à la collecte, un compte renommé depuis passerait
  * pour absent de l'organisation, et l'étape se solderait sur quelqu'un qui en est toujours
- * membre. Une invitation par login n'a pas encore de compte à relire, et garde le sien.
- * `null` dit que le compte n'existe plus.
+ * membre. `null` dit que le compte n'existe plus.
  */
 async function loginActuel(sonder: Sonde, cible: CibleDeRetrait): Promise<string | null> {
-  if (!/^\d+$/u.test(cible.identifiant)) {
-    return cible.compte;
-  }
-
   const { statut, corps } = await sonder(`/user/${cible.identifiant}`);
   if (statut === 404) {
     return null;
@@ -1007,11 +1010,19 @@ async function loginActuel(sonder: Sonde, cible: CibleDeRetrait): Promise<string
  *
  * Un rôle qui a changé depuis le plan vaut écart : un membre promu administrateur entre la
  * confirmation et l'exécution ne se retire pas sans qu'un humain le revoie.
+ *
+ * Un 404 sur l'adhésion se confirme par le jeton de collecte avant de solder l'étape :
+ * GitHub le rend aussi pour une organisation hors du périmètre du jeton d'écriture, et
+ * l'étape se solderait sur quelqu'un qui en est toujours membre.
  */
-export async function constaterRetrait(sonder: Sonde, step: PlannedStep): Promise<PrecheckResult> {
+export async function constaterRetrait(
+  sonder: Sonde,
+  sonderEnLecture: Sonde,
+  step: PlannedStep,
+): Promise<PrecheckResult> {
   const cible = cibleDeRetrait(step);
 
-  // Une invitation par adresse n'a pas de login à lire : la main qui la coche décidera.
+  // Une invitation n'a pas de compte à relire : la main qui l'annule décidera.
   if (!cible) {
     return { state: "READY" };
   }
@@ -1026,7 +1037,7 @@ export async function constaterRetrait(sonder: Sonde, step: PlannedStep): Promis
   );
 
   if (statut === 404) {
-    return { state: "ALREADY_ABSENT" };
+    return absenceConfirmee(sonderEnLecture, cible.organisation, login);
   }
   if (statut !== 200) {
     throw new GithubError(
@@ -1045,6 +1056,24 @@ export async function constaterRetrait(sonder: Sonde, step: PlannedStep): Promis
     expected: { etat: "active ou pending", role: cible.role },
     actual: { etat: lue.etat, role: lue.role },
   };
+}
+
+async function absenceConfirmee(
+  sonderEnLecture: Sonde,
+  organisation: string,
+  login: string,
+): Promise<PrecheckResult> {
+  const chemin = `/orgs/${encodeURIComponent(organisation)}/members/${encodeURIComponent(login)}`;
+  const { statut } = await sonderEnLecture(chemin);
+  if (statut === 404) {
+    return { state: "ALREADY_ABSENT" };
+  }
+  throw new GithubError(
+    chemin,
+    statut === 204
+      ? `le jeton de collecte voit ${login} membre de ${organisation}, et ${CREDENTIAL_ADMIN} ne voit pas son adhésion. Vérifiez que ${CREDENTIAL_ADMIN} couvre ${organisation}.`
+      : `${statut} : l'absence de ${login} n'a pas pu être confirmée, rien n'est décidé dessus`,
+  );
 }
 
 /** Ce qu'une suppression d'adhésion devient. Déjà absent est un succès, et le cas nominal. */
@@ -1097,7 +1126,7 @@ export async function executerRetrait(
   if (cible?.role !== "member") {
     return {
       state: "FAILED",
-      error: `Cette étape ne vise pas un membre désigné par son login. Elle est à faire à la main. ${RUNBOOK}`,
+      error: `Cette étape ne vise pas un membre désigné par son compte. Elle est à faire à la main. ${RUNBOOK}`,
       retryable: false,
     };
   }
@@ -1181,6 +1210,8 @@ function analyser(texte: string): unknown {
  */
 const sonder: Sonde = (chemin) =>
   appeler("GET", chemin, env.GITHUB_ADMIN_TOKEN ?? env.GITHUB_TOKEN);
+
+const sonderEnLecture: Sonde = (chemin) => appeler("GET", chemin, env.GITHUB_TOKEN);
 
 const ecrire: Ecriture = (chemin, corps) => appeler("PUT", chemin, env.GITHUB_ADMIN_TOKEN, corps);
 
@@ -1316,7 +1347,7 @@ export function creerGithub(lireConfig: () => ConfigGithub): Connector {
 
     precheck: (step) =>
       step.action === ACTION_RETRAIT
-        ? constaterRetrait(sonder, step)
+        ? constaterRetrait(sonder, sonderEnLecture, step)
         : constaterAppartenance(sonder, step),
 
     execute: (step, ctx) =>

@@ -1454,7 +1454,7 @@ describe("la répartition des rôles, au moment de figer les étapes", () => {
 });
 
 describe("une tolérance écarte du plan le système qu'elle couvre entièrement", () => {
-  it("ne retire rien tant qu'un compte coupable reste découvert, puis retire le système en le disant", async () => {
+  it("épargne le compte toléré seul, puis retire le système en le disant", async () => {
     // Given quelqu'un qui tient deux comptes sur GitHub et un sur Notion,
     base.identites.push(
       identite({ provider: "github", externalId: "cpt-1" }),
@@ -1466,10 +1466,13 @@ describe("une tolérance écarte du plan le système qu'elle couvre entièrement
     base.derogations.push(toleree({ targetId: "github:cpt-1" }));
     const partiel = await calculerPlan("OFFBOARDING", PERSONNE, USERNAME, MAINTENANT);
 
-    // Then le plan ne perd rien : l'étape de révocation coupe la personne sur tout le
-    // système d'un seul geste, et la retirer épargnerait le compte que personne n'a admis,
+    // Then le plan garde ses étapes, qui ne visent plus que le compte que personne n'a admis :
+    // le connecteur ne reçoit pas les accès du compte toléré, et ne le retire donc pas,
     expect(partiel.etapes).toHaveLength(3);
     expect(partiel.ecartees.filter((ecart) => ecart.raison === "tolere")).toEqual([]);
+    const github = partiel.etapes.filter(({ etape }) => etape.systemKey === "github");
+    expect(github.map(({ etape }) => etape.params["identifiant"])).toEqual(["cpt-2", "cpt-2"]);
+    expect(github.every(({ etape }) => !etape.label.includes("comptes"))).toBe(true);
 
     // When son second compte GitHub l'est aussi,
     base.derogations.push(toleree({ targetId: "github:cpt-2", reason: "repris par l'équipe" }));
