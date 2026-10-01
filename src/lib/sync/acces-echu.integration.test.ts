@@ -76,6 +76,7 @@ async function octroyer(
     terme: Date | null;
     engagementKey?: string;
     deja?: boolean;
+    executeLe?: Date;
     geste?: { systemKey: string; action: string; label: string; params: object };
   },
 ): Promise<void> {
@@ -103,7 +104,7 @@ async function octroyer(
           ordre: 1,
           // Un accès déjà là se solde au précheck, sans date d'exécution
           state: champs.deja ? "ALREADY_PRESENT" : "SUCCEEDED",
-          executedAt: champs.deja ? null : champs.accordeLe,
+          executedAt: champs.deja ? null : (champs.executeLe ?? champs.accordeLe),
           grantExpiresAt: champs.terme,
           ...(champs.engagementKey === undefined ? {} : { engagementKey: champs.engagementKey }),
         },
@@ -250,7 +251,11 @@ describe("un accès gardé au-delà de son terme", () => {
       (await precisionsDesAccesEchus([constat?.dedupKey ?? ""])).get(constat?.dedupKey ?? ""),
     ).toContain("dans alpha");
 
-    // When alpha est renommée côté Scalingo, la collecte réécrivant son libellé
+    // When alpha est renommée côté Scalingo, la collecte réécrivant son libellé, et qu'un
+    // projet, qui ne porte aucun accès, garde l'ancien nom
+    await prisma.resource.create({
+      data: { provider: "scalingo", externalId: "prj-alpha", label: "alpha, osc-fr1" },
+    });
     await prisma.resource.update({
       where: { id: alpha?.id ?? "" },
       data: { label: "alpha-v2, osc-fr1" },
@@ -327,6 +332,28 @@ describe("un accès gardé au-delà de son terme", () => {
 
     // Then l'accès est tenu, et le constat se lève
     await collecter(new Date("2026-09-11T09:00:00Z"));
+    expect(await echus()).toEqual([expect.objectContaining({ closedAt: null })]);
+  });
+
+  it("désigne le dernier octroi par sa confirmation, qu'il ait été exécuté ou soldé au précheck", async () => {
+    // Given un octroi sans terme confirmé le 1er mars et exécuté le 6, puis un octroi à terme
+    // confirmé le 5 mars, que son précheck solde plus tard, l'accès étant déjà là
+    const { personId } = await semer();
+    await octroyer(personId, {
+      id: "pla-sans-terme",
+      accordeLe: new Date("2026-03-01"),
+      executeLe: new Date("2026-03-06"),
+      terme: null,
+    });
+    await octroyer(personId, {
+      id: "pla-a-terme",
+      accordeLe: new Date("2026-03-05"),
+      terme: TERME,
+      deja: true,
+    });
+
+    // Then le dernier décidé est l'octroi à terme, et son terme passé lève le constat
+    await collecter(MAINTENANT);
     expect(await echus()).toEqual([expect.objectContaining({ closedAt: null })]);
   });
 });

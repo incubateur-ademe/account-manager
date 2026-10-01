@@ -597,7 +597,6 @@ async function accesAccordes(): Promise<AccesAccorde[]> {
       action: true,
       params: true,
       riskLevel: true,
-      executedAt: true,
       grantExpiresAt: true,
       plan: {
         select: {
@@ -659,9 +658,10 @@ async function accesAccordes(): Promise<AccesAccorde[]> {
         username: personne.username,
         role,
         ressource: octroi === undefined ? null : JSON.stringify(octroi.ressource),
-        // Un octroi soldé au précheck, l'accès étant déjà là, ne porte aucune date
-        // d'exécution : il a été décidé à la confirmation de son plan.
-        accordeLe: etape.executedAt ?? etape.plan.confirmedAt ?? etape.plan.createdAt,
+        // Une seule horloge pour désigner le dernier octroi, celle de la décision : un octroi
+        // soldé au précheck ne porte aucune date d'exécution, et comparer celle d'un autre
+        // à sa confirmation départagerait deux plans selon l'ordre de leurs lancements.
+        accordeLe: etape.plan.confirmedAt ?? etape.plan.createdAt,
         termeLe: etape.grantExpiresAt,
         risque: etape.riskLevel,
         encoreTenu:
@@ -678,8 +678,10 @@ async function ressourcesConnues(
   if (systemes.size === 0) {
     return new Map();
   }
+  // Celles qui portent un accès, et elles seules : un projet Scalingo se libelle comme une
+  // application, et ne porte jamais d'accès.
   const lues = await prisma.resource.findMany({
-    where: { provider: { in: [...systemes] } },
+    where: { provider: { in: [...systemes] }, grants: { some: {} } },
     select: { provider: true, externalId: true, label: true },
   });
   const parSysteme = new Map<string, { externalId: string; label: string }[]>();
