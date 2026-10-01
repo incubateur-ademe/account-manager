@@ -9,9 +9,10 @@ import { Select } from "@codegouvfr/react-dsfr/Select";
 import { useActionState } from "react";
 
 import { REVUE_PAR_DEFAUT } from "@/core/compte-de-service";
+import { useListesApresEnvoi } from "@/ui/formulaire";
 import { useCleDOuverture, useFermetureApresSucces } from "@/ui/modale";
 
-import { declarerUnCompteDeService, type EtatDeclaration } from "./actions";
+import { declarerUnCompteDeService } from "./actions";
 
 /**
  * Le propriétaire et la revue sont exigés au même titre que le nom. Ce sont eux, et non
@@ -37,10 +38,28 @@ function FormulaireDeclaration({
 }: {
   systemes: readonly { key: string; label: string }[];
 }) {
-  const [etat, declarer, pending] = useActionState<EtatDeclaration, FormData>(
-    declarerUnCompteDeService,
-    null,
-  );
+  // Un refus rend la main sur un formulaire que React remet à zéro : la saisie se repose
+  // en valeurs par défaut, que la remise à zéro restaure, sans quoi tout serait à retaper.
+  const [etat, declarer, pending] = useActionState<
+    { erreur: string; saisie: Record<string, string> } | null,
+    FormData
+  >(async (precedent, formData) => {
+    const rendu = await declarerUnCompteDeService(
+      precedent === null ? null : { erreur: precedent.erreur },
+      formData,
+    );
+    return rendu === null
+      ? null
+      : {
+          ...rendu,
+          saisie: Object.fromEntries(
+            [...formData].map(([cle, valeur]) => [cle, String(valeur)] as const),
+          ),
+        };
+  }, null);
+  const saisie = etat?.saisie ?? {};
+  // Une liste non contrôlée ne relit sa valeur par défaut qu'au montage.
+  const envoi = useListesApresEnvoi(pending);
 
   useFermetureApresSucces(pending, etat?.erreur, modale.close);
 
@@ -50,9 +69,14 @@ function FormulaireDeclaration({
           d'être le bon, et un compte rangé sous lui par défaut se retrouverait sur la
           fiche d'un système qu'il ne sert pas. */}
       <Select
+        key={`provider-${envoi}`}
         label="Système"
         hint="Celui sur lequel le compte existe"
-        nativeSelectProps={{ name: "provider", required: true, defaultValue: "" }}
+        nativeSelectProps={{
+          name: "provider",
+          required: true,
+          defaultValue: saisie["provider"] ?? "",
+        }}
       >
         <option value="" disabled>
           Choisir un système
@@ -66,18 +90,25 @@ function FormulaireDeclaration({
       <Input
         label="Clé"
         hintText="L'identifiant du compte sur le système, tel qu'il s'y écrit"
-        nativeInputProps={{ name: "key", required: true }}
+        nativeInputProps={{ name: "key", required: true, defaultValue: saisie["key"] }}
       />
-      <Input label="Libellé" nativeInputProps={{ name: "label", required: true }} />
+      <Input
+        label="Libellé"
+        nativeInputProps={{ name: "label", required: true, defaultValue: saisie["label"] }}
+      />
       <Input
         label="Objet"
         hintText="Ce que ce compte fait, en une phrase"
-        nativeInputProps={{ name: "purpose", required: true }}
+        nativeInputProps={{ name: "purpose", required: true, defaultValue: saisie["purpose"] }}
       />
       <Input
         label="Propriétaire"
         hintText="Username beta.gouv de qui en répond"
-        nativeInputProps={{ name: "ownerUsername", required: true }}
+        nativeInputProps={{
+          name: "ownerUsername",
+          required: true,
+          defaultValue: saisie["ownerUsername"],
+        }}
       />
       <Input
         label="Revue tous les"
@@ -85,7 +116,7 @@ function FormulaireDeclaration({
         nativeInputProps={{
           name: "reviewEveryDays",
           type: "number",
-          defaultValue: REVUE_PAR_DEFAUT,
+          defaultValue: saisie["reviewEveryDays"] ?? REVUE_PAR_DEFAUT,
           min: 1,
         }}
       />
@@ -96,7 +127,7 @@ function FormulaireDeclaration({
       <Input
         label="Terme"
         hintText="Facultatif. Pour un jeton émis, la date à laquelle il meurt de lui-même, et la seule reprise qui existe."
-        nativeInputProps={{ name: "expiresAt", type: "date" }}
+        nativeInputProps={{ name: "expiresAt", type: "date", defaultValue: saisie["expiresAt"] }}
       />
 
       {/* Au formulaire et non à un champ : une clé déjà prise ou un libellé manquant ne

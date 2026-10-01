@@ -15,8 +15,9 @@ import { useEffect, useRef, useState } from "react";
  * Ce compteur change à la fin de chaque envoi. Le rendu que ce changement provoque suffit
  * aujourd'hui, React réappliquant la valeur d'une liste contrôlée à chaque mise à jour.
  * Posé en `key` sur la liste, il la remonte en plus, ce qui tiendrait encore si elle était
- * un jour mémoïsée et qu'aucun rendu ne l'atteignait. Le remède vit ici plutôt que dans
- * chaque écran : quatre formulaires du dépôt portent une liste.
+ * un jour mémoïsée et qu'aucun rendu ne l'atteignait. Une liste non contrôlée, elle, ne
+ * relit sa valeur par défaut qu'au montage, et la clé est alors ce qui la rétablit. Le
+ * remède vit ici plutôt que dans chaque écran.
  */
 export function useListesApresEnvoi(pending: boolean): number {
   const [envois, setEnvois] = useState(0);

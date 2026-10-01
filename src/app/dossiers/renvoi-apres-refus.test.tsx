@@ -11,8 +11,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * rendu qui la rétablit, corriger sa saisie et renvoyer expédierait la première option.
  * Sur un pointage, c'est déclarer « fait » ce qui a échoué.
  *
- * Une histoire par formulaire qui porte une liste, hors de l'éditeur de modèle qui a la
- * sienne : chacun appelle `useListesApresEnvoi` de son côté, et un seul oubli suffit.
+ * Une histoire par formulaire qui porte une liste, hors de l'éditeur de modèle et de la
+ * déclaration d'un compte de service, qui ont les leurs : chacun appelle
+ * `useListesApresEnvoi` de son côté, et un seul oubli suffit. Deux refus de suite, parce
+ * qu'on corrige puis qu'on renvoie : un rétablissement qui ne jouerait qu'une fois laisserait
+ * le second envoi repartir sur la première option.
  */
 
 const { refus } = vi.hoisted(() => ({
@@ -78,6 +81,19 @@ describe("une liste déroulante après un refus", () => {
         pointage: "echec",
       });
     });
+
+    // When elle corrige sa raison et renvoie, et que le serveur refuse encore
+    await utilisateur.clear(screen.getByLabelText("Raison"));
+    await utilisateur.type(screen.getByLabelText("Raison"), "La console refuse toujours");
+    await utilisateur.click(screen.getByRole("button", { name: "Enregistrer" }));
+    await vi.waitFor(() => expect(vi.mocked(pointerEtape)).toHaveBeenCalledTimes(2));
+
+    // Then la liste renvoie encore l'échec
+    await vi.waitFor(() => {
+      expect(aEnvoyer(screen.getByLabelText("Ce qui a été fait"))).toMatchObject({
+        pointage: "echec",
+      });
+    });
   });
 
   it("renvoie le refus d'une déclaration, et non son acceptation", async () => {
@@ -96,13 +112,20 @@ describe("une liste déroulante après un refus", () => {
       await screen.findByText("Une déclaration ne se valide pas par son auteur."),
     ).toBeDefined();
 
-    // Then la liste renvoie le refus
-    expect(vi.mocked(validerEtape)).toHaveBeenCalledTimes(1);
-    await vi.waitFor(() => {
-      expect(aEnvoyer(screen.getByLabelText("Ce que vaut cette déclaration"))).toMatchObject({
-        verdict: "refuser",
+    // Then la liste renvoie le refus, et encore après un second refus du serveur
+    for (const envois of [1, 2]) {
+      await vi.waitFor(() => expect(vi.mocked(validerEtape)).toHaveBeenCalledTimes(envois));
+      await vi.waitFor(() => {
+        expect(aEnvoyer(screen.getByLabelText("Ce que vaut cette déclaration"))).toMatchObject({
+          verdict: "refuser",
+        });
       });
-    });
+      if (envois === 1) {
+        await utilisateur.clear(screen.getByLabelText("Motif du refus"));
+        await utilisateur.type(screen.getByLabelText("Motif du refus"), "Le badge manque encore");
+        await utilisateur.click(screen.getByRole("button", { name: "Enregistrer cet avis" }));
+      }
+    }
   });
 
   it("renvoie le profil choisi à l'ouverture d'une arrivée, et non l'arrivée sans profil", async () => {
@@ -127,12 +150,17 @@ describe("une liste déroulante après un refus", () => {
       await screen.findByText("Un dossier d'arrivée est déjà ouvert sur cette personne."),
     ).toBeDefined();
 
-    // Then la liste renvoie le profil
-    expect(vi.mocked(ouvrirArrivee)).toHaveBeenCalledTimes(1);
-    await vi.waitFor(() => {
-      expect(aEnvoyer(screen.getByLabelText(/Profil appliqué/u))).toMatchObject({
-        profil: "developpeur",
+    // Then la liste renvoie le profil, et encore après un second refus du serveur
+    for (const envois of [1, 2]) {
+      await vi.waitFor(() => expect(vi.mocked(ouvrirArrivee)).toHaveBeenCalledTimes(envois));
+      await vi.waitFor(() => {
+        expect(aEnvoyer(screen.getByLabelText(/Profil appliqué/u))).toMatchObject({
+          profil: "developpeur",
+        });
       });
-    });
+      if (envois === 1) {
+        await utilisateur.click(screen.getByRole("button", { name: "Ouvrir le dossier" }));
+      }
+    }
   });
 });

@@ -765,6 +765,10 @@ auteur, et la réconciliation ne rouvre plus ce constat tant que la situation du
 Le verrou se lève dès qu'elle cesse d'être constatée, sans quoi un épisode ultérieur
 ne serait plus jamais signalé et le silence ressemblerait à une absence d'écart.
 
+Aucun constat ne se ferme selon le métier de la personne. L'outil ne tient aucune donnée
+de métier (§3.2), et le cas d'une personne qui suit des startups sans y travailler se règle
+par la liste transverse ou par cette clôture.
+
 `SCOPE_EXIT`, gravité haute : quelqu'un que plus aucune source ne réclame. C'est le
 constat le plus important, parce que rien d'autre ne le signalerait.
 
@@ -1094,9 +1098,12 @@ Graph, le compte de service et le certificat. L'application appellera cette briq
 sans jamais détenir les credentials Microsoft. teams-auto lui expose, sous
 `/account-manager`, le relevé de l'équipe (`/snapshot`), l'octroi et le retrait (`PUT` et
 `DELETE` sur `/grants/{identité}/{ressource}`) et l'historique des retraits (`/removals`).
-L'annuaire reste hors de sa portée : retirer un invité de l'équipe ne supprime pas son
-compte `.ext@ademe.fr`, que teams-auto signale sans jamais l'effacer. Ce compte sera donc
-une étape manuelle du plan de départ, adossée à `/removals`.
+Une adresse en `@ademe.fr`, `.ext@ademe.fr` compris, entre dans l'équipe comme membre.
+Toute autre adresse y est invitée, ce qui crée un compte invité dans l'annuaire. teams-auto
+ne supprime jamais rien de l'annuaire. Retirer quelqu'un de l'équipe laisse son compte en
+place, et seuls les invités retirés sont signalés aux responsables techniques. La
+suppression d'un compte, `.ext@ademe.fr` ou invité, sera donc une étape manuelle du plan
+de départ.
 
 ### 5.9 Premiers connecteurs implémentés
 
