@@ -43,7 +43,7 @@ function ValeurARecopier({ intitule, valeur }: { intitule: string; valeur: strin
  * jour ne vient d'aucun gestionnaire React, et l'ordonnanceur la poserait sinon dans une
  * tâche que rien ne borne.
  */
-function Remise({ remise, titre }: { remise: RemiseDeCredential; titre: "h3" | "h4" }) {
+function Remise({ remise, titre }: { remise: RemiseDeCredential; titre: "h2" | "h3" | "h4" }) {
   const [caduque, setCaduque] = useState(false);
 
   useEffect(() => {
@@ -123,7 +123,7 @@ export function Remises({
   titre,
 }: {
   remises: readonly RemiseDeCredential[];
-  titre: "h3" | "h4";
+  titre: "h2" | "h3" | "h4";
 }) {
   return (
     <>

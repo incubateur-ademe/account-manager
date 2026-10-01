@@ -42,6 +42,7 @@ import { type EtapeFigee, EtapeOperateur } from "./EtapeOperateur";
 import { echeancesDuPlan, Lancement } from "./Lancement";
 import { type DroitAffiche, Participations } from "./Participations";
 import { BoutonAnnuler, BoutonClore, BoutonConfirmer, BoutonRecalculer } from "./Pointage";
+import { PorteurDeRemises } from "./PorteurDeRemises";
 import { tiersDuJour, voieLisible, voiesDuJour } from "./voie";
 
 export const dynamic = "force-dynamic";
@@ -748,16 +749,18 @@ export default async function DossierPage({
         </>
       )}
 
-      {plan && masse ? (
-        <Lancement
-          planId={plan.id}
-          masse={masse}
-          simulation={simulation}
-          echeances={echeances}
-          niveau={2}
-          priorite="primary"
-        />
-      ) : null}
+      <PorteurDeRemises titre="h2">
+        {plan && masse ? (
+          <Lancement
+            planId={plan.id}
+            masse={masse}
+            simulation={simulation}
+            echeances={echeances}
+            niveau={2}
+            priorite="primary"
+          />
+        ) : null}
+      </PorteurDeRemises>
 
       {actuel && actuel.ecartees.length > 0 ? (
         <section className={fr.cx("fr-mt-4w")}>

@@ -6,6 +6,7 @@ import { Breadcrumb } from "@codegouvfr/react-dsfr/Breadcrumb";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { PorteurDeRemises } from "@/app/dossiers/[id]/PorteurDeRemises";
 import { connecteur } from "@/connectors";
 import {
   estPhaseTerminale,
@@ -526,25 +527,27 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
         inconnues={inconnues}
       />
 
-      {geste ? (
-        <SectionGeste
-          geste={geste}
-          nomDuSysteme={connecteur(geste.systeme)?.contract.label ?? geste.systeme}
-          declarant={declarant}
-          valideur={valideur}
-        />
-      ) : null}
+      <PorteurDeRemises titre="h2">
+        {geste ? (
+          <SectionGeste
+            geste={geste}
+            nomDuSysteme={connecteur(geste.systeme)?.contract.label ?? geste.systeme}
+            declarant={declarant}
+            valideur={valideur}
+          />
+        ) : null}
 
-      {confirmes.enCours.map((enCours) => (
-        <SectionGesteEnCours
-          key={enCours.planId}
-          geste={enCours}
-          nomDuSysteme={connecteur(enCours.systeme)?.contract.label ?? enCours.systeme}
-          declarant={declarant}
-          valideur={valideur}
-          simulation={!env.ACTIONS_ENABLED}
-        />
-      ))}
+        {confirmes.enCours.map((enCours) => (
+          <SectionGesteEnCours
+            key={enCours.planId}
+            geste={enCours}
+            nomDuSysteme={connecteur(enCours.systeme)?.contract.label ?? enCours.systeme}
+            declarant={declarant}
+            valideur={valideur}
+            simulation={!env.ACTIONS_ENABLED}
+          />
+        ))}
+      </PorteurDeRemises>
 
       <SectionComptesExternes comptes={comptes} systemesCollectes={systemesCollectes} />
 

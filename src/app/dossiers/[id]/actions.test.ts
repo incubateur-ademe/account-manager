@@ -2743,9 +2743,9 @@ describe("lancer l'exécution d'un plan, et ce que l'opérateur emporte avec lui
     // When on relance le geste
     await lancerExecution(null, formulaire({ planId: geste.id }));
 
-    // Then rien ne se rafraîchit : l'écran rendu solderait le geste et démonterait le
-    // bouton qui porte la clé, seule copie au monde
-    expect(base.revalidations).toEqual([]);
+    // Then la fiche se rafraîchit quand même : la clé vit dans le porteur de la page, que
+    // le rafraîchissement ne démonte pas
+    expect(base.revalidations).toEqual([`/personnes/${USERNAME}`]);
 
     // Given une session sans qualité d'opérateur
     base.lancements.length = 0;

@@ -34,6 +34,7 @@ const { confirmerPlan, lancerExecution, pointerEtape } = await import(
 );
 const { SectionGeste } = await import("./SectionGeste");
 const { GestesSoldes, SectionGesteEnCours } = await import("./SectionGestesConfirmes");
+const { PorteurDeRemises } = await import("@/app/dossiers/[id]/PorteurDeRemises");
 
 afterEach(cleanup);
 
@@ -225,8 +226,8 @@ describe("le geste confirmé sur la fiche de la personne", () => {
     expect(pointe).toMatchObject({ etapeId: "etape-1", pointage: "fait" });
   });
 
-  it("garde la clé remise sous les yeux, et ne laisse pas un second envoi l'effacer", async () => {
-    // Given un geste dont le lancement émet un jeton,
+  it("garde la clé remise quand un rafraîchissement retire le geste qui l'a émise", async () => {
+    // Given un geste dont le lancement émet un jeton, sous le porteur de la fiche,
     vi.mocked(lancerExecution).mockResolvedValueOnce({
       execution: {
         simulation: false,
@@ -242,17 +243,34 @@ describe("le geste confirmé sur la fiche de la personne", () => {
         ],
       },
     });
-    monterEnCours();
+    const fiche = (avecLeGeste: boolean) => (
+      <PorteurDeRemises titre="h2">
+        {avecLeGeste ? (
+          <SectionGesteEnCours
+            geste={enCours()}
+            nomDuSysteme="Scalingo"
+            declarant={{ role: "OPERATOR", operateur: true }}
+            valideur={{ username: "operatrice.exemple", role: "OPERATOR" }}
+            simulation
+          />
+        ) : null}
+      </PorteurDeRemises>
+    );
+    const { rerender } = render(fiche(true));
 
     // When on lance,
     await userEvent.setup().click(screen.getByRole("button", { name: "Lancer la simulation" }));
 
-    // Then la clé se lit, et le bouton se ferme : un second envoi remplacerait l'état qui la
-    // porte, et elle ne se relit nulle part.
+    // Then la clé se lit,
     expect(await screen.findByText("cle_inventee_pour_ce_test", { exact: false })).toBeDefined();
-    expect(
-      (screen.getByRole("button", { name: "Lancer la simulation" }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+
+    // When un rafraîchissement range le geste soldé hors des gestes en cours, ce que fait
+    // n'importe quelle action de la fiche,
+    rerender(fiche(false));
+
+    // Then la clé reste lisible : elle ne vivait pas dans le bouton qui vient de partir.
+    expect(screen.queryByRole("button", { name: "Lancer la simulation" })).toBeNull();
+    expect(screen.getByText("cle_inventee_pour_ce_test", { exact: false })).toBeDefined();
   });
 
   it("remplace le lancement par son refus, et garde l'étape à écarter avec sa raison", async () => {

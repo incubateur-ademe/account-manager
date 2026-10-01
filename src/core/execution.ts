@@ -41,8 +41,22 @@ export function peutExecuter(etat: EtatPlan): Verdict {
 export const ISSUE_DOSSIER =
   "Cochez à la main ce qui a été fait, clôturez ce dossier, et rouvrez-en un pour repartir d'un plan à jour.";
 
-export const REFUS_SANS_CONFIRMATION =
-  "Ce plan ne porte pas l'instant de sa confirmation. Recalculez-le, puis confirmez-le.";
+const NE_SE_RECALCULE_PLUS = "Un plan confirmé ne se recalcule plus.";
+
+export const CONFIRMATION_ABSENTE = "Ce plan ne porte pas l'instant de sa confirmation.";
+
+/** Un plan confirmé ne se recalcule pas plus qu'un autre quand l'instant manque. */
+export function refusSansConfirmation(issue: string): string {
+  return `${CONFIRMATION_ABSENTE} ${NE_SE_RECALCULE_PLUS} ${issue}`;
+}
+
+/**
+ * Ce qu'un écran dit d'un plan confirmé que le lancement refuserait, avant tout lancement.
+ * Le refus du lancement ajoute ce qui n'a pas été fait, qui n'a de sens qu'après un clic.
+ */
+export function annonceDeRefus(constat: string, issue: string): string {
+  return `${constat} ${NE_SE_RECALCULE_PLUS} ${issue}`;
+}
 
 export const ISSUE_GESTE =
   "Cochez à la main ce qui a été fait, puis reposez ce geste pour repartir d'un plan à jour.";
@@ -59,11 +73,16 @@ export const ISSUE_GESTE =
  * ouvrirait donc des accès dont le terme a été fixé sur une situation révolue.
  */
 export function refusDePeremption(expiresAt: Date, maintenant: Date, issue: string): string | null {
-  if (!plusValableApres(expiresAt, maintenant)) {
-    return null;
-  }
+  const constat = peremptionConstatee(expiresAt, maintenant);
+  return constat === null
+    ? null
+    : `${constat} Rien n'a été ni lu ni écrit. ${NE_SE_RECALCULE_PLUS} ${issue}`;
+}
 
-  return `Ce plan valait jusqu'au ${jourDeParis(expiresAt)}. Rien n'a été ni lu ni écrit. Un plan confirmé ne se recalcule plus. ${issue}`;
+export function peremptionConstatee(expiresAt: Date, maintenant: Date): string | null {
+  return plusValableApres(expiresAt, maintenant)
+    ? `Ce plan valait jusqu'au ${jourDeParis(expiresAt)}.`
+    : null;
 }
 
 /**
@@ -91,7 +110,19 @@ export function refusDEcart(
     return null;
   }
 
-  return `Ce plan ne décrit plus ce qui a été approuvé. Rien n'a été exécuté, et un plan confirmé ne se recalcule plus. ${issue}`;
+  return `${ECART} Rien n'a été exécuté, et un plan confirmé ne se recalcule plus. ${issue}`;
+}
+
+const ECART = "Ce plan ne décrit plus ce qui a été approuvé.";
+
+export function ecartConstate(
+  confirmedDigest: string | null,
+  empreinteActuelle: string,
+): string | null {
+  if (confirmedDigest === null) {
+    return "Ce plan ne porte aucune empreinte confirmée.";
+  }
+  return confirmedDigest === empreinteActuelle ? null : ECART;
 }
 
 // ---------------------------------------------------------------------------

@@ -23,6 +23,7 @@ import {
   recalculerPlan,
   validerEtape,
 } from "./actions";
+import { useLancementPorte } from "./PorteurDeRemises";
 import { Remises } from "./Remises";
 import { compteRendu, LIBELLE_LANCEMENT, LIBELLE_PASSAGE_INCOMPLET } from "./redaction-execution";
 
@@ -380,14 +381,15 @@ export function BoutonExecuter({
   priorite: "primary" | "secondary";
   titreDAlerte: "h3" | "h4";
 }) {
+  const porte = useLancementPorte();
   const [etat, formAction, pending] = useActionState<EtatAction | null, FormData>(
-    lancerExecution,
+    porte ?? lancerExecution,
     null,
   );
   const [confirmee, setConfirmee] = useState(false);
   const bloque = masse.depasse && !confirmee;
-  // Un second envoi remplacerait l'état qui porte la clé, et elle ne se relit nulle part.
-  const cleAffichee = (etat?.execution?.remises.length ?? 0) > 0;
+  // Sans porteur, la clé vit dans cet état, qu'un second envoi remplacerait.
+  const cleAffichee = porte === null && (etat?.execution?.remises.length ?? 0) > 0;
 
   return (
     <form action={formAction} className={fr.cx("fr-mt-2w")}>
@@ -441,7 +443,9 @@ export function BoutonExecuter({
               }
             />
           )}
-          <Remises remises={etat.execution.remises} titre={titreDAlerte} />
+          {porte === null ? (
+            <Remises remises={etat.execution.remises} titre={titreDAlerte} />
+          ) : null}
         </>
       ) : null}
 

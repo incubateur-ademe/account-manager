@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ISSUE_GESTE, REFUS_SANS_CONFIRMATION, refusDEcart } from "@/core/execution";
+import { annonceDeRefus, CONFIRMATION_ABSENTE, ISSUE_GESTE } from "@/core/execution";
 import { prisma } from "@/lib/db";
 import { calculerGeste, REFUS_DEPART_OUVERT } from "@/lib/geste";
 
@@ -203,12 +203,13 @@ describe("les gestes confirmés que la fiche lit", () => {
     // Then son étape dit que la voie du jour n'est plus celle qui a été figée,
     expect(fidele?.etapes[0]?.voie).toMatch(/aujourd'hui cette étape est à faire à la main/u);
 
-    // Then le geste déplacé porte mot pour mot le refus de l'exécution, sans masse, et
-    // reste pointable : écarter ses étapes est sa seule sortie,
+    // Then le geste déplacé dit ce qui ferait refuser son lancement, sans prétendre que rien
+    // n'a été tenté, sans masse, et reste pointable : écarter ses étapes est sa seule sortie,
     expect(deplace?.etat).toBe("PARTIALLY_EXECUTED");
     expect(deplace?.refus).toBe(
-      refusDEcart("digest-d-avant-la-collecte", actuel.empreinte, ISSUE_GESTE),
+      annonceDeRefus("Ce plan ne décrit plus ce qui a été approuvé.", ISSUE_GESTE),
     );
+    expect(deplace?.refus).not.toMatch(/Rien n'a été/u);
     expect(deplace?.masse).toBeNull();
     expect(deplace?.pointable).toBe(true);
 
@@ -260,7 +261,7 @@ describe("les gestes confirmés que la fiche lit", () => {
     // Then il vient en dernier, et oppose le refus que le lancement lui opposerait.
     const sansInstant = (await gestesConfirmes(personId, USERNAME, MAINTENANT)).enCours.at(-1);
     expect(sansInstant?.planId).toBe("pla-sans-instant");
-    expect(sansInstant?.refus).toBe(REFUS_SANS_CONFIRMATION);
+    expect(sansInstant?.refus).toBe(annonceDeRefus(CONFIRMATION_ABSENTE, ISSUE_GESTE));
     expect(sansInstant?.masse).toBeNull();
   });
 });

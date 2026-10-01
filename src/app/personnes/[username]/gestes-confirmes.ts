@@ -1,10 +1,11 @@
 import type { EtapeFigee } from "@/app/dossiers/[id]/EtapeOperateur";
 import { tiersDuJour, voieLisible, voiesDuJour } from "@/app/dossiers/[id]/voie";
 import {
+  annonceDeRefus,
+  CONFIRMATION_ABSENTE,
+  ecartConstate,
   ISSUE_GESTE,
-  REFUS_SANS_CONFIRMATION,
-  refusDEcart,
-  refusDePeremption,
+  peremptionConstatee,
 } from "@/core/execution";
 import { intentionDUnGeste } from "@/core/geste";
 import { type Masse, masseDuPlan } from "@/core/plan";
@@ -27,7 +28,7 @@ export interface GesteEnCours {
   etapes: readonly (EtapeFigee & { voie: string | null })[];
   confirmeLe: Date | null;
   confirmePar: string | null;
-  /** Le refus que l'exécution opposerait maintenant, mot pour mot, ou rien. */
+  /** Ce qui ferait refuser l'exécution maintenant, dit avant tout lancement, ou rien. */
   refus: string | null;
   /** Faux pendant un départ ouvert, où le pointage refuse comme l'exécution. */
   pointable: boolean;
@@ -57,7 +58,7 @@ const ACCES_DONNE: ReadonlySet<string> = new Set(["SUCCEEDED", "ALREADY_PRESENT"
  * Les gestes que la personne a reçus après leur confirmation, tels que sa fiche doit les
  * rendre.
  *
- * Le refus d'exécution se lit aux gardes mêmes d'`executerPlan`, dans son ordre, plutôt
+ * Le refus se lit sur les constats des gardes d'`executerPlan`, dans son ordre, plutôt
  * qu'il ne se rejoue : un bouton offert sur un plan que le lancement refuse ferait
  * cliquer sur un refus.
  */
@@ -113,13 +114,18 @@ export async function gestesConfirmes(
       ? await calculerGeste(intention.data, personId, username, maintenant)
       : null;
 
+    // Dans l'ordre des gardes d'`executerPlan`, la masse mise à part.
+    const constat =
+      peremptionConstatee(plan.expiresAt, maintenant) ??
+      (plan.confirmedAt === null ? CONFIRMATION_ABSENTE : null) ??
+      (actuel === null ? null : ecartConstate(plan.confirmedDigest, actuel.empreinte));
     const refus = depart
       ? REFUS_DEPART_OUVERT
-      : (refusDePeremption(plan.expiresAt, maintenant, ISSUE_GESTE) ??
-        (plan.confirmedAt === null ? REFUS_SANS_CONFIRMATION : null) ??
-        (actuel === null
+      : constat !== null
+        ? annonceDeRefus(constat, ISSUE_GESTE)
+        : actuel === null
           ? REFUS_INTENTION_ILLISIBLE
-          : refusDEcart(plan.confirmedDigest, actuel.empreinte, ISSUE_GESTE)));
+          : null;
 
     const voies = await voiesDuJour(plan.steps);
     const tiers = tiersDuJour(plan.id, actuel);
