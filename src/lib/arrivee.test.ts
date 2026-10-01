@@ -7,8 +7,10 @@ import { calculerPlan, enregistrerPlan, messageDeRefus, type PlanCalcule } from 
 
 interface IdentiteEnBase {
   provider: string;
+  externalId?: string;
   handle: string;
   matchMethod: string;
+  grants?: readonly { role: string; resource: { externalId: string; label: string } }[];
 }
 
 interface PlanEcrit {
@@ -427,7 +429,15 @@ describe("un doute d'identité ne prive pas d'un accès, et n'autorise jamais un
     // Given la même identité, mais rattachée par son login plutôt que par sa
     // ressemblance : seule la méthode de rapprochement change
     base.identites.length = 0;
-    base.identites.push({ provider: "github", handle: "cam-rvt", matchMethod: "GITHUB_LOGIN" });
+    base.identites.push({
+      provider: "github",
+      externalId: "4242",
+      handle: "cam-rvt",
+      matchMethod: "GITHUB_LOGIN",
+      // Un compte relevé porte toujours son adhésion : la collecte n'en connaît aucun
+      // autrement.
+      grants: [{ role: "member", resource: { externalId: ORGANISATION, label: "Organisation" } }],
+    });
 
     // Then l'arrivée vise enfin un compte, et par la voie automatique
     const sur = uneEtape(await arrivee(DEVELOPPEUSE), "github");
@@ -435,14 +445,21 @@ describe("un doute d'identité ne prive pas d'un accès, et n'autorise jamais un
     expect(sur.params["compte"]).toBe("cam-rvt");
     expect(sur.idempotencyKey).toBe(CLE_GITHUB);
 
-    // Then le départ produit enfin son retrait, sur le pivot d'identité et non sur le
-    // login : c'est la même donnée qui décide des deux, et un seul champ les sépare
+    // Then le départ produit enfin son retrait, sous une clé qui suit le pivot d'identité,
+    // et il vise le compte relevé : c'est la même donnée qui décide des deux
     const coupure = await depart();
     expect(coupure.systemes).toEqual(["github"]);
     const retrait = uneEtape(coupure, "github");
     expect(retrait.capability).toBe("revoke");
     expect(retrait.action).toBe("retirer-de-l-organisation");
-    expect(retrait.params).toEqual({ organisation: ORGANISATION, username: USERNAME });
+    expect(retrait.idempotencyKey).toBe(`github:${ORGANISATION}:revoke:${USERNAME}`);
+    expect(retrait.params).toEqual({
+      organisation: ORGANISATION,
+      username: USERNAME,
+      identifiant: "4242",
+      role: "member",
+    });
+    expect(retrait.label).toContain("(compte cam-rvt)");
     expect(coupure.nonConfirmes).toEqual([]);
   });
 });

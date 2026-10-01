@@ -516,6 +516,7 @@ ressource Coolify :
 | `OPERATORS` | usernames beta.gouv, séparés par des virgules |
 | `BREAK_GLASS_USERNAMES` | usernames de secours |
 | `GITHUB_TOKEN` | jeton fine-grained, organisation `incubateur-ademe`, lecture seule |
+| `GITHUB_ADMIN_TOKEN` | jeton fine-grained, mêmes organisations, écriture sur les membres, créé depuis un compte propriétaire |
 | `NOTION_SCIM_TOKEN` | jeton SCIM du workspace Notion, nominatif, sans portée restreinte |
 | `SCALINGO_API_TOKEN` | jeton d'API du compte propriétaire des applications, à portée compte entier |
 | `FGP_URL` | `https://<hôte-du-proxy>`, sans chemin ni jeton : la route d'émission n'en demande aucun |

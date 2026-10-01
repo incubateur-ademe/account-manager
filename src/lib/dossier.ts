@@ -11,8 +11,8 @@ import type {
 } from "@/core/connector";
 import {
   type CompteCouvrable,
-  type Derogation,
   systemesEntierementToleres,
+  toleranceDuCompteVise,
 } from "@/core/derogation";
 import {
   ETATS_VIVANTS,
@@ -96,6 +96,7 @@ async function systemesDeLaPersonne(personId: string): Promise<ComptesDuDepart> 
       select: {
         provider: true,
         externalId: true,
+        handle: true,
         matchMethod: true,
         // Les accès vivants seulement : un accès disparu dit qu'il n'y a plus rien à couper,
         // et proposer de le retirer enverrait quelqu'un chercher ce qui n'est plus là.
@@ -124,6 +125,7 @@ async function systemesDeLaPersonne(personId: string): Promise<ComptesDuDepart> 
     for (const acces of identite.grants) {
       vus.push({
         identityExternalId: identite.externalId,
+        identityHandle: identite.handle,
         resourceExternalId: acces.resource.externalId,
         resourceLabel: acces.resource.label,
         role: acces.role,
@@ -265,6 +267,14 @@ export async function calculerPlan(
   }
   const engages = new Set(parSysteme.keys());
 
+  // Le sens n'est testé que pour épargner une requête : une arrivée ne lit aucun compte,
+  // donc elle n'a rien à écarter même si on la laissait passer ici.
+  const derogations =
+    sens === "OFFBOARDING"
+      ? (await derogationsApplicables(tolerancesAu ?? maintenant)).applicables
+      : [];
+  const tolerances = systemesEntierementToleres(constates.comptes, derogations);
+
   const ctx: RunContext = {
     runId: randomUUID(),
     now: maintenant,
@@ -326,21 +336,12 @@ export async function calculerPlan(
   // libellé exact du geste supprimé, là où un système absent du calcul ne laisserait
   // qu'un trou. Une étape déclarée n'est jamais atteinte, sa clé de système valant la
   // constante des modèles et non celle d'un connecteur.
-  //
-  // Le sens n'est testé que pour épargner une requête : une arrivée ne lit aucun compte,
-  // donc elle n'a rien à écarter même si on la laissait passer ici.
-  const tolerances =
-    sens === "OFFBOARDING"
-      ? systemesEntierementToleres(
-          constates.comptes,
-          (await derogationsApplicables(tolerancesAu ?? maintenant)).applicables,
-        )
-      : new Map<string, Derogation>();
-
   const retenues: EtapeAssemblee[] = [];
   const tolerees: EtapeEcartee[] = [];
   for (const assemblee of assemblage.etapes) {
-    const couvrante = tolerances.get(assemblee.etape.systemKey);
+    const couvrante =
+      tolerances.get(assemblee.etape.systemKey) ??
+      toleranceDuCompteVise(assemblee.etape, derogations);
     if (couvrante === undefined) {
       // Renuméroté plutôt que conservé : le rang de lecture se dit strictement croissant
       // sur les étapes retenues, et un trou ferait mentir une liste numérotée.
