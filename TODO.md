@@ -35,7 +35,7 @@ elles, les plans de départ proposent des gestes absurdes sur ce qui n'est pas u
 La valeur de l'outil est proportionnelle au nombre de systèmes couverts, pas à la finesse avec
 laquelle on en traite un. Trois connecteurs existent, `github`, `notion` par SCIM et `scalingo`.
 Restent OVH (`email-list`) via fine-grained-proxy et Notion par jeton de session, dont
-`.env.example` porte déjà les variables, puis `vaultwarden`, `grafana`, `sentry` et `teams-o365`,
-au catalogue de `docs/architecture.md` §5.8. Un système entièrement manuel est un connecteur de
-plein droit, `probe` et `plan` étant les seules méthodes obligatoires du contrat : il suffit qu'il
-sache dire quoi faire à la main, avec le lien et le critère de complétion.
+`.env.example` porte déjà les variables, puis `notion-trombi`, `vaultwarden`, `grafana`, `sentry` et
+`teams-o365`, au catalogue de `docs/architecture.md` §5.8. Un système entièrement manuel est un
+connecteur de plein droit, `probe` et `plan` étant les seules méthodes obligatoires du contrat : il
+suffit qu'il sache dire quoi faire à la main, avec le lien et le critère de complétion.

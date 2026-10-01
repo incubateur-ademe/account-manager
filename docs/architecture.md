@@ -935,8 +935,8 @@ interface Connector {
 }
 ```
 
-`plan` est le seul obligatoire. C'est ce qui fait d'un système purement manuel un
-connecteur de plein droit : il ne sait ni lister ni exécuter, mais il sait dire qu'à
+`probe` et `plan` sont les seuls obligatoires. C'est ce qui fait d'un système purement
+manuel un connecteur de plein droit : il ne sait ni lister ni exécuter, mais il sait dire qu'à
 l'arrivée de quelqu'un il faut faire telle chose, avec le lien, le critère de
 complétion et, quand cocher ne dit pas ce qui a été fait, la valeur que le pointage
 réclame. Elle se fige avec la marche à suivre et reste hors de l'empreinte.
@@ -1092,9 +1092,10 @@ sans jamais détenir les credentials Microsoft.
 
 ### 5.9 Premiers connecteurs implémentés
 
-Trois connecteurs éprouvent le contrat, et chacun l'éprouve autrement : de part et
-d'autre de la ligne `auto` contre `manual` pour les deux premiers, sur ce que le contrat
-ne savait pas encore dire pour le troisième.
+Trois connecteurs sont implémentés, `github`, `notion` et `scalingo`. Ceux que décrit
+cette section éprouvent le contrat chacun autrement : de part et d'autre de la ligne
+`auto` contre `manual` pour `notion` et `notion-trombi`, sur ce que le contrat ne savait
+pas encore dire pour `scalingo`.
 
 **`notion`**, tier `auto` : membres du workspace par SCIM. Un siège attribué sans
 identité en face est un compte isolé. Son credential est **nominatif** : Notion révoque
@@ -1110,8 +1111,9 @@ lire ni les gérer, et Notion les compte à part des membres. Conséquence à te
 où se décide une coupure : une fiche sans compte Notion ne signifie pas sans accès à
 Notion.
 
-**`notion-trombi`**, tier `manual` : créer ou mettre à jour la page d'une personne
-dans le trombinoscope à l'arrivée, l'archiver au départ. Le choix est délibéré : c'est
+**`notion-trombi`**, tier `manual`, n'est pas implémenté. Il est prévu pour créer ou
+mettre à jour la page d'une personne dans le trombinoscope à l'arrivée, l'archiver au
+départ. Le choix est délibéré : c'est
 un octroi et non une révocation, il produit une tâche lisible plutôt qu'un appel
 d'API, et il porte sur une référence où archiver ne veut pas dire supprimer. Si le
 contrat ne sait pas exprimer ce cas aussi bien qu'une révocation SCIM, il est faux.

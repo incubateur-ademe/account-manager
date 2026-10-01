@@ -27,7 +27,7 @@ const coreSchema = z
 
     DATABASE_URL: z.string().min(1),
 
-    ESPACE_MEMBRE_URL: z.url().default("https://espace-membre.incubateur.net"),
+    ESPACE_MEMBRE_URL: z.url().default("https://espace-membre.beta.gouv.fr"),
     ESPACE_MEMBRE_API_KEY: z.string().min(1),
 
     /** Faux par défaut : toute exécution est une simulation tant que rien ne l'autorise explicitement. */

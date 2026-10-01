@@ -14,15 +14,19 @@ import { membreIncubateurSchema, membreSchema, startupSchema } from "@/lib/espac
  * n'est daté comme parti.
  *
  * Ce qu'elle ne voit pas est une valeur facultative qui cesse de remonter partout à la
- * fois, et une date qui change de format, que `jourParis` lit comme une absence. Tout le
- * monde deviendrait sans échéance, et plus personne n'expirerait, sur un run vert.
+ * fois, et une date qui change de format, que `jourParis` lit comme une absence ou comme
+ * une autre date. Tout le monde deviendrait sans échéance, ou en porterait une fausse, sur
+ * un run vert.
+ *
+ * Il refuse de suivre une redirection : la clé part dans un en-tête que fetch recopie, et
+ * une adresse qui redirige se corrige dans la configuration plutôt qu'elle ne se suit.
  *
  * Il lit `process.env` et jamais `env` : passer par le schéma exigerait une base de
  * données pour vérifier la forme d'une réponse distante.
  */
 const CLE = process.env["ESPACE_MEMBRE_API_KEY"];
 
-const ADRESSE = process.env["ESPACE_MEMBRE_URL"] || "https://espace-membre.incubateur.net";
+const ADRESSE = process.env["ESPACE_MEMBRE_URL"] || "https://espace-membre.beta.gouv.fr";
 
 /**
  * Le défaut de `scope.incubator` dans `src/core/policy.ts`. La politique réelle vit hors
@@ -48,8 +52,10 @@ async function lireJson(chemin: string): Promise<unknown> {
   return reponse.json();
 }
 
+/** Au format ISO, parce qu'un jour et un mois inversés se lisent encore comme une date. */
 function expectDateLisible(valeur: string | null | undefined, ou: string): void {
   if (valeur) {
+    expect(valeur, ou).toMatch(/^\d{4}-\d{2}-\d{2}/u);
     expect(jourParis(valeur), `${ou} : ${valeur}`).not.toBeNull();
   }
 }
@@ -143,11 +149,16 @@ describe.skipIf(!CLE)("la forme de ce que rend l'espace-membre n'a pas changé",
     // Pour une personne collectée, le login GitHub ne vient que de ce champ facultatif.
     // Renommé, plus aucun compte GitHub ne se rattacherait par son login.
     expect(membres.items.some((membre) => membre.github)).toBe(true);
+
+    // L'adresse principale est ce qui rattache un compte par son adresse exacte. Renommée,
+    // tous les comptes Notion partiraient dans la file des isolés.
+    expect(membres.items.some((membre) => membre.primary_email)).toBe(true);
   });
 
-  it("rend la fiche complète d'une personne rattachée par une équipe, et un 404 pour une inconnue", async () => {
-    // La liste scopée n'associe aucune mission à qui relève de l'incubateur par une équipe :
-    // sa fiche complète est la seule à porter son échéance.
+  it("rend la fiche complète d'une personne du périmètre, et un 404 pour une inconnue", async () => {
+    // La collecte ne demande que la fiche de qui relève de l'incubateur par une équipe, la
+    // liste scopée ne lui associant aucune mission. À défaut d'une telle personne, la forme
+    // de la fiche se vérifie sur la première venue.
     const cible =
       membres.items.find((membre) => membre.attachment !== "startups") ?? membres.items[0];
     if (cible === undefined) {
@@ -169,12 +180,14 @@ describe.skipIf(!CLE)("la forme de ce que rend l'espace-membre n'a pas changé",
   });
 
   it("refuse une clé qui n'est pas la bonne", async () => {
+    // Une redirection vers une page de connexion lève, ce que la collecte lit aussi comme
+    // une panne de la source.
     const reponse = await lire(
       `/api/protected/incubators/${INCUBATEUR}/members`,
       "cle-volontairement-fausse",
-    );
+    ).catch(() => null);
 
     // Ce qui compte est qu'une clé morte ne rende jamais un périmètre vide sous un succès.
-    expect(reponse.ok).toBe(false);
+    expect(reponse?.ok ?? false).toBe(false);
   });
 });
