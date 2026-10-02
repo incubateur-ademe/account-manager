@@ -60,7 +60,7 @@ async function rendreLaPolitique(): Promise<void> {
 }
 
 const USERNAME = "nour.exemple";
-/** Avant la confirmation : un plan rejoue les comptes constatés à son instant, et seulement eux. */
+/** Bien avant la confirmation, pour que rien de ce qui est semé ne tombe dans sa marge. */
 const RELEVES = new Date("2026-09-01T02:00:00Z");
 const CONFIRMATION = new Date("2026-09-10T09:00:00Z");
 const APRES = new Date("2026-09-12T09:00:00Z");
@@ -197,7 +197,13 @@ describe("un plan confirmé rejoue les comptes constatés à sa confirmation", (
       where: { externalId: "cpt-2" },
       data: { vanishedAt: APRES },
     });
-    const aujourdhui = await calculerPlan("OFFBOARDING", personId, USERNAME, APRES);
+    // Calculé au présent, au-delà de la marge d'un passage, le plan ne voit plus ce compte
+    const aujourdhui = await calculerPlan(
+      "OFFBOARDING",
+      personId,
+      USERNAME,
+      new Date(APRES.getTime() + 60 * 60_000),
+    );
     expect(aujourdhui.empreinte).not.toBe(approuvee);
 
     // Then le calcul rejoué à la confirmation voit les comptes d'alors, et l'exécution part
@@ -211,6 +217,32 @@ describe("un plan confirmé rejoue les comptes constatés à sa confirmation", (
       CONFIRMATION,
     );
     expect(gele.empreinte).toBe(approuvee);
+    const resultat = await executerPlan(planId, {
+      operateur: OPERATRICE,
+      masseConfirmee: true,
+      maintenant: APRES,
+    });
+    expect(resultat.refus).toBeUndefined();
+  });
+
+  it("garde un accès qu'un passage commencé avant la confirmation a daté avant elle", async () => {
+    // Given un départ confirmé sur les deux comptes, une collecte ayant démarré une minute
+    // plus tôt sans avoir encore écrit,
+    const { planId } = await confirmerUnDepart(personId);
+
+    // When elle écrit ensuite la disparition de l'un, datée de son propre départ,
+    const debutDuPassage = new Date(CONFIRMATION.getTime() - 60_000);
+    await prisma.accessGrant.updateMany({
+      where: { externalIdentity: { externalId: "cpt-2" } },
+      data: { vanishedAt: debutDuPassage },
+    });
+    await prisma.externalIdentity.updateMany({
+      where: { externalId: "cpt-2" },
+      data: { vanishedAt: debutDuPassage },
+    });
+
+    // Then le lancement part : la confirmation le voyait vivant, et la marge d'un passage
+    // le garde au calcul
     const resultat = await executerPlan(planId, {
       operateur: OPERATRICE,
       masseConfirmee: true,

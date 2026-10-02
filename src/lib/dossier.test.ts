@@ -804,6 +804,13 @@ describe("ce qu'un plan a le droit de viser, dans un sens comme dans l'autre", (
         matchMethod: "GITHUB_LOGIN",
         vanishedAt: new Date("2026-08-01"),
       }),
+      // Disparu il y a cinq minutes, dans la marge qu'un calcul garde à ce qu'un passage de
+      // collecte a pu dater avant de l'écrire : l'encart, lui, se lit au présent
+      identite({
+        provider: "github",
+        matchMethod: "HEURISTIC",
+        vanishedAt: new Date(MAINTENANT.getTime() - 5 * 60_000),
+      }),
     );
 
     // When on calcule le départ

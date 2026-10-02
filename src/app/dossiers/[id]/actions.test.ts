@@ -159,14 +159,9 @@ const base = vi.hoisted(() => ({
   }[],
   /** Les écrans que le passage tracé a demandé de rafraîchir, dans l'ordre. */
   revalidations: [] as string[],
-  collecteEnCours: null as { provider: string; depuis: Date } | null,
 }));
 
 vi.mock("@/connectors", () => ({ CONNECTEURS: base.connecteurs }));
-
-vi.mock("@/lib/sync/executer", () => ({
-  collecteEnCours: () => Promise.resolve(base.collecteEnCours),
-}));
 
 vi.mock("next/cache", () => ({
   revalidatePath: (chemin: string) => {
@@ -713,22 +708,11 @@ describe("le geste qui engage : confirmer un plan", () => {
     const empreinteApprouvee = plan.planDigest;
     expect(base.etapes).toHaveLength(1);
 
-    // When une collecte tourne au moment du clic
-    base.collecteEnCours = { provider: "github", depuis: new Date() };
-    const pendant = await confirmerPlan(null, formulaire({ planId: plan.id }));
-
-    // Then la confirmation attend sa fin : ses disparitions sont datées de son début, et le
-    // lancement prendrait pour disparu avant la confirmation ce qu'elle voyait encore
-    expect(pendant.erreur).toBe(
-      "Une collecte est en cours (github). Confirmez ce plan quand elle sera terminée.",
-    );
-    expect(plan.state).toBe("DRAFT");
-    base.collecteEnCours = null;
-
-    // When une collecte passe entre le calcul et le clic, et ne voit plus ce compte
+    // When une collecte passe entre le calcul et le clic, et ne voit plus ce compte depuis
+    // plus longtemps qu'un passage ne dure : une disparition plus récente est gardée
     const compte = base.identites[0];
     if (compte) {
-      compte.vanishedAt = new Date();
+      compte.vanishedAt = new Date(Date.now() - 2 * 60 * 60_000);
     }
     const dementi = await confirmerPlan(null, formulaire({ planId: plan.id }));
 

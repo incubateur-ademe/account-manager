@@ -8,6 +8,12 @@ import type {
 import type { IdKind, PersonSource, SyncStatus } from "@/generated/prisma/enums";
 
 /**
+ * Ce qu'un passage de collecte dure au plus. Au-delà, une trace restée ouverte est tenue pour
+ * morte, et un calcul de plan garde ce que le passage a pu dater avant de l'écrire.
+ */
+export const PASSAGE_MAX_MINUTES = 30;
+
+/**
  * Une collecte qui rapporte beaucoup moins que la précédente n'est pas distinguable
  * d'un départ collectif : les deux se ressemblent trait pour trait, seule l'ampleur
  * les sépare. Dans le doute, on refuse d'en tirer des disparitions, car dater une

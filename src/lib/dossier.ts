@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { CONNECTEURS } from "@/connectors";
+import { PASSAGE_MAX_MINUTES } from "@/core/collecte";
 import type {
   Connector,
   Intent,
@@ -89,9 +90,16 @@ interface ComptesDuDepart extends SystemesDuDepart {
   adresse?: string;
 }
 
-/** Vivant, ou disparu après cet instant. */
+/**
+ * Vivant, ou disparu après cet instant, moins la durée d'un passage de collecte.
+ *
+ * Une collecte date ses disparitions du début de son passage et les écrit plus tard : un
+ * accès qu'une confirmation voyait vivant peut se retrouver daté avant elle. La marge le
+ * garde, au calcul de la confirmation comme à celui du lancement, qui la prennent tous deux.
+ */
 function nonDisparuAvant(au: Date) {
-  return { OR: [{ vanishedAt: null }, { vanishedAt: { gt: au } }] };
+  const seuil = new Date(au.getTime() - PASSAGE_MAX_MINUTES * 60_000);
+  return { OR: [{ vanishedAt: null }, { vanishedAt: { gt: seuil } }] };
 }
 
 /**
@@ -107,6 +115,9 @@ function nonDisparuAvant(au: Date) {
  * Un accès disparu avant la confirmation, revu puis disparu de nouveau après elle, revient
  * au calcul, la collecte réutilisant sa ligne. Le plan est alors refusé, ce qui va dans le
  * sens sûr.
+ *
+ * Ce qui ne fait qu'informer, les comptes par ressemblance et les systèmes sans connecteur,
+ * se lit au présent : un encart qui renverrait vers un compte disparu n'aurait rien à faire.
  */
 async function systemesDeLaPersonne(personId: string, au: Date): Promise<ComptesDuDepart> {
   const [identites, fiche] = await Promise.all([
@@ -117,8 +128,7 @@ async function systemesDeLaPersonne(personId: string, au: Date): Promise<Comptes
         externalId: true,
         handle: true,
         matchMethod: true,
-        // Les accès vivants seulement : un accès disparu dit qu'il n'y a plus rien à couper,
-        // et proposer de le retirer enverrait quelqu'un chercher ce qui n'est plus là.
+        vanishedAt: true,
         grants: {
           where: nonDisparuAvant(au),
           select: { role: true, resource: { select: { externalId: true, label: true } } },
@@ -158,11 +168,15 @@ async function systemesDeLaPersonne(personId: string, au: Date): Promise<Comptes
   return {
     accesParSysteme,
     ...(adresse === undefined ? {} : { adresse }),
-    ...systemesDuDepart(
-      identites.map((identite) => ({
-        provider: identite.provider,
-        methode: identite.matchMethod,
-      })),
+    revocables: systemesDuDepart(
+      identites.map((identite) => ({ provider: identite.provider, methode: identite.matchMethod })),
+    ).revocables,
+    ...(({ observes, nonConfirmes }) => ({ observes, nonConfirmes }))(
+      systemesDuDepart(
+        identites
+          .filter((identite) => identite.vanishedAt === null)
+          .map((identite) => ({ provider: identite.provider, methode: identite.matchMethod })),
+      ),
     ),
     comptes: identites.map((identite) => ({
       provider: identite.provider,
