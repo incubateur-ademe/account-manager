@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import type { ConstatKind } from "@/core/constat";
 import { TOLERANCE_MAX_JOURS } from "@/core/derogation";
 import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
+import { precisionsDesAccesEchus } from "@/lib/acces-echus";
 import { profilsOfferts } from "@/lib/arrivee";
 import { prisma } from "@/lib/db";
 import { derogationsApplicables } from "@/lib/derogation";
@@ -104,6 +105,7 @@ export default async function ConstatsPage({
 
   // Les dates sont mises en forme ici : la même chaîne traverse jusqu'au client,
   // là où deux `Intl` de fuseaux différents feraient diverger le rendu.
+  const precisions = await precisionsDesAccesEchus(tries.map(({ dedupKey }) => dedupKey));
   const lignes: LigneConstat[] = tries.map((constat) => ({
     id: constat.id,
     dedupKey: constat.dedupKey,
@@ -119,6 +121,7 @@ export default async function ConstatsPage({
       ? { username: constat.person.username, fullname: constat.person.fullname }
       : null,
     compte: constat.externalIdentity,
+    precision: precisions.get(constat.dedupKey) ?? null,
   }));
 
   return (

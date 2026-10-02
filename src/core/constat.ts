@@ -9,7 +9,7 @@ import {
   type RattachementManuel,
   startupsEffectives,
 } from "./rattachement-startup";
-import { jourMetier } from "./statut";
+import { jourDeParis, jourMetier } from "./statut";
 
 export type ConstatKind =
   | "SCOPE_EXIT"
@@ -17,6 +17,7 @@ export type ConstatKind =
   | "INACTIVE_STARTUP"
   | "ORPHAN"
   | "UNREGISTERED"
+  | "EXPIRED_GRANT"
   | "OVERDUE_MANUAL_ACTION";
 
 export interface Constat {
@@ -56,15 +57,9 @@ export const SORTE_DE_CIBLE: Readonly<Record<FindingKind, Cible["type"] | null>>
   ORPHAN: "identite",
   UNREGISTERED: "identite",
   OVERDUE_MANUAL_ACTION: null,
-  // Les cinq que l'énumération déclare et qu'aucun code ne produit encore. Nulles plutôt
-  // qu'absentes : une ligne de base portant l'une d'elles ne se tolère pas, faute de
-  // savoir ce qu'elle viserait, et le jour où l'une se met à naître, c'est ici qu'on
-  // vient dire ce qu'elle laisse viser.
-  UNMATCHED_IDENTITY: null,
+  // Aucune, comme une parole démentie : ce constat porte sur un octroi et son terme, pas
+  // sur un compte qu'une tolérance pourrait taire.
   EXPIRED_GRANT: null,
-  DORMANT: null,
-  PRIVILEGE_DRIFT: null,
-  UNVERIFIABLE: null,
 };
 
 export interface PersonneConstatable {
@@ -329,6 +324,7 @@ export function typesReconcilies({
     "ORPHAN",
     "UNREGISTERED",
     "OVERDUE_MANUAL_ACTION",
+    "EXPIRED_GRANT",
   ];
 
   if (arriveesConcluantes) {
@@ -515,6 +511,102 @@ export function constatsDActionsDeclarees(actions: readonly ActionDeclaree[]): C
   }
 
   return constats;
+}
+
+export interface AccesAccorde {
+  etapeId: string;
+  /** L'étape d'octroi, telle que le plan la nommait. */
+  label: string;
+  systemKey: string;
+  username: string;
+  /** Le rôle accordé, quand l'étape en nomme un. */
+  role: string | null;
+  /** La ressource ouverte, quand le connecteur sait la nommer. */
+  ressource: string | null;
+  /**
+   * Les rôles relevés qui tiennent cet octroi, lui compris : ceux qui accordent au moins
+   * autant. Sans connecteur pour les dire, le rôle de l'étape seul.
+   */
+  tenants: readonly string[];
+  /** La décision : la confirmation du plan. */
+  accordeLe: Date;
+  /** Le terme décidé à l'octroi, ou rien pour un accès sans terme. */
+  termeLe: Date | null;
+  risque: RiskLevel;
+  /**
+   * Un compte vivant de la personne sur le système, au rôle accordé quand il est nommé, et
+   * sur la ressource ouverte quand elle l'est.
+   */
+  encoreTenu: boolean;
+  relueLe: Date | null;
+}
+
+/** L'étape d'octroi qu'un constat d'accès échu désigne, lue dans sa clé. */
+export function etapeDUnAccesEchu(dedupKey: string): string | null {
+  const [kind, , etapeId] = dedupKey.split(":");
+  return kind === "EXPIRED_GRANT" && etapeId ? etapeId : null;
+}
+
+/**
+ * Un accès accordé jusqu'à une date ne se reprend pas de lui-même : seul un jeton émis
+ * meurt à son terme, et il ne se constate dans aucun relevé. Hugo reçoit le profil
+ * d'administration pour cent quatre-vingts jours, le terme passe, il reste administrateur,
+ * et rien ne le disait.
+ *
+ * Un octroi échu se signale quand la personne tient encore au moins ce qu'il accordait, et
+ * qu'aucune décision au moins aussi récente sur la même ressource n'accorde au moins autant,
+ * encore en cours ou elle-même tenue au-delà de son terme. Un accès reconduit, à un rôle égal
+ * ou plus élevé, n'est donc pas échu, un octroi plus bas et plus récent ne couvre pas un accès
+ * plus élevé, et une suite de reconductions ne lève qu'un constat, sur la dernière. Deux octrois d'un même plan,
+ * décidés au même instant, se jugent de même, quel que soit l'ordre de lecture. Et comme pour
+ * une parole démentie, le constat attend d'avoir relu le système après le terme.
+ *
+ * La clé ne nomme que l'étape : elle survit ainsi au renommage d'une fiche comme à sa
+ * fusion, qui emportent le plan et son verrou de clôture avec elles.
+ */
+export function constatsDAccesEchus(acces: readonly AccesAccorde[], maintenant: Date): Constat[] {
+  const echu = (un: AccesAccorde) =>
+    un.termeLe !== null && jourMetier(maintenant) > jourMetier(un.termeLe);
+  const memeObjet = (a: AccesAccorde, b: AccesAccorde) =>
+    a.username === b.username && a.systemKey === b.systemKey && a.ressource === b.ressource;
+  // b accorde au moins autant que a quand tout rôle qui tient b tient aussi a.
+  const auMoinsAutant = (b: AccesAccorde, a: AccesAccorde) =>
+    b.tenants.every((role) => a.tenants.includes(role));
+
+  return acces.flatMap((un): Constat[] => {
+    const { termeLe } = un;
+    if (termeLe === null || !echu(un)) {
+      return [];
+    }
+    // Au jour, comme le terme : une relecture faite le jour même l'est pendant la couverture.
+    if (!un.encoreTenu || un.relueLe === null || jourMetier(un.relueLe) <= jourMetier(termeLe)) {
+      return [];
+    }
+    // Couvert par une décision au moins aussi récente qui accorde au moins autant, tant qu'elle
+    // court, ou échue si la personne la tient encore : c'est alors elle qui se signale.
+    const reconduit = acces.some(
+      (autre) =>
+        autre.etapeId !== un.etapeId &&
+        memeObjet(autre, un) &&
+        autre.accordeLe.getTime() >= un.accordeLe.getTime() &&
+        auMoinsAutant(autre, un) &&
+        (!echu(autre) || autre.encoreTenu),
+    );
+    if (reconduit) {
+      return [];
+    }
+
+    return [
+      {
+        kind: "EXPIRED_GRANT",
+        cible: null,
+        dedupKey: `EXPIRED_GRANT:${un.systemKey}:${un.etapeId}`,
+        severity: un.risque,
+        detail: `« ${un.label} » valait jusqu'au ${jourDeParis(termeLe)}, et l'accès est toujours constaté sur ${un.systemKey}`,
+        username: un.username,
+      },
+    ];
+  });
 }
 
 /**

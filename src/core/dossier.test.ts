@@ -316,11 +316,6 @@ describe("annulation d'un dossier de départ", () => {
       expect(peutAnnuler("CANDIDATE", remplace).possible).toBe(true);
       expect(planAAnnuler(remplace)).toBe(false);
     }
-
-    // `CONFIRMABLE` n'est écrit par personne aujourd'hui, et rien d'autre ne le
-    // couvrirait le jour où un plan naîtra en attente plutôt qu'en brouillon.
-    expect(peutAnnuler("CANDIDATE", "CONFIRMABLE").possible).toBe(true);
-    expect(planAAnnuler("CONFIRMABLE")).toBe(true);
   });
 
   it("range les cinq états de dossier en un seul endroit", () => {

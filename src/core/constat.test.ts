@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  type AccesAccorde,
+  constatsDAccesEchus,
   constatsDActionsDeclarees,
   constatsDe,
   constatsDIdentites,
+  etapeDUnAccesEchu,
   type PersonneConstatable,
   SORTE_DE_CIBLE,
   verrousDeCloture,
@@ -473,5 +476,198 @@ describe("chaque constat dit ce qu'une tolérance devrait viser", () => {
     ]) {
       expect([leve.kind, leve.cible?.type ?? null]).toEqual([leve.kind, SORTE_DE_CIBLE[leve.kind]]);
     }
+  });
+});
+
+describe("ce qu'un accès échu laisse voir", () => {
+  const TERME = new Date("2026-09-01T12:00:00Z");
+  const acces = (surcharge: Partial<AccesAccorde> = {}): AccesAccorde => ({
+    etapeId: "etape-1",
+    label: "Donner le rôle admin",
+    systemKey: "github",
+    username: "hugo.exemple",
+    role: "admin",
+    ressource: "incubateur-ademe",
+    tenants: ["admin"],
+    accordeLe: new Date("2026-03-05T09:00:00Z"),
+    termeLe: TERME,
+    risque: "HIGH",
+    encoreTenu: true,
+    relueLe: new Date("2026-09-10T02:00:00Z"),
+    ...surcharge,
+  });
+  const LENDEMAIN_DU_TERME = new Date("2026-09-02T09:00:00Z");
+  const APRES = new Date("2026-09-10T09:00:00Z");
+
+  it("ne se lève qu'après le jour du terme, sur un accès encore tenu, et relu depuis", () => {
+    // Then un accès tenu, relu après son terme, se signale
+    expect(constatsDAccesEchus([acces()], APRES)).toEqual([
+      expect.objectContaining({
+        kind: "EXPIRED_GRANT",
+        dedupKey: "EXPIRED_GRANT:github:etape-1",
+        severity: "HIGH",
+        username: "hugo.exemple",
+      }),
+    ]);
+
+    // Then le jour même du terme compte encore comme couvert, et une relecture faite ce
+    // jour-là ne dit rien de ce qui a suivi
+    expect(constatsDAccesEchus([acces()], new Date("2026-09-01T20:00:00Z"))).toEqual([]);
+    expect(
+      constatsDAccesEchus([acces({ relueLe: new Date("2026-09-01T20:00:00Z") })], APRES),
+    ).toEqual([]);
+
+    // Then il ne vise aucune cible, comme la table des sortes le dit : une tolérance posée
+    // sur la personne ne doit pas le taire
+    for (const leve of constatsDAccesEchus([acces()], APRES)) {
+      expect(leve.cible).toBeNull();
+      expect(SORTE_DE_CIBLE[leve.kind]).toBeNull();
+    }
+
+    // Then un système relu avant le terme n'a rien dit de ce qui a suivi
+    expect(
+      constatsDAccesEchus([acces({ relueLe: new Date("2026-08-30T02:00:00Z") })], APRES),
+    ).toEqual([]);
+    expect(constatsDAccesEchus([acces({ relueLe: null })], LENDEMAIN_DU_TERME)).toEqual([]);
+
+    // Then un accès qui n'est plus tenu, ou qui n'a pas de terme, ne dit rien
+    expect(constatsDAccesEchus([acces({ encoreTenu: false })], APRES)).toEqual([]);
+    expect(constatsDAccesEchus([acces({ termeLe: null })], APRES)).toEqual([]);
+
+    // Then seul le dernier octroi compte : reconduit avec un terme à venir, l'accès n'est
+    // pas échu, et l'ordre de lecture n'y change rien
+    const reconduit = acces({
+      etapeId: "etape-2",
+      accordeLe: new Date("2026-09-02T09:00:00Z"),
+      termeLe: new Date("2027-03-01T12:00:00Z"),
+    });
+    expect(constatsDAccesEchus([acces(), reconduit], APRES)).toEqual([]);
+    expect(constatsDAccesEchus([reconduit, acces()], APRES)).toEqual([]);
+
+    // Then deux rôles sur le même système se jugent chacun
+    expect(
+      constatsDAccesEchus(
+        [
+          acces(),
+          acces({
+            etapeId: "etape-3",
+            role: "member",
+            tenants: ["member", "admin"],
+            termeLe: null,
+          }),
+        ],
+        APRES,
+      ),
+    ).toHaveLength(1);
+
+    // Then un octroi plus récent sur une autre organisation, au même rôle, ne reconduit
+    // pas celui-ci : chaque ressource se juge à part
+    expect(
+      constatsDAccesEchus(
+        [acces(), acces({ etapeId: "etape-4", ressource: "betagouv", termeLe: null })],
+        APRES,
+      ).map(({ dedupKey }) => dedupKey),
+    ).toEqual(["EXPIRED_GRANT:github:etape-1"]);
+
+    // Then un octroi plus élevé et sans terme sur la même ressource reconduit celui qu'il
+    // contient : ce qui compte est la dernière décision prise sur cette ressource
+    expect(
+      constatsDAccesEchus(
+        [
+          acces({ role: "member", tenants: ["member", "admin"] }),
+          acces({
+            etapeId: "etape-5",
+            role: "admin",
+            accordeLe: new Date("2026-06-01T09:00:00Z"),
+            termeLe: null,
+          }),
+        ],
+        APRES,
+      ),
+    ).toEqual([]);
+
+    // Then un octroi plus bas et plus récent ne couvre pas un accès plus élevé échu. Un octroi
+    // plus élevé, échu et toujours tenu, couvre le plus bas et se signale seul : un accès, un
+    // constat. Dans un même plan, un octroi couvre l'autre s'il accorde au moins autant sans
+    // terme, quel que soit l'ordre
+    const plein = acces({ etapeId: "etape-plein", tenants: ["admin"] });
+    const basPlusRecent = acces({
+      etapeId: "etape-bas",
+      role: "member",
+      tenants: ["member", "admin"],
+      accordeLe: new Date("2026-06-01T09:00:00Z"),
+      termeLe: null,
+    });
+    expect(
+      constatsDAccesEchus([plein, basPlusRecent], APRES).map(({ dedupKey }) => dedupKey),
+    ).toEqual(["EXPIRED_GRANT:github:etape-plein"]);
+    const basEchu = acces({ etapeId: "etape-bas", role: "member", tenants: ["member", "admin"] });
+    const hautEchuPlusRecent = acces({
+      etapeId: "etape-haut",
+      accordeLe: new Date("2026-06-01T09:00:00Z"),
+      termeLe: new Date("2026-08-01T12:00:00Z"),
+    });
+    expect(
+      constatsDAccesEchus([basEchu, hautEchuPlusRecent], APRES).map(({ dedupKey }) => dedupKey),
+    ).toEqual(["EXPIRED_GRANT:github:etape-haut"]);
+    const membreATerme = acces({ role: "member", tenants: ["member", "admin"] });
+    const adminSansTerme = acces({ etapeId: "etape-meme-plan", termeLe: null });
+    expect(constatsDAccesEchus([membreATerme, adminSansTerme], APRES)).toEqual([]);
+    expect(constatsDAccesEchus([adminSansTerme, membreATerme], APRES)).toEqual([]);
+    const membreSansTerme = acces({
+      etapeId: "etape-meme-plan",
+      role: "member",
+      tenants: ["member", "admin"],
+      termeLe: null,
+    });
+    expect(
+      constatsDAccesEchus([acces(), membreSansTerme], APRES).map(({ dedupKey }) => dedupKey),
+    ).toEqual(["EXPIRED_GRANT:github:etape-1"]);
+
+    // Then une suite de reconductions à terme ne lève qu'un constat, sur la dernière, et sur
+    // son propre terme : une relecture faite pendant qu'elle couvrait ne dit rien
+    const premier = acces({ etapeId: "etape-A", termeLe: new Date("2026-06-01T12:00:00Z") });
+    const reconduction = acces({
+      etapeId: "etape-B",
+      accordeLe: new Date("2026-08-01T09:00:00Z"),
+      termeLe: new Date("2026-09-01T12:00:00Z"),
+    });
+    expect(
+      constatsDAccesEchus([premier, reconduction], APRES).map(({ dedupKey }) => dedupKey),
+    ).toEqual(["EXPIRED_GRANT:github:etape-B"]);
+    expect(
+      constatsDAccesEchus(
+        [premier, { ...reconduction, relueLe: new Date("2026-08-20T02:00:00Z") }],
+        APRES,
+      ),
+    ).toEqual([]);
+
+    // Then une reconduction plus courte au même rôle remplace la première : un seul constat,
+    // sur elle
+    const plusCourte = acces({
+      etapeId: "etape-courte",
+      accordeLe: new Date("2026-06-01T09:00:00Z"),
+      termeLe: new Date("2026-07-01T12:00:00Z"),
+    });
+    expect(
+      constatsDAccesEchus([acces(), plusCourte], APRES).map(({ dedupKey }) => dedupKey),
+    ).toEqual(["EXPIRED_GRANT:github:etape-courte"]);
+
+    // Then une décision plus large et échue que la personne ne tient plus ne couvre rien :
+    // rétrogradée, elle garde l'accès plus bas au-delà de tout terme, et lui se signale
+    const membre = acces({ etapeId: "etape-membre", role: "member", tenants: ["member", "admin"] });
+    const adminRetire = acces({
+      etapeId: "etape-admin",
+      accordeLe: new Date("2026-06-01T09:00:00Z"),
+      termeLe: new Date("2026-09-01T12:00:00Z"),
+      encoreTenu: false,
+    });
+    expect(
+      constatsDAccesEchus([membre, adminRetire], APRES).map(({ dedupKey }) => dedupKey),
+    ).toEqual(["EXPIRED_GRANT:github:etape-membre"]);
+
+    // Then la clé ne nomme que l'étape, qu'un renommage de fiche ne touche pas
+    expect(etapeDUnAccesEchu("EXPIRED_GRANT:github:etape-1")).toBe("etape-1");
+    expect(etapeDUnAccesEchu("OVERDUE_MANUAL_ACTION:github:hugo.exemple")).toBeNull();
   });
 });

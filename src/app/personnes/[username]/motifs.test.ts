@@ -125,6 +125,22 @@ describe("les gestes que porte le bloc d'action d'une fiche", () => {
     );
     expect(sansCompte[0]?.description).toBe(LIBELLE_CONSTAT.ORPHAN.action);
 
+    // Un accès échu ne désigne aucun compte : c'est l'étape d'octroi qu'il nomme
+    const echu = motifsDAction(
+      fiche({
+        ouverts: [
+          constat({
+            kind: "EXPIRED_GRANT",
+            severity: "HIGH",
+            precision: "Il s'agit de « Donner le rôle admin », accordé jusqu'au 1 septembre 2026.",
+          }),
+        ],
+      }),
+    );
+    expect(echu[0]?.description).toBe(
+      `${LIBELLE_CONSTAT.EXPIRED_GRANT.action} Il s'agit de « Donner le rôle admin », accordé jusqu'au 1 septembre 2026.`,
+    );
+
     expect(new Set(motifs.flatMap((motif) => nomsDesGestes(motif.gestes)))).toEqual(
       new Set(["clore"]),
     );

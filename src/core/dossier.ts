@@ -62,7 +62,6 @@ export interface DossierConcerne {
 
 export type EtatPlan =
   | "DRAFT"
-  | "CONFIRMABLE"
   | "EXECUTING"
   | "EXECUTED"
   | "PARTIALLY_EXECUTED"
@@ -543,7 +542,7 @@ export const ETATS_VIVANTS: readonly EtatDossier[] = (Object.keys(VIVANT) as Eta
  * écraser perdrait cette raison.
  */
 export function planAAnnuler(plan: EtatPlan | null): boolean {
-  return plan === "DRAFT" || plan === "CONFIRMABLE";
+  return plan === "DRAFT";
 }
 
 /**

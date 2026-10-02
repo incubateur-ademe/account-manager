@@ -34,6 +34,8 @@ export interface LigneConstat {
   ouvertLe: string;
   personne: { username: string; fullname: string } | null;
   compte: { provider: string; handle: string } | null;
+  /** Ce que le constat désigne quand ce n'est pas un compte, en une phrase. */
+  precision?: string | null;
 }
 
 const modale = createModal({ id: "clore-constat", isOpenedByDefault: false });
@@ -123,7 +125,7 @@ export function FileDesConstats({
                   <span className={fr.cx("fr-text--sm")}>
                     {ligne.compte
                       ? `${ligne.compte.provider} : ${ligne.compte.handle}`
-                      : (ligne.personne?.username ?? "")}
+                      : (ligne.precision ?? ligne.personne?.username ?? "")}
                   </span>
                 </span>
               ),
