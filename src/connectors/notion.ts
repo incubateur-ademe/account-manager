@@ -39,7 +39,7 @@ const RUNBOOK =
  * pour que la collecte reparte, et non comment relever des sièges à la main.
  */
 const RUNBOOK_LECTURE =
-  "Vérifier que le jeton SCIM répond encore. Un nouveau se génère depuis les paramètres de l'organisation, par un propriétaire. La collecte se relance par « pnpm sync ».";
+  "Vérifier que le jeton SCIM répond encore. Un nouveau se génère depuis les paramètres de l'organisation, avec le compte de service propriétaire. La collecte se relance par « pnpm sync ».";
 
 const RUNBOOK_OCTROI =
   "Inviter la personne dans Paramètres > Membres du workspace Notion, sur son adresse beta.gouv, puis vérifier qu'elle figure dans la liste des membres. Une invitation non acceptée y apparaît déjà, et vaut accès accordé.";
@@ -365,7 +365,7 @@ const ATTENDUS: readonly { quoi: string; present: (membre: UtilisateurScim) => b
   {
     quoi: `le rôle d'espace sous ${EXTENSION}`,
     // Une extension renommée est indistinguable d'une extension absente : tout le
-    // monde deviendrait « membre » sur une collecte parfaitement verte.
+    // monde aurait un rôle « non lu » sur une collecte parfaitement verte.
     present: (membre) => membre[EXTENSION]?.role != null,
   },
 ];
@@ -594,9 +594,8 @@ function membreLu(corps: unknown): { actif: boolean | null; role: string | null 
   if (!lu.success) {
     return { actif: null, role: null };
   }
-  // Sans défaut ici, contrairement à la collecte : ne pas savoir n'autorise pas à retirer, et
-  // un propriétaire relu sans son extension passerait pour un membre ordinaire.
-  return { actif: lu.data.active ?? null, role: lu.data[EXTENSION]?.role ?? null };
+  // Comme la collecte : un rôle absent se dit non lu, et ne vaut jamais un membre ordinaire.
+  return { actif: lu.data.active ?? null, role: lu.data[EXTENSION]?.role ?? ROLE_NON_LU };
 }
 
 /**

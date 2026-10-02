@@ -1122,8 +1122,8 @@ personne qui l'a créé comme à son simple changement de rôle. N'importe quel 
 de workspace peut encore le retirer. Il porte l'écriture sur le workspace entier et ne se
 cloisonne pas côté fournisseur ; il reste en `env`, l'application le détenant déjà pour
 sa collecte. Le retrait part seul pour un membre ordinaire, `member` ou
-`restricted_member`. Restent à la main un propriétaire, un administrateur des membres et
-plusieurs comptes de la même personne. Le compte de service qui a créé le jeton est le
+`restricted_member`. Restent à la main un propriétaire, un administrateur des membres, un
+membre dont SCIM ne rend pas le rôle et plusieurs comptes de la même personne. Le compte de service qui a créé le jeton est le
 seul que l'API ne sait pas retirer, trou permanent du chemin de révocation.
 
 La gestion des invités reste une fonctionnalité propre, portée depuis

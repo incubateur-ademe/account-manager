@@ -267,7 +267,7 @@ describe("ce que le connecteur Notion remonte du workspace", () => {
     expect(perdue.findings[0]?.message).toContain("une adresse exploitable");
 
     // Une extension renommée est indistinguable d'une extension absente : sans ce
-    // diagnostic, tout le monde deviendrait « membre » sur une collecte verte.
+    // diagnostic, tout le monde aurait un rôle « non lu » sur une collecte verte.
     const sansRole = copie(PAGES[0]) as {
       totalResults: number;
       Resources: Record<string, unknown>[];
@@ -506,7 +506,22 @@ describe("le départ sur Notion", () => {
         reponse(200, { id: "scim-1", userName: "camille@exemple.fr", active: true }),
         etape,
       ),
-    ).toMatchObject({ state: "STALE", actual: { role: null } });
+    ).toMatchObject({ state: "STALE", actual: { role: "non lu" } });
+
+    // Un membre au rôle non lu, à la main, se relit inchangé : rien n'a bougé
+    const [nonLu] = planifierRetraitNotion(
+      { kind: "person", username: "camille.rivet", acces: [siege("non lu")] },
+      true,
+    );
+    if (!nonLu) {
+      throw new Error("le retrait n'a produit aucune étape");
+    }
+    expect(
+      await constaterRetrait(
+        reponse(200, { id: "scim-1", userName: "camille@exemple.fr", active: true }),
+        nonLu,
+      ),
+    ).toEqual({ state: "READY" });
     await expect(constaterRetrait(reponse(502), etape)).rejects.toThrow("502");
 
     // Sans jeton, rien ne se lit, et l'étape manuelle reste à la main sans échouer
