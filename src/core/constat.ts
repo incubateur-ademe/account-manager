@@ -554,11 +554,12 @@ export function etapeDUnAccesEchu(dedupKey: string): string | null {
  * et rien ne le disait.
  *
  * Un octroi échu se signale quand la personne tient encore au moins ce qu'il accordait, et
- * qu'aucune décision plus récente sur la même ressource n'accorde au moins autant sans terme
- * passé. Un accès reconduit, à un rôle égal ou plus élevé, n'est donc pas échu, et un octroi
- * plus bas et plus récent ne couvre pas un accès plus élevé. Deux octrois d'un même plan,
- * décidés au même instant, se jugent de même, quel que soit l'ordre de lecture. Et comme pour une parole
- * démentie, le constat attend d'avoir relu le système après le terme.
+ * qu'aucune décision au moins aussi récente sur la même ressource n'accorde au moins autant
+ * jusqu'à au moins aussi tard. Un accès reconduit, à un rôle égal ou plus élevé, n'est donc
+ * pas échu, un octroi plus bas et plus récent ne couvre pas un accès plus élevé, et une suite
+ * de reconductions ne lève qu'un constat, sur la dernière. Deux octrois d'un même plan,
+ * décidés au même instant, se jugent de même, quel que soit l'ordre de lecture. Et comme pour
+ * une parole démentie, le constat attend d'avoir relu le système après le terme.
  *
  * La clé ne nomme que l'étape : elle survit ainsi au renommage d'une fiche comme à sa
  * fusion, qui emportent le plan et son verrou de clôture avec elles.
@@ -581,11 +582,14 @@ export function constatsDAccesEchus(acces: readonly AccesAccorde[], maintenant: 
     if (!un.encoreTenu || un.relueLe === null || jourMetier(un.relueLe) <= jourMetier(termeLe)) {
       return [];
     }
+    // Couvert par une décision au moins aussi récente qui accorde au moins autant jusqu'à au
+    // moins aussi tard, échue ou non : échue, c'est elle qui se signale, sur son propre terme.
     const reconduit = acces.some(
       (autre) =>
+        autre.etapeId !== un.etapeId &&
         memeObjet(autre, un) &&
         autre.accordeLe.getTime() >= un.accordeLe.getTime() &&
-        !echu(autre) &&
+        (autre.termeLe === null || jourMetier(autre.termeLe) >= jourMetier(termeLe)) &&
         auMoinsAutant(autre, un),
     );
     if (reconduit) {

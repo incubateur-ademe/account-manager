@@ -623,6 +623,24 @@ describe("ce qu'un accès échu laisse voir", () => {
       constatsDAccesEchus([acces(), membreSansTerme], APRES).map(({ dedupKey }) => dedupKey),
     ).toEqual(["EXPIRED_GRANT:github:etape-1"]);
 
+    // Then une suite de reconductions à terme ne lève qu'un constat, sur la dernière, et sur
+    // son propre terme : une relecture faite pendant qu'elle couvrait ne dit rien
+    const premier = acces({ etapeId: "etape-A", termeLe: new Date("2026-06-01T12:00:00Z") });
+    const reconduction = acces({
+      etapeId: "etape-B",
+      accordeLe: new Date("2026-08-01T09:00:00Z"),
+      termeLe: new Date("2026-09-01T12:00:00Z"),
+    });
+    expect(
+      constatsDAccesEchus([premier, reconduction], APRES).map(({ dedupKey }) => dedupKey),
+    ).toEqual(["EXPIRED_GRANT:github:etape-B"]);
+    expect(
+      constatsDAccesEchus(
+        [premier, { ...reconduction, relueLe: new Date("2026-08-20T02:00:00Z") }],
+        APRES,
+      ),
+    ).toEqual([]);
+
     // Then la clé ne nomme que l'étape, qu'un renommage de fiche ne touche pas
     expect(etapeDUnAccesEchu("EXPIRED_GRANT:github:etape-1")).toBe("etape-1");
     expect(etapeDUnAccesEchu("OVERDUE_MANUAL_ACTION:github:hugo.exemple")).toBeNull();
