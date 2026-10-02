@@ -632,8 +632,8 @@ async function accesAccordes(): Promise<AccesAccorde[]> {
 
     const role = typeof parametres["role"] === "string" ? parametres["role"] : null;
     // Une ressource que plus aucune collecte ne nomme ainsi, une application renommée par
-    // exemple, ne se retrouve plus : le système se juge alors sur le rôle seul, plutôt que de
-    // refermer le constat sur un accès peut-être toujours tenu.
+    // exemple, ne se retrouve plus : l'accès se cherche alors sous ses rôles tenants sur tout
+    // le système, plutôt que de refermer le constat sur un accès peut-être toujours tenu.
     const ressource =
       octroi && (connues.get(etape.systemKey) ?? []).some((lue) => designe(octroi.ressource, lue))
         ? octroi.ressource
@@ -658,9 +658,10 @@ async function accesAccordes(): Promise<AccesAccorde[]> {
         username: personne.username,
         role,
         ressource: octroi === undefined ? null : JSON.stringify(octroi.ressource),
-        // Une seule horloge pour désigner le dernier octroi, celle de la décision : un octroi
-        // soldé au précheck ne porte aucune date d'exécution, et comparer celle d'un autre
-        // à sa confirmation départagerait deux plans selon l'ordre de leurs lancements.
+        tenants: roles ?? [],
+        // Une seule horloge pour départager deux décisions, la confirmation : un octroi soldé
+        // au précheck ne porte aucune date d'exécution, et comparer celle d'un autre à sa
+        // confirmation départagerait deux plans selon l'ordre de leurs lancements.
         accordeLe: etape.plan.confirmedAt ?? etape.plan.createdAt,
         termeLe: etape.grantExpiresAt,
         risque: etape.riskLevel,

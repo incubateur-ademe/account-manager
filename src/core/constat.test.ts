@@ -488,6 +488,7 @@ describe("ce qu'un accès échu laisse voir", () => {
     username: "hugo.exemple",
     role: "admin",
     ressource: "incubateur-ademe",
+    tenants: ["admin"],
     accordeLe: new Date("2026-03-05T09:00:00Z"),
     termeLe: TERME,
     risque: "HIGH",
@@ -546,7 +547,15 @@ describe("ce qu'un accès échu laisse voir", () => {
     // Then deux rôles sur le même système se jugent chacun
     expect(
       constatsDAccesEchus(
-        [acces(), acces({ etapeId: "etape-3", role: "member", termeLe: null })],
+        [
+          acces(),
+          acces({
+            etapeId: "etape-3",
+            role: "member",
+            tenants: ["member", "admin"],
+            termeLe: null,
+          }),
+        ],
         APRES,
       ),
     ).toHaveLength(1);
@@ -565,7 +574,7 @@ describe("ce qu'un accès échu laisse voir", () => {
     expect(
       constatsDAccesEchus(
         [
-          acces({ role: "member" }),
+          acces({ role: "member", tenants: ["member", "admin"] }),
           acces({
             etapeId: "etape-5",
             role: "admin",
@@ -576,6 +585,43 @@ describe("ce qu'un accès échu laisse voir", () => {
         APRES,
       ),
     ).toEqual([]);
+
+    // Then un octroi plus bas et plus récent ne couvre pas un accès plus élevé échu, ni un
+    // octroi plus élevé dont le terme est passé un accès plus bas. Dans un même plan, un
+    // octroi couvre l'autre s'il accorde au moins autant sans terme, quel que soit l'ordre
+    const plein = acces({ etapeId: "etape-plein", tenants: ["admin"] });
+    const basPlusRecent = acces({
+      etapeId: "etape-bas",
+      role: "member",
+      tenants: ["member", "admin"],
+      accordeLe: new Date("2026-06-01T09:00:00Z"),
+      termeLe: null,
+    });
+    expect(
+      constatsDAccesEchus([plein, basPlusRecent], APRES).map(({ dedupKey }) => dedupKey),
+    ).toEqual(["EXPIRED_GRANT:github:etape-plein"]);
+    const basEchu = acces({ etapeId: "etape-bas", role: "member", tenants: ["member", "admin"] });
+    const hautEchuPlusRecent = acces({
+      etapeId: "etape-haut",
+      accordeLe: new Date("2026-06-01T09:00:00Z"),
+      termeLe: new Date("2026-08-01T12:00:00Z"),
+    });
+    expect(
+      constatsDAccesEchus([basEchu, hautEchuPlusRecent], APRES).map(({ dedupKey }) => dedupKey),
+    ).toEqual(["EXPIRED_GRANT:github:etape-bas", "EXPIRED_GRANT:github:etape-haut"]);
+    const membreATerme = acces({ role: "member", tenants: ["member", "admin"] });
+    const adminSansTerme = acces({ etapeId: "etape-meme-plan", termeLe: null });
+    expect(constatsDAccesEchus([membreATerme, adminSansTerme], APRES)).toEqual([]);
+    expect(constatsDAccesEchus([adminSansTerme, membreATerme], APRES)).toEqual([]);
+    const membreSansTerme = acces({
+      etapeId: "etape-meme-plan",
+      role: "member",
+      tenants: ["member", "admin"],
+      termeLe: null,
+    });
+    expect(
+      constatsDAccesEchus([acces(), membreSansTerme], APRES).map(({ dedupKey }) => dedupKey),
+    ).toEqual(["EXPIRED_GRANT:github:etape-1"]);
 
     // Then la clé ne nomme que l'étape, qu'un renommage de fiche ne touche pas
     expect(etapeDUnAccesEchu("EXPIRED_GRANT:github:etape-1")).toBe("etape-1");

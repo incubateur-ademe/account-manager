@@ -523,6 +523,12 @@ export interface AccesAccorde {
   role: string | null;
   /** La ressource ouverte, quand le connecteur sait la nommer. */
   ressource: string | null;
+  /**
+   * Les rôles relevés qui tiennent cet octroi, lui compris : ceux qui accordent au moins
+   * autant. Sans connecteur pour les dire, le rôle de l'étape seul.
+   */
+  tenants: readonly string[];
+  /** La décision : la confirmation du plan. */
   accordeLe: Date;
   /** Le terme décidé à l'octroi, ou rien pour un accès sans terme. */
   termeLe: Date | null;
@@ -547,36 +553,42 @@ export function etapeDUnAccesEchu(dedupKey: string): string | null {
  * d'administration pour cent quatre-vingts jours, le terme passe, il reste administrateur,
  * et rien ne le disait.
  *
- * Seul le dernier octroi soldé compte, par personne, système et ressource : un accès
- * reconduit par un nouveau plan, avec ou sans terme et à un rôle égal ou plus élevé, n'est pas
- * échu, et un octroi sur une autre application n'en reconduit aucun. Et comme pour une parole démentie, le constat
- * attend d'avoir relu le système après le terme.
+ * Un octroi échu se signale quand la personne tient encore au moins ce qu'il accordait, et
+ * qu'aucune décision plus récente sur la même ressource n'accorde au moins autant sans terme
+ * passé. Un accès reconduit, à un rôle égal ou plus élevé, n'est donc pas échu, et un octroi
+ * plus bas et plus récent ne couvre pas un accès plus élevé. Deux octrois d'un même plan,
+ * décidés au même instant, se jugent de même, quel que soit l'ordre de lecture. Et comme pour une parole
+ * démentie, le constat attend d'avoir relu le système après le terme.
  *
  * La clé ne nomme que l'étape : elle survit ainsi au renommage d'une fiche comme à sa
  * fusion, qui emportent le plan et son verrou de clôture avec elles.
  */
 export function constatsDAccesEchus(acces: readonly AccesAccorde[], maintenant: Date): Constat[] {
-  const derniers = new Map<string, AccesAccorde>();
-  for (const un of acces) {
-    // Par ressource, tous rôles confondus : un octroi plus élevé et sans terme reconduit
-    // celui qu'il contient. Le rôle ne départage que là où la ressource n'est pas nommée.
-    const cle =
-      un.ressource === null
-        ? `${un.username}:${un.systemKey}::${un.role ?? ""}`
-        : `${un.username}:${un.systemKey}:${un.ressource}`;
-    const connu = derniers.get(cle);
-    if (!connu || un.accordeLe.getTime() > connu.accordeLe.getTime()) {
-      derniers.set(cle, un);
-    }
-  }
+  const echu = (un: AccesAccorde) =>
+    un.termeLe !== null && jourMetier(maintenant) > jourMetier(un.termeLe);
+  const memeObjet = (a: AccesAccorde, b: AccesAccorde) =>
+    a.username === b.username && a.systemKey === b.systemKey && a.ressource === b.ressource;
+  // b accorde au moins autant que a quand tout rôle qui tient b tient aussi a.
+  const auMoinsAutant = (b: AccesAccorde, a: AccesAccorde) =>
+    b.tenants.every((role) => a.tenants.includes(role));
 
-  return [...derniers.values()].flatMap((un): Constat[] => {
+  return acces.flatMap((un): Constat[] => {
     const { termeLe } = un;
-    if (termeLe === null || jourMetier(maintenant) <= jourMetier(termeLe)) {
+    if (termeLe === null || !echu(un)) {
       return [];
     }
     // Au jour, comme le terme : une relecture faite le jour même l'est pendant la couverture.
     if (!un.encoreTenu || un.relueLe === null || jourMetier(un.relueLe) <= jourMetier(termeLe)) {
+      return [];
+    }
+    const reconduit = acces.some(
+      (autre) =>
+        memeObjet(autre, un) &&
+        autre.accordeLe.getTime() >= un.accordeLe.getTime() &&
+        !echu(autre) &&
+        auMoinsAutant(autre, un),
+    );
+    if (reconduit) {
       return [];
     }
 

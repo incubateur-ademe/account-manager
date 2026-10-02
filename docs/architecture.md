@@ -815,13 +815,15 @@ vrai cas se noie avec lui.
 `EXPIRED_GRANT`, gravité de l'étape : un accès accordé jusqu'à une date est toujours
 constaté après elle. Rien ne reprend de lui-même un accès à terme, sauf un jeton émis, qui
 meurt à son terme et ne paraît dans aucun relevé : les étapes porteuses d'une clé
-d'engagement n'entrent donc pas dans ce constat. Seul le dernier octroi soldé compte, par
-personne, système et ressource, le dernier étant celui dont le plan a été confirmé le plus
-tard, si bien qu'un accès reconduit par un nouveau plan, à un rôle égal ou plus élevé, n'est
-pas échu, et qu'un octroi sur une autre application n'en reconduit aucun. Le
-connecteur dit ce que la collecte relève quand l'octroi est tenu, la ressource et les rôles
-(`accesDeLOctroi`) ; sans lui, ou quand plus aucune ressource collectée ne porte ce nom, le
-système se juge sur le rôle de l'étape seul. Seul un compte rattaché sans ressemblance tient
+d'engagement n'entrent donc pas dans ce constat. Un octroi soldé et échu se signale quand la
+personne tient encore au moins ce qu'il accordait, et qu'aucune décision au moins aussi
+récente sur la même ressource n'accorde au moins autant sans terme passé, la décision étant
+la confirmation du plan. Un accès reconduit, à un rôle égal ou plus élevé, n'est donc pas
+échu, un octroi plus bas et plus récent ne couvre pas un accès plus élevé, et un octroi sur
+une autre application n'en reconduit aucun. Le connecteur dit ce que la collecte relève
+quand l'octroi est tenu, la ressource et les rôles qui accordent au moins autant
+(`accesDeLOctroi`) ; sans lui, le système se juge sur le rôle de l'étape seul, et quand plus
+aucune ressource collectée ne porte ce nom, sur ses rôles dans tout le système. Seul un compte rattaché sans ressemblance tient
 un accès, ce constat demandant une coupure, et le système doit avoir été relu après le
 terme. Le constat se ferme seul quand l'accès cesse d'être constaté, et l'écran nomme
 l'étape d'octroi et son terme, le constat ne portant aucun compte.
