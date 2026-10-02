@@ -169,6 +169,8 @@ vi.mock("@/lib/db", async () => {
             })),
         ),
     },
+    // Aucun système de ces scénarios ne relève d'accès : un compte vivant y est présent.
+    externalIdentity: { findMany: () => Promise.resolve([]) },
     planStep: {
       findMany: ({
         where,

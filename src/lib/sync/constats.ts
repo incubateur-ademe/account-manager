@@ -510,6 +510,7 @@ async function actionsDeclarees(
   });
 
   const relectures = await relecturesParSysteme();
+  const relevants = await systemesQuiRelevent();
 
   const declarees: ActionDeclaree[] = [];
 
@@ -541,7 +542,11 @@ async function actionsDeclarees(
         (identite) =>
           identite.provider === etape.systemKey &&
           identite.vanishedAt === null &&
-          porteEncoreUnAcces(identite.grants),
+          tientUnAcces(
+            identite.provider,
+            identite.grants.some(({ vanishedAt }) => vanishedAt === null),
+            relevants,
+          ),
       ),
       relueLe: relectures.get(etape.systemKey) ?? null,
     });
@@ -579,7 +584,6 @@ async function accesAccordes(): Promise<AccesAccorde[]> {
         select: {
           provider: true,
           matchMethod: true,
-          _count: { select: { grants: true } },
           grants: {
             where: { vanishedAt: null },
             select: { role: true, resource: { select: { externalId: true, label: true } } },
@@ -616,6 +620,7 @@ async function accesAccordes(): Promise<AccesAccorde[]> {
   });
 
   const relectures = await relecturesParSysteme();
+  const relevants = await systemesQuiRelevent();
   const octrois = etapes.map((etape) => {
     const parametres =
       typeof etape.params === "object" && etape.params !== null
@@ -650,10 +655,10 @@ async function accesAccordes(): Promise<AccesAccorde[]> {
     // Un compte que son système garde après l'avoir retiré, un membre Notion rendu inactif,
     // ne porte plus aucun accès vivant : il ne tient plus rien.
     const comptes = personne.identities.filter(
-      ({ provider, matchMethod, grants, _count }) =>
+      ({ provider, matchMethod, grants }) =>
         provider === etape.systemKey &&
         autoriseUneRevocation(matchMethod) &&
-        (grants.length > 0 || _count.grants === 0),
+        tientUnAcces(provider, grants.length > 0, relevants),
     );
     const vises = comptes
       .flatMap(({ grants }) => grants)
@@ -710,10 +715,23 @@ function designe(ressource: RessourceNommee, lue: { externalId: string; label: s
 }
 
 /**
- * Un compte que son système garde après l'avoir retiré, un membre Notion rendu inactif, ne
- * porte plus aucun accès vivant. Un compte qui n'en a jamais porté, sur un système qui n'en
- * relève pas, se juge sur sa seule présence.
+ * Les systèmes qui relèvent des accès. Un compte vivant n'y tient quelque chose que par un
+ * accès vivant : un compte que son système garde après l'avoir retiré, un membre Notion rendu
+ * inactif, n'en porte aucun, qu'il en ait eu ou non. Ailleurs, sa présence suffit.
  */
-function porteEncoreUnAcces(acces: readonly { vanishedAt: Date | null }[]): boolean {
-  return acces.length === 0 || acces.some(({ vanishedAt }) => vanishedAt === null);
+async function systemesQuiRelevent(): Promise<ReadonlySet<string>> {
+  const lus = await prisma.externalIdentity.findMany({
+    where: { grants: { some: {} } },
+    distinct: ["provider"],
+    select: { provider: true },
+  });
+  return new Set(lus.map(({ provider }) => provider));
+}
+
+function tientUnAcces(
+  provider: string,
+  aUnAccesVivant: boolean,
+  relevants: ReadonlySet<string>,
+): boolean {
+  return !relevants.has(provider) || aUnAccesVivant;
 }

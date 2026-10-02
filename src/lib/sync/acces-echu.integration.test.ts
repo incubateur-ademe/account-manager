@@ -441,8 +441,9 @@ describe("un accès gardé au-delà de son terme", () => {
   });
 
   it("ne dément pas le retrait d'un membre que son système garde inactif", async () => {
-    // Given Léa, retirée du workspace Notion par son départ, que Notion rend inactive : la
-    // collecte garde l'identité et date son accès disparu
+    // Given Léa, retirée du workspace Notion avant même la première collecte : Notion la rend
+    // inactive, et la collecte garde son identité sans lui avoir jamais relevé d'accès, quand
+    // un autre membre en porte un
     const personne = await prisma.person.create({
       data: { username: "lea.exemple", fullname: "Léa Exemple", source: "BETA" },
     });
@@ -456,7 +457,15 @@ describe("un accès gardé au-delà de son terme", () => {
         handle: "lea@exemple.fr",
         matchMethod: "EMAIL_EXACT",
         personId: personne.id,
-        grants: { create: { role: "member", resourceId: workspace.id, vanishedAt: RELU } },
+      },
+    });
+    await prisma.externalIdentity.create({
+      data: {
+        provider: "notion",
+        externalId: "scim-autre",
+        handle: "autre@exemple.fr",
+        matchMethod: "NONE",
+        grants: { create: { role: "member", resourceId: workspace.id } },
       },
     });
     await relire("notion", RELU);
