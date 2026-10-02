@@ -570,7 +570,8 @@ export function constatsDAccesEchus(acces: readonly AccesAccorde[], maintenant: 
     if (termeLe === null || jourMetier(maintenant) <= jourMetier(termeLe)) {
       return [];
     }
-    if (!un.encoreTenu || un.relueLe === null || un.relueLe.getTime() <= termeLe.getTime()) {
+    // Au jour, comme le terme : une relecture faite le jour même l'est pendant la couverture.
+    if (!un.encoreTenu || un.relueLe === null || jourMetier(un.relueLe) <= jourMetier(termeLe)) {
       return [];
     }
 

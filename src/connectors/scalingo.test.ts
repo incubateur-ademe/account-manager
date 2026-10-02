@@ -1618,6 +1618,17 @@ describe("ce que le connecteur Scalingo écrit, et ce qu'il refuse d'écrire", (
     expect(plein.appels[0]?.corps).toEqual({
       collaborator: { email: "nouvelle@exemple.invalid", is_limited: false },
     });
+
+    // Then l'accès ouvert se reconnaît à la collecte sous l'application et sous tout rôle qui
+    // le contient : un accès plein tient un accès limité, et un propriétaire tient les deux
+    expect(scalingo.accesDeLOctroi?.(octroi)).toEqual({
+      ressource: { label: "service-annuaire, osc-fr1" },
+      roles: ["limited", "collaborator", "owner"],
+    });
+    expect(
+      scalingo.accesDeLOctroi?.({ ...octroi, params: { ...octroi.params, role: "collaborator" } })
+        ?.roles,
+    ).toEqual(["collaborator", "owner"]);
   });
 
   it("corrige un rôle en place plutôt que de retirer la personne pour la réinviter", async () => {

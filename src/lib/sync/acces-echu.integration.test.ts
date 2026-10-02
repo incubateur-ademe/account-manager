@@ -219,6 +219,22 @@ describe("un accès gardé au-delà de son terme", () => {
       },
       select: { grants: { select: { id: true, resourceId: true } } },
     });
+    // Le propriétaire de chaque application, comme Scalingo le rend toujours : il reste
+    // quand Hugo s'en va
+    await prisma.externalIdentity.create({
+      data: {
+        provider: "scalingo",
+        externalId: "us-proprietaire",
+        handle: "proprietaire@exemple.fr",
+        matchMethod: "NONE",
+        grants: {
+          create: [alpha, beta].map((application) => ({
+            role: "owner",
+            resourceId: application?.id ?? "",
+          })),
+        },
+      },
+    });
     await relire("scalingo", RELU);
     const collaborer = (nom: string) => ({
       systemKey: "scalingo",
@@ -355,5 +371,44 @@ describe("un accès gardé au-delà de son terme", () => {
     // Then le dernier décidé est l'octroi à terme, et son terme passé lève le constat
     await collecter(MAINTENANT);
     expect(await echus()).toEqual([expect.objectContaining({ closedAt: null })]);
+  });
+
+  it("reste ouvert sur une organisation renommée, et compte un membre promu administrateur", async () => {
+    // Given Hugo, membre de l'organisation par un octroi échu, promu administrateur depuis
+    // hors de l'outil
+    const { personId, grantId } = await semer();
+    await octroyer(personId, {
+      id: "pla-membre",
+      accordeLe: new Date("2026-03-05"),
+      terme: TERME,
+      geste: { ...ADMIN_GITHUB, params: { organisation: "incubateur-ademe", role: "member" } },
+    });
+
+    // Then l'administrateur tient l'accès du membre, et le constat se lève
+    await collecter(MAINTENANT);
+    expect(await echus()).toEqual([expect.objectContaining({ closedAt: null })]);
+
+    // When l'organisation est renommée : la collecte relève une nouvelle ressource, et
+    // l'ancienne ne garde que des accès disparus
+    const renommee = await prisma.resource.create({
+      data: { provider: "github", externalId: "ademe-incubateur", label: "Organisation" },
+    });
+    const compte = await prisma.accessGrant.update({
+      where: { id: grantId },
+      data: { vanishedAt: RELU },
+      select: { externalIdentityId: true },
+    });
+    await prisma.accessGrant.create({
+      data: {
+        externalIdentityId: compte.externalIdentityId,
+        resourceId: renommee.id,
+        role: "admin",
+      },
+    });
+    await collecter(new Date("2026-09-11T09:00:00Z"));
+
+    // Then le constat reste ouvert : plus aucune ressource vivante ne porte l'ancien nom, et
+    // le système se juge sur le rôle plutôt que de refermer sur un accès toujours tenu
+    expect((await echus())[0]?.closedAt).toBeNull();
   });
 });

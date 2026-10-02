@@ -2174,7 +2174,14 @@ export const scalingo: Connector = {
     ) {
       return undefined;
     }
-    return { ressource: { label: `${application}, ${region}` }, roles: [role] };
+    // Un accès plein tient un accès limité, et un propriétaire tient les deux.
+    const tenants =
+      role === ROLE_LIMITE
+        ? [ROLE_LIMITE, ROLE_PLEIN, ROLE_PROPRIETAIRE]
+        : role === ROLE_PLEIN
+          ? [ROLE_PLEIN, ROLE_PROPRIETAIRE]
+          : [role];
+    return { ressource: { label: `${application}, ${region}` }, roles: tenants };
   },
 };
 

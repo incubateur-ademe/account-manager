@@ -509,8 +509,19 @@ describe("ce qu'un accès échu laisse voir", () => {
       }),
     ]);
 
-    // Then le jour même du terme compte encore comme couvert
+    // Then le jour même du terme compte encore comme couvert, et une relecture faite ce
+    // jour-là ne dit rien de ce qui a suivi
     expect(constatsDAccesEchus([acces()], new Date("2026-09-01T20:00:00Z"))).toEqual([]);
+    expect(
+      constatsDAccesEchus([acces({ relueLe: new Date("2026-09-01T20:00:00Z") })], APRES),
+    ).toEqual([]);
+
+    // Then il ne vise aucune cible, comme la table des sortes le dit : une tolérance posée
+    // sur la personne ne doit pas le taire
+    for (const leve of constatsDAccesEchus([acces()], APRES)) {
+      expect(leve.cible).toBeNull();
+      expect(SORTE_DE_CIBLE[leve.kind]).toBeNull();
+    }
 
     // Then un système relu avant le terme n'a rien dit de ce qui a suivi
     expect(

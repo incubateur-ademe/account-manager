@@ -1356,6 +1356,8 @@ export function creerGithub(lireConfig: () => ConfigGithub): Connector {
 
     // Une invitation en attente est un accès accordé, que la collecte range sous
     // `invite:` et sous le vocabulaire des invitations, où un membre s'écrit direct_member.
+    // Un administrateur tient aussi l'accès d'un membre : une promotion se fait hors de
+    // l'outil, le précheck refusant tout changement de rôle.
     accesDeLOctroi: ({ action, params }) => {
       const { organisation, role } = params;
       if (
@@ -1365,9 +1367,13 @@ export function creerGithub(lireConfig: () => ConfigGithub): Connector {
       ) {
         return undefined;
       }
+      const tenants = role === "member" ? ["member", "admin"] : [role];
       return {
         ressource: { externalId: organisation },
-        roles: [role, `invite:${role === "member" ? "direct_member" : role}`],
+        roles: tenants.flatMap((tenant) => [
+          tenant,
+          `invite:${tenant === "member" ? "direct_member" : tenant}`,
+        ]),
       };
     },
 
