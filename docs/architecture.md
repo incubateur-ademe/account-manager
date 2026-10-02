@@ -817,8 +817,8 @@ constaté après elle. Rien ne reprend de lui-même un accès à terme, sauf un 
 meurt à son terme et ne paraît dans aucun relevé : les étapes porteuses d'une clé
 d'engagement n'entrent donc pas dans ce constat. Un octroi soldé et échu se signale quand la
 personne tient encore au moins ce qu'il accordait, et qu'aucune décision au moins aussi
-récente sur la même ressource n'accorde au moins autant jusqu'à au moins aussi tard, la
-décision étant la confirmation du plan. Un accès reconduit, à un rôle égal ou plus élevé,
+récente sur la même ressource n'accorde au moins autant, encore en cours ou elle-même tenue
+au-delà de son terme, la décision étant la confirmation du plan. Un accès reconduit, à un rôle égal ou plus élevé,
 n'est donc pas échu, un octroi plus bas et plus récent ne couvre pas un accès plus élevé, une
 suite de reconductions ne lève qu'un constat, sur la dernière, et un octroi sur une autre
 application n'en reconduit aucun. Le connecteur dit ce que la collecte relève

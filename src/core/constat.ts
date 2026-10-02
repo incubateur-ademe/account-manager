@@ -554,10 +554,10 @@ export function etapeDUnAccesEchu(dedupKey: string): string | null {
  * et rien ne le disait.
  *
  * Un octroi échu se signale quand la personne tient encore au moins ce qu'il accordait, et
- * qu'aucune décision au moins aussi récente sur la même ressource n'accorde au moins autant
- * jusqu'à au moins aussi tard. Un accès reconduit, à un rôle égal ou plus élevé, n'est donc
- * pas échu, un octroi plus bas et plus récent ne couvre pas un accès plus élevé, et une suite
- * de reconductions ne lève qu'un constat, sur la dernière. Deux octrois d'un même plan,
+ * qu'aucune décision au moins aussi récente sur la même ressource n'accorde au moins autant,
+ * encore en cours ou elle-même tenue au-delà de son terme. Un accès reconduit, à un rôle égal
+ * ou plus élevé, n'est donc pas échu, un octroi plus bas et plus récent ne couvre pas un accès
+ * plus élevé, et une suite de reconductions ne lève qu'un constat, sur la dernière. Deux octrois d'un même plan,
  * décidés au même instant, se jugent de même, quel que soit l'ordre de lecture. Et comme pour
  * une parole démentie, le constat attend d'avoir relu le système après le terme.
  *
@@ -582,15 +582,15 @@ export function constatsDAccesEchus(acces: readonly AccesAccorde[], maintenant: 
     if (!un.encoreTenu || un.relueLe === null || jourMetier(un.relueLe) <= jourMetier(termeLe)) {
       return [];
     }
-    // Couvert par une décision au moins aussi récente qui accorde au moins autant jusqu'à au
-    // moins aussi tard, échue ou non : échue, c'est elle qui se signale, sur son propre terme.
+    // Couvert par une décision au moins aussi récente qui accorde au moins autant, tant qu'elle
+    // court, ou échue si la personne la tient encore : c'est alors elle qui se signale.
     const reconduit = acces.some(
       (autre) =>
         autre.etapeId !== un.etapeId &&
         memeObjet(autre, un) &&
         autre.accordeLe.getTime() >= un.accordeLe.getTime() &&
-        (autre.termeLe === null || jourMetier(autre.termeLe) >= jourMetier(termeLe)) &&
-        auMoinsAutant(autre, un),
+        auMoinsAutant(autre, un) &&
+        (!echu(autre) || autre.encoreTenu),
     );
     if (reconduit) {
       return [];
