@@ -133,13 +133,14 @@ vi.mock("@/lib/db", () => ({
       findMany: () => Promise.resolve(base.derogations),
     },
     externalIdentity: {
-      findMany: ({ where }: { where: { personId: string; vanishedAt: null } }) => {
+      findMany: ({ where }: { where: { personId: string; firstSeenAt: { lte: Date } } }) => {
         base.lecturesDIdentites += 1;
         return Promise.resolve(
           base.identites
             .filter(
               (identite) =>
-                identite.personId === where.personId && identite.vanishedAt === where.vanishedAt,
+                identite.personId === where.personId &&
+                (identite.vanishedAt === null || identite.vanishedAt > where.firstSeenAt.lte),
             )
             // Prisma rend toujours le tableau d'une relation sélectionnée, vide s'il le
             // faut : l'omettre ferait passer un double pour ce qu'aucune base ne rend.

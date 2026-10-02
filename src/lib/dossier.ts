@@ -89,10 +89,23 @@ interface ComptesDuDepart extends SystemesDuDepart {
   adresse?: string;
 }
 
-async function systemesDeLaPersonne(personId: string): Promise<ComptesDuDepart> {
+/** Ce qui était constaté à cet instant : apparu avant lui, et pas encore disparu. */
+function constateAu(au: Date) {
+  return { firstSeenAt: { lte: au }, OR: [{ vanishedAt: null }, { vanishedAt: { gt: au } }] };
+}
+
+/**
+ * Les comptes d'une personne tels que la collecte les voyait à un instant.
+ *
+ * Un plan confirmé se recalcule au démarrage de l'exécution, et son empreinte doit rester
+ * celle qu'on a approuvée. Lus au présent, un accès retiré à la main entre-temps ferait
+ * disparaître ou changer l'étape qui le visait, et le plan entier serait refusé, alors que
+ * le précheck sait solder un accès déjà absent.
+ */
+async function systemesDeLaPersonne(personId: string, au: Date): Promise<ComptesDuDepart> {
   const [identites, fiche] = await Promise.all([
     prisma.externalIdentity.findMany({
-      where: { personId, vanishedAt: null },
+      where: { personId, ...constateAu(au) },
       select: {
         provider: true,
         externalId: true,
@@ -101,7 +114,7 @@ async function systemesDeLaPersonne(personId: string): Promise<ComptesDuDepart> 
         // Les accès vivants seulement : un accès disparu dit qu'il n'y a plus rien à couper,
         // et proposer de le retirer enverrait quelqu'un chercher ce qui n'est plus là.
         grants: {
-          where: { vanishedAt: null },
+          where: constateAu(au),
           select: { role: true, resource: { select: { externalId: true, label: true } } },
         },
       },
@@ -237,19 +250,23 @@ export async function calculerPlan(
   maintenant: Date,
   profil?: Profil | undefined,
   /**
-   * L'instant auquel les tolérances se jugent, quand il n'est pas le présent.
+   * L'instant auquel les tolérances, les engagements et les comptes constatés se jugent,
+   * quand il n'est pas le présent.
    *
-   * Un plan confirmé rejoue les siennes telles qu'elles étaient à sa confirmation. Sans
-   * ça, une tolérance posée ou expirée depuis déplacerait l'empreinte recalculée au
-   * démarrage de l'exécution, et le plan deviendrait inexécutable sans issue : le
-   * recalcul n'est ouvert qu'à un brouillon.
+   * Un plan confirmé les rejoue tels qu'ils étaient à sa confirmation. Sans ça, une
+   * tolérance posée depuis, ou un accès retiré à la main depuis, déplacerait l'empreinte
+   * recalculée au démarrage de l'exécution, et le plan deviendrait inexécutable sans issue :
+   * le recalcul n'est ouvert qu'à un brouillon.
    */
   tolerancesAu?: Date | undefined,
 ): Promise<PlanCalcule> {
   // Les comptes observés ne disent rien de ce qu'il faut donner : les lire pour une
   // arrivée serait une requête pour rien, et les afficher ferait passer un accès
   // existant pour un manque.
-  const constates = sens === "OFFBOARDING" ? await systemesDeLaPersonne(personId) : AUCUN_SYSTEME;
+  const constates =
+    sens === "OFFBOARDING"
+      ? await systemesDeLaPersonne(personId, tolerancesAu ?? maintenant)
+      : AUCUN_SYSTEME;
   const adresse = constates.adresse;
   const presente = new Set(constates.revocables);
 

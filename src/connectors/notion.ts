@@ -463,6 +463,18 @@ const ACTION_RETRAIT = "retirer-du-workspace";
 /** Les rôles qui se retirent seuls. Un propriétaire ou un administrateur reste à la main. */
 const ROLES_ORDINAIRES: readonly string[] = ["member", "restricted_member"];
 
+/** Du plus élevé au plus bas. Un rôle hors de la liste passe avant tous, et reste à la main. */
+const RANG_DES_ROLES: readonly string[] = [
+  "owner",
+  "membership_admin",
+  "member",
+  "restricted_member",
+];
+
+function plusEleve(a: string, b: string): boolean {
+  return RANG_DES_ROLES.indexOf(a) < RANG_DES_ROLES.indexOf(b);
+}
+
 const REFUS_SIMULATION =
   "ACTIONS_ENABLED n'autorise aucune écriture. Une exécution a été demandée en simulation, et aucun appel n'est parti.";
 
@@ -484,7 +496,8 @@ export function planifierRetraitNotion(
   for (const un of sujet.acces ?? []) {
     // Un passage partiel ne date aucun accès disparu : après un changement de rôle, le même
     // compte peut garder l'ancien vivant à côté du nouveau, et le plus élevé décide.
-    if (!parCompte.has(un.identityExternalId) || !ROLES_ORDINAIRES.includes(un.role)) {
+    const connu = parCompte.get(un.identityExternalId);
+    if (!connu || plusEleve(un.role, connu.role)) {
       parCompte.set(un.identityExternalId, un);
     }
   }
@@ -575,7 +588,9 @@ function membreLu(corps: unknown): { actif: boolean | null; role: string | null 
   if (!lu.success) {
     return { actif: null, role: null };
   }
-  return { actif: lu.data.active ?? null, role: lu.data[EXTENSION]?.role ?? "member" };
+  // Sans défaut ici, contrairement à la collecte : ne pas savoir n'autorise pas à retirer, et
+  // un propriétaire relu sans son extension passerait pour un membre ordinaire.
+  return { actif: lu.data.active ?? null, role: lu.data[EXTENSION]?.role ?? null };
 }
 
 /**
@@ -724,10 +739,8 @@ export const CONTRAT_NOTION: ConnectorContract = {
   ],
   capabilities: {
     list: [{ requires: [CREDENTIAL], tier: "auto", runbook: RUNBOOK_LECTURE }],
-    // Manuel comme la révocation, et pour la même raison : le jeton SCIM sait créer
-    // un membre, mais il est nominatif et porte le workspace entier, si bien qu'une
-    // voie automatique adossée à lui s'éteindrait au premier changement de rôle de
-    // la personne qui l'a créé.
+    // Seul le retrait est passé en automatique. Un membre créé par SCIM occupe un siège
+    // du workspace, et l'octroi reste un geste qu'un humain fait.
     grant: [{ requires: [], tier: "manual", runbook: RUNBOOK_OCTROI }],
     revoke: [
       { requires: [CREDENTIAL], tier: "auto", runbook: RUNBOOK },
@@ -778,7 +791,11 @@ export const notion: Connector = {
 
   planifierOctroi: (_scope, sujet) => planifierOctroiNotion(sujet),
 
-  precheck: (step) => constaterRetrait(sonderMembre, step),
+  // Sans jeton, aucune lecture n'est possible, et l'étape est manuelle : la main décidera.
+  precheck: (step) =>
+    env.NOTION_SCIM_TOKEN
+      ? constaterRetrait(sonderMembre, step)
+      : Promise.resolve({ state: "READY" as const }),
 
   execute: (step, ctx) =>
     executerRetrait(supprimerMembre, Boolean(env.NOTION_SCIM_TOKEN), step, ctx),

@@ -614,7 +614,9 @@ Comme l'empreinte se recalcule au démarrage de l'exécution, une tolérance pos
 expirée depuis la confirmation déplacerait ce qui a été approuvé et rendrait le plan
 inexécutable sans issue, le recalcul n'étant ouvert qu'à un brouillon. Le calcul rejoue
 donc les tolérances telles qu'elles étaient à l'instant de la confirmation, que le plan
-porte déjà.
+porte déjà. Les comptes et les accès constatés se rejouent de même, tels que la collecte
+les voyait à la confirmation : un accès retiré depuis reste au plan, et c'est au précheck de
+le constater déjà absent.
 
 **Une permanente échappe à ce gel, et c'est la décision.** Déclarée en git, elle n'a pas de
 date, donc l'instant de la confirmation ne la rejoue pas et la politique en vigueur

@@ -60,6 +60,8 @@ async function rendreLaPolitique(): Promise<void> {
 }
 
 const USERNAME = "nour.exemple";
+/** Avant la confirmation : un plan rejoue les comptes constatés à son instant, et seulement eux. */
+const RELEVES = new Date("2026-09-01T02:00:00Z");
 const CONFIRMATION = new Date("2026-09-10T09:00:00Z");
 const APRES = new Date("2026-09-12T09:00:00Z");
 
@@ -83,7 +85,8 @@ async function semer(): Promise<string> {
         handle: externalId,
         matchMethod: "GITHUB_LOGIN",
         personId: personne.id,
-        grants: { create: { role: "member", resourceId: organisation.id } },
+        firstSeenAt: RELEVES,
+        grants: { create: { role: "member", resourceId: organisation.id, firstSeenAt: RELEVES } },
       },
     });
   }
@@ -165,6 +168,45 @@ describe("un plan confirmé rejoue les tolérances de sa confirmation", () => {
     // Then et l'exécution part sans refuser, parce qu'elle relit `confirmedAt` en base
     // plutôt que de recalculer au présent. C'est ce couplage entre deux actions que rien
     // dans les types ne tient.
+    const resultat = await executerPlan(planId, {
+      operateur: OPERATRICE,
+      masseConfirmee: true,
+      maintenant: APRES,
+    });
+    expect(resultat.refus).toBeUndefined();
+  });
+});
+
+describe("un plan confirmé rejoue les comptes constatés à sa confirmation", () => {
+  let personId = "";
+  beforeEach(async () => {
+    personId = await semer();
+  });
+
+  it("reste exécutable quand un accès est retiré à la main avant le lancement", async () => {
+    // Given un départ confirmé, les deux comptes siégeant dans l'organisation,
+    const { planId, empreinte: approuvee } = await confirmerUnDepart(personId);
+
+    // When quelqu'un retire l'un des deux comptes avant le lancement, et que la collecte
+    // le constate,
+    await prisma.accessGrant.updateMany({
+      where: { externalIdentity: { externalId: "cpt-2" } },
+      data: { vanishedAt: APRES },
+    });
+    const aujourdhui = await calculerPlan("OFFBOARDING", personId, USERNAME, APRES);
+    expect(aujourdhui.empreinte).not.toBe(approuvee);
+
+    // Then le calcul rejoué à la confirmation voit les comptes d'alors, et l'exécution part
+    // sans refuser : c'est au précheck de constater ce qui est déjà retiré
+    const gele = await calculerPlan(
+      "OFFBOARDING",
+      personId,
+      USERNAME,
+      APRES,
+      undefined,
+      CONFIRMATION,
+    );
+    expect(gele.empreinte).toBe(approuvee);
     const resultat = await executerPlan(planId, {
       operateur: OPERATRICE,
       masseConfirmee: true,

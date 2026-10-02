@@ -443,6 +443,17 @@ describe("le départ sur Notion", () => {
     expect(promu?.tier).toBe("manual");
     expect(promu?.manual?.runbook).toContain("Le rôle owner se retire à la main");
     expect(promu?.params).not.toHaveProperty("compte");
+
+    // Then entre deux rôles ordinaires, le plus élevé décide quel que soit l'ordre de lecture
+    for (const acces of [
+      [siege("restricted_member"), siege("member")],
+      [siege("member"), siege("restricted_member")],
+    ]) {
+      expect(
+        planifierRetraitNotion({ kind: "person", username: "camille.rivet", acces }, true)[0]
+          ?.params,
+      ).toMatchObject({ role: "member" });
+    }
     expect(deuxComptes?.label).toContain("camille@exemple.fr, camille.perso@exemple.fr");
     const sansJeton = planifierRetraitNotion(
       { kind: "person", username: "camille.rivet", acces: [siege()] },
@@ -484,7 +495,17 @@ describe("le départ sur Notion", () => {
       state: "STALE",
       actual: { role: "owner" },
     });
+    // Un membre relu sans son rôle ne se retire pas : ne pas savoir n'autorise pas à écrire
+    expect(
+      await constaterRetrait(
+        reponse(200, { id: "scim-1", userName: "camille@exemple.fr", active: true }),
+        etape,
+      ),
+    ).toMatchObject({ state: "STALE", actual: { role: null } });
     await expect(constaterRetrait(reponse(502), etape)).rejects.toThrow("502");
+
+    // Sans jeton, rien ne se lit, et l'étape manuelle reste à la main sans échouer
+    expect(await notion.precheck?.(etape, CONTEXTE)).toEqual({ state: "READY" });
   });
 
   it("ne part jamais en simulation, et dit ce que Notion a répondu quand elle part", async () => {
