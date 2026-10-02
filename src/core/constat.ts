@@ -547,9 +547,9 @@ export function etapeDUnAccesEchu(dedupKey: string): string | null {
  * d'administration pour cent quatre-vingts jours, le terme passe, il reste administrateur,
  * et rien ne le disait.
  *
- * Seul le dernier octroi soldé compte, par personne, système, ressource et rôle : un accès
- * reconduit par un nouveau plan, avec ou sans terme, n'est pas échu, et un octroi sur une
- * autre application n'en reconduit aucun. Et comme pour une parole démentie, le constat
+ * Seul le dernier octroi soldé compte, par personne, système et ressource : un accès
+ * reconduit par un nouveau plan, avec ou sans terme et à un rôle égal ou plus élevé, n'est pas
+ * échu, et un octroi sur une autre application n'en reconduit aucun. Et comme pour une parole démentie, le constat
  * attend d'avoir relu le système après le terme.
  *
  * La clé ne nomme que l'étape : elle survit ainsi au renommage d'une fiche comme à sa
@@ -558,7 +558,12 @@ export function etapeDUnAccesEchu(dedupKey: string): string | null {
 export function constatsDAccesEchus(acces: readonly AccesAccorde[], maintenant: Date): Constat[] {
   const derniers = new Map<string, AccesAccorde>();
   for (const un of acces) {
-    const cle = `${un.username}:${un.systemKey}:${un.ressource ?? ""}:${un.role ?? ""}`;
+    // Par ressource, tous rôles confondus : un octroi plus élevé et sans terme reconduit
+    // celui qu'il contient. Le rôle ne départage que là où la ressource n'est pas nommée.
+    const cle =
+      un.ressource === null
+        ? `${un.username}:${un.systemKey}::${un.role ?? ""}`
+        : `${un.username}:${un.systemKey}:${un.ressource}`;
     const connu = derniers.get(cle);
     if (!connu || un.accordeLe.getTime() > connu.accordeLe.getTime()) {
       derniers.set(cle, un);

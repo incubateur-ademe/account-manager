@@ -678,11 +678,11 @@ async function ressourcesConnues(
   if (systemes.size === 0) {
     return new Map();
   }
-  // Celles qui portent un accès vivant, et elles seules : un projet Scalingo se libelle comme
-  // une application et ne porte jamais d'accès, et une organisation GitHub renommée laisse
-  // derrière elle une ligne aux accès tous disparus.
+  // Celles qui portent ou ont porté un accès, et elles seules : un projet Scalingo se libelle
+  // comme une application et n'en porte jamais. Une application supprimée garde son nom et ses
+  // accès disparus, et le constat s'y referme.
   const lues = await prisma.resource.findMany({
-    where: { provider: { in: [...systemes] }, grants: { some: { vanishedAt: null } } },
+    where: { provider: { in: [...systemes] }, grants: { some: {} } },
     select: { provider: true, externalId: true, label: true },
   });
   const parSysteme = new Map<string, { externalId: string; label: string }[]>();

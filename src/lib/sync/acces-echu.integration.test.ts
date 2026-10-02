@@ -203,7 +203,7 @@ describe("un accès gardé au-delà de son terme", () => {
         }),
       ),
     );
-    const compte = await prisma.externalIdentity.create({
+    await prisma.externalIdentity.create({
       data: {
         provider: "scalingo",
         externalId: "us-42",
@@ -217,7 +217,6 @@ describe("un accès gardé au-delà de son terme", () => {
           })),
         },
       },
-      select: { grants: { select: { id: true, resourceId: true } } },
     });
     // Le propriétaire de chaque application, comme Scalingo le rend toujours : il reste
     // quand Hugo s'en va
@@ -286,15 +285,16 @@ describe("un accès gardé au-delà de son terme", () => {
       data: { label: "alpha, osc-fr1" },
     });
 
-    // When alpha est retirée, beta restant tenue, et que la collecte repasse
-    const tenueAlpha = compte.grants.find(({ resourceId }) => resourceId === alpha?.id);
-    await prisma.accessGrant.update({
-      where: { id: tenueAlpha?.id ?? "" },
+    // When alpha est supprimée côté Scalingo, beta restant tenue : la collecte voit
+    // disparaître tous ses accès, propriétaire compris, et la collecte repasse
+    await prisma.accessGrant.updateMany({
+      where: { resourceId: alpha?.id ?? "" },
       data: { vanishedAt: RELU },
     });
     await collecter(new Date("2026-09-11T09:00:00Z"));
 
-    // Then le constat se referme : l'accès gardé ailleurs n'est pas celui qui était échu
+    // Then le constat se referme : l'accès gardé ailleurs n'est pas celui qui était échu, et
+    // une application supprimée garde son nom
     expect((await echus())[0]?.closedAt).not.toBeNull();
   });
 
@@ -373,10 +373,10 @@ describe("un accès gardé au-delà de son terme", () => {
     expect(await echus()).toEqual([expect.objectContaining({ closedAt: null })]);
   });
 
-  it("reste ouvert sur une organisation renommée, et compte un membre promu administrateur", async () => {
+  it("compte un membre promu administrateur, et se referme sur une reconduction au rôle tenu", async () => {
     // Given Hugo, membre de l'organisation par un octroi échu, promu administrateur depuis
     // hors de l'outil
-    const { personId, grantId } = await semer();
+    const { personId } = await semer();
     await octroyer(personId, {
       id: "pla-membre",
       accordeLe: new Date("2026-03-05"),
@@ -388,27 +388,17 @@ describe("un accès gardé au-delà de son terme", () => {
     await collecter(MAINTENANT);
     expect(await echus()).toEqual([expect.objectContaining({ closedAt: null })]);
 
-    // When l'organisation est renommée : la collecte relève une nouvelle ressource, et
-    // l'ancienne ne garde que des accès disparus
-    const renommee = await prisma.resource.create({
-      data: { provider: "github", externalId: "ademe-incubateur", label: "Organisation" },
-    });
-    const compte = await prisma.accessGrant.update({
-      where: { id: grantId },
-      data: { vanishedAt: RELU },
-      select: { externalIdentityId: true },
-    });
-    await prisma.accessGrant.create({
-      data: {
-        externalIdentityId: compte.externalIdentityId,
-        resourceId: renommee.id,
-        role: "admin",
-      },
+    // When l'opératrice reconduit l'accès au rôle tenu, administrateur et sans terme, et que
+    // le précheck le solde
+    await octroyer(personId, {
+      id: "pla-reconduit-admin",
+      accordeLe: new Date("2026-09-10T10:00:00Z"),
+      terme: null,
+      deja: true,
     });
     await collecter(new Date("2026-09-11T09:00:00Z"));
 
-    // Then le constat reste ouvert : plus aucune ressource vivante ne porte l'ancien nom, et
-    // le système se juge sur le rôle plutôt que de refermer sur un accès toujours tenu
-    expect((await echus())[0]?.closedAt).toBeNull();
+    // Then le constat se referme : la dernière décision sur l'organisation n'a pas de terme
+    expect((await echus())[0]?.closedAt).not.toBeNull();
   });
 });

@@ -816,9 +816,9 @@ vrai cas se noie avec lui.
 constaté après elle. Rien ne reprend de lui-même un accès à terme, sauf un jeton émis, qui
 meurt à son terme et ne paraît dans aucun relevé : les étapes porteuses d'une clé
 d'engagement n'entrent donc pas dans ce constat. Seul le dernier octroi soldé compte, par
-personne, système, ressource et rôle, le dernier étant celui dont le plan a été confirmé le
-plus tard, si bien qu'un accès reconduit par un nouveau plan
-n'est pas échu, et qu'un octroi sur une autre application n'en reconduit aucun. Le
+personne, système et ressource, le dernier étant celui dont le plan a été confirmé le plus
+tard, si bien qu'un accès reconduit par un nouveau plan, à un rôle égal ou plus élevé, n'est
+pas échu, et qu'un octroi sur une autre application n'en reconduit aucun. Le
 connecteur dit ce que la collecte relève quand l'octroi est tenu, la ressource et les rôles
 (`accesDeLOctroi`) ; sans lui, ou quand plus aucune ressource collectée ne porte ce nom, le
 système se juge sur le rôle de l'étape seul. Seul un compte rattaché sans ressemblance tient

@@ -560,6 +560,23 @@ describe("ce qu'un accès échu laisse voir", () => {
       ).map(({ dedupKey }) => dedupKey),
     ).toEqual(["EXPIRED_GRANT:github:etape-1"]);
 
+    // Then un octroi plus élevé et sans terme sur la même ressource reconduit celui qu'il
+    // contient : ce qui compte est la dernière décision prise sur cette ressource
+    expect(
+      constatsDAccesEchus(
+        [
+          acces({ role: "member" }),
+          acces({
+            etapeId: "etape-5",
+            role: "admin",
+            accordeLe: new Date("2026-06-01T09:00:00Z"),
+            termeLe: null,
+          }),
+        ],
+        APRES,
+      ),
+    ).toEqual([]);
+
     // Then la clé ne nomme que l'étape, qu'un renommage de fiche ne touche pas
     expect(etapeDUnAccesEchu("EXPIRED_GRANT:github:etape-1")).toBe("etape-1");
     expect(etapeDUnAccesEchu("OVERDUE_MANUAL_ACTION:github:hugo.exemple")).toBeNull();
