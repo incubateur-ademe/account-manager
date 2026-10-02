@@ -1,5 +1,4 @@
 import { CONNECTEURS } from "@/connectors";
-import { PASSAGE_MAX_MINUTES } from "@/core/collecte";
 import { resolveCapability } from "@/core/connector";
 import { autoriseUneRevocation } from "@/core/rapprochement";
 import { verifierConfigurations } from "@/lib/configuration-connecteur";
@@ -314,7 +313,7 @@ export async function executerSync(
  * redémarré en cours de route laisse donc une trace ouverte pour toujours, et sans
  * cette péremption elle interdirait toute nouvelle collecte.
  */
-const PEREMPTION_MINUTES = PASSAGE_MAX_MINUTES;
+const PEREMPTION_MINUTES = 30;
 
 export interface CollecteEnCours {
   provider: string;

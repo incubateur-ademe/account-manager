@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ISSUE_DOSSIER } from "@/core/execution";
 import { prisma } from "@/lib/db";
-import { calculerPlan, enregistrerPlan, ouvrirDossier } from "@/lib/dossier";
+import { calculerPlan, enregistrerPlan, type LecturesDuPlan, ouvrirDossier } from "@/lib/dossier";
 import { executerPlan } from "@/lib/execution";
 import { chargerLesSurcharges } from "@/lib/surcharges";
 import { politiqueJetable } from "@/test/politique-jetable";
@@ -60,7 +60,7 @@ async function rendreLaPolitique(): Promise<void> {
 }
 
 const USERNAME = "nour.exemple";
-/** Bien avant la confirmation, pour que rien de ce qui est semé ne tombe dans sa marge. */
+/** Avant la confirmation : ce qui est semé existe quand le plan se calcule. */
 const RELEVES = new Date("2026-09-01T02:00:00Z");
 const CONFIRMATION = new Date("2026-09-10T09:00:00Z");
 const APRES = new Date("2026-09-12T09:00:00Z");
@@ -109,7 +109,9 @@ const tolerer = (externalId: string, posee: Date) =>
  * Le départ confirmé dont les deux scénarios partent, tel que l'action l'écrit :
  * l'empreinte du calcul et l'instant qui l'a produite, dans la même écriture.
  */
-async function confirmerUnDepart(personId: string): Promise<{ planId: string; empreinte: string }> {
+async function confirmerUnDepart(
+  personId: string,
+): Promise<{ planId: string; empreinte: string; lus: LecturesDuPlan | undefined }> {
   const dossier = await ouvrirDossier(personId, "OFFBOARDING", null);
   const calcule = await calculerPlan("OFFBOARDING", personId, USERNAME, CONFIRMATION);
   expect(calcule.etapes.length).toBeGreaterThan(0);
@@ -127,11 +129,15 @@ async function confirmerUnDepart(personId: string): Promise<{ planId: string; em
       confirmedAt: CONFIRMATION,
       confirmedBy: OPERATRICE.username,
       confirmedDigest: calcule.empreinte,
+      confirmedReads: {
+        identites: [...(calcule.lus?.identites ?? [])],
+        acces: [...(calcule.lus?.acces ?? [])],
+      },
     },
   });
   await prisma.accessCase.update({ where: { id: dossier.id }, data: { state: "CONFIRMED" } });
 
-  return { planId, empreinte: calcule.empreinte };
+  return { planId, empreinte: calcule.empreinte, lus: calcule.lus };
 }
 
 describe("un plan confirmé rejoue les tolérances de sa confirmation", () => {
@@ -185,7 +191,7 @@ describe("un plan confirmé rejoue les comptes constatés à sa confirmation", (
 
   it("reste exécutable quand un accès est retiré à la main avant le lancement", async () => {
     // Given un départ confirmé, les deux comptes siégeant dans l'organisation,
-    const { planId, empreinte: approuvee } = await confirmerUnDepart(personId);
+    const { planId, empreinte: approuvee, lus } = await confirmerUnDepart(personId);
 
     // When quelqu'un retire l'un des deux comptes de l'organisation avant le lancement, et
     // que la collecte constate la disparition du compte et de son adhésion,
@@ -197,13 +203,7 @@ describe("un plan confirmé rejoue les comptes constatés à sa confirmation", (
       where: { externalId: "cpt-2" },
       data: { vanishedAt: APRES },
     });
-    // Calculé au présent, au-delà de la marge d'un passage, le plan ne voit plus ce compte
-    const aujourdhui = await calculerPlan(
-      "OFFBOARDING",
-      personId,
-      USERNAME,
-      new Date(APRES.getTime() + 60 * 60_000),
-    );
+    const aujourdhui = await calculerPlan("OFFBOARDING", personId, USERNAME, APRES);
     expect(aujourdhui.empreinte).not.toBe(approuvee);
 
     // Then le calcul rejoué à la confirmation voit les comptes d'alors, et l'exécution part
@@ -215,6 +215,7 @@ describe("un plan confirmé rejoue les comptes constatés à sa confirmation", (
       APRES,
       undefined,
       CONFIRMATION,
+      lus,
     );
     expect(gele.empreinte).toBe(approuvee);
     const resultat = await executerPlan(planId, {
@@ -241,8 +242,8 @@ describe("un plan confirmé rejoue les comptes constatés à sa confirmation", (
       data: { vanishedAt: debutDuPassage },
     });
 
-    // Then le lancement part : la confirmation le voyait vivant, et la marge d'un passage
-    // le garde au calcul
+    // Then le lancement part : la confirmation le voyait vivant, et le plan garde ce qu'elle
+    // a lu
     const resultat = await executerPlan(planId, {
       operateur: OPERATRICE,
       masseConfirmee: true,
@@ -253,7 +254,7 @@ describe("un plan confirmé rejoue les comptes constatés à sa confirmation", (
 
   it("se dit obsolète quand un compte apparaît après la confirmation", async () => {
     // Given un départ confirmé sur les deux comptes de la personne,
-    const { planId, empreinte: approuvee } = await confirmerUnDepart(personId);
+    const { planId, empreinte: approuvee, lus } = await confirmerUnDepart(personId);
 
     // When la collecte relève après coup un compte Notion de la personne, rattaché par
     // son adresse,
@@ -277,6 +278,7 @@ describe("un plan confirmé rejoue les comptes constatés à sa confirmation", (
       APRES,
       undefined,
       CONFIRMATION,
+      lus,
     );
     expect(gele.empreinte).not.toBe(approuvee);
     const resultat = await executerPlan(planId, {

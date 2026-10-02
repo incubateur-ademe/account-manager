@@ -31,7 +31,12 @@ import type { Prisma } from "@/generated/prisma/client";
 import { profilDeLaPolitique } from "@/lib/arrivee";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
-import { calculerPlan, type PlanCalcule, reposerLEtatDuPlan } from "@/lib/dossier";
+import {
+  calculerPlan,
+  lecturesConfirmees,
+  type PlanCalcule,
+  reposerLEtatDuPlan,
+} from "@/lib/dossier";
 import { env } from "@/lib/env";
 import {
   calculerGeste,
@@ -159,6 +164,7 @@ async function planEnBase(planId: string) {
       // construction plutôt que par discipline : la confirmation écrit les deux dans la
       // même transaction, avec le « maintenant » qu'elle a passé au calcul.
       confirmedAt: true,
+      confirmedReads: true,
       expiresAt: true,
       accessCaseId: true,
       accessCase: {
@@ -429,6 +435,7 @@ export async function executerPlan(
       // une pose ou une expiration survenue depuis déplacerait l'empreinte, et ce plan
       // deviendrait inexécutable sans issue, le recalcul n'étant ouvert qu'à un brouillon.
       plan.confirmedAt,
+      lecturesConfirmees(plan.confirmedReads),
     );
   } else {
     // Par le refus tracé et non par une levée : `lancerExecution` n'attrape rien, et une
