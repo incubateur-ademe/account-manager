@@ -94,10 +94,9 @@ describe("ce que le connecteur Notion remonte du workspace", () => {
     expect(roles["a15919aa-5727-4fb9-84e9-2980007cfc58"]).toBe("owner");
     expect(roles["e04d8f16-7a25-4b93-8c51-df6290ab3e77"]).toBe("restricted_member");
 
-    // Une extension absente ne vaut pas un rôle absent : le socle ne saurait quoi
-    // faire d'un accès sans rôle, et le membre ordinaire est le cas de loin le plus
-    // fréquent.
-    expect(roles["7ec7b7c3-126b-412a-babf-fd79d002e921"]).toBe("member");
+    // Une extension absente ne vaut ni un rôle absent, dont le socle ne saurait quoi faire,
+    // ni un membre ordinaire, qui partirait seul au départ : le rôle se dit non lu
+    expect(roles["7ec7b7c3-126b-412a-babf-fd79d002e921"]).toBe("non lu");
 
     // Un membre inactif reste un compte observé : chez Notion cet état est un
     // retrait, et le filtrer ferait dater comme disparu quelqu'un que Notion connaît.
@@ -416,6 +415,12 @@ describe("le départ sur Notion", () => {
     )[0];
     expect(proprietaire?.tier).toBe("manual");
     expect(proprietaire?.manual?.runbook).toContain("Le rôle owner se retire à la main");
+    expect(
+      planifierRetraitNotion(
+        { kind: "person", username: "camille.rivet", acces: [siege("non lu")] },
+        true,
+      )[0]?.tier,
+    ).toBe("manual");
     expect(proprietaire?.manual?.doneWhen).toBe(
       "camille@exemple.fr n'apparaît plus dans la liste des membres du workspace.",
     );

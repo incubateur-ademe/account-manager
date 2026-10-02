@@ -616,8 +616,8 @@ inexécutable sans issue, le recalcul n'étant ouvert qu'à un brouillon. Le cal
 donc les tolérances telles qu'elles étaient à l'instant de la confirmation, que le plan
 porte déjà. Un plan confirmé garde la liste des comptes et des accès que son calcul a lus.
 Au lancement, un compte ou un accès de cette liste que la collecte a vu disparaître depuis
-reste au plan, et c'est au précheck de le constater déjà absent. Un compte apparu depuis
-entre au calcul et rend le plan obsolète.
+reste au plan, et c'est au précheck de le constater déjà absent. Un compte rattaché sans
+ressemblance apparu depuis entre au calcul et rend le plan obsolète.
 
 **Une permanente échappe à ce gel, et c'est la décision.** Déclarée en git, elle n'a pas de
 date, donc l'instant de la confirmation ne la rejoue pas et la politique en vigueur

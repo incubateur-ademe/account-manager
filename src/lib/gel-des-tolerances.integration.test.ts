@@ -60,8 +60,6 @@ async function rendreLaPolitique(): Promise<void> {
 }
 
 const USERNAME = "nour.exemple";
-/** Avant la confirmation : ce qui est semé existe quand le plan se calcule. */
-const RELEVES = new Date("2026-09-01T02:00:00Z");
 const CONFIRMATION = new Date("2026-09-10T09:00:00Z");
 const APRES = new Date("2026-09-12T09:00:00Z");
 
@@ -85,8 +83,7 @@ async function semer(): Promise<string> {
         handle: externalId,
         matchMethod: "GITHUB_LOGIN",
         personId: personne.id,
-        firstSeenAt: RELEVES,
-        grants: { create: { role: "member", resourceId: organisation.id, firstSeenAt: RELEVES } },
+        grants: { create: { role: "member", resourceId: organisation.id } },
       },
     });
   }

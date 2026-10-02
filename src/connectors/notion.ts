@@ -308,7 +308,7 @@ export function assembler(membres: readonly UtilisateurScim[]): {
     if (!retire) {
       acces.push({
         identityExternalId: membre.id,
-        role: membre[EXTENSION]?.role ?? "member",
+        role: membre[EXTENSION]?.role ?? ROLE_NON_LU,
       });
     }
   }
@@ -459,6 +459,12 @@ export function planifierOctroiNotion(sujet: SubjectRef): readonly PlannedStep[]
 // ---------------------------------------------------------------------------
 
 const ACTION_RETRAIT = "retirer-du-workspace";
+
+/**
+ * Le rôle d'un membre dont SCIM ne rend pas l'extension. Ne pas savoir n'autorise pas à
+ * retirer : hors des rôles ordinaires, son retrait reste à la main.
+ */
+const ROLE_NON_LU = "non lu";
 
 /** Les rôles qui se retirent seuls. Un propriétaire ou un administrateur reste à la main. */
 const ROLES_ORDINAIRES: readonly string[] = ["member", "restricted_member"];
