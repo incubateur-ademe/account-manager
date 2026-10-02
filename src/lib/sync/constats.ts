@@ -466,7 +466,9 @@ async function actionsDeclarees(
     select: {
       username: true,
       returnedAt: true,
-      identities: { select: { provider: true, vanishedAt: true } },
+      identities: {
+        select: { provider: true, vanishedAt: true, grants: { select: { vanishedAt: true } } },
+      },
     },
   } as const;
 
@@ -536,7 +538,10 @@ async function actionsDeclarees(
       retourLe: personne.returnedAt,
       inverseeLe: traitees[sensOppose(sens)].get(personne.username) ?? null,
       compteToujoursLa: personne.identities.some(
-        (identite) => identite.provider === etape.systemKey && identite.vanishedAt === null,
+        (identite) =>
+          identite.provider === etape.systemKey &&
+          identite.vanishedAt === null &&
+          porteEncoreUnAcces(identite.grants),
       ),
       relueLe: relectures.get(etape.systemKey) ?? null,
     });
@@ -574,6 +579,7 @@ async function accesAccordes(): Promise<AccesAccorde[]> {
         select: {
           provider: true,
           matchMethod: true,
+          _count: { select: { grants: true } },
           grants: {
             where: { vanishedAt: null },
             select: { role: true, resource: { select: { externalId: true, label: true } } },
@@ -641,9 +647,13 @@ async function accesAccordes(): Promise<AccesAccorde[]> {
     const roles = octroi?.roles ?? (role === null ? null : [role]);
     // Une ressemblance n'ouvre aucune coupure, et ce constat demande d'en faire une : un
     // compte rattaché ainsi ne tient l'accès de personne.
+    // Un compte que son système garde après l'avoir retiré, un membre Notion rendu inactif,
+    // ne porte plus aucun accès vivant : il ne tient plus rien.
     const comptes = personne.identities.filter(
-      ({ provider, matchMethod }) =>
-        provider === etape.systemKey && autoriseUneRevocation(matchMethod),
+      ({ provider, matchMethod, grants, _count }) =>
+        provider === etape.systemKey &&
+        autoriseUneRevocation(matchMethod) &&
+        (grants.length > 0 || _count.grants === 0),
     );
     const vises = comptes
       .flatMap(({ grants }) => grants)
@@ -697,4 +707,13 @@ function designe(ressource: RessourceNommee, lue: { externalId: string; label: s
   return "externalId" in ressource
     ? lue.externalId === ressource.externalId
     : lue.label === ressource.label;
+}
+
+/**
+ * Un compte que son système garde après l'avoir retiré, un membre Notion rendu inactif, ne
+ * porte plus aucun accès vivant. Un compte qui n'en a jamais porté, sur un système qui n'en
+ * relève pas, se juge sur sa seule présence.
+ */
+function porteEncoreUnAcces(acces: readonly { vanishedAt: Date | null }[]): boolean {
+  return acces.length === 0 || acces.some(({ vanishedAt }) => vanishedAt === null);
 }

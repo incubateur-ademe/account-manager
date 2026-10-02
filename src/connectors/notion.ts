@@ -478,7 +478,11 @@ const RANG_DES_ROLES: readonly string[] = [
 ];
 
 function plusEleve(a: string, b: string): boolean {
-  return RANG_DES_ROLES.indexOf(a) < RANG_DES_ROLES.indexOf(b);
+  const ra = RANG_DES_ROLES.indexOf(a);
+  const rb = RANG_DES_ROLES.indexOf(b);
+  // Deux rôles hors de la liste se départagent par leur nom : le premier lu ne doit pas
+  // décider, l'ordre de lecture n'étant fixé par rien.
+  return ra < rb || (ra === rb && a < b);
 }
 
 const REFUS_SIMULATION =
@@ -626,7 +630,9 @@ export async function constaterRetrait(
   if (lu.actif === false) {
     return { state: "ALREADY_ABSENT" };
   }
-  if (lu.actif === true && lu.role === cible.role) {
+  // Comme la collecte : seul `active: false` dit le membre parti, un champ absent le laisse
+  // présent.
+  if (lu.role === cible.role) {
     return { state: "READY" };
   }
   return { state: "STALE", expected: { actif: true, role: cible.role }, actual: lu };

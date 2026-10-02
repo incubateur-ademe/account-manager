@@ -401,4 +401,110 @@ describe("un accès gardé au-delà de son terme", () => {
     // Then le constat se referme : la dernière décision sur l'organisation n'a pas de terme
     expect((await echus())[0]?.closedAt).not.toBeNull();
   });
+
+  it("ne tient plus rien d'un membre que son système garde après l'avoir retiré", async () => {
+    // Given Hugo, membre Notion accordé jusqu'à un terme passé, puis retiré par son départ :
+    // Notion le rend inactif, la collecte garde l'identité et date son accès disparu
+    const personne = await prisma.person.create({
+      data: { username: USERNAME, fullname: "Hugo Exemple", source: "BETA" },
+    });
+    const workspace = await prisma.resource.create({
+      data: { provider: "notion", externalId: "workspace", label: "Workspace" },
+    });
+    await prisma.externalIdentity.create({
+      data: {
+        provider: "notion",
+        externalId: "scim-hugo",
+        handle: "hugo@exemple.fr",
+        matchMethod: "EMAIL_EXACT",
+        personId: personne.id,
+        grants: { create: { role: "member", resourceId: workspace.id, vanishedAt: RELU } },
+      },
+    });
+    await relire("notion", RELU);
+    await octroyer(personne.id, {
+      id: "pla-notion",
+      accordeLe: new Date("2026-03-05"),
+      terme: TERME,
+      geste: {
+        systemKey: "notion",
+        action: "inviter-dans-le-workspace",
+        label: "Inviter hugo.exemple dans le workspace Notion",
+        params: { username: USERNAME },
+      },
+    });
+    // When la collecte des constats passe
+    await collecter(MAINTENANT);
+
+    // Then l'accès échu ne se lève pas : le compte ne porte plus aucun accès vivant
+    expect(await echus()).toEqual([]);
+  });
+
+  it("ne dément pas le retrait d'un membre que son système garde inactif", async () => {
+    // Given Léa, retirée du workspace Notion par son départ, que Notion rend inactive : la
+    // collecte garde l'identité et date son accès disparu
+    const personne = await prisma.person.create({
+      data: { username: "lea.exemple", fullname: "Léa Exemple", source: "BETA" },
+    });
+    const workspace = await prisma.resource.create({
+      data: { provider: "notion", externalId: "workspace", label: "Workspace" },
+    });
+    await prisma.externalIdentity.create({
+      data: {
+        provider: "notion",
+        externalId: "scim-lea",
+        handle: "lea@exemple.fr",
+        matchMethod: "EMAIL_EXACT",
+        personId: personne.id,
+        grants: { create: { role: "member", resourceId: workspace.id, vanishedAt: RELU } },
+      },
+    });
+    await relire("notion", RELU);
+    // Et son retrait, soldé par le connecteur
+    await prisma.plan.create({
+      data: {
+        id: "pla-depart",
+        kind: "OFFBOARDING",
+        state: "EXECUTED",
+        accessCase: {
+          create: {
+            personId: personne.id,
+            kind: "OFFBOARDING",
+            state: "DONE",
+            closedAt: new Date("2026-09-06"),
+          },
+        },
+        intent: {},
+        planDigest: "digest-depart",
+        createdBy: "operatrice.exemple",
+        createdAt: new Date("2026-09-05"),
+        confirmedAt: new Date("2026-09-05"),
+        expiresAt: new Date("2026-09-12"),
+        steps: {
+          create: {
+            systemKey: "notion",
+            tier: "auto",
+            capability: "revoke",
+            action: "retirer-du-workspace",
+            label: "Retirer lea.exemple du workspace Notion",
+            params: { username: "lea.exemple", identifiant: "scim-lea", role: "member" },
+            riskLevel: "HIGH",
+            expectedState: { membre: false },
+            idempotencyKey: "notion:revoke:lea.exemple",
+            ordre: 1,
+            state: "SUCCEEDED",
+            executedAt: new Date("2026-09-05"),
+          },
+        },
+      },
+    });
+
+    // When la collecte des constats passe
+    await collecter(MAINTENANT);
+
+    // Then le retrait n'est pas démenti : le compte ne porte plus aucun accès vivant
+    expect(
+      await prisma.finding.count({ where: { kind: "OVERDUE_MANUAL_ACTION", closedAt: null } }),
+    ).toBe(0);
+  });
 });

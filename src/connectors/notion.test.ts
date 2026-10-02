@@ -459,6 +459,20 @@ describe("le départ sur Notion", () => {
           ?.params,
       ).toMatchObject({ role: "member" });
     }
+
+    // Then deux rôles hors de la liste se départagent pareil dans les deux ordres
+    const inconnus = [siege("workspace_admin"), siege("non lu")];
+    expect(
+      planifierRetraitNotion(
+        { kind: "person", username: "camille.rivet", acces: inconnus },
+        true,
+      )[0]?.params,
+    ).toEqual(
+      planifierRetraitNotion(
+        { kind: "person", username: "camille.rivet", acces: [...inconnus].reverse() },
+        true,
+      )[0]?.params,
+    );
     expect(deuxComptes?.label).toContain("camille@exemple.fr, camille.perso@exemple.fr");
     const sansJeton = planifierRetraitNotion(
       { kind: "person", username: "camille.rivet", acces: [siege()] },
@@ -507,6 +521,18 @@ describe("le départ sur Notion", () => {
         etape,
       ),
     ).toMatchObject({ state: "STALE", actual: { role: "non lu" } });
+
+    // Une fiche sans `active` reste un membre présent, comme à la collecte
+    expect(
+      await constaterRetrait(
+        reponse(200, {
+          id: "scim-1",
+          userName: "camille@exemple.fr",
+          [EXTENSION]: { role: "member" },
+        }),
+        etape,
+      ),
+    ).toEqual({ state: "READY" });
 
     // Un membre au rôle non lu, à la main, se relit inchangé : rien n'a bougé
     const [nonLu] = planifierRetraitNotion(

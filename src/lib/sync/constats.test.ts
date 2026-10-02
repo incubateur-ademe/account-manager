@@ -203,7 +203,11 @@ vi.mock("@/lib/db", async () => {
               const personne = {
                 username: fiche.username,
                 returnedAt: fiche.returnedAt,
-                identities: fiche.comptes.map((provider) => ({ provider, vanishedAt: null })),
+                identities: fiche.comptes.map((provider) => ({
+                  provider,
+                  vanishedAt: null,
+                  grants: [],
+                })),
               };
               return {
                 label: etape.label,
