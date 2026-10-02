@@ -159,9 +159,14 @@ const base = vi.hoisted(() => ({
   }[],
   /** Les écrans que le passage tracé a demandé de rafraîchir, dans l'ordre. */
   revalidations: [] as string[],
+  collecteEnCours: null as { provider: string; depuis: Date } | null,
 }));
 
 vi.mock("@/connectors", () => ({ CONNECTEURS: base.connecteurs }));
+
+vi.mock("@/lib/sync/executer", () => ({
+  collecteEnCours: () => Promise.resolve(base.collecteEnCours),
+}));
 
 vi.mock("next/cache", () => ({
   revalidatePath: (chemin: string) => {
@@ -234,13 +239,17 @@ vi.mock("@/lib/db", () => ({
       findMany: () => Promise.resolve([]),
     },
     externalIdentity: {
-      findMany: ({ where }: { where: { personId: string; firstSeenAt: { lte: Date } } }) =>
+      findMany: ({
+        where,
+      }: {
+        where: { personId: string; OR: [unknown, { vanishedAt: { gt: Date } }] };
+      }) =>
         Promise.resolve(
           base.identites
             .filter(
               (identite) =>
                 identite.personId === where.personId &&
-                (identite.vanishedAt === null || identite.vanishedAt > where.firstSeenAt.lte),
+                (identite.vanishedAt === null || identite.vanishedAt > where.OR[1].vanishedAt.gt),
             )
             // Prisma rend toujours le tableau d'une relation sélectionnée, vide s'il le faut.
             .map((identite) => ({ grants: [], ...identite })),
@@ -703,6 +712,18 @@ describe("le geste qui engage : confirmer un plan", () => {
     const { plan } = await dossierAvecPlan("OFFBOARDING");
     const empreinteApprouvee = plan.planDigest;
     expect(base.etapes).toHaveLength(1);
+
+    // When une collecte tourne au moment du clic
+    base.collecteEnCours = { provider: "github", depuis: new Date() };
+    const pendant = await confirmerPlan(null, formulaire({ planId: plan.id }));
+
+    // Then la confirmation attend sa fin : ses disparitions sont datées de son début, et le
+    // lancement prendrait pour disparu avant la confirmation ce qu'elle voyait encore
+    expect(pendant.erreur).toBe(
+      "Une collecte est en cours (github). Confirmez ce plan quand elle sera terminée.",
+    );
+    expect(plan.state).toBe("DRAFT");
+    base.collecteEnCours = null;
 
     // When une collecte passe entre le calcul et le clic, et ne voit plus ce compte
     const compte = base.identites[0];

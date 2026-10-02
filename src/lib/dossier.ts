@@ -89,23 +89,29 @@ interface ComptesDuDepart extends SystemesDuDepart {
   adresse?: string;
 }
 
-/** Ce qui était constaté à cet instant : apparu avant lui, et pas encore disparu. */
-function constateAu(au: Date) {
-  return { firstSeenAt: { lte: au }, OR: [{ vanishedAt: null }, { vanishedAt: { gt: au } }] };
+/** Vivant, ou disparu après cet instant. */
+function nonDisparuAvant(au: Date) {
+  return { OR: [{ vanishedAt: null }, { vanishedAt: { gt: au } }] };
 }
 
 /**
- * Les comptes d'une personne tels que la collecte les voyait à un instant.
+ * Les comptes d'une personne, ceux qu'une collecte a vus disparaître après un instant
+ * compris.
  *
  * Un plan confirmé se recalcule au démarrage de l'exécution, et son empreinte doit rester
- * celle qu'on a approuvée. Lus au présent, un accès retiré à la main entre-temps ferait
+ * celle qu'on a approuvée. Lu au présent, un accès retiré à la main entre-temps ferait
  * disparaître ou changer l'étape qui le visait, et le plan entier serait refusé, alors que
- * le précheck sait solder un accès déjà absent.
+ * le précheck sait solder un accès déjà absent. Un compte apparu depuis entre au calcul, en
+ * revanche : il change ce qu'il faut couper, et le plan doit se dire obsolète.
+ *
+ * Un accès disparu avant la confirmation, revu puis disparu de nouveau après elle, revient
+ * au calcul, la collecte réutilisant sa ligne. Le plan est alors refusé, ce qui va dans le
+ * sens sûr.
  */
 async function systemesDeLaPersonne(personId: string, au: Date): Promise<ComptesDuDepart> {
   const [identites, fiche] = await Promise.all([
     prisma.externalIdentity.findMany({
-      where: { personId, ...constateAu(au) },
+      where: { personId, ...nonDisparuAvant(au) },
       select: {
         provider: true,
         externalId: true,
@@ -114,7 +120,7 @@ async function systemesDeLaPersonne(personId: string, au: Date): Promise<Comptes
         // Les accès vivants seulement : un accès disparu dit qu'il n'y a plus rien à couper,
         // et proposer de le retirer enverrait quelqu'un chercher ce qui n'est plus là.
         grants: {
-          where: constateAu(au),
+          where: nonDisparuAvant(au),
           select: { role: true, resource: { select: { externalId: true, label: true } } },
         },
       },

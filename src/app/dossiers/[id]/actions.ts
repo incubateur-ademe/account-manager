@@ -44,6 +44,7 @@ import {
 } from "@/lib/geste";
 import { droitDeParticiper } from "@/lib/participation";
 import { requireOperateur, requireUtilisateur, type Utilisateur } from "@/lib/session";
+import { collecteEnCours } from "@/lib/sync/executer";
 
 export interface EtatAction {
   erreur?: string;
@@ -226,6 +227,17 @@ export async function confirmerPlan(
   }
 
   const maintenant = new Date();
+
+  // Une collecte date ses disparitions du début de son passage, et les écrit à la fin. Une
+  // confirmation glissée entre les deux verrait un accès que le lancement croirait disparu
+  // avant elle, et le plan serait refusé.
+  const enCours = await collecteEnCours(maintenant);
+  if (enCours) {
+    return {
+      erreur: `Une collecte est en cours (${enCours.provider}). Confirmez ce plan quand elle sera terminée.`,
+    };
+  }
+
   let actuel: PlanCalcule;
 
   if (ancrage.sorte === "dossier") {

@@ -187,10 +187,14 @@ describe("un plan confirmé rejoue les comptes constatés à sa confirmation", (
     // Given un départ confirmé, les deux comptes siégeant dans l'organisation,
     const { planId, empreinte: approuvee } = await confirmerUnDepart(personId);
 
-    // When quelqu'un retire l'un des deux comptes avant le lancement, et que la collecte
-    // le constate,
+    // When quelqu'un retire l'un des deux comptes de l'organisation avant le lancement, et
+    // que la collecte constate la disparition du compte et de son adhésion,
     await prisma.accessGrant.updateMany({
       where: { externalIdentity: { externalId: "cpt-2" } },
+      data: { vanishedAt: APRES },
+    });
+    await prisma.externalIdentity.updateMany({
+      where: { externalId: "cpt-2" },
       data: { vanishedAt: APRES },
     });
     const aujourdhui = await calculerPlan("OFFBOARDING", personId, USERNAME, APRES);
@@ -213,6 +217,42 @@ describe("un plan confirmé rejoue les comptes constatés à sa confirmation", (
       maintenant: APRES,
     });
     expect(resultat.refus).toBeUndefined();
+  });
+
+  it("se dit obsolète quand un compte apparaît après la confirmation", async () => {
+    // Given un départ confirmé sur les deux comptes de la personne,
+    const { planId, empreinte: approuvee } = await confirmerUnDepart(personId);
+
+    // When la collecte relève après coup un compte Notion de la personne, rattaché par
+    // son adresse,
+    await prisma.externalIdentity.create({
+      data: {
+        provider: "notion",
+        externalId: "scim-3",
+        handle: "nour@exemple.fr",
+        matchMethod: "EMAIL_EXACT",
+        personId,
+        firstSeenAt: APRES,
+      },
+    });
+
+    // Then le calcul rejoué à la confirmation le voit, et le lancement refuse : couper sans
+    // lui laisserait un accès que personne n'a vu
+    const gele = await calculerPlan(
+      "OFFBOARDING",
+      personId,
+      USERNAME,
+      APRES,
+      undefined,
+      CONFIRMATION,
+    );
+    expect(gele.empreinte).not.toBe(approuvee);
+    const resultat = await executerPlan(planId, {
+      operateur: OPERATRICE,
+      masseConfirmee: true,
+      maintenant: APRES,
+    });
+    expect(resultat.refus).toBeDefined();
   });
 });
 
