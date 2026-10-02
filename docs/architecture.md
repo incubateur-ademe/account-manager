@@ -815,6 +815,23 @@ droit, le constat se réconciliait à la sortie suivante, et revenait à l'entr�
 Un contrôle qui crie au loup sur des gestes corrects finit par ne plus être lu, et le
 vrai cas se noie avec lui.
 
+`EXPIRED_GRANT`, gravité de l'étape : un accès accordé jusqu'à une date est toujours
+constaté après elle. Rien ne reprend de lui-même un accès à terme, sauf un jeton émis, qui
+meurt à son terme et ne paraît dans aucun relevé : les étapes porteuses d'une clé
+d'engagement n'entrent donc pas dans ce constat. Un octroi soldé et échu se signale quand la
+personne tient encore au moins ce qu'il accordait, et qu'aucune décision au moins aussi
+récente sur la même ressource n'accorde au moins autant, encore en cours ou elle-même tenue
+au-delà de son terme, la décision étant la confirmation du plan. Un accès reconduit, à un rôle égal ou plus élevé,
+n'est donc pas échu, un octroi plus bas et plus récent ne couvre pas un accès plus élevé, une
+suite de reconductions ne lève qu'un constat, sur la dernière, et un octroi sur une autre
+application n'en reconduit aucun. Le connecteur dit ce que la collecte relève
+quand l'octroi est tenu, la ressource et les rôles qui accordent au moins autant
+(`accesDeLOctroi`) ; sans lui, le système se juge sur le rôle de l'étape seul, et quand plus
+aucune ressource collectée ne porte ce nom, sur ses rôles dans tout le système. Seul un compte rattaché sans ressemblance tient
+un accès, ce constat demandant une coupure, et le système doit avoir été relu après le
+terme. Le constat se ferme seul quand l'accès cesse d'être constaté, et l'écran nomme
+l'étape d'octroi et son terme, le constat ne portant aucun compte.
+
 Poser ou retirer un rattachement manuel ne lève ni ne ferme ce constat sur le champ, et
 c'est délibéré : il dépend des phases de toutes les startups et d'une date qui passe
 toute seule. Le recalculer dans le geste créerait une seconde vérité, et resterait

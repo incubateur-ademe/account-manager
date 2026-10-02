@@ -1,13 +1,17 @@
+import { CONNECTEURS } from "@/connectors";
 import {
   arriveeMassive,
   chuteExcessive,
   FOURNISSEUR_PERIMETRE,
   REFUS_DE_VAGUE,
 } from "@/core/collecte";
+import type { RessourceNommee } from "@/core/connector";
 import {
+  type AccesAccorde,
   type ActionDeclaree,
   amorcageDesArrivees,
   type Constat,
+  constatsDAccesEchus,
   constatsDActionsDeclarees,
   constatsDe,
   constatsDIdentites,
@@ -21,6 +25,7 @@ import {
 import { couvertureDesConstats, type Derogation, RAISON_COUVERT } from "@/core/derogation";
 import { dossierVivant, type SensDossier, sensOppose } from "@/core/dossier";
 import { ancrageLu, SENS_D_UN_GESTE } from "@/core/geste";
+import { autoriseUneRevocation } from "@/core/rapprochement";
 import type { FindingKind } from "@/generated/prisma/enums";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
@@ -197,6 +202,7 @@ export async function syncConstats(
       : constatsDe(observees, phaseParStartup, phasesTerminales, now, regleRetenue)),
     ...constatsDIdentites(identites),
     ...constatsDActionsDeclarees(await actionsDeclarees(traitees)),
+    ...constatsDAccesEchus(await accesAccordes(), now),
   ];
   // Le partage vient après le second calcul sans règle d'arrivée, et avant tout le
   // reste : ce qui est couvert ne s'ouvre pas, et se ferme en le disant.
@@ -501,15 +507,7 @@ async function actionsDeclarees(
     },
   });
 
-  const relectures = new Map<string, Date>();
-  for (const releve of await prisma.syncRun.findMany({
-    where: { capability: "list", status: "OK" },
-    distinct: ["provider"],
-    orderBy: { startedAt: "desc" },
-    select: { provider: true, startedAt: true },
-  })) {
-    relectures.set(releve.provider, releve.startedAt);
-  }
+  const relectures = await relecturesParSysteme();
 
   const declarees: ActionDeclaree[] = [];
 
@@ -545,4 +543,158 @@ async function actionsDeclarees(
   }
 
   return declarees;
+}
+
+/** La dernière lecture complète de chaque système, celle qui peut démentir ou confirmer. */
+async function relecturesParSysteme(): Promise<Map<string, Date>> {
+  const relectures = new Map<string, Date>();
+  for (const releve of await prisma.syncRun.findMany({
+    where: { capability: "list", status: "OK" },
+    distinct: ["provider"],
+    orderBy: { startedAt: "desc" },
+    select: { provider: true, startedAt: true },
+  })) {
+    relectures.set(releve.provider, releve.startedAt);
+  }
+  return relectures;
+}
+
+/**
+ * Les octrois soldés, à comparer à ce que la collecte voit encore.
+ *
+ * Jamais une étape qui porte une clé d'engagement : ce qu'elle ouvre ne paraît dans aucun
+ * relevé, et son terme la reprend de lui-même.
+ */
+async function accesAccordes(): Promise<AccesAccorde[]> {
+  const personneTenante = {
+    select: {
+      username: true,
+      identities: {
+        where: { vanishedAt: null },
+        select: {
+          provider: true,
+          matchMethod: true,
+          grants: {
+            where: { vanishedAt: null },
+            select: { role: true, resource: { select: { externalId: true, label: true } } },
+          },
+        },
+      },
+    },
+  } as const;
+
+  const etapes = await prisma.planStep.findMany({
+    where: {
+      capability: "grant",
+      state: { in: ["SUCCEEDED", "ALREADY_PRESENT"] },
+      validation: { notIn: ["AWAITING", "REFUSED"] },
+      engagementKey: null,
+    },
+    select: {
+      id: true,
+      label: true,
+      systemKey: true,
+      action: true,
+      params: true,
+      riskLevel: true,
+      grantExpiresAt: true,
+      plan: {
+        select: {
+          confirmedAt: true,
+          createdAt: true,
+          accessCase: { select: { person: personneTenante } },
+          subject: personneTenante,
+        },
+      },
+    },
+  });
+
+  const relectures = await relecturesParSysteme();
+  const octrois = etapes.map((etape) => {
+    const parametres =
+      typeof etape.params === "object" && etape.params !== null
+        ? (etape.params as Record<string, unknown>)
+        : {};
+    const octroi = CONNECTEURS.find(
+      ({ contract }) => contract.key === etape.systemKey,
+    )?.accesDeLOctroi?.({ action: etape.action, params: parametres });
+    return { etape, parametres, octroi };
+  });
+  const connues = await ressourcesConnues(
+    new Set(octrois.flatMap(({ etape, octroi }) => (octroi ? [etape.systemKey] : []))),
+  );
+
+  return octrois.flatMap(({ etape, parametres, octroi }): AccesAccorde[] => {
+    const personne = etape.plan.accessCase?.person ?? etape.plan.subject;
+    if (!personne) {
+      return [];
+    }
+
+    const role = typeof parametres["role"] === "string" ? parametres["role"] : null;
+    // Une ressource que plus aucune collecte ne nomme ainsi, une application renommée par
+    // exemple, ne se retrouve plus : l'accès se cherche alors sous ses rôles tenants sur tout
+    // le système, plutôt que de refermer le constat sur un accès peut-être toujours tenu.
+    const ressource =
+      octroi && (connues.get(etape.systemKey) ?? []).some((lue) => designe(octroi.ressource, lue))
+        ? octroi.ressource
+        : undefined;
+    const roles = octroi?.roles ?? (role === null ? null : [role]);
+    // Une ressemblance n'ouvre aucune coupure, et ce constat demande d'en faire une : un
+    // compte rattaché ainsi ne tient l'accès de personne.
+    const comptes = personne.identities.filter(
+      ({ provider, matchMethod }) =>
+        provider === etape.systemKey && autoriseUneRevocation(matchMethod),
+    );
+    const vises = comptes
+      .flatMap(({ grants }) => grants)
+      .filter((grant) => roles === null || roles.includes(grant.role))
+      .filter((grant) => ressource === undefined || designe(ressource, grant.resource));
+
+    return [
+      {
+        etapeId: etape.id,
+        label: etape.label,
+        systemKey: etape.systemKey,
+        username: personne.username,
+        role,
+        ressource: octroi === undefined ? null : JSON.stringify(octroi.ressource),
+        tenants: roles ?? [],
+        // Une seule horloge pour départager deux décisions, la confirmation : un octroi soldé
+        // au précheck ne porte aucune date d'exécution, et comparer celle d'un autre à sa
+        // confirmation départagerait deux plans selon l'ordre de leurs lancements.
+        accordeLe: etape.plan.confirmedAt ?? etape.plan.createdAt,
+        termeLe: etape.grantExpiresAt,
+        risque: etape.riskLevel,
+        encoreTenu:
+          roles === null && ressource === undefined ? comptes.length > 0 : vises.length > 0,
+        relueLe: relectures.get(etape.systemKey) ?? null,
+      },
+    ];
+  });
+}
+
+async function ressourcesConnues(
+  systemes: ReadonlySet<string>,
+): Promise<ReadonlyMap<string, readonly { externalId: string; label: string }[]>> {
+  if (systemes.size === 0) {
+    return new Map();
+  }
+  // Celles qui portent ou ont porté un accès, et elles seules : un projet Scalingo se libelle
+  // comme une application et n'en porte jamais. Une application supprimée garde son nom et ses
+  // accès disparus, et le constat s'y referme.
+  const lues = await prisma.resource.findMany({
+    where: { provider: { in: [...systemes] }, grants: { some: {} } },
+    select: { provider: true, externalId: true, label: true },
+  });
+  const parSysteme = new Map<string, { externalId: string; label: string }[]>();
+  for (const { provider, ...lue } of lues) {
+    parSysteme.set(provider, [...(parSysteme.get(provider) ?? []), lue]);
+  }
+  return parSysteme;
+}
+
+function designe(ressource: RessourceNommee, lue: { externalId: string; label: string }): boolean {
+  return "externalId" in ressource
+    ? lue.externalId === ressource.externalId
+    : lue.label === ressource.label;
 }

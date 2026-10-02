@@ -12,6 +12,12 @@ interface Libelle {
  * décrirait une situation qui a pu changer depuis.
  */
 export const LIBELLE_CONSTAT: Record<ConstatKind, Libelle> = {
+  EXPIRED_GRANT: {
+    titre: "Accès gardé au-delà de son terme",
+    explication:
+      "Un accès accordé jusqu'à une date est toujours constaté après elle. Rien ne le reprend de lui-même.",
+    action: "Retirer cet accès sur le système, ou le reconduire par un nouveau plan.",
+  },
   OVERDUE_MANUAL_ACTION: {
     titre: "Action déclarée faite, mais sans effet observé",
     explication:

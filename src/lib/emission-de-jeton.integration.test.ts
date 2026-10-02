@@ -138,10 +138,17 @@ const INTENTION = intentionDUnGeste.parse({
   justification: "inventaire ponctuel du parc pour la revue trimestrielle",
 });
 
-async function attendreLesTraces(action: string) {
+/**
+ * Le journal s'écrit sans être attendu : une trace peut arriver après celle qu'on lit
+ * d'abord. On attend donc celle qui est visée, et non la première venue.
+ */
+async function attendreLesTraces(
+  action: string,
+  visee: (lignes: readonly { after: unknown }[]) => boolean = (lignes) => lignes.length > 0,
+) {
   for (let essai = 0; essai < 200; essai += 1) {
     const lignes = await prisma.auditEvent.findMany({ where: { action } });
-    if (lignes.length > 0) {
+    if (visee(lignes)) {
       return lignes;
     }
     await new Promise((suite) => setTimeout(suite, 20));
@@ -250,10 +257,10 @@ describe("un jeton restreint s'émet, se range, et ne laisse qu'une moitié derr
     expect(passage.passageIncomplet).toContain("la base a refusé l'écriture de l'étape");
 
     // Then le journal porte l'interruption sous le plan, avec le nombre de remises en jeu
-    const traces = await attendreLesTraces("plan.execution");
-    expect(
-      traces.some((ligne) => (ligne.after as Record<string, unknown>)["interrompu"] !== undefined),
-    ).toBe(true);
+    const interrompue = (ligne: { after: unknown }) =>
+      (ligne.after as Record<string, unknown>)["interrompu"] !== undefined;
+    const traces = await attendreLesTraces("plan.execution", (lignes) => lignes.some(interrompue));
+    expect(traces.some(interrompue)).toBe(true);
   });
 
   it("écrit le compte machine depuis le socle, journalise avant d'agir, et ne garde pas la clé", async () => {

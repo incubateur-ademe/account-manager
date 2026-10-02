@@ -28,6 +28,7 @@ import { ficheEditable, RAISON_NON_EDITABLE } from "@/core/fiche-manuelle";
 import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
 import { echeanceEffective, enCours, startupsEffectives } from "@/core/rattachement-startup";
 import { LIBELLE_STATUT, statutDePersonne } from "@/core/statut";
+import { precisionsDesAccesEchus } from "@/lib/acces-echus";
 import { appartenanceDeLaLigne } from "@/lib/appartenance";
 import { profilsOfferts } from "@/lib/arrivee";
 import { prisma } from "@/lib/db";
@@ -277,15 +278,16 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
   // On arrive de la vue d'édition, qui a refusé : le dire ici plutôt que de rendre
   // la fiche comme si de rien n'était.
   const refusALEdition = edition === "refusee" && !editabilite.editable ? editabilite.raison : null;
-  const ouverts = personne.findings
-    .filter((constat) => constat.closedAt === null)
-    .map((constat) => ({
-      id: constat.id,
-      kind: constat.kind,
-      dedupKey: constat.dedupKey,
-      severity: constat.severity,
-      compte: constat.externalIdentity,
-    }));
+  const nonClos = personne.findings.filter((constat) => constat.closedAt === null);
+  const precisions = await precisionsDesAccesEchus(nonClos.map(({ dedupKey }) => dedupKey));
+  const ouverts = nonClos.map((constat) => ({
+    id: constat.id,
+    kind: constat.kind,
+    dedupKey: constat.dedupKey,
+    severity: constat.severity,
+    compte: constat.externalIdentity,
+    precision: precisions.get(constat.dedupKey),
+  }));
   const fermes = personne.findings.filter((constat) => constat.closedAt !== null);
   const systemesCollectes = collectes
     .map((collecte) => collecte.provider)

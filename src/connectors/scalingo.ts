@@ -2161,6 +2161,28 @@ export const scalingo: Connector = {
   },
 
   planifierOctroi: (scope, sujet) => octroyer(scope as ScopeScalingo, sujet),
+
+  // La collecte nomme une application par son libellé « nom, région », l'octroi par les deux
+  // séparément : l'identifiant de l'application n'est connu que de la collecte.
+  accesDeLOctroi: ({ action, params }) => {
+    const { application, region, role } = params;
+    if (
+      action !== "inviter-comme-collaborateur" ||
+      typeof application !== "string" ||
+      typeof region !== "string" ||
+      typeof role !== "string"
+    ) {
+      return undefined;
+    }
+    // Un accès plein tient un accès limité, et un propriétaire tient les deux.
+    const tenants =
+      role === ROLE_LIMITE
+        ? [ROLE_LIMITE, ROLE_PLEIN, ROLE_PROPRIETAIRE]
+        : role === ROLE_PLEIN
+          ? [ROLE_PLEIN, ROLE_PROPRIETAIRE]
+          : [role];
+    return { ressource: { label: `${application}, ${region}` }, roles: tenants };
+  },
 };
 
 /**

@@ -33,6 +33,8 @@ export interface ConstatOuvert {
   severity: RiskLevel;
   /** Le compte que le constat désigne, quand il en désigne un. */
   compte: { provider: string; handle: string } | null;
+  /** Ce que le constat désigne quand ce n'est pas un compte, en une phrase. */
+  precision?: string | undefined;
 }
 
 export interface ConstatFerme {
@@ -98,7 +100,9 @@ export function motifsDesConstats(
       // calculé n'affirme que ce que son calcul établit.
       description: constat.compte
         ? `${consigne} Il s'agit du compte ${constat.compte.handle} sur ${constat.compte.provider}.`
-        : consigne,
+        : constat.precision
+          ? `${consigne} ${constat.precision}`
+          : consigne,
       gestes,
       ...(versLeDossier ? { lien: versLeDossier } : {}),
     };
