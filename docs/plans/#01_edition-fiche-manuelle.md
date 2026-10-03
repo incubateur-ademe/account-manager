@@ -242,10 +242,9 @@ Vérification : corriger un nom et une adresse, recharger, relire le journal.
   n'écrit rien et rend l'inventaire de `planifierFusion` ; une seconde soumission portant
   `confirme=oui` exécute `fusionnerFiches`.
 - L'écriture est enveloppée dans un `prisma.$transaction`, dans l'ordre comptes, constats, dossiers,
-  références, suppression de la fiche source. Les références en collision sur
-  `(personId, resourceId)` (`prisma/schema.prisma:240`) sont laissées à la cible et celle de la
-  source est supprimée ; aucun code ne crée de `Reference` aujourd'hui, la branche existe pour ne
-  pas laisser une cascade décider à notre place le jour où l'issue #16 la branchera.
+  suppression de la fiche source. Depuis l'issue #16, une `Reference` pointe vers le compte qui
+  possède l'objet et non vers une fiche : elle suit ses comptes, et la fusion n'a plus à la
+  déplacer.
 - La trace précède : l'événement `personne.fusion` est écrit par `actionTracee` avant la
   transaction, avec l'inventaire complet en `after`, et les événements par compte sont émis avant
   leur écriture. Si la transaction échoue, `actionTracee` pose l'échec (`src/lib/actions.ts:51`).

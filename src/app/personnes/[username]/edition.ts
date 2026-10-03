@@ -51,8 +51,6 @@ export interface ApercuFusion {
   surchargeAbandonnee: string | null;
   /** Renseigné quand la fusion repousse l'échéance de la fiche cible. */
   prolongation: { avant: string | null; apres: string } | null;
-  references: number;
-  referencesSupprimees: number;
   gestes: number;
 }
 
@@ -172,47 +170,38 @@ async function inventaireDe(
   username: string,
   missionEnd: Date | null,
 ): Promise<FicheAFusionner> {
-  const [
-    comptes,
-    constats,
-    dossiers,
-    participations,
-    references,
-    rattachements,
-    surcharge,
-    gestes,
-  ] = await Promise.all([
-    prisma.externalIdentity.findMany({
-      where: { personId },
-      select: { id: true, provider: true, handle: true, externalId: true, matchMethod: true },
-      orderBy: [{ provider: "asc" }, { handle: "asc" }],
-    }),
-    prisma.finding.findMany({
-      where: { personId },
-      select: { id: true, kind: true, dedupKey: true },
-    }),
-    prisma.accessCase.findMany({ where: { personId }, select: { id: true, state: true } }),
-    // Révoquées comprises : une participation morte trace ce que quelqu'un a décidé,
-    // et la cascade de la suppression finale ne fait pas ce tri.
-    prisma.caseParticipation.findMany({
-      where: { personId },
-      select: { id: true, accessCaseId: true, grantedAt: true },
-    }),
-    prisma.reference.findMany({ where: { personId }, select: { id: true, resourceId: true } }),
-    // Ouverts comme clos : un rattachement fermé explique un constat levé la veille,
-    // et le schéma pose qu'un retrait ferme au lieu de supprimer.
-    prisma.startupAssignment.findMany({
-      where: { personId },
-      select: { id: true, startupGhid: true, until: true, endedAt: true },
-    }),
-    prisma.scopeOverride.findUnique({
-      where: { personId },
-      select: { id: true, decision: true, createdBy: true, reason: true },
-    }),
-    // Écartés compris : la relation est en `Restrict`, et la base refuse la suppression
-    // finale pour un plan quel que soit son état.
-    prisma.plan.findMany({ where: { subjectId: personId }, select: { id: true } }),
-  ]);
+  const [comptes, constats, dossiers, participations, rattachements, surcharge, gestes] =
+    await Promise.all([
+      prisma.externalIdentity.findMany({
+        where: { personId },
+        select: { id: true, provider: true, handle: true, externalId: true, matchMethod: true },
+        orderBy: [{ provider: "asc" }, { handle: "asc" }],
+      }),
+      prisma.finding.findMany({
+        where: { personId },
+        select: { id: true, kind: true, dedupKey: true },
+      }),
+      prisma.accessCase.findMany({ where: { personId }, select: { id: true, state: true } }),
+      // Révoquées comprises : une participation morte trace ce que quelqu'un a décidé,
+      // et la cascade de la suppression finale ne fait pas ce tri.
+      prisma.caseParticipation.findMany({
+        where: { personId },
+        select: { id: true, accessCaseId: true, grantedAt: true },
+      }),
+      // Ouverts comme clos : un rattachement fermé explique un constat levé la veille,
+      // et le schéma pose qu'un retrait ferme au lieu de supprimer.
+      prisma.startupAssignment.findMany({
+        where: { personId },
+        select: { id: true, startupGhid: true, until: true, endedAt: true },
+      }),
+      prisma.scopeOverride.findUnique({
+        where: { personId },
+        select: { id: true, decision: true, createdBy: true, reason: true },
+      }),
+      // Écartés compris : la relation est en `Restrict`, et la base refuse la suppression
+      // finale pour un plan quel que soit son état.
+      prisma.plan.findMany({ where: { subjectId: personId }, select: { id: true } }),
+    ]);
 
   return {
     username,
@@ -224,7 +213,6 @@ async function inventaireDe(
       vivant: dossierVivant(dossier.state),
     })),
     participations,
-    references,
     rattachements,
     surcharge:
       surcharge === null
@@ -272,8 +260,6 @@ function apercuDe(plan: PlanFusion, aujourdHui: Date): ApercuFusion {
             avant: plan.prolongation.avant === null ? null : dateFr.format(plan.prolongation.avant),
             apres: dateFr.format(plan.prolongation.apres),
           },
-    references: plan.references.length,
-    referencesSupprimees: plan.referencesSupprimees.length,
     gestes: plan.gestes.length,
   };
 }
@@ -451,9 +437,9 @@ export async function renommerFiche(
  * Déplace puis supprime, dans cet ordre, et dans une seule transaction.
  *
  * L'ordre vient du plan et n'est pas recopié ici : supprimer la fiche avant d'avoir
- * tout déplacé laisserait les cascades du schéma emporter sans un mot les constats,
- * les dossiers et les références, et abandonner les plans du dossier supprimé avec
- * un `accessCaseId` nul, vivants mais introuvables dans les écrans.
+ * tout déplacé laisserait les cascades du schéma emporter sans un mot les constats et
+ * les dossiers, et abandonner les plans du dossier supprimé avec un `accessCaseId` nul,
+ * vivants mais introuvables dans les écrans.
  */
 async function fusionner(sourceId: string, cibleId: string, plan: PlanFusion): Promise<void> {
   await actionTracee({
@@ -474,8 +460,6 @@ async function fusionner(sourceId: string, cibleId: string, plan: PlanFusion): P
       // Nommée et non comptée : c'est une décision nominative qui disparaît, le
       // journal est le seul endroit où elle survit.
       surchargeAbandonnee: plan.surchargeAbandonnee,
-      references: plan.references.length,
-      referencesSupprimees: plan.referencesSupprimees.length,
       // Nommés et non comptés, comme les comptes : un geste porte un accès qu'aucune
       // collecte ne rendra, et ce que la fusion en a fait doit rester retrouvable.
       gestes: [...plan.gestes],
@@ -568,15 +552,6 @@ async function fusionner(sourceId: string, cibleId: string, plan: PlanFusion): P
                 break;
               case "supprimer-surcharge":
                 await tx.scopeOverride.delete({ where: { id: etape.id } });
-                break;
-              case "deplacer-references":
-                await tx.reference.updateMany({
-                  where: { id: { in: [...etape.ids] } },
-                  data: { personId: cibleId },
-                });
-                break;
-              case "supprimer-references":
-                await tx.reference.deleteMany({ where: { id: { in: [...etape.ids] } } });
                 break;
               case "deplacer-gestes":
                 // Avant la suppression, et l'ordre décide : la relation du sujet est en

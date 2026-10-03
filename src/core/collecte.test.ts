@@ -573,7 +573,9 @@ describe("les blocages que l'écran doit annoncer plutôt que de les laisser au 
     // Et le seul chemin par lequel on en sorte reconnaît les mêmes familles que
     // l'écran qui les annonce : une famille annoncée en tête d'écran et refusée par
     // l'action qui la reçoit laisserait un bouton qui rend une erreur.
-    expect(["identites", "ressources", "perimetre"].every(estFamilleDeChute)).toBe(true);
+    expect(["identites", "ressources", "perimetre", "references"].every(estFamilleDeChute)).toBe(
+      true,
+    );
     expect(estFamilleDeChute("startups")).toBe(false);
     expect(estFamilleDeChute("")).toBe(false);
 

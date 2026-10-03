@@ -30,7 +30,6 @@ const aFusionner = (over: Partial<FicheAFusionner> = {}): FicheAFusionner => ({
   constats: [],
   dossiers: [],
   participations: [],
-  references: [],
   rattachements: [],
   surcharge: null,
   gestes: [],
@@ -139,7 +138,6 @@ describe("l'identifiant fautif rejoint la vraie personne", () => {
       { id: "f4", kind: "EXPIRED_GRANT", dedupKey: "EXPIRED_GRANT:github:etape-1" },
     ],
     dossiers: [{ id: "d1", vivant: true }],
-    references: [{ id: "r1", resourceId: "res-1" }],
     gestes: ["plan-geste-1"],
   });
 
@@ -168,18 +166,16 @@ describe("l'identifiant fautif rejoint la vraie personne", () => {
     expect(plan.constatsFermes).toHaveLength(0);
 
     expect(plan.dossiers).toEqual([{ id: "d1", vivant: true }]);
-    expect(plan.references).toEqual([{ id: "r1", resourceId: "res-1" }]);
-    expect(plan.referencesSupprimees).toHaveLength(0);
 
     // L'ordre est ce qui neutralise les cascades du schéma : un `delete` posé avant
-    // les déplacements emporterait sans un mot les constats, les dossiers et les
-    // références, et laisserait les plans du dossier avec un dossier nul.
+    // les déplacements emporterait sans un mot les constats et les dossiers, et
+    // laisserait les plans du dossier avec un dossier nul. Les objets possédés suivent
+    // leurs comptes, et aucune étape ne les déplace.
     expect(plan.etapes.map((etape) => etape.type)).toEqual([
       "deplacer-comptes",
       "migrer-constats",
       "reecrire-cles",
       "deplacer-dossiers",
-      "deplacer-references",
       // Avant la suppression, et l'ordre est ici la seule garde : la relation du sujet est
       // en `Restrict`, si bien qu'un geste laissé derrière ferait lever la base au milieu
       // de la transaction et annulerait toute la fusion.
@@ -250,27 +246,6 @@ describe("la fusion refuse ce qu'elle ne sait pas fusionner sans perte", () => {
       ids: ["f2"],
       raison: "fusionnée dans camille.exemple",
     });
-  });
-
-  it("laisse à la cible une référence qu'elle porte déjà", () => {
-    const plan = planifierFusion(
-      aFusionner({
-        references: [
-          { id: "r1", resourceId: "res-1" },
-          { id: "r2", resourceId: "res-2" },
-        ],
-      }),
-      aFusionner({ username: "camille.exemple", references: [{ id: "r9", resourceId: "res-1" }] }),
-      AUJOURDHUI,
-    );
-
-    expect(plan.references).toEqual([{ id: "r2", resourceId: "res-2" }]);
-    expect(plan.referencesSupprimees).toEqual([{ id: "r1", resourceId: "res-1" }]);
-    expect(plan.etapes.map((etape) => etape.type)).toEqual([
-      "deplacer-references",
-      "supprimer-references",
-      "supprimer-fiche",
-    ]);
   });
 });
 

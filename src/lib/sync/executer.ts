@@ -143,7 +143,10 @@ export async function executerSync(
     journal(
       `[sync] ${cle} ${collecte.status} : ${collecte.itemsSeen} comptes, ` +
         `${collecte.identites.creees} nouveaux, ${collecte.identites.disparues} disparus, ` +
-        `${collecte.acces.crees + collecte.acces.revus} accès`,
+        `${collecte.acces.crees + collecte.acces.revus} accès` +
+        (collecte.references
+          ? `, ${collecte.references.creees + collecte.references.revues} objets possédés`
+          : ""),
     );
     for (const message of collecte.erreurs) {
       journal(`[sync] ${cle} : ${message}`);

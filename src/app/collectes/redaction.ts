@@ -41,7 +41,7 @@ const PORTEE =
   " Elle ne vaut que pour la chute annoncée ici, dont elle emporte les nombres. Si la collecte suivante en trouve une plus profonde, elle reste sans effet, rien n'est daté, et il faut la reprendre sur les nombres du jour. Si elle n'en trouve plus du tout, ce garde-fou cesse d'être l'obstacle, et cette collecte date les disparitions du soir d'elle-même, sans décision et sans que le nombre annoncé ici le borne. La vôtre reste alors sans effet faute d'objet.";
 
 /**
- * Les deux garde-fous d'un système cible comparent ce qu'une lecture vient de rendre à
+ * Les trois garde-fous d'un système cible comparent ce qu'une lecture vient de rendre à
  * un décompte de lignes tenues pour vivantes en base.
  */
 const SYSTEME_CIBLE = {
@@ -132,6 +132,12 @@ const COTE: Record<CoteDeChute, (blocage: BlocageInstalle) => string> = {
 export const REDACTION: Record<FamilleDeChute, Redaction> = {
   identites: { quoi: "des comptes", ...SYSTEME_CIBLE },
   ressources: { quoi: "des ressources", ...SYSTEME_CIBLE },
+  references: {
+    quoi: "des objets possédés",
+    ...SYSTEME_CIBLE,
+    consequence:
+      "Tant que cela dure, un objet possédé qui disparaît de ce système reste tenu pour présent.",
+  },
   perimetre: {
     quoi: "des personnes suivies",
     constat: (blocage) => COTE[blocage.cote ?? "releve"](blocage),

@@ -206,7 +206,6 @@ vi.mock("@/lib/db", () => {
       externalIdentity: { findMany: vide },
       finding: { findMany: vide },
       accessCase: { findMany: vide },
-      reference: { findMany: vide },
       startupAssignment: { findMany: vide },
       plan: {
         findMany: ({ where }: { where: { subjectId: string } }) =>

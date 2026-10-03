@@ -145,7 +145,6 @@ model Person {
   returnedAt DateTime?
 
   identities         ExternalIdentity[]
-  references         Reference[]
   accessCases        AccessCase[]
   gestes             Plan[]
   participations     CaseParticipation[]
@@ -290,8 +289,9 @@ model ExternalIdentity {
   person         Person?         @relation(fields: [personId], references: [id], onDelete: SetNull)
   serviceAccount ServiceAccount? @relation(fields: [serviceAccountId], references: [id], onDelete: SetNull)
 
-  grants   AccessGrant[]
-  findings Finding[]
+  grants     AccessGrant[]
+  findings   Finding[]
+  references Reference[]
 
   @@unique([provider, externalId])
   @@index([personId])
@@ -356,19 +356,37 @@ enum OnOffboard {
   KEEP
 }
 
+/// Un objet possede, ni acces ni revocable : une page creee par quelqu'un n'est pas un
+/// acces, et les confondre fait proposer des suppressions absurdes.
+///
+/// Elle pointe vers le compte qui possede l'objet, et non vers une fiche : un objet
+/// survit a son compte. Nul quand aucun compte connu ne le porte.
+///
+/// Une reference ne change ni de compte ni de destin en place : un changement date la
+/// ligne et en ouvre une neuve. Une ressource a donc au plus une reference vivante par
+/// compte, ce que tient un index unique partiel ecrit dans la migration
+/// 20261003090000_une_reference_appartient_a_un_compte, que ce schema ne declare pas.
 model Reference {
   id String @id @default(cuid())
 
-  personId   String
-  provider   String
-  resourceId String
-  onOffboard OnOffboard @default(ARCHIVE)
+  /// La cle du connecteur qui releve l'objet. La datation filtre dessus : une
+  /// reference sans compte n'a pas de relation par laquelle passer.
+  provider           String
+  resourceId         String
+  externalIdentityId String?
 
-  person   Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
-  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  /// Fixe par le connecteur a chaque collecte. KEEP ne produit aucune etape.
+  onOffboard OnOffboard @default(KEEP)
 
-  @@unique([personId, resourceId])
-  @@index([provider])
+  firstSeenAt DateTime  @default(now())
+  lastSeenAt  DateTime  @default(now())
+  vanishedAt  DateTime?
+
+  resource         Resource          @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  externalIdentity ExternalIdentity? @relation(fields: [externalIdentityId], references: [id], onDelete: SetNull)
+
+  @@index([provider, vanishedAt])
+  @@index([externalIdentityId])
 }
 
 model Startup {
@@ -966,7 +984,7 @@ model ScopeDropOverride {
 
   provider String
 
-  /// « identites », « ressources » ou « perimetre » : les verrous sont distincts, une
+  /// « identites », « ressources », « perimetre » ou « references » : les verrous sont distincts, une
   /// autorisation ne lève que le sien.
   famille String
 

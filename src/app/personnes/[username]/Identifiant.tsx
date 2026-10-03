@@ -29,11 +29,6 @@ function Inventaire({ fusion }: { fusion: ApercuFusion }) {
         : `, et ${fusion.participationsAbandonnees} abandonné${fusion.participationsAbandonnees > 1 ? "s" : ""} faute de place, les deux fiches en portant un sur le même dossier (le plus récent survit)`
     }`,
     `${fusion.rattachements} rattachement${fusion.rattachements > 1 ? "s" : ""} manuel${fusion.rattachements > 1 ? "s" : ""} à une startup, dont ${fusion.rattachementsEnCours} en cours`,
-    ...(fusion.references > 0 || fusion.referencesSupprimees > 0
-      ? [
-          `${fusion.references} référence${fusion.references > 1 ? "s" : ""} déplacée${fusion.references > 1 ? "s" : ""}, ${fusion.referencesSupprimees} déjà portée${fusion.referencesSupprimees > 1 ? "s" : ""} par la fiche cible`,
-        ]
-      : []),
     `${fusion.gestes} geste${fusion.gestes > 1 ? "s" : ""} hors dossier déplacé${fusion.gestes > 1 ? "s" : ""}, écarté${fusion.gestes > 1 ? "s" : ""} compris`,
   ];
 

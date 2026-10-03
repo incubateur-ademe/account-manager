@@ -365,16 +365,19 @@ export function systemesMuets(
  * Ce qu'un garde-fou de chute a refusé de dater, dit assez précisément pour qu'un
  * passage suivant reconnaisse le même refus.
  *
- * Trois familles, trois verrous distincts. Une chute des identités interdit de conclure
+ * Quatre familles, quatre verrous distincts. Une chute des identités interdit de conclure
  * sur qui a disparu, et donc aussi sur les accès qui en dépendent. Une chute des
  * ressources n'interdit que les accès : qu'un connecteur cesse d'émettre une famille
  * de ressources ne dit rien de la personne dont la fiche vient de s'éteindre. Une chute
- * du périmètre interdit les deux à la fois, et elle se distingue des autres par sa
+ * des objets possédés n'interdit que leur datation, et ne dépend d'aucune autre : un objet
+ * survit à son compte. Une chute du périmètre interdit les identités et les accès, et elle se distingue des autres par sa
  * référence : un décompte de lignes vivantes en base se corrige de lui-même dès qu'une
  * datation passe, alors que l'effectif du dernier passage complet ne bouge que si un
  * passage se dit complet, ce que le refus lui-même empêche.
  */
-export type FamilleDeChute = "identites" | "ressources" | "perimetre";
+const FAMILLES = ["identites", "ressources", "perimetre", "references"] as const;
+
+export type FamilleDeChute = (typeof FAMILLES)[number];
 
 /**
  * De quel monde vient le refus du plancher du périmètre.
@@ -510,8 +513,6 @@ export function plancherDuPerimetre(
   };
 }
 
-const FAMILLES: readonly FamilleDeChute[] = ["identites", "ressources", "perimetre"];
-
 /**
  * L'écran poste la famille d'un garde-fou dans un formulaire, donc en chaîne libre.
  * La reconnaître ici plutôt que chez l'action qui la reçoit est ce qui empêche une
@@ -533,6 +534,7 @@ const AMPLEUR_EXIGEE: Record<FamilleDeChute, boolean> = {
   identites: false,
   ressources: false,
   perimetre: true,
+  references: false,
 };
 
 /**
@@ -882,6 +884,7 @@ function parRefusIdentiques({ refus, precedents }: EtatDuBlocage): number | null
 const INSTALLATION: Record<FamilleDeChute, (etat: EtatDuBlocage) => number | null> = {
   identites: parRefusIdentiques,
   ressources: parRefusIdentiques,
+  references: parRefusIdentiques,
   perimetre: ({ trace }) => {
     const passages = ageDuReleveDeLaTrace(trace);
     return passages !== null && releveFige(passages) ? passages : null;
