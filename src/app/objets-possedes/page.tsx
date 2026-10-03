@@ -139,9 +139,17 @@ export default async function ObjetsPossedesPage() {
               objetDe(objet),
               objet.provider,
               <div key="c">{[objet, ...autres].map(compteDe)}</div>,
-              <Badge key="d" severity={DESTIN_AU_DEPART[objet.onOffboard].severite} small noIcon>
-                {DESTIN_AU_DEPART[objet.onOffboard].libelle}
-              </Badge>,
+              <div key="d">
+                {[...new Set([objet, ...autres].map(({ onOffboard }) => onOffboard))].map(
+                  (destin) => (
+                    <div key={destin}>
+                      <Badge severity={DESTIN_AU_DEPART[destin].severite} small noIcon>
+                        {DESTIN_AU_DEPART[destin].libelle}
+                      </Badge>
+                    </div>
+                  ),
+                )}
+              </div>,
             ])}
           />
         </section>

@@ -243,7 +243,7 @@ describe("l'écran des objets possédés", () => {
       reference("carte-bis", {
         resourceId: "carte",
         resource: { label: "Dépôt incubateur-exemple/carte", url: "https://exemple.fr/carte" },
-        onOffboard: "TRANSFER",
+        onOffboard: "KEEP",
         compte: {
           handle: "camille-gh",
           matchMethod: "GITHUB_LOGIN",
@@ -318,7 +318,8 @@ describe("l'écran des objets possédés", () => {
 
     // Then un compte disparu d'une personne présente garde son objet chez l'auteur présent,
     // comme le plan de départ le tient. Un dépôt partagé avec un auteur sorti n'y fait qu'une
-    // ligne, qui nomme ses deux comptes. Une référence datée ne revient pas.
+    // ligne, qui nomme ses deux comptes et chacun de leurs destins. Une référence datée ne
+    // revient pas.
     expect(sections[2]?.lignes).toEqual([
       [
         "Feuille de route",
@@ -330,7 +331,7 @@ describe("l'écran des objets possédés", () => {
         "Dépôt incubateur-exemple/carte",
         "github",
         "noor-gh Noor Exemple camille-gh Camille Exemple sortie",
-        DESTIN_AU_DEPART.TRANSFER.libelle,
+        `${DESTIN_AU_DEPART.TRANSFER.libelle} ${DESTIN_AU_DEPART.KEEP.libelle}`,
       ],
     ]);
 
