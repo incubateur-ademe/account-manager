@@ -119,8 +119,7 @@ export default async function ObjetsPossedesPage() {
 
       {total > 0 ? (
         <p className={fr.cx("fr-text--sm")}>
-          {total} objet{total > 1 ? "s" : ""} possédé{total > 1 ? "s" : ""} relevé
-          {total > 1 ? "s" : ""} à la dernière collecte.
+          {total} objet{total > 1 ? "s" : ""} possédé{total > 1 ? "s" : ""}.
         </p>
       ) : null}
 

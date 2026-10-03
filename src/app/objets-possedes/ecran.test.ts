@@ -313,7 +313,7 @@ describe("l'écran des objets possédés", () => {
 
     // Then le total ne compte que les vivants, et rien ne dit qu'aucun système ne recense
     const texte = lu(page);
-    expect(texte).toContain("6 objets possédés relevés à la dernière collecte.");
+    expect(texte).toContain("6 objets possédés.");
     expect(texte).not.toContain("ne recense");
 
     // When il ne reste que des objets dont l'auteur est présent
@@ -341,7 +341,7 @@ describe("l'écran des objets possédés", () => {
     });
     expect(sectionsRendues(sansRecensement)).toEqual([]);
     expect(lu(sansRecensement)).not.toContain("Aucun objet possédé relevé");
-    expect(lu(sansRecensement)).not.toContain("à la dernière collecte");
+    expect(lu(sansRecensement)).not.toMatch(/\d+ objets? possédés?\./u);
 
     // When le jeton arrive et que la collecte ne relève rien
     couvrir({ cle: "github", recense: JETON, jeton: true }, { cle: "notion" });
