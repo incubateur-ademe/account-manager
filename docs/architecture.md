@@ -581,9 +581,9 @@ connecteurs proposent. Le type de plan choisit le sens de l'intent, `grant` pour
 arrivée et `revoke` pour un départ, et chaque connecteur répond selon le tier que ses
 credentials lui donnent ce jour-là.
 
-**Un départ lit deux sources et non une.** Les connecteurs y reçoivent les accès que la
-collecte a constatés, et les engagements ouverts, que le socle retrouve sur les étapes de
-plan qui les ont ouverts. La règle de lecture est que le dernier geste soldé gagne, une
+**Un départ lit trois sources et non une.** Les connecteurs y reçoivent les accès que la
+collecte a constatés, les engagements ouverts, que le socle retrouve sur les étapes de plan
+qui les ont ouverts, et les objets possédés dont le destin appelle un geste. La règle de lecture est que le dernier geste soldé gagne, une
 coupure fermant sous sa clé tout ce qui la précède et rien de ce qui la suit. Une
 différence d'ensembles entre clés ouvertes et clés fermées dirait fermé un accès ouvert,
 repris, puis rouvert. Un engagement dont le terme est passé ne ressort pas ouvert, son
@@ -621,11 +621,11 @@ Comme l'empreinte se recalcule au démarrage de l'exécution, une tolérance pos
 expirée depuis la confirmation déplacerait ce qui a été approuvé et rendrait le plan
 inexécutable sans issue, le recalcul n'étant ouvert qu'à un brouillon. Le calcul rejoue
 donc les tolérances telles qu'elles étaient à l'instant de la confirmation, que le plan
-porte déjà. Un plan confirmé garde la liste des comptes et des accès que son calcul a lus.
-Au lancement, un compte ou un accès de cette liste que la collecte a vu disparaître depuis
-reste au plan, et c'est au précheck, ou à qui pointe une étape manuelle, de le constater déjà
+porte déjà. Un plan confirmé garde la liste des comptes, des accès et des objets possédés que
+son calcul a lus. Au lancement, un élément de cette liste que la collecte a vu disparaître
+depuis reste au plan, et c'est au précheck, ou à qui pointe une étape manuelle, de le constater déjà
 absent. Un compte rattaché sans ressemblance apparu depuis entre au calcul, et rend le plan
-obsolète s'il change ce qu'il faut couper.
+obsolète s'il change ce qu'il faut couper. Un objet possédé apparu depuis y entre de même.
 
 **Une permanente échappe à ce gel, et c'est la décision.** Déclarée en git, elle n'a pas de
 date, donc l'instant de la confirmation ne la rejoue pas et la politique en vigueur
@@ -891,6 +891,9 @@ dit qu'un système sait rendre les objets qu'une personne possède, là où `lis
 auxquels elle accède. Un système qui ne la déclare pas la résout à `none`, comme `verify`
 aujourd'hui.
 
+`reference` dit aussi la nature d'une étape. Une étape `capability: "reference"` porte un
+geste sur un objet possédé, archiver ou transférer, et n'est ni un octroi ni une coupure.
+
 Le jour où un credential expire, le connecteur dégrade proprement, le plan l'affiche
 avec la raison, et le runbook prend le relais. Il ne plante pas, et surtout il ne
 conclut pas faussement qu'il n'y a aucun accès.
@@ -977,7 +980,9 @@ réclame. Elle se fige avec la marche à suivre et reste hors de l'empreinte.
 **Ce qu'un sujet porte.** `ConnectorContract` ne change pas quand un connecteur a
 besoin d'en savoir plus sur la personne, c'est `SubjectRef` qui s'élargit. Son bras
 `person` porte, pour un départ, les engagements ouverts sur le système interrogé, que
-le socle a retrouvés sur les étapes qui les ont ouverts.
+le socle a retrouvés sur les étapes qui les ont ouverts. Il porte aussi les objets que la
+personne possède sur ce système, quand leur destin n'est pas `KEEP` et que le rattachement
+de leur compte autorise un geste.
 
 L'invariant de collecte est porté par le type de retour, pas par la discipline de
 chaque implémentation : `status: "ok"` implique l'absence d'erreurs.
@@ -1103,7 +1108,10 @@ l'offboarding complet au lieu de partiel.
 nativement restreint à une organisation, sans proxy. C'est aussi l'accès le plus critique
 du parc. Au retrait, restent à la main un administrateur de l'organisation, comme la
 propriété d'une application chez Scalingo, plusieurs comptes de la personne dans une même
-organisation, une invitation en attente et une appartenance à une équipe seule.
+organisation, une invitation en attente et une appartenance à une équipe seule. Il relève
+aussi, comme objets possédés, les dépôts où un compte de type `User` est admin en
+collaborateur direct, hors propriétaires de l'organisation, dont le rôle direct ne se lit pas. Un tel dépôt se transfère à la main au départ, sauf s'il est archivé ou
+qu'une équipe l'administre.
 
 `scalingo` n'a pas d'organisation à viser : l'API v1 n'en expose aucune, et la gestion
 des utilisateurs y reste au niveau de l'application. Les collaborations restent donc au

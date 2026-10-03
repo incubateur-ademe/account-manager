@@ -102,6 +102,14 @@ interface PlanEnBase {
 }
 
 const base = vi.hoisted(() => ({
+  /** Les objets possédés, tels que la lecture du plan les sélectionne. */
+  references: [] as {
+    id: string;
+    provider: string;
+    onOffboard: "ARCHIVE" | "TRANSFER" | "KEEP";
+    resource: { externalId: string; label: string; url: string | null };
+    externalIdentity: { matchMethod: string } | null;
+  }[],
   derogations: [] as DerogationEnBase[],
   identites: [] as IdentiteEnBase[],
   adresse: null as string | null,
@@ -132,6 +140,9 @@ vi.mock("@/lib/db", () => ({
   prisma: {
     derogation: {
       findMany: () => Promise.resolve(base.derogations),
+    },
+    reference: {
+      findMany: () => Promise.resolve(base.references),
     },
     externalIdentity: {
       findMany: ({
@@ -433,6 +444,7 @@ function registre(...connecteurs: readonly Connector[]): void {
 beforeEach(() => {
   base.identites.length = 0;
   base.derogations.length = 0;
+  base.references.length = 0;
   base.modeles.length = 0;
   base.startupsCollectees.length = 0;
   base.rattachements.length = 0;
@@ -975,6 +987,58 @@ describe("l'intention portée aux connecteurs", () => {
     // Then l'autre n'en reçoit aucun, et le champ est absent plutôt que vide : une liste
     // vide dirait « j'ai regardé et il n'y a rien », ce qui n'est pas la même chose
     expect(intentions.get("coffre")?.subject).not.toHaveProperty("engagements");
+  });
+
+  it("remet à chaque système les objets possédés qui appellent un geste, et interroge celui qui n'a qu'eux", async () => {
+    // Given un système où un compte est observé sans objet, un second sans compte observé
+    // qui porte un objet à transférer, un objet gardé et un objet rattaché par ressemblance,
+    // et un troisième dont le seul objet a un compte non rattaché
+    const intentions = new Map<string, Intent>();
+    const mouchard = (key: string): Connector => ({
+      ...SANS_OCTROI,
+      contract: { ...SANS_OCTROI.contract, key },
+      plan: (intent: Intent) => {
+        intentions.set(key, intent);
+        return Promise.resolve([]);
+      },
+    });
+    registre(mouchard("coffre"), mouchard("atelier"), mouchard("jetons"));
+    base.identites.push(identite({ provider: "coffre", matchMethod: "DECLARED" }));
+    const objet = (
+      id: string,
+      provider: string,
+      onOffboard: "ARCHIVE" | "TRANSFER" | "KEEP",
+      matchMethod: string,
+    ) => ({
+      id,
+      provider,
+      onOffboard,
+      resource: { externalId: `${provider}/${id}`, label: `Objet ${id}`, url: null },
+      externalIdentity: { matchMethod },
+    });
+    base.references.push(
+      objet("ref-1", "atelier", "TRANSFER", "DECLARED"),
+      objet("ref-2", "atelier", "KEEP", "DECLARED"),
+      objet("ref-3", "atelier", "ARCHIVE", "HEURISTIC"),
+      objet("ref-4", "jetons", "ARCHIVE", "NONE"),
+    );
+
+    // When on calcule un départ
+    const plan = await calculerPlan("OFFBOARDING", PERSONNE, USERNAME, MAINTENANT);
+
+    // Then le système qui n'a qu'un objet à transférer est interrogé, et celui dont l'objet
+    // n'appelle aucun geste ne l'est pas
+    expect([...intentions.keys()].sort()).toEqual(["atelier", "coffre"]);
+
+    // Then il ne reçoit que l'objet à transférer, et l'autre système n'en reçoit aucun
+    const possede = intentions.get("atelier")?.subject;
+    expect(possede?.kind === "person" ? possede.references : null).toEqual([
+      { resourceExternalId: "atelier/ref-1", resourceLabel: "Objet ref-1", fate: "transfer" },
+    ]);
+    expect(intentions.get("coffre")?.subject).not.toHaveProperty("references");
+
+    // Then le plan retient tout ce qu'il a lu, pour qu'une confirmation relise la même chose
+    expect(plan.lus?.references).toEqual(["ref-1", "ref-2", "ref-3", "ref-4"]);
   });
 });
 

@@ -9,7 +9,9 @@ import type {
   ObservedDetail,
   ObservedGrant,
   ObservedIdentity,
+  ObservedReference,
   ObservedResource,
+  OwnedReference,
   PlannedStep,
   PrecheckResult,
   RiskLevel,
@@ -18,6 +20,7 @@ import type {
   SubjectRef,
 } from "@/core/connector";
 import type { ExamenDeScope } from "@/core/octroi";
+import { etapeDeReference } from "@/core/reference";
 import { env } from "@/lib/env";
 
 /**
@@ -67,6 +70,12 @@ const DELAI_MS = 15_000;
 const RUNBOOK =
   "Retirer la personne dans Settings > People de l'organisation, puis vérifier qu'elle ne figure plus dans la liste des membres ni dans les invitations en attente.";
 
+const RUNBOOK_TRANSFERT =
+  "Dans Settings > Collaborators and teams du dépôt, donner le rôle Admin au repreneur, de préférence une équipe de la startup, puis retirer ce rôle à la personne qui part. Ne pas supprimer le dépôt.";
+
+const RUNBOOK_ARCHIVAGE =
+  "Dans Settings > General du dépôt, choisir « Archive this repository ». Ne pas supprimer le dépôt.";
+
 /**
  * Une lecture qui tombe ne devient pas manuelle, elle cesse : ce runbook dit quoi vérifier
  * pour que la collecte reparte, et non comment relever des comptes à la main.
@@ -74,7 +83,7 @@ const RUNBOOK =
 /* Un jeton fine-grained perd une organisation dès qu'elle retire son approbation, sans cesser
    de répondre pour autant : la seconde vérification ne double pas la première. */
 const RUNBOOK_LECTURE =
-  "Vérifier que le jeton de lecture n'a pas expiré, puis qu'il porte toujours les organisations déclarées sous connectors.github.organisations. La collecte se relance par « pnpm sync ».";
+  "Vérifier que le jeton de lecture n'a pas expiré, qu'il couvre les organisations déclarées et tous leurs dépôts avec Metadata en lecture, et que son compte en est toujours propriétaire. La collecte se relance par « pnpm sync ».";
 
 const RUNBOOK_OCTROI =
   "Inviter la personne dans Settings > People de l'organisation, avec le rôle demandé. Vérifier ensuite qu'elle figure parmi les membres avec ce rôle, ou parmi les invitations en attente, qui valent accès accordé.";
@@ -163,6 +172,27 @@ interface EquipeApi {
   slug: string;
 }
 
+interface DepotApi {
+  id: number;
+  full_name: string;
+  html_url: string;
+  archived: boolean;
+}
+
+/** Un collaborateur direct d'un dépôt, hors propriétaires de l'organisation. */
+interface CollaborateurApi {
+  id: number;
+  login: string;
+  type?: string;
+  role_name?: string;
+}
+
+/** Un dépôt vu depuis une équipe, avec le rôle que l'équipe y tient par assignation directe. */
+interface DepotDEquipeApi {
+  id: number;
+  role_name?: string;
+}
+
 interface InvitationApi {
   id: number;
   login: string | null;
@@ -202,6 +232,16 @@ export interface LectureOrganisation {
   membres: { role: "admin" | "member"; membre: MembreApi }[];
   equipes: { equipe: EquipeApi; membres: MembreApi[] }[];
   invitations: InvitationApi[];
+  /** Les dépôts dont un compte est administrateur en collaborateur direct. */
+  depots: { depot: DepotApi; administrateurs: CollaborateurApi[] }[];
+  /** Les dépôts qu'une équipe administre par assignation directe. */
+  administresParUneEquipe: Set<number>;
+  /**
+   * Vrai quand la liste des équipes, les dépôts de chaque équipe, la liste des dépôts et les
+   * collaborateurs de chacun ont été lus. Sans l'une d'elles, un destin se déciderait sur une
+   * lecture amputée.
+   */
+  depotsLus: boolean;
   erreurs: CollectError[];
   /** Vrai quand l'organisation n'a rien rendu du tout, donc qu'il n'y a rien à écrire. */
   fatale: boolean;
@@ -286,6 +326,9 @@ export async function lireOrganisation(org: string, lire: Lecteur): Promise<Lect
     membres: [],
     equipes: [],
     invitations: [],
+    depots: [],
+    administresParUneEquipe: new Set(),
+    depotsLus: false,
     erreurs: [],
     fatale: false,
   };
@@ -318,6 +361,7 @@ export async function lireOrganisation(org: string, lire: Lecteur): Promise<Lect
     return lecture;
   }
 
+  let depotsDEquipeLus = true;
   for (const equipe of equipes) {
     try {
       const membres = await lire<MembreApi>(`/orgs/${org}/teams/${equipe.slug}/members`);
@@ -329,8 +373,58 @@ export async function lireOrganisation(org: string, lire: Lecteur): Promise<Lect
         message: message(cause),
       });
     }
+
+    try {
+      const depots = await lire<DepotDEquipeApi>(`/orgs/${org}/teams/${equipe.slug}/repos`);
+      for (const depot of depots) {
+        if (depot.role_name === "admin") {
+          lecture.administresParUneEquipe.add(depot.id);
+        }
+      }
+    } catch (cause: unknown) {
+      depotsDEquipeLus = false;
+      lecture.erreurs.push({
+        scope: "depots",
+        itemRef: `${org}/${equipe.slug}`,
+        message: message(cause),
+      });
+    }
   }
 
+  if (!depotsDEquipeLus) {
+    return lecture;
+  }
+
+  // Une liste par dépôt, et non par compte : la propriété individuelle se lit sur les
+  // collaborateurs directs, qu'aucune autre route ne rend.
+  let depots: DepotApi[];
+  try {
+    depots = await lire<DepotApi>(`/orgs/${org}/repos`);
+  } catch (cause: unknown) {
+    lecture.erreurs.push({ scope: "depots", itemRef: org, message: message(cause) });
+    return lecture;
+  }
+
+  // Le premier refus arrête la lecture : il vient presque toujours d'un jeton qui ne couvre
+  // pas les dépôts, et continuer coûterait un appel et une erreur identique par dépôt.
+  for (const depot of depots) {
+    try {
+      const collaborateurs = await lire<CollaborateurApi>(
+        `/repos/${depot.full_name}/collaborators?affiliation=direct`,
+      );
+      const administrateurs = collaborateurs.filter(
+        (collaborateur) => collaborateur.role_name === "admin" && collaborateur.type !== "Bot",
+      );
+      if (administrateurs.length > 0) {
+        lecture.depots.push({ depot, administrateurs });
+      }
+    } catch (cause: unknown) {
+      lecture.erreurs.push({ scope: "depot", itemRef: depot.full_name, message: message(cause) });
+      return lecture;
+    }
+  }
+
+  lecture.depotsLus = true;
   return lecture;
 }
 
@@ -378,7 +472,12 @@ function detailsDeLInvitation(invitation: InvitationApi): readonly ObservedDetai
 export function assemblerOrganisation(
   org: string,
   lecture: LectureOrganisation,
-): { identites: ObservedIdentity[]; ressources: ObservedResource[]; acces: ObservedGrant[] } {
+): {
+  identites: ObservedIdentity[];
+  ressources: ObservedResource[];
+  acces: ObservedGrant[];
+  references: ObservedReference[];
+} {
   const identites = new Map<string, ObservedIdentity>();
   const acces: ObservedGrant[] = [];
   const ressources: ObservedResource[] = [
@@ -433,6 +532,44 @@ export function assemblerOrganisation(
     }
   }
 
+  // Un dépôt n'est un objet possédé que par un administrateur en collaborateur direct : le
+  // créateur ne compte pas, et l'écriture, la maintenance ou la lecture restent des accès.
+  // Gardé s'il est archivé ou qu'une équipe l'administre, transféré sinon, jamais archivé,
+  // geste public sur le dépôt.
+  // Un propriétaire de l'organisation est admin de chaque dépôt, et `role_name` rend le rôle
+  // le plus haut toutes sources confondues : son rôle direct ne se lit pas, et il ne
+  // possède rien en propre.
+  const proprietaires = new Set(
+    lecture.membres.filter(({ role }) => role === "admin").map(({ membre }) => String(membre.id)),
+  );
+  const references: ObservedReference[] = [];
+  for (const { depot, administrateurs: tous } of lecture.depots) {
+    const administrateurs = tous.filter(({ id }) => !proprietaires.has(String(id)));
+    if (administrateurs.length === 0) {
+      continue;
+    }
+    // Sur l'identifiant, pour qu'un renommage ne change pas l'identité de la ressource.
+    const cle = `${org}/${depot.id}`;
+    ressources.push({
+      externalId: cle,
+      label: `Dépôt ${depot.full_name}`,
+      url: depot.html_url,
+      parentExternalId: org,
+    });
+    const fate =
+      depot.archived || lecture.administresParUneEquipe.has(depot.id) ? "keep" : "transfer";
+
+    for (const administrateur of administrateurs) {
+      const externalId = String(administrateur.id);
+      // Un collaborateur externe, absent des membres : sans son compte, son dépôt irait aux
+      // orphelins alors que son auteur est connu.
+      if (!identites.has(externalId)) {
+        identites.set(externalId, { externalId, idKind: "opaque", handle: administrateur.login });
+      }
+      references.push({ resourceExternalId: cle, ownerIdentityExternalId: externalId, fate });
+    }
+  }
+
   for (const invitation of lecture.invitations) {
     const externalId = invitation.login
       ? `invite-${invitation.id}`
@@ -454,7 +591,7 @@ export function assemblerOrganisation(
     });
   }
 
-  return { identites: [...identites.values()], ressources, acces };
+  return { identites: [...identites.values()], ressources, acces, references };
 }
 
 /**
@@ -472,12 +609,15 @@ export async function collecter(
   const identites = new Map<string, ObservedIdentity>();
   const ressources: ObservedResource[] = [];
   const acces: ObservedGrant[] = [];
+  const references: ObservedReference[] = [];
   const erreurs: CollectError[] = [];
   let rendues = 0;
+  let depotsLus = true;
 
   for (const org of organisations) {
     const lecture = await lireOrganisation(org, lire);
     erreurs.push(...lecture.erreurs);
+    depotsLus &&= lecture.depotsLus;
 
     if (lecture.fatale) {
       continue;
@@ -490,17 +630,21 @@ export async function collecter(
     }
     ressources.push(...assemblee.ressources);
     acces.push(...assemblee.acces);
+    references.push(...assemblee.references);
   }
 
   if (rendues === 0) {
     return { status: "failed", errors: [erreurs[0] as CollectError, ...erreurs.slice(1)] };
   }
 
+  // Rendus seulement quand toutes les listes ont été lues, dans chaque organisation : un
+  // champ partiel ferait dater comme disparus les objets d'une liste tombée.
   const payload = {
     itemsSeen: identites.size,
     identities: [...identites.values()],
     resources: ressources,
     grants: acces,
+    ...(depotsLus ? { references } : {}),
   };
 
   return erreurs.length === 0
@@ -961,6 +1105,23 @@ export function planifierRetraitGithub(
   });
 }
 
+/**
+ * Les dépôts que la personne qui part administre en collaborateur direct : une étape
+ * manuelle par dépôt, transférer ou archiver, jamais supprimer.
+ */
+export function planifierObjetsGithub(
+  references: readonly OwnedReference[],
+): readonly PlannedStep[] {
+  return references.map((reference) =>
+    etapeDeReference("github", reference, {
+      designation: `le dépôt ${reference.resourceLabel.replace(/^Dépôt /u, "")}`,
+      runbook: reference.fate === "transfer" ? RUNBOOK_TRANSFERT : RUNBOOK_ARCHIVAGE,
+      repreneur: "Compte ou équipe GitHub du repreneur",
+      feminin: false,
+    }),
+  );
+}
+
 interface CibleDeRetrait {
   organisation: string;
   identifiant: string;
@@ -1261,6 +1422,7 @@ export const CONTRAT_GITHUB: ConnectorContract = {
   ],
   capabilities: {
     list: [{ requires: [CREDENTIAL], tier: "auto", runbook: RUNBOOK_LECTURE }],
+    reference: [{ requires: [CREDENTIAL], tier: "auto", runbook: RUNBOOK_LECTURE }],
     // La voie manuelle est inconditionnelle et reste déclarée sous la voie
     // automatique : un chemin auto qui tombe redevient un chemin manuel, et sans
     // elle un jeton d'administration absent ferait disparaître l'octroi au lieu de le
@@ -1337,13 +1499,14 @@ export function creerGithub(lireConfig: () => ConfigGithub): Connector {
         );
       }
 
-      return Promise.resolve(
-        planifierRetraitGithub(
+      return Promise.resolve([
+        ...planifierRetraitGithub(
           lireConfig().organisations,
           intent.subject,
           Boolean(env.GITHUB_ADMIN_TOKEN),
         ),
-      );
+        ...planifierObjetsGithub(intent.subject.references ?? []),
+      ]);
     },
 
     /**

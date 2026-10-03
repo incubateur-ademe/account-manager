@@ -42,6 +42,8 @@ const ADRESSES_MORTES = {
   // ferait en plus résoudre en « automatique » des étapes que la suite croit manuelles.
   NOTION_SCIM_TOKEN: "",
   SCALINGO_API_TOKEN: "",
+  GITHUB_TOKEN: "",
+  GITHUB_ADMIN_TOKEN: "",
   // Vidée pour la même raison, et l'oubli coûterait ici davantage qu'un appel de lecture :
   // une émission réelle que rien ne saurait révoquer, sur un proxy sans route de reprise.
   FGP_URL: "",

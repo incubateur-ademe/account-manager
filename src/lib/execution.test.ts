@@ -138,6 +138,8 @@ vi.mock("@/lib/db", () => ({
           startupAssignments: [],
         }),
     },
+    // Aucun objet possédé dans ces scénarios.
+    reference: { findMany: () => Promise.resolve([]) },
     externalIdentity: {
       findMany: () =>
         Promise.resolve(base.identites.map((identite) => ({ ...identite, vanishedAt: null }))),

@@ -235,6 +235,8 @@ vi.mock("@/lib/db", () => ({
     derogation: {
       findMany: () => Promise.resolve([]),
     },
+    // Aucun objet possédé dans ces scénarios.
+    reference: { findMany: () => Promise.resolve([]) },
     externalIdentity: {
       findMany: ({
         where,
@@ -752,7 +754,7 @@ describe("le geste qui engage : confirmer un plan", () => {
 
     // Then il fige ce que son calcul a lu : le lancement le relira, pour qu'un compte retiré
     // depuis reste au plan
-    expect(plan.confirmedReads).toEqual({ identites: ["idt-notion"], acces: [] });
+    expect(plan.confirmedReads).toEqual({ identites: ["idt-notion"], acces: [], references: [] });
 
     // Then la trace précède l'écriture, et elle est nominative : une action dont la
     // trace serait posée après coup serait, en cas de panne, une action que personne
