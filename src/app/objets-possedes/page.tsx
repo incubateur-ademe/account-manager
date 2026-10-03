@@ -104,8 +104,8 @@ export default async function ObjetsPossedesPage() {
       <h1>Objets possédés</h1>
 
       <p className={fr.cx("fr-text--lead")}>
-        Ce qu'une personne a créé sur un système, dépôt ou page, survit à son départ. La collecte de
-        chaque système fixe ce qu'il en advient.
+        Un dépôt ou une page qu'une personne administre survit à son départ. La collecte de chaque
+        système fixe ce qu'il en advient.
       </p>
 
       {recensent.length === 0 ? (
