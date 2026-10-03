@@ -40,11 +40,13 @@ describe("l'étage unitaire n'atteint rien", () => {
     // et une adresse inventée dans un scénario peut appartenir à quelqu'un.
     expect(new URL(process.env["SMTP_URL"] ?? "").port).toBe("1");
 
-    // Then le jeton de Notion est vidé, et pas seulement absent. Une adresse morte
-    // n'intercepte pas une URL écrite en dur : `notion.contrat.test.ts` en porte une, et
-    // un jeton hérité du shell suffisait à lui faire interroger l'API réelle. Il vit
-    // désormais dans son propre étage, et ce vidage est la seconde serrure.
+    // Then les jetons de Notion et de GitHub sont vidés, et pas seulement absents. Une
+    // adresse morte n'intercepte pas une URL écrite en dur : `notion.contrat.test.ts` et
+    // `github.contrat.test.ts` en portent une, et un jeton hérité du shell suffisait à leur
+    // faire interroger l'API réelle. Ils vivent désormais dans leur propre étage, et ce
+    // vidage est la seconde serrure.
     expect(process.env["NOTION_SCIM_TOKEN"]).toBe("");
+    expect(process.env["GITHUB_TOKEN"]).toBe("");
 
     // Then aucune écriture n'est autorisée, quoi qu'en dise le poste : l'invariant du
     // produit est qu'une exécution est une simulation tant que rien ne l'autorise, et

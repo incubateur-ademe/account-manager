@@ -69,6 +69,8 @@ vi.mock("@/lib/db", async () =>
       findUnique: () =>
         Promise.resolve({ githubLogin: base.githubLogin, startups: [], startupAssignments: [] }),
     },
+    // Aucun objet possédé dans ces scénarios.
+    reference: { findMany: () => Promise.resolve([]) },
     externalIdentity: {
       findMany: (options?: { where?: unknown }) =>
         Promise.resolve(

@@ -484,11 +484,15 @@ async function actionsDeclarees(
     // si ce qu'elle ouvre ne reparaîtra dans aucun relevé du connecteur qui l'a émise : la
     // confronter à la collecte démentirait chaque émission réussie, l'absence observée
     // étant sa définition et non son échec.
+    //
+    // Ni un geste sur un objet possédé : transférer un dépôt ne retire pas le compte de qui
+    // part, et le revoir encore là ne dément rien.
     where: {
       state: "SUCCEEDED",
       executedAt: { not: null },
       validation: { notIn: ["AWAITING", "REFUSED"] },
       engagementKey: null,
+      capability: { not: "reference" },
     },
     select: {
       label: true,
