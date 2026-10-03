@@ -7,9 +7,13 @@ import type {
   ConnectorContract,
   Diagnosis,
   NonEmptyArray,
+  ObservedAccess,
   ObservedGrant,
   ObservedIdentity,
   PlannedStep,
+  PrecheckResult,
+  RunContext,
+  StepOutcome,
   SubjectRef,
 } from "@/core/connector";
 import { lireChaque } from "@/core/lecture";
@@ -35,7 +39,7 @@ const RUNBOOK =
  * pour que la collecte reparte, et non comment relever des sièges à la main.
  */
 const RUNBOOK_LECTURE =
-  "Vérifier que le jeton SCIM répond encore. Un nouveau se génère depuis les paramètres de l'organisation, par un propriétaire. La collecte se relance par « pnpm sync ».";
+  "Vérifier que le jeton SCIM répond encore. Un nouveau se génère depuis les paramètres de l'organisation, avec le compte de service propriétaire. La collecte se relance par « pnpm sync ».";
 
 const RUNBOOK_OCTROI =
   "Inviter la personne dans Paramètres > Membres du workspace Notion, sur son adresse beta.gouv, puis vérifier qu'elle figure dans la liste des membres. Une invitation non acceptée y apparaît déjà, et vaut accès accordé.";
@@ -304,7 +308,7 @@ export function assembler(membres: readonly UtilisateurScim[]): {
     if (!retire) {
       acces.push({
         identityExternalId: membre.id,
-        role: membre[EXTENSION]?.role ?? "member",
+        role: membre[EXTENSION]?.role ?? ROLE_NON_LU,
       });
     }
   }
@@ -361,7 +365,7 @@ const ATTENDUS: readonly { quoi: string; present: (membre: UtilisateurScim) => b
   {
     quoi: `le rôle d'espace sous ${EXTENSION}`,
     // Une extension renommée est indistinguable d'une extension absente : tout le
-    // monde deviendrait « membre » sur une collecte parfaitement verte.
+    // monde aurait un rôle « non lu » sur une collecte parfaitement verte.
     present: (membre) => membre[EXTENSION]?.role != null,
   },
 ];
@@ -450,6 +454,277 @@ export function planifierOctroiNotion(sujet: SubjectRef): readonly PlannedStep[]
   ];
 }
 
+// ---------------------------------------------------------------------------
+// Le retrait : ce qu'un départ demande, et ce qui l'exécute
+// ---------------------------------------------------------------------------
+
+const ACTION_RETRAIT = "retirer-du-workspace";
+
+/**
+ * Le rôle d'un membre dont SCIM ne rend pas l'extension. Ne pas savoir n'autorise pas à
+ * retirer : hors des rôles ordinaires, son retrait reste à la main.
+ */
+const ROLE_NON_LU = "non lu";
+
+/** Les rôles qui se retirent seuls. Un propriétaire ou un administrateur reste à la main. */
+const ROLES_ORDINAIRES: readonly string[] = ["member", "restricted_member"];
+
+/** Du plus élevé au plus bas. Un rôle hors de la liste passe avant tous, et reste à la main. */
+const RANG_DES_ROLES: readonly string[] = [
+  "owner",
+  "membership_admin",
+  "member",
+  "restricted_member",
+];
+
+function plusEleve(a: string, b: string): boolean {
+  const ra = RANG_DES_ROLES.indexOf(a);
+  const rb = RANG_DES_ROLES.indexOf(b);
+  // Deux rôles hors de la liste se départagent par leur nom : le premier lu ne doit pas
+  // décider, l'ordre de lecture n'étant fixé par rien.
+  return ra < rb || (ra === rb && a < b);
+}
+
+const REFUS_SIMULATION =
+  "ACTIONS_ENABLED n'autorise aucune écriture. Une exécution a été demandée en simulation, et aucun appel n'est parti.";
+
+type Personne = Extract<SubjectRef, { kind: "person" }>;
+
+/**
+ * L'étape qu'un départ demande sur Notion, décidée sans rien lire.
+ *
+ * Le retrait part seul pour un membre ordinaire dont le compte SCIM est relevé. Il reste
+ * à la main pour un propriétaire ou un administrateur du workspace, pour plusieurs comptes
+ * de la même personne, que la clé de l'étape ne distingue pas, et quand le jeton manque.
+ */
+export function planifierRetraitNotion(
+  sujet: Personne,
+  ecriturePossible: boolean,
+): readonly PlannedStep[] {
+  const { username } = sujet;
+  const parCompte = new Map<string, ObservedAccess>();
+  for (const un of sujet.acces ?? []) {
+    // Un passage partiel ne date aucun accès disparu : après un changement de rôle, le même
+    // compte peut garder l'ancien vivant à côté du nouveau, et le plus élevé décide.
+    const connu = parCompte.get(un.identityExternalId);
+    if (!connu || plusEleve(un.role, connu.role)) {
+      parCompte.set(un.identityExternalId, un);
+    }
+  }
+  const sieges = [...parCompte.values()];
+  const siege = sieges.length === 1 ? sieges[0] : undefined;
+  const comptes = sieges.map(
+    ({ identityHandle, identityExternalId }) => identityHandle ?? identityExternalId,
+  );
+
+  const raison =
+    sieges.length > 1
+      ? ` Plusieurs comptes de la personne siègent dans le workspace (${comptes.join(", ")}). Chacun se retire à la main.`
+      : siege === undefined
+        ? ""
+        : !ROLES_ORDINAIRES.includes(siege.role)
+          ? ` Le rôle ${siege.role} se retire à la main.`
+          : !ecriturePossible
+            ? ` Aucune voie automatique n'est praticable, il manque : ${CREDENTIAL}.`
+            : null;
+  const auto = raison === null;
+  const compte = siege?.identityHandle ?? null;
+
+  return [
+    {
+      systemKey: "notion",
+      capability: "revoke",
+      tier: auto ? "auto" : "manual",
+      action: ACTION_RETRAIT,
+      label: `Retirer ${username}${sieges.length > 1 ? ` (comptes ${comptes.join(", ")})` : compte === null ? "" : ` (compte ${compte})`} du workspace Notion`,
+      // Le compte relevé reste au libellé, hors de l'empreinte : un changement d'adresse vu
+      // par la collecte suivante ferait sinon refuser tout le plan confirmé, alors que
+      // l'exécution vise l'identifiant.
+      params: {
+        username,
+        identifiant: siege?.identityExternalId ?? null,
+        role: siege?.role ?? null,
+      },
+      riskLevel: "high",
+      expectedState: { membre: false },
+      idempotencyKey: `notion:revoke:${username}`,
+      ...(auto
+        ? {}
+        : {
+            manual: {
+              title: `Retirer ${username} du workspace Notion`,
+              runbook: `${RUNBOOK}${raison}`,
+              deeplink: MEMBRES,
+              doneWhen:
+                comptes.length === 0
+                  ? `Aucun compte au nom de ${username} n'apparaît plus dans la liste des membres du workspace. Le compte peut y porter une adresse personnelle plutôt que son adresse beta.gouv. Chercher aussi sur le nom affiché.`
+                  : `${comptes.join(", ")} ${comptes.length > 1 ? "n'apparaissent" : "n'apparaît"} plus dans la liste des membres du workspace.`,
+            },
+          }),
+    },
+  ];
+}
+
+interface CibleDeRetrait {
+  identifiant: string;
+  role: string;
+}
+
+function cibleDeRetrait(step: PlannedStep): CibleDeRetrait | null {
+  if (step.action !== ACTION_RETRAIT) {
+    return null;
+  }
+  const { identifiant, role } = step.params;
+  if (typeof identifiant !== "string" || identifiant.length === 0) {
+    return null;
+  }
+  if (typeof role !== "string" || role.length === 0) {
+    return null;
+  }
+  return { identifiant, role };
+}
+
+export interface ReponseScim {
+  statut: number;
+  corps: unknown;
+}
+
+export type SondeScim = (identifiant: string) => Promise<ReponseScim>;
+
+export type SuppressionScim = (identifiant: string) => Promise<ReponseScim>;
+
+function membreLu(corps: unknown): { actif: boolean | null; role: string | null } {
+  const lu = utilisateurSchema.safeParse(corps);
+  if (!lu.success) {
+    return { actif: null, role: null };
+  }
+  // Comme la collecte : un rôle absent se dit non lu, et ne vaut jamais un membre ordinaire.
+  return { actif: lu.data.active ?? null, role: lu.data[EXTENSION]?.role ?? ROLE_NON_LU };
+}
+
+/**
+ * Le précheck d'un retrait, qui est une lecture et rien d'autre.
+ *
+ * Chez Notion, `active: false` est le retrait lui-même : un membre ainsi rendu est déjà
+ * parti. Un rôle qui a changé depuis le plan vaut écart : un membre promu propriétaire
+ * entre la confirmation et l'exécution ne se retire pas sans qu'un humain le revoie.
+ */
+export async function constaterRetrait(
+  sonder: SondeScim,
+  step: PlannedStep,
+): Promise<PrecheckResult> {
+  const cible = cibleDeRetrait(step);
+  if (!cible) {
+    return { state: "READY" };
+  }
+
+  const { statut, corps } = await sonder(cible.identifiant);
+  if (statut === 404) {
+    return { state: "ALREADY_ABSENT" };
+  }
+  if (statut !== 200) {
+    throw new Error(`${statut} : le membre n'a pas pu être relu, rien n'est décidé dessus`);
+  }
+
+  const lu = membreLu(corps);
+  if (lu.actif === false) {
+    return { state: "ALREADY_ABSENT" };
+  }
+  // Comme la collecte : seul `active: false` dit le membre parti, un champ absent le laisse
+  // présent.
+  if (lu.role === cible.role) {
+    return { state: "READY" };
+  }
+  return { state: "STALE", expected: { actif: true, role: cible.role }, actual: lu };
+}
+
+/** Les statuts dont la cause peut disparaître d'elle-même, et eux seuls. */
+function reprenable(statut: number): boolean {
+  return statut === 408 || statut === 429 || statut >= 500;
+}
+
+/** Ce qu'une suppression devient. Déjà absent est un succès, et le cas nominal. */
+export function interpreterRetraitNotion(statut: number): StepOutcome {
+  if (statut === 404) {
+    return { state: "ALREADY_ABSENT" };
+  }
+  if (statut < 200 || statut >= 300) {
+    return {
+      state: "FAILED",
+      error: `Notion a répondu ${statut}`,
+      retryable: reprenable(statut),
+    };
+  }
+  return {
+    state: "SUCCEEDED",
+    evidence: "Retiré du workspace, et déconnecté de toutes ses sessions.",
+  };
+}
+
+/**
+ * Le retrait écrit, et les refus qui le précèdent : simulation, credential, étape. Un rôle
+ * qui ne se retire pas seul est refusé ici aussi, l'étape qui le vise étant manuelle.
+ */
+export async function executerRetrait(
+  supprimer: SuppressionScim,
+  ecriturePossible: boolean,
+  step: PlannedStep,
+  ctx: RunContext,
+): Promise<StepOutcome> {
+  if (ctx.dryRun) {
+    throw new Error(REFUS_SIMULATION);
+  }
+  if (!ecriturePossible) {
+    return {
+      state: "FAILED",
+      error: `${CREDENTIAL} n'est pas configuré, aucune écriture n'est possible sur les membres du workspace. L'étape est à faire à la main. ${RUNBOOK}`,
+      retryable: false,
+    };
+  }
+
+  const cible = cibleDeRetrait(step);
+  if (!cible || !ROLES_ORDINAIRES.includes(cible.role)) {
+    return {
+      state: "FAILED",
+      error: `Cette étape ne vise pas un membre ordinaire désigné par son compte. Elle est à faire à la main. ${RUNBOOK}`,
+      retryable: false,
+    };
+  }
+
+  let reponse: ReponseScim;
+  try {
+    reponse = await supprimer(cible.identifiant);
+  } catch (cause: unknown) {
+    // Une panne ne dit rien de l'écriture : la reprise repassera par le précheck.
+    return { state: "FAILED", error: message(cause), retryable: true };
+  }
+  return interpreterRetraitNotion(reponse.statut);
+}
+
+async function appelerScim(methode: "GET" | "DELETE", identifiant: string): Promise<ReponseScim> {
+  const jeton = env.NOTION_SCIM_TOKEN;
+  if (!jeton) {
+    throw new Error("aucun jeton SCIM configuré");
+  }
+  const reponse = await fetch(`${HOTE}/Users/${encodeURIComponent(identifiant)}`, {
+    method: methode,
+    headers: { authorization: `Bearer ${jeton}`, accept: "application/scim+json" },
+    signal: AbortSignal.timeout(DELAI_MS),
+  });
+  const texte = await reponse.text().catch(() => "");
+  let corps: unknown;
+  try {
+    corps = texte.length > 0 ? JSON.parse(texte) : undefined;
+  } catch {
+    corps = undefined;
+  }
+  return { statut: reponse.status, corps };
+}
+
+const sonderMembre: SondeScim = (identifiant) => appelerScim("GET", identifiant);
+
+const supprimerMembre: SuppressionScim = (identifiant) => appelerScim("DELETE", identifiant);
+
 export const CONTRAT_NOTION: ConnectorContract = {
   key: "notion",
   label: "Notion",
@@ -466,22 +741,22 @@ export const CONTRAT_NOTION: ConnectorContract = {
       id: CREDENTIAL,
       source: "env",
       scopeNote:
-        "Jeton SCIM du workspace, sans aucun système de portée. Il permet de retirer un membre et de le déconnecter de toutes ses sessions. Sa rotation doit précéder toute mise en service d'un chemin d'écriture.",
-      // Notion le révoque au départ de la personne qui l'a créé, mais aussi à son
-      // simple changement de rôle, et tout propriétaire de workspace peut le retirer.
-      nominative: true,
+        "Jeton SCIM du workspace, sans aucun système de portée, généré par un compte de service propriétaire de l'organisation. Il permet de retirer un membre et de le déconnecter de toutes ses sessions.",
+      // Notion révoque un jeton SCIM au départ de qui l'a créé comme à son simple
+      // changement de rôle : porté par un compte de service, il ne dépend d'aucune
+      // personne. Tout propriétaire du workspace peut encore le retirer.
+      nominative: false,
     },
   ],
   capabilities: {
     list: [{ requires: [CREDENTIAL], tier: "auto", runbook: RUNBOOK_LECTURE }],
-    // Manuel comme la révocation, et pour la même raison : le jeton SCIM sait créer
-    // un membre, mais il est nominatif et porte le workspace entier, si bien qu'une
-    // voie automatique adossée à lui s'éteindrait au premier changement de rôle de
-    // la personne qui l'a créé.
+    // Seul le retrait est passé en automatique. Un membre créé par SCIM occupe un siège
+    // du workspace, et l'octroi reste un geste qu'un humain fait.
     grant: [{ requires: [], tier: "manual", runbook: RUNBOOK_OCTROI }],
-    // SCIM sait retirer un membre, mais rien dans cet outil n'appelle `execute` :
-    // afficher un tier automatique que personne n'exécute serait un tier théorique.
-    revoke: [{ requires: [], tier: "manual", runbook: RUNBOOK }],
+    revoke: [
+      { requires: [CREDENTIAL], tier: "auto", runbook: RUNBOOK },
+      { requires: [], tier: "manual", runbook: RUNBOOK },
+    ],
   },
   // Un membre l'est du workspace entier : un octroi Notion n'a pas de portée à
   // décrire. Strict quand même, comme l'exige le contrat : sans clé attendue, c'est
@@ -522,28 +797,17 @@ export const notion: Connector = {
       return Promise.resolve(lu.success ? planifierOctroiNotion(intent.subject) : []);
     }
 
-    const username = intent.subject.username;
-
-    return Promise.resolve([
-      {
-        systemKey: "notion",
-        capability: "revoke" as const,
-        tier: "manual" as const,
-        action: "retirer-du-workspace",
-        label: `Retirer ${username} du workspace Notion`,
-        params: { username },
-        riskLevel: "high" as const,
-        expectedState: { membre: false },
-        idempotencyKey: `notion:revoke:${username}`,
-        manual: {
-          title: `Retirer ${username} du workspace Notion`,
-          runbook: RUNBOOK,
-          deeplink: MEMBRES,
-          doneWhen: `Aucun compte au nom de ${username} n'apparaît plus dans la liste des membres du workspace. Le compte peut y porter une adresse personnelle plutôt que son adresse beta.gouv. Chercher aussi sur le nom affiché.`,
-        },
-      },
-    ]);
+    return Promise.resolve(planifierRetraitNotion(intent.subject, Boolean(env.NOTION_SCIM_TOKEN)));
   },
 
   planifierOctroi: (_scope, sujet) => planifierOctroiNotion(sujet),
+
+  // Sans jeton, aucune lecture n'est possible, et l'étape est manuelle : la main décidera.
+  precheck: (step) =>
+    env.NOTION_SCIM_TOKEN
+      ? constaterRetrait(sonderMembre, step)
+      : Promise.resolve({ state: "READY" as const }),
+
+  execute: (step, ctx) =>
+    executerRetrait(supprimerMembre, Boolean(env.NOTION_SCIM_TOKEN), step, ctx),
 };

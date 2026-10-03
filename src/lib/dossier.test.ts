@@ -18,6 +18,7 @@ import {
 } from "@/lib/dossier";
 
 interface IdentiteEnBase {
+  id?: string;
   personId: string;
   provider: string;
   /** Ce sur quoi une tolérance se pose, et que le plan lit depuis qu'elle peut l'écarter. */
@@ -133,13 +134,19 @@ vi.mock("@/lib/db", () => ({
       findMany: () => Promise.resolve(base.derogations),
     },
     externalIdentity: {
-      findMany: ({ where }: { where: { personId: string; vanishedAt: null } }) => {
+      findMany: ({
+        where,
+      }: {
+        where: { personId: string; OR?: [unknown, { id: { in: string[] } }] };
+      }) => {
         base.lecturesDIdentites += 1;
         return Promise.resolve(
           base.identites
             .filter(
               (identite) =>
-                identite.personId === where.personId && identite.vanishedAt === where.vanishedAt,
+                identite.personId === where.personId &&
+                (identite.vanishedAt === null ||
+                  (where.OR?.[1].id.in.includes((identite as { id?: string }).id ?? "") ?? false)),
             )
             // Prisma rend toujours le tableau d'une relation sélectionnée, vide s'il le
             // faut : l'omettre ferait passer un double pour ce qu'aucune base ne rend.
@@ -799,6 +806,14 @@ describe("ce qu'un plan a le droit de viser, dans un sens comme dans l'autre", (
         matchMethod: "GITHUB_LOGIN",
         vanishedAt: new Date("2026-08-01"),
       }),
+      // Disparu depuis une confirmation qui l'avait lu : le plan rejoué le garde, l'encart
+      // se lit au présent
+      identite({
+        id: "idt-devine",
+        provider: "github",
+        matchMethod: "HEURISTIC",
+        vanishedAt: new Date("2026-08-23"),
+      }),
     );
 
     // When on calcule le départ
@@ -813,6 +828,22 @@ describe("ce qu'un plan a le droit de viser, dans un sens comme dans l'autre", (
     // rien à y couper.
     expect(calcule.systemes).toEqual(["notion"]);
     expect(calcule.etapes.every(({ etape }) => etape.systemKey !== "github")).toBe(true);
+
+    // Then rejoué avec ce qu'une confirmation avait lu, le compte deviné disparu depuis ne
+    // revient pas dans l'encart : il renverrait vers un compte qui n'existe plus
+    const rejoue = await calculerPlan(
+      "OFFBOARDING",
+      PERSONNE,
+      USERNAME,
+      MAINTENANT,
+      undefined,
+      undefined,
+      {
+        identites: ["idt-devine"],
+        acces: [],
+      },
+    );
+    expect(rejoue.nonConfirmes).toEqual(["notion"]);
   });
 });
 

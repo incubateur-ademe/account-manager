@@ -33,6 +33,7 @@ process.env["DATABASE_URL"] ??= "postgresql://localhost:5432/inutilise";
 process.env["ESPACE_MEMBRE_API_KEY"] ??= "inutilisee";
 
 interface IdentiteEnBase {
+  id?: string;
   personId: string;
   provider: string;
   matchMethod: string;
@@ -77,6 +78,7 @@ interface PlanEnBase {
   planDigest: string;
   confirmedDigest: string | null;
   confirmedBy: string | null;
+  confirmedReads?: unknown;
   expiresAt: Date;
 }
 
@@ -234,12 +236,18 @@ vi.mock("@/lib/db", () => ({
       findMany: () => Promise.resolve([]),
     },
     externalIdentity: {
-      findMany: ({ where }: { where: { personId: string; vanishedAt: null } }) =>
+      findMany: ({
+        where,
+      }: {
+        where: { personId: string; OR?: [unknown, { id: { in: string[] } }] };
+      }) =>
         Promise.resolve(
           base.identites
             .filter(
               (identite) =>
-                identite.personId === where.personId && identite.vanishedAt === where.vanishedAt,
+                identite.personId === where.personId &&
+                (identite.vanishedAt === null ||
+                  (where.OR?.[1].id.in.includes((identite as { id?: string }).id ?? "") ?? false)),
             )
             // Prisma rend toujours le tableau d'une relation sélectionnée, vide s'il le faut.
             .map((identite) => ({ grants: [], ...identite })),
@@ -327,7 +335,12 @@ vi.mock("@/lib/db", () => ({
           state: EtatPlan;
           accessCase?: { state: { in: readonly string[] } };
         };
-        data: { state: EtatPlan; confirmedDigest?: string; confirmedBy?: string };
+        data: {
+          state: EtatPlan;
+          confirmedDigest?: string;
+          confirmedBy?: string;
+          confirmedReads?: unknown;
+        };
       }) => {
         const plan = base.plans.find(
           (candidat) => candidat.id === where.id && candidat.state === where.state,
@@ -344,6 +357,7 @@ vi.mock("@/lib/db", () => ({
         base.gestes.push(`plan:${data.state}`);
         plan.state = data.state;
         plan.confirmedDigest = data.confirmedDigest ?? plan.confirmedDigest;
+        plan.confirmedReads = data.confirmedReads ?? plan.confirmedReads;
         plan.confirmedBy = data.confirmedBy ?? plan.confirmedBy;
         return Promise.resolve({ count: 1 });
       },
@@ -694,6 +708,7 @@ describe("le geste qui engage : confirmer un plan", () => {
   it("recalcule l'empreinte au moment du clic, et refuse ce qu'une collecte a démenti", async () => {
     // Given un départ calculé pendant que la personne avait un compte Notion
     base.identites.push({
+      id: "idt-notion",
       personId: PERSONNE,
       provider: "notion",
       matchMethod: "DECLARED",
@@ -734,6 +749,10 @@ describe("le geste qui engage : confirmer un plan", () => {
     expect(plan.state).toBe("EXECUTING");
     expect(plan.confirmedDigest).toBe(empreinteApprouvee);
     expect(plan.confirmedBy).toBe("operatrice.exemple");
+
+    // Then il fige ce que son calcul a lu : le lancement le relira, pour qu'un compte retiré
+    // depuis reste au plan
+    expect(plan.confirmedReads).toEqual({ identites: ["idt-notion"], acces: [] });
 
     // Then la trace précède l'écriture, et elle est nominative : une action dont la
     // trace serait posée après coup serait, en cas de panne, une action que personne

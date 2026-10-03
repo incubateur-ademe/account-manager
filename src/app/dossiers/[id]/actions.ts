@@ -226,6 +226,7 @@ export async function confirmerPlan(
   }
 
   const maintenant = new Date();
+
   let actuel: PlanCalcule;
 
   if (ancrage.sorte === "dossier") {
@@ -303,6 +304,16 @@ export async function confirmerPlan(
           confirmedDigest: plan.planDigest,
           confirmedBy: operateur.username,
           confirmedAt: maintenant,
+          // Ce que le calcul confirmé a lu : le lancement le relira, pour qu'un accès retiré
+          // depuis reste au plan et que le précheck le solde.
+          ...(actuel.lus
+            ? {
+                confirmedReads: {
+                  identites: [...actuel.lus.identites],
+                  acces: [...actuel.lus.acces],
+                },
+              }
+            : {}),
         },
       });
 

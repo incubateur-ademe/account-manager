@@ -137,6 +137,7 @@ vi.mock("@/lib/dossier", () => ({
       nonConfirmes: [],
       refus: [],
     }),
+  lecturesConfirmees: () => undefined,
 }));
 
 vi.mock("@/lib/db", () => ({

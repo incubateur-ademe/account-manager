@@ -54,9 +54,9 @@ const coreSchema = z
     GITHUB_ADMIN_TOKEN: jetonFacultatif,
 
     /**
-     * Facultatif pour la même raison. Nominatif malgré les apparences : Notion le
-     * révoque au départ de la personne qui l'a créé comme à son changement de rôle,
-     * et il porte l'écriture sur le workspace entier.
+     * Facultatif pour la même raison. À générer depuis le compte de service : Notion le
+     * révoque au départ de la personne qui l'a créé comme à son changement de rôle, et
+     * il porte l'écriture sur le workspace entier.
      */
     NOTION_SCIM_TOKEN: jetonFacultatif,
 

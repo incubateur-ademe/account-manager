@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ISSUE_DOSSIER } from "@/core/execution";
 import { prisma } from "@/lib/db";
-import { calculerPlan, enregistrerPlan, ouvrirDossier } from "@/lib/dossier";
+import { calculerPlan, enregistrerPlan, type LecturesDuPlan, ouvrirDossier } from "@/lib/dossier";
 import { executerPlan } from "@/lib/execution";
 import { chargerLesSurcharges } from "@/lib/surcharges";
 import { politiqueJetable } from "@/test/politique-jetable";
@@ -106,7 +106,9 @@ const tolerer = (externalId: string, posee: Date) =>
  * Le départ confirmé dont les deux scénarios partent, tel que l'action l'écrit :
  * l'empreinte du calcul et l'instant qui l'a produite, dans la même écriture.
  */
-async function confirmerUnDepart(personId: string): Promise<{ planId: string; empreinte: string }> {
+async function confirmerUnDepart(
+  personId: string,
+): Promise<{ planId: string; empreinte: string; lus: LecturesDuPlan | undefined }> {
   const dossier = await ouvrirDossier(personId, "OFFBOARDING", null);
   const calcule = await calculerPlan("OFFBOARDING", personId, USERNAME, CONFIRMATION);
   expect(calcule.etapes.length).toBeGreaterThan(0);
@@ -124,11 +126,15 @@ async function confirmerUnDepart(personId: string): Promise<{ planId: string; em
       confirmedAt: CONFIRMATION,
       confirmedBy: OPERATRICE.username,
       confirmedDigest: calcule.empreinte,
+      confirmedReads: {
+        identites: [...(calcule.lus?.identites ?? [])],
+        acces: [...(calcule.lus?.acces ?? [])],
+      },
     },
   });
   await prisma.accessCase.update({ where: { id: dossier.id }, data: { state: "CONFIRMED" } });
 
-  return { planId, empreinte: calcule.empreinte };
+  return { planId, empreinte: calcule.empreinte, lus: calcule.lus };
 }
 
 describe("un plan confirmé rejoue les tolérances de sa confirmation", () => {
@@ -171,6 +177,113 @@ describe("un plan confirmé rejoue les tolérances de sa confirmation", () => {
       maintenant: APRES,
     });
     expect(resultat.refus).toBeUndefined();
+  });
+});
+
+describe("un plan confirmé rejoue les comptes constatés à sa confirmation", () => {
+  let personId = "";
+  beforeEach(async () => {
+    personId = await semer();
+  });
+
+  it("reste exécutable quand un accès est retiré à la main avant le lancement", async () => {
+    // Given un départ confirmé, les deux comptes siégeant dans l'organisation,
+    const { planId, empreinte: approuvee, lus } = await confirmerUnDepart(personId);
+
+    // When quelqu'un retire l'un des deux comptes de l'organisation avant le lancement, et
+    // que la collecte constate la disparition du compte et de son adhésion,
+    await prisma.accessGrant.updateMany({
+      where: { externalIdentity: { externalId: "cpt-2" } },
+      data: { vanishedAt: APRES },
+    });
+    await prisma.externalIdentity.updateMany({
+      where: { externalId: "cpt-2" },
+      data: { vanishedAt: APRES },
+    });
+    const aujourdhui = await calculerPlan("OFFBOARDING", personId, USERNAME, APRES);
+    expect(aujourdhui.empreinte).not.toBe(approuvee);
+
+    // Then le calcul rejoué à la confirmation voit les comptes d'alors, et l'exécution part
+    // sans refuser : c'est au précheck de constater ce qui est déjà retiré
+    const gele = await calculerPlan(
+      "OFFBOARDING",
+      personId,
+      USERNAME,
+      APRES,
+      undefined,
+      CONFIRMATION,
+      lus,
+    );
+    expect(gele.empreinte).toBe(approuvee);
+    const resultat = await executerPlan(planId, {
+      operateur: OPERATRICE,
+      masseConfirmee: true,
+      maintenant: APRES,
+    });
+    expect(resultat.refus).toBeUndefined();
+  });
+
+  it("garde un accès qu'un passage commencé avant la confirmation a daté avant elle", async () => {
+    // Given un départ confirmé sur les deux comptes, une collecte ayant démarré une minute
+    // plus tôt sans avoir encore écrit,
+    const { planId } = await confirmerUnDepart(personId);
+
+    // When elle écrit ensuite la disparition de l'un, datée de son propre départ,
+    const debutDuPassage = new Date(CONFIRMATION.getTime() - 60_000);
+    await prisma.accessGrant.updateMany({
+      where: { externalIdentity: { externalId: "cpt-2" } },
+      data: { vanishedAt: debutDuPassage },
+    });
+    await prisma.externalIdentity.updateMany({
+      where: { externalId: "cpt-2" },
+      data: { vanishedAt: debutDuPassage },
+    });
+
+    // Then le lancement part : la confirmation le voyait vivant, et le plan garde ce qu'elle
+    // a lu
+    const resultat = await executerPlan(planId, {
+      operateur: OPERATRICE,
+      masseConfirmee: true,
+      maintenant: APRES,
+    });
+    expect(resultat.refus).toBeUndefined();
+  });
+
+  it("se dit obsolète quand un compte apparaît après la confirmation", async () => {
+    // Given un départ confirmé sur les deux comptes de la personne,
+    const { planId, empreinte: approuvee, lus } = await confirmerUnDepart(personId);
+
+    // When la collecte relève après coup un compte Notion de la personne, rattaché par
+    // son adresse,
+    await prisma.externalIdentity.create({
+      data: {
+        provider: "notion",
+        externalId: "scim-3",
+        handle: "nour@exemple.fr",
+        matchMethod: "EMAIL_EXACT",
+        personId,
+        firstSeenAt: APRES,
+      },
+    });
+
+    // Then le calcul rejoué à la confirmation le voit, et le lancement refuse : couper sans
+    // lui laisserait un accès que personne n'a vu
+    const gele = await calculerPlan(
+      "OFFBOARDING",
+      personId,
+      USERNAME,
+      APRES,
+      undefined,
+      CONFIRMATION,
+      lus,
+    );
+    expect(gele.empreinte).not.toBe(approuvee);
+    const resultat = await executerPlan(planId, {
+      operateur: OPERATRICE,
+      masseConfirmee: true,
+      maintenant: APRES,
+    });
+    expect(resultat.refus).toBeDefined();
   });
 });
 

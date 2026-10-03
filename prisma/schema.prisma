@@ -615,6 +615,10 @@ model Plan {
 
   planDigest      String
   confirmedDigest String?
+  /// Les comptes et les acces que le calcul confirme a lus, par identifiant. Au lancement,
+  /// ceux que la collecte a vus disparaitre depuis restent au calcul : le precheck les solde,
+  /// au lieu qu'un acces retire a la main fasse refuser le plan entier.
+  confirmedReads Json?
 
   createdBy   String
   confirmedBy String?

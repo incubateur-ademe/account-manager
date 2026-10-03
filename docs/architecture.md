@@ -614,7 +614,11 @@ Comme l'empreinte se recalcule au démarrage de l'exécution, une tolérance pos
 expirée depuis la confirmation déplacerait ce qui a été approuvé et rendrait le plan
 inexécutable sans issue, le recalcul n'étant ouvert qu'à un brouillon. Le calcul rejoue
 donc les tolérances telles qu'elles étaient à l'instant de la confirmation, que le plan
-porte déjà.
+porte déjà. Un plan confirmé garde la liste des comptes et des accès que son calcul a lus.
+Au lancement, un compte ou un accès de cette liste que la collecte a vu disparaître depuis
+reste au plan, et c'est au précheck, ou à qui pointe une étape manuelle, de le constater déjà
+absent. Un compte rattaché sans ressemblance apparu depuis entre au calcul, et rend le plan
+obsolète s'il change ce qu'il faut couper.
 
 **Une permanente échappe à ce gel, et c'est la décision.** Déclarée en git, elle n'a pas de
 date, donc l'instant de la confirmation ne la rejoue pas et la politique en vigueur
@@ -1130,12 +1134,15 @@ cette section éprouvent le contrat chacun autrement : de part et d'autre de la 
 pas encore dire pour `scalingo`.
 
 **`notion`**, tier `auto` : membres du workspace par SCIM. Un siège attribué sans
-identité en face est un compte isolé. Son credential est **nominatif** : Notion révoque
-le jeton au départ de la personne qui l'a créé comme à son simple changement de rôle, et
-n'importe quel propriétaire de workspace peut le retirer. Il porte l'écriture sur le
-workspace entier et ne se cloisonne pas côté fournisseur ; il reste en `env` tant
-qu'aucun chemin d'écriture n'est livré. Le propriétaire qui l'a créé est le seul compte
-que l'API ne sait pas retirer, trou permanent du chemin de révocation.
+identité en face est un compte isolé. Son credential est généré par un **compte de
+service** propriétaire de l'organisation, parce que Notion révoque le jeton au départ de la
+personne qui l'a créé comme à son simple changement de rôle. N'importe quel propriétaire
+de workspace peut encore le retirer. Il porte l'écriture sur le workspace entier et ne se
+cloisonne pas côté fournisseur ; il reste en `env`, l'application le détenant déjà pour
+sa collecte. Le retrait part seul pour un membre ordinaire, `member` ou
+`restricted_member`. Restent à la main un propriétaire, un administrateur des membres, un
+membre dont SCIM ne rend pas le rôle et plusieurs comptes de la même personne. Le compte de service qui a créé le jeton est le
+seul que l'API ne sait pas retirer, trou permanent du chemin de révocation.
 
 La gestion des invités reste une fonctionnalité propre, portée depuis
 `n8n-automations`, mais elle ne peut pas reposer sur ce credential : SCIM ne sait ni les
@@ -1382,5 +1389,3 @@ paquet est donc à suivre, et à relever avant ce retrait.
   une livraison. L'écran des modèles avertit tant qu'aucune étape de départ n'attend de
   second regard, et se tait dès qu'une l'attend.
 - Rotation du triplet OVH avant toute mise en service d'un chemin d'écriture.
-- Porteur du jeton SCIM Notion : compte de service propriétaire de l'organisation, ou à
-  défaut rotation avant toute mutation de rôle de son porteur.

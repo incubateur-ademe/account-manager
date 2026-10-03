@@ -169,6 +169,8 @@ vi.mock("@/lib/db", async () => {
             })),
         ),
     },
+    // Aucun système de ces scénarios ne relève d'accès : un compte vivant y est présent.
+    externalIdentity: { findMany: () => Promise.resolve([]) },
     planStep: {
       findMany: ({
         where,
@@ -203,7 +205,11 @@ vi.mock("@/lib/db", async () => {
               const personne = {
                 username: fiche.username,
                 returnedAt: fiche.returnedAt,
-                identities: fiche.comptes.map((provider) => ({ provider, vanishedAt: null })),
+                identities: fiche.comptes.map((provider) => ({
+                  provider,
+                  vanishedAt: null,
+                  grants: [],
+                })),
               };
               return {
                 label: etape.label,

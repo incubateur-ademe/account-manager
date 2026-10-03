@@ -33,7 +33,7 @@ import { etatDuCanal, participationVivante } from "@/core/participation";
 import { masseDuPlan, type OrigineEtape, peremptionDuPlan, type RaisonDEcart } from "@/core/plan";
 import { profilDeLaPolitique } from "@/lib/arrivee";
 import { prisma } from "@/lib/db";
-import { calculerPlan } from "@/lib/dossier";
+import { calculerPlan, lecturesConfirmees } from "@/lib/dossier";
 import { env } from "@/lib/env";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
@@ -253,6 +253,7 @@ export default async function DossierPage({
           createdBy: true,
           confirmedBy: true,
           confirmedAt: true,
+          confirmedReads: true,
           steps: {
             // Le rang de lecture figé à la création, et non plus un tri alphabétique :
             // l'ordre d'un plan est une décision de l'assemblage, que l'écran restitue.
@@ -321,6 +322,7 @@ export default async function DossierPage({
         // le lancement ne verrait pas, sur chaque plan confirmé dès la première
         // tolérance posée.
         plan?.confirmedAt ?? maintenant,
+        lecturesConfirmees(plan?.confirmedReads),
       );
 
   const etat = plan && actuel ? peremptionDuPlan(plan, actuel.empreinte, maintenant) : null;

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
 
 import { CONNECTEURS } from "@/connectors";
 import type {
@@ -63,6 +64,7 @@ const AUCUN_SYSTEME: ComptesDuDepart = {
   ...{ revocables: [], observes: [], nonConfirmes: [] },
   comptes: [],
   accesParSysteme: new Map(),
+  lus: { identites: [], acces: [] },
 };
 
 const AUCUN_OCTROI = { etapes: [], refus: [] } as const;
@@ -74,7 +76,7 @@ const AUCUN_OCTROI = { etapes: [], refus: [] } as const;
  * c'est une liste qu'on cesse de lire.
  *
  * Une identité disparue ne compte pas : elle dit qu'on ne l'observe plus, donc qu'il
- * n'y a plus rien à couper.
+ * n'y a plus rien à couper. Sauf pour un plan confirmé, qui garde ce que son calcul a lu.
  */
 interface ComptesDuDepart extends SystemesDuDepart {
   /** Les comptes un par un, que la répartition par système ne porte pas. */
@@ -87,22 +89,69 @@ interface ComptesDuDepart extends SystemesDuDepart {
   accesParSysteme: ReadonlyMap<string, readonly ObservedAccess[]>;
   /** L'adresse dont le socle répond, pour les systèmes qui visent une adresse et non un compte. */
   adresse?: string;
+  lus: LecturesDuPlan;
 }
 
-async function systemesDeLaPersonne(personId: string): Promise<ComptesDuDepart> {
+/** Les comptes et les accès qu'un calcul a lus, par identifiant. */
+export interface LecturesDuPlan {
+  identites: readonly string[];
+  acces: readonly string[];
+}
+
+export const lecturesDuPlan = z.object({
+  identites: z.array(z.string()),
+  acces: z.array(z.string()),
+});
+
+/** Ce qu'un plan confirmé a lu, relu depuis sa colonne. Illisible ou absent, rien. */
+export function lecturesConfirmees(valeur: unknown): LecturesDuPlan | undefined {
+  const lues = lecturesDuPlan.safeParse(valeur);
+  return lues.success ? lues.data : undefined;
+}
+
+/** Vivant, ou lu par le calcul qu'on a confirmé. */
+function vivantOuLu(lus: readonly string[] | undefined) {
+  return lus === undefined
+    ? { vanishedAt: null }
+    : { OR: [{ vanishedAt: null }, { id: { in: [...lus] } }] };
+}
+
+/**
+ * Les comptes d'une personne, et pour un plan confirmé ceux que son calcul avait lus.
+ *
+ * Un plan confirmé se recalcule au démarrage de l'exécution, et son empreinte doit rester
+ * celle qu'on a approuvée. Lu au présent seul, un accès retiré à la main entre-temps ferait
+ * disparaître ou changer l'étape qui le visait, et le plan entier serait refusé, alors que
+ * le précheck sait solder un accès déjà absent. Un compte apparu depuis entre au calcul, en
+ * revanche : il change ce qu'il faut couper, et le plan doit se dire obsolète.
+ *
+ * Par identifiant et non par date : une collecte date ses disparitions du début de son
+ * passage et les écrit plus tard, si bien qu'aucune date ne dit ce qu'une confirmation a vu.
+ *
+ * Ce qui ne fait qu'informer, les comptes par ressemblance et les systèmes sans connecteur,
+ * se lit au présent : un encart qui renverrait vers un compte disparu n'aurait rien à faire.
+ */
+async function systemesDeLaPersonne(
+  personId: string,
+  lus: LecturesDuPlan | undefined,
+): Promise<ComptesDuDepart> {
   const [identites, fiche] = await Promise.all([
     prisma.externalIdentity.findMany({
-      where: { personId, vanishedAt: null },
+      where: { personId, ...vivantOuLu(lus?.identites) },
       select: {
+        id: true,
         provider: true,
         externalId: true,
         handle: true,
         matchMethod: true,
-        // Les accès vivants seulement : un accès disparu dit qu'il n'y a plus rien à couper,
-        // et proposer de le retirer enverrait quelqu'un chercher ce qui n'est plus là.
+        vanishedAt: true,
         grants: {
-          where: { vanishedAt: null },
-          select: { role: true, resource: { select: { externalId: true, label: true } } },
+          where: vivantOuLu(lus?.acces),
+          select: {
+            id: true,
+            role: true,
+            resource: { select: { externalId: true, label: true } },
+          },
         },
       },
     }),
@@ -139,17 +188,25 @@ async function systemesDeLaPersonne(personId: string): Promise<ComptesDuDepart> 
   return {
     accesParSysteme,
     ...(adresse === undefined ? {} : { adresse }),
-    ...systemesDuDepart(
-      identites.map((identite) => ({
-        provider: identite.provider,
-        methode: identite.matchMethod,
-      })),
+    revocables: systemesDuDepart(
+      identites.map((identite) => ({ provider: identite.provider, methode: identite.matchMethod })),
+    ).revocables,
+    ...(({ observes, nonConfirmes }) => ({ observes, nonConfirmes }))(
+      systemesDuDepart(
+        identites
+          .filter((identite) => identite.vanishedAt === null)
+          .map((identite) => ({ provider: identite.provider, methode: identite.matchMethod })),
+      ),
     ),
     comptes: identites.map((identite) => ({
       provider: identite.provider,
       externalId: identite.externalId,
       revocable: autoriseUneRevocation(identite.matchMethod),
     })),
+    lus: {
+      identites: identites.map(({ id }) => id),
+      acces: identites.flatMap(({ grants }) => grants.map(({ id }) => id)),
+    },
   };
 }
 
@@ -214,6 +271,11 @@ export interface PlanCalcule {
    * exécuter.
    */
   refus: readonly RefusDOctroi[];
+  /**
+   * Les comptes et les accès lus, qu'une confirmation fige sur le plan. Absent d'un calcul
+   * qui n'en lit aucun, un geste hors dossier.
+   */
+  lus?: LecturesDuPlan;
 }
 
 /**
@@ -245,11 +307,14 @@ export async function calculerPlan(
    * recalcul n'est ouvert qu'à un brouillon.
    */
   tolerancesAu?: Date | undefined,
+  /** Ce que le calcul confirmé a lu, pour un plan confirmé recalculé. */
+  lus?: LecturesDuPlan | undefined,
 ): Promise<PlanCalcule> {
   // Les comptes observés ne disent rien de ce qu'il faut donner : les lire pour une
   // arrivée serait une requête pour rien, et les afficher ferait passer un accès
   // existant pour un manque.
-  const constates = sens === "OFFBOARDING" ? await systemesDeLaPersonne(personId) : AUCUN_SYSTEME;
+  const constates =
+    sens === "OFFBOARDING" ? await systemesDeLaPersonne(personId, lus) : AUCUN_SYSTEME;
   const adresse = constates.adresse;
   const presente = new Set(constates.revocables);
 
@@ -376,6 +441,7 @@ export async function calculerPlan(
     sansConnecteur: constates.observes.filter((provider) => !couverts.has(provider)),
     nonConfirmes: constates.nonConfirmes.filter((provider) => couverts.has(provider)),
     refus: octrois.refus,
+    lus: constates.lus,
   };
 }
 
