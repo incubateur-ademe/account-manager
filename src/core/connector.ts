@@ -5,9 +5,13 @@ import type { Acteur } from "@/core/dossier";
 import type { OrigineFigee, SaisieAttendue } from "@/core/modele-plan";
 
 /**
- * Ce qu'un connecteur sait faire, et non ce qu'une étape demande. `reference` est la
- * seule qui ne porte pas sur un accès : elle dit qu'un système sait rendre les objets
- * qu'une personne possède, là où `list` rend ceux auxquels elle accède.
+ * Ce qu'un connecteur sait faire. `reference` est la seule qui ne porte pas sur un accès :
+ * elle dit qu'un système sait rendre les objets qu'une personne possède, là où `list` rend
+ * ceux auxquels elle accède.
+ *
+ * Une étape porte aussi une capacité, qui dit sa nature. `reference` y désigne un geste sur
+ * un objet possédé, archiver ou transférer, qui n'est ni un octroi ni une coupure : aucun
+ * chemin qui lit `revoke` ne doit la voir.
  */
 export type Capability = "list" | "grant" | "revoke" | "verify" | "reference";
 
@@ -313,6 +317,14 @@ export interface ObservedAccess {
  * Le socle ne sait pas ce que `key` désigne : il la transporte, la stocke et la compare à
  * elle-même. Rédiger ce qui la solde appartient au connecteur qui l'a écrite.
  */
+/** Un objet possédé dont le destin appelle un geste au départ de son propriétaire. */
+export interface OwnedReference {
+  resourceExternalId: string;
+  resourceLabel: string;
+  url?: string;
+  fate: "archive" | "transfer";
+}
+
 export interface OpenEngagement {
   key: string;
   /** Le libellé de l'étape qui l'a ouvert, figé ce jour-là. */
@@ -358,6 +370,11 @@ export type SubjectRef =
        * observer.
        */
       engagements?: readonly OpenEngagement[];
+      /**
+       * Les objets que la personne possède sur ce système, quand leur destin appelle un
+       * geste et que le rattachement de leur compte l'autorise.
+       */
+      references?: readonly OwnedReference[];
     }
   | { kind: "service"; key: string };
 

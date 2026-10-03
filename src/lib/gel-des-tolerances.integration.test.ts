@@ -129,6 +129,7 @@ async function confirmerUnDepart(
       confirmedReads: {
         identites: [...(calcule.lus?.identites ?? [])],
         acces: [...(calcule.lus?.acces ?? [])],
+        references: [...(calcule.lus?.references ?? [])],
       },
     },
   });
@@ -284,6 +285,86 @@ describe("un plan confirmé rejoue les comptes constatés à sa confirmation", (
       maintenant: APRES,
     });
     expect(resultat.refus).toBeDefined();
+  });
+});
+
+async function posseder(personId: string, nom: string, firstSeenAt: Date): Promise<string> {
+  const depot = await prisma.resource.create({
+    data: {
+      provider: "github",
+      externalId: `incubateur-ademe/${nom}`,
+      label: `Dépôt incubateur-ademe/${nom}`,
+      url: `https://github.com/incubateur-ademe/${nom}`,
+    },
+  });
+  const [compte] = await prisma.externalIdentity.findMany({
+    where: { personId, externalId: "cpt-1" },
+    select: { id: true },
+  });
+  const reference = await prisma.reference.create({
+    data: {
+      provider: "github",
+      resourceId: depot.id,
+      externalIdentityId: compte?.id ?? null,
+      onOffboard: "TRANSFER",
+      firstSeenAt,
+      lastSeenAt: firstSeenAt,
+    },
+  });
+  return reference.id;
+}
+
+describe("un plan confirmé rejoue les objets possédés lus à sa confirmation", () => {
+  it("garde un objet daté après elle, et se dit obsolète sur un objet neuf", async () => {
+    // Given un départ confirmé d'une personne qui administre un dépôt
+    const personId = await semer();
+    const lu = await posseder(personId, "annuaire", CONFIRMATION);
+    const { planId, empreinte: approuvee, lus } = await confirmerUnDepart(personId);
+    expect(lus?.references).toEqual([lu]);
+    const transfert = await prisma.planStep.findMany({
+      where: { planId, capability: "reference" },
+      select: { label: true, tier: true },
+    });
+    expect(transfert).toEqual([
+      { label: "Transférer le dépôt incubateur-ademe/annuaire", tier: "manual" },
+    ]);
+
+    // When le dépôt change de mains avant le lancement, et que la collecte le date
+    await prisma.reference.update({ where: { id: lu }, data: { vanishedAt: APRES } });
+
+    // Then le calcul rejoué voit l'objet lu à la confirmation, et le lancement part
+    const gele = () =>
+      calculerPlan("OFFBOARDING", personId, USERNAME, APRES, undefined, CONFIRMATION, lus);
+    expect((await calculerPlan("OFFBOARDING", personId, USERNAME, APRES)).empreinte).not.toBe(
+      approuvee,
+    );
+    expect((await gele()).empreinte).toBe(approuvee);
+
+    // When un second dépôt de la personne apparaît après la confirmation
+    await posseder(personId, "carto", APRES);
+
+    // Then le calcul rejoué le voit, et le lancement refuse
+    expect((await gele()).empreinte).not.toBe(approuvee);
+    const resultat = await executerPlan(planId, {
+      operateur: OPERATRICE,
+      masseConfirmee: true,
+      maintenant: APRES,
+    });
+    expect(resultat.refus).toBeDefined();
+
+    // When un plan a été confirmé avant que les objets possédés ne se lisent
+    const ancien = await calculerPlan(
+      "OFFBOARDING",
+      personId,
+      USERNAME,
+      APRES,
+      undefined,
+      CONFIRMATION,
+      { identites: lus?.identites ?? [], acces: lus?.acces ?? [] },
+    );
+
+    // Then son calcul rejoué n'en lit aucun
+    expect(ancien.etapes.filter(({ etape }) => etape.capability === "reference")).toEqual([]);
   });
 });
 

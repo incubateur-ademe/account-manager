@@ -36,6 +36,7 @@ import {
 } from "@/core/plan";
 import type { Profil } from "@/core/policy";
 import { autoriseUneRevocation } from "@/core/rapprochement";
+import { type ReferenceLue, referencesAgissantes } from "@/core/reference";
 import { Prisma } from "@/generated/prisma/client";
 import { octroisDUnProfil } from "@/lib/arrivee";
 import { audit } from "@/lib/audit";
@@ -96,11 +97,17 @@ interface ComptesDuDepart extends SystemesDuDepart {
 export interface LecturesDuPlan {
   identites: readonly string[];
   acces: readonly string[];
+  /**
+   * Absente d'un plan confirmé avant que les objets possédés ne se lisent : il n'en a lu
+   * aucun, et n'en relit aucun.
+   */
+  references?: readonly string[];
 }
 
 export const lecturesDuPlan = z.object({
   identites: z.array(z.string()),
   acces: z.array(z.string()),
+  references: z.array(z.string()).optional(),
 });
 
 /** Ce qu'un plan confirmé a lu, relu depuis sa colonne. Illisible ou absent, rien. */
@@ -114,6 +121,46 @@ function vivantOuLu(lus: readonly string[] | undefined) {
   return lus === undefined
     ? { vanishedAt: null }
     : { OR: [{ vanishedAt: null }, { id: { in: [...lus] } }] };
+}
+
+const AUCUN_OBJET = { lignes: [], ids: [] } as const;
+
+/**
+ * Les objets que possèdent les comptes d'une personne, vivants, et pour un plan confirmé ceux
+ * que son calcul avait lus.
+ *
+ * La vie du compte n'est pas filtrée : un objet survit à son compte. Une ligne ne se réutilise
+ * jamais, un changement de compte ou de destin en ouvrant une neuve, si bien que l'identifiant
+ * désigne exactement ce qui a été lu.
+ */
+async function objetsDeLaPersonne(
+  personId: string,
+  lus: LecturesDuPlan | undefined,
+): Promise<{ lignes: readonly ReferenceLue[]; ids: readonly string[] }> {
+  if (lus !== undefined && lus.references === undefined) {
+    return AUCUN_OBJET;
+  }
+  const lues = await prisma.reference.findMany({
+    where: { externalIdentity: { personId }, ...vivantOuLu(lus?.references) },
+    select: {
+      id: true,
+      provider: true,
+      onOffboard: true,
+      resource: { select: { externalId: true, label: true, url: true } },
+      externalIdentity: { select: { matchMethod: true } },
+    },
+  });
+  return {
+    lignes: lues.map((lue) => ({
+      provider: lue.provider,
+      resourceExternalId: lue.resource.externalId,
+      resourceLabel: lue.resource.label,
+      url: lue.resource.url,
+      onOffboard: lue.onOffboard,
+      matchMethod: lue.externalIdentity?.matchMethod ?? "NONE",
+    })),
+    ids: lues.map(({ id }) => id),
+  };
 }
 
 /**
@@ -231,9 +278,11 @@ function interroge(
   connecteur: Connector,
   presente: ReadonlySet<string>,
   engages: ReadonlySet<string>,
+  possede: ReadonlySet<string>,
 ): boolean {
   if (sens === "OFFBOARDING") {
-    return presente.has(connecteur.contract.key) || engages.has(connecteur.contract.key);
+    const cle = connecteur.contract.key;
+    return presente.has(cle) || engages.has(cle) || possede.has(cle);
   }
   return connecteur.contract.capabilities.grant !== undefined;
 }
@@ -332,6 +381,10 @@ export async function calculerPlan(
   }
   const engages = new Set(parSysteme.keys());
 
+  const objets = sens === "OFFBOARDING" ? await objetsDeLaPersonne(personId, lus) : AUCUN_OBJET;
+  const agissants = referencesAgissantes(objets.lignes);
+  const possede = new Set(agissants.keys());
+
   // Le sens n'est testé que pour épargner une requête : une arrivée ne lit aucun compte,
   // donc elle n'a rien à écarter même si on la laissait passer ici.
   const derogations =
@@ -354,7 +407,7 @@ export async function calculerPlan(
   const systemes: string[] = [];
 
   for (const connecteur of CONNECTEURS) {
-    if (!interroge(sens, connecteur, presente, engages)) {
+    if (!interroge(sens, connecteur, presente, engages, possede)) {
       continue;
     }
 
@@ -375,6 +428,9 @@ export async function calculerPlan(
               : {}),
             ...(parSysteme.has(connecteur.contract.key)
               ? { engagements: parSysteme.get(connecteur.contract.key) }
+              : {}),
+            ...(agissants.has(connecteur.contract.key)
+              ? { references: agissants.get(connecteur.contract.key) }
               : {}),
           },
         },
@@ -441,7 +497,7 @@ export async function calculerPlan(
     sansConnecteur: constates.observes.filter((provider) => !couverts.has(provider)),
     nonConfirmes: constates.nonConfirmes.filter((provider) => couverts.has(provider)),
     refus: octrois.refus,
-    lus: constates.lus,
+    lus: { ...constates.lus, references: objets.ids },
   };
 }
 

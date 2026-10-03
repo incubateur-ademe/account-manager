@@ -311,6 +311,7 @@ export async function confirmerPlan(
                 confirmedReads: {
                   identites: [...actuel.lus.identites],
                   acces: [...actuel.lus.acces],
+                  references: [...(actuel.lus.references ?? [])],
                 },
               }
             : {}),

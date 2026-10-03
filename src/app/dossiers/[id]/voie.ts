@@ -23,8 +23,12 @@ function enumeration(mots: readonly string[]): string {
 export async function voiesDuJour(
   etapes: readonly { systemKey: string; capability: string }[],
 ): Promise<ReadonlyMap<string, ResolvedCapability>> {
+  // Un geste sur un objet possédé est toujours à la main : sa capacité dit ce que le système
+  // sait lire, et la résoudre promettrait une voie automatique qui n'existe pas.
   const attendues = new Set(
-    etapes.map(({ systemKey, capability }) => `${systemKey}:${capability}`),
+    etapes
+      .filter(({ capability }) => capability !== "reference")
+      .map(({ systemKey, capability }) => `${systemKey}:${capability}`),
   );
   const resolues = new Map<string, ResolvedCapability>();
 

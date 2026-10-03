@@ -48,6 +48,10 @@ interface Reponses {
   equipes?: unknown[] | "echec";
   membresDEquipe?: Record<string, unknown[] | "echec">;
   membresEnEchec?: boolean;
+  depots?: unknown[] | "echec";
+  depotsDEquipe?: Record<string, unknown[] | "echec">;
+  /** Par nom de dépôt, sans l'organisation. */
+  collaborateurs?: Record<string, unknown[] | "echec">;
 }
 
 /**
@@ -95,6 +99,28 @@ function lecteurDOrganisations(parOrganisation: Record<string, Reponses>): {
         throw new Error("500 Internal Server Error");
       }
       return (reponses.equipes ?? []) as T[];
+    }
+    if (chemin.endsWith(`/orgs/${organisation}/repos`)) {
+      if (reponses.depots === "echec") {
+        throw new Error("500 Internal Server Error");
+      }
+      return (reponses.depots ?? []) as T[];
+    }
+    if (chemin.includes("/collaborators")) {
+      const nom = chemin.split("/")[3] ?? "";
+      const collaborateurs = reponses.collaborateurs?.[nom] ?? [];
+      if (collaborateurs === "echec") {
+        throw new Error("403 Forbidden");
+      }
+      return collaborateurs as T[];
+    }
+    if (chemin.endsWith("/repos")) {
+      const equipe = chemin.split("/teams/")[1]?.replace("/repos", "") ?? "";
+      const depots = reponses.depotsDEquipe?.[equipe] ?? [];
+      if (depots === "echec") {
+        throw new Error("500 Internal Server Error");
+      }
+      return depots as T[];
     }
 
     const slug = chemin.split("/teams/")[1]?.replace("/members", "") ?? "";
@@ -246,7 +272,7 @@ describe("ce que le connecteur GitHub remonte d'une organisation", () => {
     expect(rien).not.toHaveProperty("identities");
   });
 
-  it("fait suivre le coût au nombre d'équipes, jamais à celui des comptes", async () => {
+  it("fait suivre le coût au nombre d'équipes et de dépôts, jamais à celui des comptes", async () => {
     const membres = Array.from({ length: 95 }, (_, rang) => ({
       id: rang + 1,
       login: `personne-${rang + 1}`,
@@ -258,30 +284,41 @@ describe("ce que le connecteur GitHub remonte d'une organisation", () => {
     }));
     const membresDEquipe = Object.fromEntries(equipes.map((equipe) => [equipe.slug, [membres[0]]]));
 
-    const petite = lecteur({ membres, equipes, membresDEquipe });
+    const depots = Array.from({ length: 5 }, (_, rang) => ({
+      id: 500 + rang,
+      full_name: `incubateur-ademe/depot-${rang}`,
+      html_url: `https://github.com/incubateur-ademe/depot-${rang}`,
+      archived: false,
+    }));
+
+    const petite = lecteur({ membres, equipes, membresDEquipe, depots });
     await lireOrganisation("incubateur-ademe", petite.lire);
 
-    expect(petite.chemins).toHaveLength(23);
-    expect(petite.chemins.filter((chemin) => chemin.includes("/teams/"))).toHaveLength(19);
+    // Trois listes de l'organisation, deux par équipe, la liste des dépôts, un par dépôt
+    expect(petite.chemins).toHaveLength(3 + 1 + 19 * 2 + 1 + 5);
+    expect(petite.chemins.filter((chemin) => chemin.includes("/teams/"))).toHaveLength(38);
+    expect(petite.chemins.filter((chemin) => chemin.includes("/collaborators"))).toHaveLength(5);
     expect(petite.chemins.some((chemin) => /personne-\d/.test(chemin))).toBe(false);
 
     const doublee = lecteur({
       membres: [...membres, ...membres.map((membre) => ({ ...membre, id: membre.id + 1000 }))],
       equipes,
       membresDEquipe,
+      depots,
     });
     await lireOrganisation("incubateur-ademe", doublee.lire);
 
-    expect(doublee.chemins).toHaveLength(23);
+    expect(doublee.chemins).toHaveLength(petite.chemins.length);
 
     const uneDePlus = lecteur({
       membres,
       equipes: [...equipes, { id: 200, name: "produit-zeta", slug: "produit-zeta" }],
       membresDEquipe: { ...membresDEquipe, "produit-zeta": [] },
+      depots,
     });
     await lireOrganisation("incubateur-ademe", uneDePlus.lire);
 
-    expect(uneDePlus.chemins).toHaveLength(24);
+    expect(uneDePlus.chemins).toHaveLength(petite.chemins.length + 2);
   });
 });
 
@@ -290,6 +327,170 @@ describe("ce que le connecteur GitHub remonte d'une organisation", () => {
  * deux régimes pour que chaque scénario dise lequel il exerce, et pour qu'un booléen brut
  * ne ressemble jamais ici à un interrupteur qu'on pourrait choisir à la main.
  */
+function depot(nom: string, id: number, archived = false) {
+  return {
+    id,
+    full_name: `incubateur-ademe/${nom}`,
+    html_url: `https://github.com/incubateur-ademe/${nom}`,
+    archived,
+  };
+}
+
+const PRESTATAIRE = { id: 9, login: "prestataire-exemple", type: "User", role_name: "admin" };
+const admin = (compte: { id: number; login: string }) => ({
+  ...compte,
+  type: "User",
+  role_name: "admin",
+});
+
+/** Sept dépôts, dont quatre seulement ont un administrateur humain en collaborateur direct. */
+const DEPOTS: Reponses = {
+  membres: [CAMILLE, ALEX],
+  equipes: [{ id: 10, name: "produit-alpha", slug: "produit-alpha" }],
+  membresDEquipe: { "produit-alpha": [CAMILLE] },
+  depotsDEquipe: {
+    "produit-alpha": [
+      { id: 102, role_name: "admin" },
+      { id: 103, role_name: "push" },
+    ],
+  },
+  depots: [
+    depot("archive", 101, true),
+    depot("tenu", 102),
+    depot("seul", 103),
+    depot("externe", 104),
+    depot("partage", 105),
+    depot("ecriture", 106),
+    depot("robot", 107),
+  ],
+  collaborateurs: {
+    archive: [admin(CAMILLE)],
+    tenu: [admin(CAMILLE)],
+    seul: [admin(CAMILLE), { ...ALEX, type: "User", role_name: "write" }],
+    externe: [PRESTATAIRE],
+    partage: [admin(CAMILLE), admin(ALEX)],
+    ecriture: [{ ...ALEX, type: "User", role_name: "maintain" }],
+    robot: [{ id: 50, login: "dependabot", type: "Bot", role_name: "admin" }],
+  },
+};
+
+describe("les dépôts qu'un compte administre dans une organisation", () => {
+  it("rend un objet possédé par administrateur direct, gardé ou transféré, jamais archivé", async () => {
+    // Given sept dépôts, dont un archivé, un administré par une équipe, un partagé entre deux
+    // administrateurs, un tenu par un prestataire hors de l'organisation, et trois sans
+    // administrateur humain
+    const { lire } = lecteur(DEPOTS);
+
+    // When l'organisation se lit et s'assemble
+    const assemblee = assemblerOrganisation(
+      "incubateur-ademe",
+      await lireOrganisation("incubateur-ademe", lire),
+    );
+
+    // Then chaque administrateur direct possède son dépôt, avec le destin du dépôt : gardé
+    // s'il est archivé ou qu'une équipe l'administre, transféré sinon, même quand une équipe
+    // y écrit sans l'administrer
+    expect(assemblee.references).toEqual([
+      { resourceExternalId: "incubateur-ademe/101", ownerIdentityExternalId: "1", fate: "keep" },
+      { resourceExternalId: "incubateur-ademe/102", ownerIdentityExternalId: "1", fate: "keep" },
+      {
+        resourceExternalId: "incubateur-ademe/103",
+        ownerIdentityExternalId: "1",
+        fate: "transfer",
+      },
+      {
+        resourceExternalId: "incubateur-ademe/104",
+        ownerIdentityExternalId: "9",
+        fate: "transfer",
+      },
+      {
+        resourceExternalId: "incubateur-ademe/105",
+        ownerIdentityExternalId: "1",
+        fate: "transfer",
+      },
+      {
+        resourceExternalId: "incubateur-ademe/105",
+        ownerIdentityExternalId: "2",
+        fate: "transfer",
+      },
+    ]);
+
+    // Then un dépôt possédé devient une ressource de l'organisation, sur son identifiant,
+    // et un dépôt où personne n'administre n'en devient pas une
+    expect(assemblee.ressources).toContainEqual({
+      externalId: "incubateur-ademe/103",
+      label: "Dépôt incubateur-ademe/seul",
+      url: "https://github.com/incubateur-ademe/seul",
+      parentExternalId: "incubateur-ademe",
+    });
+    expect(assemblee.ressources.filter(({ label }) => label.startsWith("Dépôt "))).toHaveLength(5);
+
+    // Then le prestataire a un compte, sans siège dans l'organisation : son dépôt va à son
+    // compte et non aux orphelins
+    expect(assemblee.identites).toContainEqual({
+      externalId: "9",
+      idKind: "opaque",
+      handle: "prestataire-exemple",
+    });
+    expect(assemblee.acces.filter(({ identityExternalId }) => identityExternalId === "9")).toEqual(
+      [],
+    );
+
+    // Then la collecte rend ces objets possédés, sur un passage complet
+    const complete = await collecter(lecteur(DEPOTS).lire, ["incubateur-ademe"]);
+    expect(complete.status).toBe("ok");
+    expect(complete.status !== "failed" && complete.references).toHaveLength(6);
+  });
+
+  it("ne rend aucun objet possédé sur une liste qui manque", async () => {
+    // When les collaborateurs d'un dépôt ne se lisent pas, comme avec un jeton qui ne couvre
+    // aucun dépôt
+    const illisible = await collecter(
+      lecteur({ ...DEPOTS, collaborateurs: { ...DEPOTS.collaborateurs, seul: "echec" } }).lire,
+      ["incubateur-ademe"],
+    );
+
+    // Then le passage est partiel, nomme le dépôt une seule fois, et ne rend aucun objet
+    // possédé
+    expect(illisible.status).toBe("partial");
+    expect(illisible.errors?.map(({ itemRef }) => itemRef)).toEqual(["incubateur-ademe/seul"]);
+    expect(illisible).not.toHaveProperty("references");
+
+    // When la liste des dépôts, les dépôts d'une équipe ou la liste des équipes ne se lisent
+    // pas
+    const sansListe = await collecter(lecteur({ ...DEPOTS, depots: "echec" }).lire, [
+      "incubateur-ademe",
+    ]);
+    const sansEquipe = await collecter(
+      lecteur({ ...DEPOTS, depotsDEquipe: { "produit-alpha": "echec" } }).lire,
+      ["incubateur-ademe"],
+    );
+    const sansEquipes = await collecter(lecteur({ ...DEPOTS, equipes: "echec" }).lire, [
+      "incubateur-ademe",
+    ]);
+
+    // Then aucun objet possédé n'est rendu, puisqu'un destin se déciderait sur une lecture
+    // amputée, et les comptes, eux, restent rendus
+    for (const passage of [sansListe, sansEquipe, sansEquipes]) {
+      expect(passage.status).toBe("partial");
+      expect(passage).not.toHaveProperty("references");
+      expect(passage.status !== "failed" && passage.identities).toHaveLength(2);
+    }
+
+    // When une seconde organisation déclarée ne rend pas ses dépôts
+    const deux = await collecter(
+      lecteurDOrganisations({
+        "incubateur-ademe": DEPOTS,
+        "autre-incubateur": { ...DEPOTS, depots: "echec" },
+      }).lire,
+      ["incubateur-ademe", "autre-incubateur"],
+    );
+
+    // Then rien n'est rendu non plus pour la première
+    expect(deux).not.toHaveProperty("references");
+  });
+});
+
 const SIMULATION = true;
 const AUTORISEE = false;
 
@@ -421,6 +622,39 @@ describe("les organisations que le connecteur GitHub suit sont celles qu'on lui 
 
     const octroi = await connecteur.plan({ ...REVOCATION, kind: "grant" }, CONTEXTE);
     expect(octroi).toHaveLength(0);
+
+    // Un dépôt possédé s'ajoute aux retraits, à la main, avec la consigne de son destin
+    const avecDepots = await connecteur.plan(
+      {
+        ...REVOCATION,
+        subject: {
+          ...REVOCATION.subject,
+          kind: "person",
+          username: "camille.rivet",
+          references: [
+            {
+              resourceExternalId: "incubateur-ademe/103",
+              resourceLabel: "Dépôt incubateur-ademe/seul",
+              url: "https://github.com/incubateur-ademe/seul",
+              fate: "transfer",
+            },
+            {
+              resourceExternalId: "incubateur-ademe/104",
+              resourceLabel: "Dépôt incubateur-ademe/vieux",
+              fate: "archive",
+            },
+          ],
+        },
+      },
+      CONTEXTE,
+    );
+    expect(avecDepots.map(({ label }) => label).slice(2)).toEqual([
+      "Transférer le dépôt incubateur-ademe/seul",
+      "Archiver le dépôt incubateur-ademe/vieux",
+    ]);
+    expect(avecDepots[2]?.manual?.runbook).toContain("donner le rôle Admin au repreneur");
+    expect(avecDepots[3]?.manual?.runbook).toContain("Archive this repository");
+    expect(avecDepots.slice(2).every(({ capability }) => capability === "reference")).toBe(true);
   });
 });
 

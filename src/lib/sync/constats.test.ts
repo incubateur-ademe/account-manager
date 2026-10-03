@@ -47,6 +47,8 @@ interface EtapeEnBase {
   ancrage?: "geste";
   /** Ce que l'étape ouvre et qu'aucun relevé ne rendra jamais. */
   engagementKey?: string;
+  /** La nature de l'étape, quand elle n'est pas un accès. */
+  capability?: string;
 }
 
 interface RunEnBase {
@@ -183,6 +185,7 @@ vi.mock("@/lib/db", async () => {
           // qu'aucun relevé ne rendra, et un double qui la laisserait passer rendrait
           // l'assertion vraie par construction.
           engagementKey: null;
+          capability: { not: string };
         };
       }) =>
         Promise.resolve(
@@ -192,7 +195,8 @@ vi.mock("@/lib/db", async () => {
                 etape.state === where.state &&
                 etape.executedAt !== where.executedAt.not &&
                 !where.validation.notIn.includes(etape.validation) &&
-                (where.engagementKey !== null || etape.engagementKey === undefined),
+                (where.engagementKey !== null || etape.engagementKey === undefined) &&
+                etape.capability !== where.capability.not,
             )
             .map((etape) => {
               const fiche = base.fiches.find((candidate) => candidate.username === etape.username);
@@ -705,6 +709,43 @@ const relire = (startedAt: Date) => {
 
 const ouverturesDuDementi = () =>
   base.journal.filter((ligne) => ligne.targetId === CLE_DEMENTI && ligne.action === "finding.open");
+
+describe("un geste sur un objet possédé n'est pas une coupure", () => {
+  it("ne se fait pas démentir par le compte, que transférer un dépôt ne retire pas", async () => {
+    // Given un départ dont le transfert d'un dépôt est pointé fait, et le compte de la
+    // personne toujours observé au matin
+    base.fiches.push({
+      username: "camille.rivet",
+      firstSeenAt: PREMIERE_COLLECTE,
+      returnedAt: null,
+      comptes: ["github"],
+    });
+    const transfert: EtapeEnBase = {
+      label: "Transférer le dépôt incubateur-ademe/annuaire",
+      systemKey: "github",
+      state: "SUCCEEDED",
+      validation: "NONE",
+      executedAt: RETRAIT_DAOUT,
+      caseKind: "OFFBOARDING",
+      caseState: "CONFIRMED",
+      username: "camille.rivet",
+      capability: "reference",
+    };
+    base.etapes.push(transfert);
+    relire(new Date("2026-08-28T01:00:00Z"));
+
+    // When la collecte tourne
+    await lancer(perimetre(), true);
+
+    // Then rien ne se lève : le compte encore là ne dit rien d'un dépôt transféré
+    expect(cle(CLE_DEMENTI)).toBeUndefined();
+
+    // Then la même étape, si elle était une coupure, se ferait démentir
+    delete transfert.capability;
+    await lancer(perimetre(), true);
+    expect(cle(CLE_DEMENTI)).toMatchObject({ kind: "OVERDUE_MANUAL_ACTION" });
+  });
+});
 
 describe("une action déclarée faite cesse d'être démentie par le retour de la personne", () => {
   it("suit le dossier et non la personne, sur la séquence partir, revenir, repartir", async () => {

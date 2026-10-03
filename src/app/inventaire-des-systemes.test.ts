@@ -576,8 +576,8 @@ describe("ce que l'inventaire dit d'un système, et ce qu'il refuse d'en dire", 
     ]);
 
     // Then la cinquième capacité est là et ne se confond pas avec la lecture des accès.
-    // Aucun connecteur ne la déclare aujourd'hui, donc elle se résout à « aucun moyen »
-    // partout, et c'est précisément ce que cet écran existe pour montrer.
+    // Ce système ne la déclare pas, donc elle se résout à « aucun moyen », et c'est
+    // précisément ce que cet écran existe pour montrer.
     expect(lignes.map((ligne) => texteRendu(ligne[0]))).toEqual([
       expect.stringContaining("relever les comptes et leurs accès"),
       expect.stringContaining("couper un accès"),
