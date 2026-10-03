@@ -66,6 +66,12 @@ function releve(
     : { status: "ok", ...commun };
 }
 
+const INCONNU: ObservedReference = {
+  resourceExternalId: "dep-10",
+  ownerIdentityExternalId: "inconnu",
+  fate: "keep",
+};
+
 /** Neuf dépôts transférés par cpt-a, dont un partagé avec cpt-b, un dixième à deux auteurs inconnus. */
 const PREMIERE_NUIT: ObservedReference[] = [
   ...DEPOTS.slice(0, 9).map((depot) => ({
@@ -74,8 +80,8 @@ const PREMIERE_NUIT: ObservedReference[] = [
     fate: "transfer" as const,
   })),
   { resourceExternalId: "dep-9", ownerIdentityExternalId: "cpt-b", fate: "transfer" },
-  { resourceExternalId: "dep-10", ownerIdentityExternalId: "inconnu", fate: "keep" },
-  { resourceExternalId: "dep-10", ownerIdentityExternalId: "autre-inconnu", fate: "keep" },
+  INCONNU,
+  { ...INCONNU, ownerIdentityExternalId: "autre-inconnu" },
 ];
 
 /** dep-1 change de destin, et cpt-b ne possède plus dep-9. */
@@ -191,7 +197,7 @@ describe("un objet possédé se collecte avec son destin, sur son compte", () =>
     ).rejects.toThrow();
   });
 
-  it("refuse un relevé qui contredit sa capacité, et une chute sous sa propre famille", async () => {
+  it("refuse un relevé qui contredit sa capacité ou se répète, et une chute sous sa propre famille", async () => {
     // When un connecteur qui sait recenser ne rend aucun objet
     const muet = await executerCollecte(
       connecteur(() => releve(undefined)),
@@ -216,6 +222,17 @@ describe("un objet possédé se collecte avec son destin, sur son compte", () =>
     // Then le passage est partiel, et rien ne s'écrit non plus
     expect(bavard.status).toBe("PARTIAL");
     expect(await prisma.reference.count()).toBe(0);
+
+    // When un relevé déclare deux fois le même auteur inconnu du même objet
+    const repete = await executerCollecte(
+      connecteur(() => releve([...PREMIERE_NUIT, INCONNU])),
+      NUIT_1,
+      nouvelleExecution(),
+    );
+
+    // Then le passage est partiel, et la répétition est nommée
+    expect(repete.status).toBe("PARTIAL");
+    expect(repete.erreurs).toContain("objet possédé déclaré deux fois : dep-10");
 
     // Given onze objets relevés par une nuit complète
     await executerCollecte(

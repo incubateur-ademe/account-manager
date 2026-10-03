@@ -294,8 +294,16 @@ async function enregistrerReferences(
   const aRouvrir: { resourceId: string; externalIdentityId: string | null; destin: OnOffboard }[] =
     [];
   const erreurs: string[] = [];
+  const declarees = new Set<string>();
 
   for (const reference of references) {
+    const declaree = `${reference.resourceExternalId}\u0000${reference.ownerIdentityExternalId ?? ""}`;
+    if (declarees.has(declaree)) {
+      erreurs.push(`objet possédé déclaré deux fois : ${reference.resourceExternalId}`);
+      continue;
+    }
+    declarees.add(declaree);
+
     const resourceId = ressources.get(reference.resourceExternalId);
     if (resourceId === undefined) {
       erreurs.push(
@@ -317,9 +325,6 @@ async function enregistrerReferences(
 
     const cle = couple(resourceId, externalIdentityId);
     if (vus.has(cle)) {
-      if (externalIdentityId !== null) {
-        erreurs.push(`objet possédé déclaré deux fois : ${reference.resourceExternalId}`);
-      }
       continue;
     }
     vus.add(cle);
