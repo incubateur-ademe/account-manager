@@ -3,6 +3,7 @@ import { type AccesConstate, inventaireParSysteme, type LigneDInventaire } from 
 import { revueDe } from "@/core/revue";
 import { OU_RESSEMBLANCE_A_CONFIRMER, OU_SANS_DETENTEUR } from "@/lib/comptes-isoles";
 import { prisma } from "@/lib/db";
+import { compterObjetsPossedes } from "@/lib/objets-possedes";
 
 /** Ce que « récemment » veut dire pour le compteur du journal, et rien d'autre. */
 export const FENETRE_JOURNAL_JOURS = 30;
@@ -20,6 +21,7 @@ export interface Inventaire {
   /* Ouverts, c'est-à-dire ni clos ni annulés : ce sont ceux sur lesquels un geste reste dû. */
   dossiers: { ouverts: number };
   startups: { suivies: number; terminales: number };
+  objetsPossedes: { total: number; orphelins: number };
   /**
    * Approximatif par construction : le journal s'écrit sans attendre, avec capture
    * d'erreur, donc une panne d'écriture ne se voit nulle part. C'est une preuve
@@ -70,6 +72,7 @@ export async function chargerInventaire(
     startups,
     operations,
     dossiersOuverts,
+    objetsPossedes,
   ] = await Promise.all([
     prisma.externalIdentity.groupBy({
       by: ["provider"],
@@ -106,6 +109,7 @@ export async function chargerInventaire(
     }),
     prisma.auditEvent.count({ where: { at: { gte: depuis } } }),
     prisma.accessCase.count({ where: { state: { notIn: ["DONE", "CANCELLED"] } } }),
+    compterObjetsPossedes(),
   ]);
 
   const providerDeLaRessource = new Map(ressources.map((une) => [une.id, une.provider]));
@@ -155,6 +159,7 @@ export async function chargerInventaire(
           perimetre.ghidsPeuples.has(une.ghid),
       ).length,
     },
+    objetsPossedes,
     operationsTracees: operations,
   };
 }

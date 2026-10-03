@@ -65,11 +65,12 @@ const ECRANS = [
   { nom: "25-journal", chemin: "/journal" },
   { nom: "26-configuration", chemin: "/configuration" },
   { nom: "27-non-trouve", chemin: "/personnes/personne.inconnue" },
+  { nom: "28-objets-possedes", chemin: "/objets-possedes" },
 ];
 
 const ESPACE_PERSONNEL = [
-  { nom: "28-moi", chemin: "/moi" },
-  { nom: "29-moi-dossier", chemin: `/moi/dossiers/${DOSSIER_DEPART}` },
+  { nom: "29-moi", chemin: "/moi" },
+  { nom: "30-moi-dossier", chemin: `/moi/dossiers/${DOSSIER_DEPART}` },
 ];
 
 test("relever ce qui ne se lit pas dans le code", async ({ browser }) => {

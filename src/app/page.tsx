@@ -326,6 +326,15 @@ export default async function AccueilPage() {
           <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
             <Tile
               titleAs="h3"
+              title={`${inventaire.objetsPossedes.total} objet${inventaire.objetsPossedes.total > 1 ? "s" : ""} possédé${inventaire.objetsPossedes.total > 1 ? "s" : ""}`}
+              desc={`Dont ${inventaire.objetsPossedes.orphelins} orphelin${inventaire.objetsPossedes.orphelins > 1 ? "s" : ""}.`}
+              linkProps={{ href: "/objets-possedes" }}
+              orientation="horizontal"
+            />
+          </div>
+          <div className={fr.cx("fr-col-12", "fr-col-md-4")}>
+            <Tile
+              titleAs="h3"
               title={`${inventaire.operationsTracees} opération${inventaire.operationsTracees > 1 ? "s" : ""} tracée${inventaire.operationsTracees > 1 ? "s" : ""}`}
               desc={`Sur ${FENETRE_JOURNAL_JOURS} jours. Compteur approximatif. Le journal montre tout l'historique.`}
               linkProps={{ href: "/journal" }}

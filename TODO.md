@@ -24,8 +24,8 @@ la couverture n'en a pas._
 ### Brancher les références
 Suivies dans #16. Sont livrés le repreneur d'un transfert Scalingo (PR 134), la capacité de lire
 les objets possédés (PR 132), puis le schéma de `Reference`, rattachée au compte qui possède
-l'objet, et le socle qui les collecte sous leur propre garde-fou. Restent la lecture des dépôts
-GitHub avec les références dans le plan de départ, puis l'écran des objets possédés. Une référence
+l'objet, le socle qui les collecte sous leur propre garde-fou, et l'écran des objets possédés.
+Reste la lecture des dépôts GitHub avec les références dans le plan de départ. Une référence
 est un objet possédé, ni accès ni révocable (une page, un dépôt), qui appelle `ARCHIVE`, `TRANSFER`
 ou `KEEP` au départ de son auteur, et non une suppression. Notion par connexion interne suit à
 part, faute de jeton.
