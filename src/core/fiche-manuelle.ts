@@ -189,11 +189,6 @@ export interface DossierDeFiche {
   vivant: boolean;
 }
 
-export interface ReferenceDeFiche {
-  id: string;
-  resourceId: string;
-}
-
 /** Un droit de participer à un dossier, augmenté de quoi départager une collision. */
 export interface ParticipationDeFiche {
   id: string;
@@ -246,7 +241,6 @@ export interface FicheAFusionner {
   constats: readonly ConstatDeFiche[];
   dossiers: readonly DossierDeFiche[];
   participations: readonly ParticipationDeFiche[];
-  references: readonly ReferenceDeFiche[];
   rattachements: readonly RattachementDeFiche[];
   surcharge: SurchargeDeFiche | null;
   /**
@@ -265,9 +259,10 @@ export interface FicheAFusionner {
  *
  * L'ordre est porté ici plutôt que recopié dans l'action parce qu'il n'est pas
  * cosmétique : supprimer la fiche source avant d'avoir tout déplacé fait agir les
- * cascades du schéma à notre place, et elles emportent sans un mot les constats,
- * les dossiers et les références, en laissant les plans du dossier supprimé avec
- * un `accessCaseId` nul, vivants mais introuvables.
+ * cascades du schéma à notre place, et elles emportent sans un mot les constats et
+ * les dossiers, en laissant les plans du dossier supprimé avec un `accessCaseId` nul,
+ * vivants mais introuvables. Les objets possédés suivent leurs comptes, et la fusion
+ * n'a pas à les déplacer.
  */
 export type EtapeFusion =
   | { type: "deplacer-comptes"; ids: readonly string[] }
@@ -285,8 +280,6 @@ export type EtapeFusion =
   | { type: "deplacer-rattachements"; ids: readonly string[] }
   | { type: "deplacer-surcharge"; id: string }
   | { type: "supprimer-surcharge"; id: string }
-  | { type: "deplacer-references"; ids: readonly string[] }
-  | { type: "supprimer-references"; ids: readonly string[] }
   | { type: "deplacer-gestes"; ids: readonly string[] }
   | { type: "supprimer-fiche"; username: string };
 
@@ -332,8 +325,6 @@ export interface PlanFusion {
    * repousserait sans que le geste l'ait jamais dit.
    */
   prolongation: { avant: Date | null; apres: Date } | null;
-  references: readonly ReferenceDeFiche[];
-  referencesSupprimees: readonly ReferenceDeFiche[];
   /** Les gestes hors dossier qui suivent la personne, sans quoi la base refuserait tout. */
   gestes: readonly string[];
   etapes: readonly EtapeFusion[];
@@ -436,14 +427,6 @@ export function planifierFusion(
     });
   }
 
-  const resourcesDeLaCible = new Set(cible.references.map((reference) => reference.resourceId));
-  const references = source.references.filter(
-    (reference) => !resourcesDeLaCible.has(reference.resourceId),
-  );
-  const referencesSupprimees = source.references.filter((reference) =>
-    resourcesDeLaCible.has(reference.resourceId),
-  );
-
   const cotesCible = parFournisseur(cible.comptes);
   const doublons = [...parFournisseur(source.comptes)]
     .flatMap(([provider, handles]) => {
@@ -483,8 +466,6 @@ export function planifierFusion(
     rattachements: source.rattachements,
     surcharge: surchargeSuit ? source.surcharge : null,
     surchargeAbandonnee: surchargeSuit ? null : source.surcharge,
-    references,
-    referencesSupprimees,
     gestes: source.gestes,
   };
 
@@ -542,18 +523,6 @@ export function planifierFusion(
         ? { type: "deplacer-surcharge", id: source.surcharge.id }
         : { type: "supprimer-surcharge", id: source.surcharge.id },
     );
-  }
-  if (references.length > 0) {
-    etapes.push({
-      type: "deplacer-references",
-      ids: references.map((reference) => reference.id),
-    });
-  }
-  if (referencesSupprimees.length > 0) {
-    etapes.push({
-      type: "supprimer-references",
-      ids: referencesSupprimees.map((reference) => reference.id),
-    });
   }
   if (source.gestes.length > 0) {
     etapes.push({ type: "deplacer-gestes", ids: source.gestes });

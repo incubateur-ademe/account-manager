@@ -12,7 +12,7 @@ import { REDACTION } from "./redaction";
  */
 describe("ce que le bandeau promet à qui autorise une datation", () => {
   it("ne promet la portée d'une décision qu'à la famille qui la tient", () => {
-    // Given trois familles de chute, dont une seule borne l'ampleur et périme ce qu'elle
+    // Given quatre familles de chute, dont une seule borne l'ampleur et périme ce qu'elle
     // n'a pas levé.
     const portee = /sans effet/u;
 
@@ -48,9 +48,10 @@ describe("ce que le bandeau promet à qui autorise une datation", () => {
     // toujours, et l'écran refuserait la seconde.
     expect(REDACTION.identites.suite).not.toMatch(portee);
     expect(REDACTION.ressources.suite).not.toMatch(portee);
+    expect(REDACTION.references.suite).not.toMatch(portee);
 
     // Then chacune dit quand même ce que le geste coûte et sur quoi il porte.
-    for (const famille of ["identites", "ressources", "perimetre"] as const) {
+    for (const famille of ["identites", "ressources", "perimetre", "references"] as const) {
       expect(REDACTION[famille].suite).toContain("Recopié au journal avec votre nom");
       expect(REDACTION[famille].quoi.length).toBeGreaterThan(0);
     }
@@ -92,7 +93,7 @@ describe("ce que le bandeau promet à qui autorise une datation", () => {
     // Then les systèmes couverts se taisent là-dessus, et c'est juste : leur référence est
     // déjà un décompte de lignes tenues pour vivantes, donc déjà la conséquence, et il
     // n'y a chez eux aucun second nombre à montrer.
-    for (const famille of ["identites", "ressources"] as const) {
+    for (const famille of ["identites", "ressources", "references"] as const) {
       expect(REDACTION[famille].constat({ ...blocage, famille })).not.toMatch(/constaterait/u);
     }
   });
@@ -173,7 +174,7 @@ describe("ce que le bandeau promet à qui autorise une datation", () => {
 
   it("annonce à chaque famille le compte de collectes qui est le sien", () => {
     // Given un blocage installé depuis cinq collectes. Le nombre est le même pour les
-    // trois familles, ce qu'il compte ne l'est pas : un système couvert a refusé à
+    // quatre familles, ce qu'il compte ne l'est pas : un système couvert a refusé à
     // l'identique cinq nuits d'affilée, le plancher des personnes suivies décide contre
     // une collecte complète que cinq collectes n'ont pas renouvelée.
     const blocage = (famille: FamilleDeChute): BlocageInstalle => ({
@@ -196,15 +197,15 @@ describe("ce que le bandeau promet à qui autorise une datation", () => {
     // Then les systèmes couverts disent l'inverse, parce que c'est l'inverse : leur
     // référence est un décompte de lignes vivantes que la moindre datation corrige, si
     // bien que ce qui dit que rien n'avance est bien que les mêmes nombres retombent.
-    for (const famille of ["identites", "ressources"] as const) {
+    for (const famille of ["identites", "ressources", "references"] as const) {
       const cible = REDACTION[famille].constat(blocage(famille));
       expect(cible).toContain("Il refuse à l'identique depuis 5 collectes");
       expect(cible).not.toMatch(/relevé/u);
     }
 
-    // Then aucune des trois ne se tait sur le compte : sans lui, la phrase qui annonce
+    // Then aucune des quatre ne se tait sur le compte : sans lui, la phrase qui annonce
     // un blocage que rien ne dénouera ressemble mot pour mot à celle d'un incident.
-    for (const famille of ["identites", "ressources", "perimetre"] as const) {
+    for (const famille of ["identites", "ressources", "perimetre", "references"] as const) {
       expect(REDACTION[famille].constat(blocage(famille))).toContain("5 collectes");
     }
   });

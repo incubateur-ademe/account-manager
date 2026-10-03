@@ -208,6 +208,10 @@ un projet Scalingo ou une équipe vide, ne pèse sur aucun des deux plateaux et 
 masquer une chute réelle. Une équipe vidée le soir même reste rendue, donc comptée : seule une
 ressource tenue pour vivante et absente de la réponse fait baisser le relevé.
 
+**Le plancher des objets possédés a sa famille et son verrou.** Il compare les références
+vivantes d'un système à celles que la lecture rend encore. Il ne date que les références, et
+seulement quand le connecteur a rendu le champ.
+
 **Une fiche qu'un passage sait ne pas avoir lue ne disparaît pas le soir même.** Une disparition
 ordinaire se conclut d'un silence : la personne n'est plus dans la réponse, et rien ne la nomme.
 Un refus de la source est autre chose, elle nomme la fiche qu'elle ne connaît pas, et en conclure
@@ -468,9 +472,12 @@ sous un autre nom **rend le chiffre faux sans bruit**, puisque rien ne signale u
 qu'on a cessé de compter. Remonter ou non ces situations reste son choix ; les nommer
 autrement, non.
 
-**`Reference`** : un objet possédé, ni accès ni révocable, avec `onOffboard` valant
-`ARCHIVE`, `TRANSFER` ou `KEEP`. Une page créée par quelqu'un n'est pas un accès ;
-les confondre fait proposer des suppressions absurdes.
+**`Reference`** : un objet possédé, ni accès ni révocable. Elle pointe vers le compte qui le
+possède, nul quand aucun compte connu ne le porte, et non vers une fiche. Une ressource a au
+plus une référence vivante par compte, et un changement de compte ou de destin date la
+référence et en ouvre une neuve. `onOffboard` vaut `ARCHIVE`, `TRANSFER` ou `KEEP`, `KEEP` par
+défaut, et le connecteur le fixe à chaque collecte. Une page créée par quelqu'un n'est pas un
+accès ; les confondre fait proposer des suppressions absurdes.
 
 **`SyncRun`** : `provider`, `capability`, `startedAt`, `finishedAt`, `status`,
 `itemsSeen`, `error`. Une ligne par exécution. Le run **s'ouvre en échec** et n'est
@@ -1024,6 +1031,10 @@ mais durable quand il en existe un.
 une pagination tronquée qui remonte `ok` produirait de fausses conclusions de
 révocation. Et un run non `ok` ne fait rien disparaître, il conserve le dernier état
 constaté.
+
+Un champ `references` absent veut dire « pas regardé », une liste vide « regardé, rien ». Le
+champ absent alors que la capacité `reference` est praticable, ou rendu alors qu'elle ne l'est
+pas, est une erreur unitaire. Le passage devient `PARTIAL` et ne date rien.
 
 Trois refus écartent une contenance sans écarter la ressource qui la déclare : un contenant
 absent du relevé, une ressource qui se contient elle-même, une contenance à plus d'un

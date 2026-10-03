@@ -256,11 +256,28 @@ export interface CollectError {
   itemRef?: string;
 }
 
+/**
+ * Un objet possédé, relevé avec le destin que le connecteur lui fixe au départ de son
+ * propriétaire. Ni accès ni révocable : une page créée par quelqu'un n'est pas un accès.
+ */
+export interface ObservedReference {
+  resourceExternalId: string;
+  /** Le compte qui possède l'objet. Absent quand aucun compte de la collecte ne le porte. */
+  ownerIdentityExternalId?: string;
+  fate: "archive" | "transfer" | "keep";
+}
+
 interface CollectPayload {
   itemsSeen: number;
   identities: readonly ObservedIdentity[];
   resources: readonly ObservedResource[];
   grants: readonly ObservedGrant[];
+  /**
+   * Présent si et seulement si la capacité `reference` est praticable. Absent veut dire
+   * « pas regardé », une liste vide « regardé, rien » : les confondre ferait disparaître
+   * tout l'inventaire d'un système le jour où son connecteur cesse de lire les objets.
+   */
+  references?: readonly ObservedReference[];
 }
 
 /** L'invariant « un run ok n'a avalé aucune erreur » est porté par le type, pas par la discipline de chaque connecteur. */

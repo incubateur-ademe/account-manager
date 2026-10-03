@@ -38,6 +38,8 @@ const QUOI: Record<FamilleDeChute, (chute: RefusDeDatation) => string> = {
   ressources: (chute) =>
     `chute des ressources : ${chute.observe} contre ${chute.reference} connues`,
   perimetre: (chute) => COTE_DU_PERIMETRE[chute.cote ?? "releve"](chute),
+  references: (chute) =>
+    `chute des objets possédés : ${chute.observe} contre ${chute.reference} tenus pour vivants`,
 };
 
 /**

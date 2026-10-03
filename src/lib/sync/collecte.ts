@@ -7,18 +7,20 @@ import {
   ressourcesRelues,
   verifierContenances,
 } from "@/core/collecte";
-import type {
-  CollectError,
-  CollectResult,
-  Connector,
-  NonEmptyArray,
-  ObservedGrant,
-  ObservedIdentity,
-  ObservedResource,
-  RunContext,
+import {
+  type CollectError,
+  type CollectResult,
+  type Connector,
+  type NonEmptyArray,
+  type ObservedGrant,
+  type ObservedIdentity,
+  type ObservedReference,
+  type ObservedResource,
+  type RunContext,
+  resolveCapability,
 } from "@/core/connector";
 import { Prisma } from "@/generated/prisma/client";
-import type { SyncStatus } from "@/generated/prisma/enums";
+import type { OnOffboard, SyncStatus } from "@/generated/prisma/enums";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -32,6 +34,8 @@ export interface ResultatCollecte {
   identites: { creees: number; revues: number; disparues: number };
   ressources: number;
   acces: { crees: number; revus: number; disparus: number };
+  /** Absent quand le connecteur n'a pas rendu d'objets possédés. */
+  references?: { creees: number; revues: number; disparues: number };
   erreurs: string[];
   /**
    * Ce qu'un garde-fou a refusé de dater, relu par le passage suivant pour savoir si
@@ -246,6 +250,121 @@ async function enregistrerAcces(
   return { crees, revus, erreurs };
 }
 
+const DESTIN: Record<ObservedReference["fate"], OnOffboard> = {
+  archive: "ARCHIVE",
+  transfer: "TRANSFER",
+  keep: "KEEP",
+};
+
+/** Un objet et son propriétaire : une ressource a au plus une référence vivante par compte. */
+const couple = (resourceId: string, externalIdentityId: string | null) =>
+  `${resourceId}:${externalIdentityId ?? ""}`;
+
+/**
+ * Écrit les objets possédés d'un relevé, sans rien dater.
+ *
+ * Une référence ne change ni de compte ni de destin en place : la changer réécrirait ce que
+ * le plan d'un départ confirmé a lu. Un destin changé laisse donc sa ligne telle quelle, et
+ * c'est la datation d'un passage complet qui la ferme et ouvre la suivante : un passage
+ * partiel ne fait rien disparaître. Un compte changé ouvre sa ligne, l'ancienne restant à
+ * dater.
+ *
+ * Un propriétaire qu'aucun compte de la collecte ne porte laisse la référence sans compte,
+ * sans erreur : chaque auteur inconnu rendrait sinon le passage partiel.
+ */
+async function enregistrerReferences(
+  provider: string,
+  references: readonly ObservedReference[],
+  ressources: ReadonlyMap<string, string>,
+  now: Date,
+): Promise<{
+  creees: number;
+  revues: number;
+  vus: Set<string>;
+  aRouvrir: { resourceId: string; externalIdentityId: string | null; destin: OnOffboard }[];
+  erreurs: string[];
+}> {
+  let creees = 0;
+  let revues = 0;
+  const vus = new Set<string>();
+  const aRouvrir: { resourceId: string; externalIdentityId: string | null; destin: OnOffboard }[] =
+    [];
+  const erreurs: string[] = [];
+
+  for (const reference of references) {
+    const resourceId = ressources.get(reference.resourceExternalId);
+    if (resourceId === undefined) {
+      erreurs.push(
+        `objet possédé sur une ressource absente de la collecte : ${reference.resourceExternalId}`,
+      );
+      continue;
+    }
+
+    const proprietaire =
+      reference.ownerIdentityExternalId === undefined
+        ? null
+        : await prisma.externalIdentity.findUnique({
+            where: {
+              provider_externalId: { provider, externalId: reference.ownerIdentityExternalId },
+            },
+            select: { id: true },
+          });
+    const externalIdentityId = proprietaire?.id ?? null;
+
+    const cle = couple(resourceId, externalIdentityId);
+    if (vus.has(cle)) {
+      erreurs.push(`objet possédé déclaré deux fois : ${reference.resourceExternalId}`);
+      continue;
+    }
+    vus.add(cle);
+
+    const destin = DESTIN[reference.fate];
+    const vivante = await prisma.reference.findFirst({
+      where: { resourceId, externalIdentityId, vanishedAt: null },
+      select: { id: true, onOffboard: true },
+    });
+
+    if (!vivante) {
+      await prisma.reference.create({
+        data: {
+          provider,
+          resourceId,
+          externalIdentityId,
+          onOffboard: destin,
+          firstSeenAt: now,
+          lastSeenAt: now,
+        },
+      });
+      creees += 1;
+    } else if (vivante.onOffboard === destin) {
+      await prisma.reference.update({ where: { id: vivante.id }, data: { lastSeenAt: now } });
+      revues += 1;
+    } else {
+      aRouvrir.push({ resourceId, externalIdentityId, destin });
+    }
+  }
+
+  return { creees, revues, vus, aRouvrir, erreurs };
+}
+
+/**
+ * La capacité de recenser, telle que le connecteur la déclare et que ses credentials la
+ * rendent praticable. Non déclarée, rien n'est sondé.
+ */
+async function recensementPraticable(connector: Connector): Promise<boolean> {
+  const declarees = connector.contract.capabilities.reference;
+  if (!declarees) {
+    return false;
+  }
+  const resolue = resolveCapability(
+    "reference",
+    declarees,
+    await connector.probe(),
+    connector.contract.runbook,
+  );
+  return resolue.tier !== "none";
+}
+
 /**
  * Ce que l'outil tient pour vrai en ce moment, et non ce qu'un run passe a vu.
  *
@@ -392,13 +511,39 @@ export async function executerCollecte(
   const acces = await enregistrerAcces(provider, lu.grants, ressources, now);
   erreurs.push(...contenances.erreurs.map(enPhrase), ...acces.erreurs);
 
+  // Le champ et la capacité se disent l'un l'autre : un connecteur qui rend des objets sans
+  // savoir les recenser, ou qui sait les recenser sans en rendre, s'est contredit, et ce
+  // qu'il a rendu ou tu ne se tient pas pour exhaustif.
+  const recense = await recensementPraticable(connector);
+  const contradiction =
+    recense && lu.references === undefined
+      ? "objets possédés : la capacité de recenser est praticable, et le relevé n'en rend aucun"
+      : !recense && lu.references !== undefined
+        ? "objets possédés : le relevé en rend, et la capacité de recenser n'est pas praticable"
+        : null;
+  if (contradiction) {
+    erreurs.push(contradiction);
+  }
+  const objets =
+    recense && lu.references !== undefined
+      ? await enregistrerReferences(provider, lu.references, ressources, now)
+      : null;
+  erreurs.push(...(objets?.erreurs ?? []));
+
   let status: SyncStatus = STATUT[lu.status];
-  if ((contenances.erreurs.length > 0 || acces.erreurs.length > 0) && status === "OK") {
+  if (
+    (contenances.erreurs.length > 0 ||
+      acces.erreurs.length > 0 ||
+      contradiction !== null ||
+      (objets?.erreurs.length ?? 0) > 0) &&
+    status === "OK"
+  ) {
     status = "PARTIAL";
   }
 
   let disparues = 0;
   let disparus = 0;
+  let referencesDisparues = 0;
   const refus: RefusDeDatation[] = [];
 
   if (status === "OK") {
@@ -419,7 +564,7 @@ export async function executerCollecte(
         } as const)
       : null;
 
-    // Deux verrous distincts, et c'est le point. Une chute des identités interdit de
+    // Des verrous distincts, et c'est le point. Une chute des identités interdit de
     // conclure sur qui a disparu, donc aussi sur les accès qui en dépendent. Une chute
     // des ressources n'interdit que les accès : qu'un connecteur cesse d'émettre une
     // famille de ressources ne dit rien de la personne dont la fiche vient de
@@ -441,9 +586,34 @@ export async function executerCollecte(
       : false;
     const daterAcces = daterIdentites && (chuteRessources === null || leveRessources);
 
+    // Le verrou des objets possédés ne dépend d'aucun autre : un objet survit à son compte,
+    // et la chute des identités ne dit rien de ce que leurs propriétaires ont laissé.
+    const tenuesReferences = objets
+      ? await prisma.reference.findMany({
+          where: { provider, vanishedAt: null },
+          select: { resourceId: true, externalIdentityId: true },
+        })
+      : [];
+    const relusReferences = tenuesReferences.filter(({ resourceId, externalIdentityId }) =>
+      objets?.vus.has(couple(resourceId, externalIdentityId)),
+    ).length;
+    const chuteReferences =
+      objets && chuteExcessive(tenuesReferences.length, relusReferences, seuil)
+        ? ({
+            famille: "references",
+            observe: relusReferences,
+            reference: tenuesReferences.length,
+          } as const)
+        : null;
+    const leveReferences = objets
+      ? await plancherLeve(provider, chuteReferences, run, "aucune")
+      : false;
+    const daterReferences = objets !== null && (chuteReferences === null || leveReferences);
+
     for (const [chute, leve] of [
       [chuteIdentites, leveIdentites],
       [chuteRessources, leveRessources],
+      [chuteReferences, leveReferences],
     ] as const) {
       if (chute === null) {
         continue;
@@ -478,6 +648,28 @@ export async function executerCollecte(
       });
       disparus = perdus.count;
     }
+
+    if (daterReferences && objets) {
+      // Date aussi la ligne d'un destin changé, que l'écriture a laissée sans la revoir,
+      // avant d'ouvrir la suivante : l'index des références vivantes n'en tolère qu'une.
+      const perdues = await prisma.reference.updateMany({
+        where: { provider, vanishedAt: null, lastSeenAt: { lt: now } },
+        data: { vanishedAt: now },
+      });
+      referencesDisparues = perdues.count;
+      for (const { resourceId, externalIdentityId, destin } of objets.aRouvrir) {
+        await prisma.reference.create({
+          data: {
+            provider,
+            resourceId,
+            externalIdentityId,
+            onOffboard: destin,
+            firstSeenAt: now,
+            lastSeenAt: now,
+          },
+        });
+      }
+    }
   }
 
   const resultat: ResultatCollecte = {
@@ -487,6 +679,15 @@ export async function executerCollecte(
     identites: { ...identites, disparues },
     ressources: ressources.size,
     acces: { crees: acces.crees, revus: acces.revus, disparus },
+    ...(objets
+      ? {
+          references: {
+            creees: objets.creees,
+            revues: objets.revues,
+            disparues: referencesDisparues,
+          },
+        }
+      : {}),
     erreurs,
     refus,
   };
