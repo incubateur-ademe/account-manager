@@ -270,7 +270,11 @@ const couple = (resourceId: string, externalIdentityId: string | null) =>
  * dater.
  *
  * Un propriétaire qu'aucun compte de la collecte ne porte laisse la référence sans compte,
- * sans erreur : chaque auteur inconnu rendrait sinon le passage partiel.
+ * sans erreur : chaque auteur inconnu rendrait sinon le passage partiel. Plusieurs auteurs
+ * inconnus d'un même objet n'en font qu'une, faute de compte qui les distingue.
+ *
+ * Un objet revu sous un autre destin compte parmi les revus : il est toujours tenu, et la
+ * datation de sa ligne ne le fait pas disparaître.
  */
 async function enregistrerReferences(
   provider: string,
@@ -313,7 +317,9 @@ async function enregistrerReferences(
 
     const cle = couple(resourceId, externalIdentityId);
     if (vus.has(cle)) {
-      erreurs.push(`objet possédé déclaré deux fois : ${reference.resourceExternalId}`);
+      if (externalIdentityId !== null) {
+        erreurs.push(`objet possédé déclaré deux fois : ${reference.resourceExternalId}`);
+      }
       continue;
     }
     vus.add(cle);
@@ -341,6 +347,7 @@ async function enregistrerReferences(
       revues += 1;
     } else {
       aRouvrir.push({ resourceId, externalIdentityId, destin });
+      revues += 1;
     }
   }
 
@@ -656,7 +663,7 @@ export async function executerCollecte(
         where: { provider, vanishedAt: null, lastSeenAt: { lt: now } },
         data: { vanishedAt: now },
       });
-      referencesDisparues = perdues.count;
+      referencesDisparues = perdues.count - objets.aRouvrir.length;
       for (const { resourceId, externalIdentityId, destin } of objets.aRouvrir) {
         await prisma.reference.create({
           data: {

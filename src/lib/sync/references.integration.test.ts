@@ -66,7 +66,7 @@ function releve(
     : { status: "ok", ...commun };
 }
 
-/** Huit dépôts transférés par cpt-a, un neuvième à deux propriétaires, un dixième sans. */
+/** Neuf dépôts transférés par cpt-a, dont un partagé avec cpt-b, un dixième à deux auteurs inconnus. */
 const PREMIERE_NUIT: ObservedReference[] = [
   ...DEPOTS.slice(0, 9).map((depot) => ({
     resourceExternalId: depot,
@@ -75,6 +75,7 @@ const PREMIERE_NUIT: ObservedReference[] = [
   })),
   { resourceExternalId: "dep-9", ownerIdentityExternalId: "cpt-b", fate: "transfer" },
   { resourceExternalId: "dep-10", ownerIdentityExternalId: "inconnu", fate: "keep" },
+  { resourceExternalId: "dep-10", ownerIdentityExternalId: "autre-inconnu", fate: "keep" },
 ];
 
 /** dep-1 change de destin, et cpt-b ne possède plus dep-9. */
@@ -119,8 +120,9 @@ describe("un objet possédé se collecte avec son destin, sur son compte", () =>
       nouvelleExecution(),
     );
 
-    // Then chacun s'écrit sur son compte, deux comptes pour dep-9, aucun pour un auteur
-    // qu'aucun compte ne porte, et le destin fixé par le connecteur
+    // Then chacun s'écrit sur son compte, deux comptes pour dep-9, une seule ligne sans
+    // compte pour les deux auteurs qu'aucun compte ne porte, et le destin fixé par le
+    // connecteur
     expect(premiere.status).toBe("OK");
     expect(premiere.references).toEqual({ creees: 11, revues: 0, disparues: 0 });
     const ecrites = await vivantes();
@@ -154,9 +156,10 @@ describe("un objet possédé se collecte avec son destin, sur son compte", () =>
     );
 
     // Then l'ancienne ligne de dep-1 et celle de cpt-b sur dep-9 se datent, une ligne neuve
-    // porte le nouveau destin de dep-1, et l'objet voisin reste vivant
+    // porte le nouveau destin de dep-1, qui compte parmi les objets revus et non parmi les
+    // disparus, et l'objet voisin reste vivant
     expect(complete.status).toBe("OK");
-    expect(complete.references?.disparues).toBe(2);
+    expect(complete.references).toEqual({ creees: 0, revues: 10, disparues: 1 });
     const apres = await vivantes();
     expect(apres).toHaveLength(10);
     expect(apres.filter(({ resource }) => resource.externalId === "dep-1")).toEqual([
