@@ -22,13 +22,12 @@ _ajoutés par Claude. Les références ont un plan d'implémentation, `docs/plan
 la couverture n'en a pas._
 
 ### Brancher les références
-Suivies dans #16. Sont livrés le repreneur d'un transfert Scalingo (PR 134), la capacité de lire
-les objets possédés (PR 132), puis le schéma de `Reference`, rattachée au compte qui possède
-l'objet, et le socle qui les collecte sous leur propre garde-fou. Restent la lecture des dépôts
-GitHub avec les références dans le plan de départ, puis l'écran des objets possédés. Une référence
-est un objet possédé, ni accès ni révocable (une page, un dépôt), qui appelle `ARCHIVE`, `TRANSFER`
-ou `KEEP` au départ de son auteur, et non une suppression. Notion par connexion interne suit à
-part, faute de jeton.
+Livrées dans #16 : le repreneur d'un transfert Scalingo (PR 134), la capacité de lire les objets
+possédés (PR 132), le schéma de `Reference`, rattachée au compte qui possède l'objet, le socle qui
+les collecte sous leur propre garde-fou, la lecture des dépôts GitHub avec les références dans le
+plan de départ, et l'écran des objets possédés. Une référence est un objet possédé, ni accès ni
+révocable (une page, un dépôt), qui appelle `ARCHIVE`, `TRANSFER` ou `KEEP` au départ de son
+auteur, et non une suppression. Notion par connexion interne suit dans #149, faute de jeton.
 
 ### Étendre la couverture au-delà de GitHub, Notion et Scalingo
 La valeur de l'outil est proportionnelle au nombre de systèmes couverts, pas à la finesse avec

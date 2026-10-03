@@ -17,7 +17,7 @@ import {
   type ObservedReference,
   type ObservedResource,
   type RunContext,
-  resolveCapability,
+  recensementPraticable,
 } from "@/core/connector";
 import { Prisma } from "@/generated/prisma/client";
 import type { OnOffboard, SyncStatus } from "@/generated/prisma/enums";
@@ -357,24 +357,6 @@ async function enregistrerReferences(
   }
 
   return { creees, revues, vus, aRouvrir, erreurs };
-}
-
-/**
- * La capacité de recenser, telle que le connecteur la déclare et que ses credentials la
- * rendent praticable. Non déclarée, rien n'est sondé.
- */
-async function recensementPraticable(connector: Connector): Promise<boolean> {
-  const declarees = connector.contract.capabilities.reference;
-  if (!declarees) {
-    return false;
-  }
-  const resolue = resolveCapability(
-    "reference",
-    declarees,
-    await connector.probe(),
-    connector.contract.runbook,
-  );
-  return resolue.tier !== "none";
 }
 
 /**

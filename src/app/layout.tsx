@@ -31,7 +31,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <DsfrProvider lang={lang}>
           {/* Le bouton de déconnexion se rend pour toute session et non pour la seule
             équipe transverse : un participant qui ne l'aurait pas n'aurait aucun moyen
-            de sortir. Le menu, lui, se réduit, onze liens qui rejettent tous étant une
+            de sortir. Le menu, lui, se réduit, douze liens qui rejettent tous étant une
             fuite sur la forme de l'outil autant qu'une impasse. */}
           <Navigation
             operateur={utilisateur?.operateur === true}

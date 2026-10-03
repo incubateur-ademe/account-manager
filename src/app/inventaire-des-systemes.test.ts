@@ -10,6 +10,7 @@ import type {
   CredentialProbe,
 } from "@/core/connector";
 import { LIBELLE_ETAT_COLLECTE, LIBELLE_TIER } from "@/core/lexique";
+import type { CompteDeLObjet } from "@/core/objets-possedes";
 import { OU_SANS_DETENTEUR } from "@/lib/comptes-isoles";
 import { dateFr } from "@/ui/dates";
 
@@ -77,6 +78,7 @@ const base = vi.hoisted(() => ({
   nonRevocables: { sansDetenteur: 0, ressemblance: 0 },
   comptesDeService: [] as CompteDeServiceEnBase[],
   startups: [] as { ghid: string; currentPhase: string | null }[],
+  references: [] as { resourceId: string; externalIdentity: CompteDeLObjet | null }[],
   operationsTracees: 0,
   dossiersOuverts: 0,
 }));
@@ -149,6 +151,7 @@ vi.mock("@/lib/db", () => ({
     resource: { findMany: () => Promise.resolve(base.ressources) },
     serviceAccount: { findMany: () => Promise.resolve(base.comptesDeService) },
     startup: { findMany: () => Promise.resolve(base.startups) },
+    reference: { findMany: () => Promise.resolve(base.references) },
     auditEvent: { count: () => Promise.resolve(base.operationsTracees) },
     accessCase: { count: () => Promise.resolve(base.dossiersOuverts) },
   },
@@ -318,6 +321,7 @@ beforeEach(() => {
   base.personnes.length = 0;
   base.comptesDeService.length = 0;
   base.startups.length = 0;
+  base.references.length = 0;
   base.constats = { ouverts: 0, sorties: 0, arrivees: 0 };
   base.nonRevocables = { sansDetenteur: 0, ressemblance: 0 };
   base.operationsTracees = 0;
@@ -673,6 +677,26 @@ describe("ce que l'inventaire dit d'un système, et ce qu'il refuse d'en dire", 
         expiresAt: dansJours(-1),
       },
     );
+    // Sept orphelins de trois sortes, un auteur à confirmer, et quatre auteurs présents dont
+    // un objet partagé avec un auteur sorti. Le compteur ne voit l'orphelin que par le
+    // classement de l'écran : ni les seuls objets sans compte, ni tout ce qui n'a pas
+    // d'auteur sûr. Il compte des objets, et non des références.
+    const auteur = { matchMethod: "DECLARED", person: { vanishedAt: null } };
+    const sortie = { ...auteur, person: { vanishedAt: dansJours(-1) } };
+    let rang = 0;
+    const objet = (externalIdentity: CompteDeLObjet | null, resourceId = `objet-${++rang}`) => ({
+      resourceId,
+      externalIdentity,
+    });
+    base.references.push(
+      ...Array.from({ length: 4 }, () => objet(null)),
+      ...Array.from({ length: 2 }, () => objet({ ...auteur, person: null })),
+      objet(sortie),
+      objet({ ...auteur, matchMethod: "HEURISTIC" }),
+      ...Array.from({ length: 3 }, () => objet(auteur)),
+      objet(auteur, "partage"),
+      objet(sortie, "partage"),
+    );
 
     // When l'accueil se rend
     const page = await AccueilPage();
@@ -728,6 +752,11 @@ describe("ce que l'inventaire dit d'un système, et ce qu'il refuse d'en dire", 
         titre: "4 startups",
         description: "Dont 2 en phase terminale portent encore quelqu'un, sans accès justifié.",
         cible: "/startups",
+      },
+      {
+        titre: "12 objets possédés",
+        description: "Dont 7 orphelins.",
+        cible: "/objets-possedes",
       },
       {
         titre: "21 opérations tracées",

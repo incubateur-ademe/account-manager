@@ -60,12 +60,20 @@ export async function semerLesEcransPleins(client: Client): Promise<void> {
     VALUES
       ('res-gh-org', 'github', 'incubateur-ademe', 'incubateur-ademe', 'https://github.com/incubateur-ademe', NULL),
       ('res-notion', 'notion', 'espace-incubateur', 'Espace incubateur', NULL, NULL),
-      ('res-scalingo', 'scalingo', 'ademe-prod', 'ademe-prod', NULL, NULL)
+      ('res-scalingo', 'scalingo', 'ademe-prod', 'ademe-prod', NULL, NULL),
+      ('res-gh-carte', 'github', 'incubateur-ademe/101', 'Dépôt incubateur-ademe/carte-des-friches', 'https://github.com/incubateur-ademe/carte-des-friches', 'res-gh-org'),
+      ('res-gh-api', 'github', 'incubateur-ademe/102', 'Dépôt incubateur-ademe/api-friches', 'https://github.com/incubateur-ademe/api-friches', 'res-gh-org'),
+      ('res-gh-site', 'github', 'incubateur-ademe/103', 'Dépôt incubateur-ademe/site-vitrine', 'https://github.com/incubateur-ademe/site-vitrine', 'res-gh-org'),
+      ('res-gh-prototype', 'github', 'incubateur-ademe/104', 'Dépôt incubateur-ademe/prototype-sols', 'https://github.com/incubateur-ademe/prototype-sols', 'res-gh-org'),
+      ('res-gh-scripts', 'github', 'incubateur-ademe/105', 'Dépôt incubateur-ademe/scripts-de-migration', 'https://github.com/incubateur-ademe/scripts-de-migration', 'res-gh-org'),
+      ('res-nt-feuille', 'notion', 'page-feuille-de-route', 'Feuille de route 2026', NULL, 'res-notion'),
+      ('res-nt-comptes-rendus', 'notion', 'page-comptes-rendus', 'Comptes rendus d''équipe', NULL, 'res-notion')
   `);
 
   /*
-   * Des identités de chaque méthode de rapprochement, dont deux non rattachées : ce sont elles qui
-   * peuplent la file des comptes isolés, et HEURISTIC est celle qui ne peut jamais révoquer.
+   * Des identités de chaque méthode de rapprochement, dont deux non rattachées et une rattachée par
+   * ressemblance. Ce sont elles qui peuplent la file des comptes isolés, et HEURISTIC est celle qui
+   * ne peut jamais révoquer.
    */
   await client.query(`
     INSERT INTO "ExternalIdentity" (id, provider, "externalId", "idKind", handle, "personId", "serviceAccountId", "matchMethod", "firstSeenAt", "lastSeenAt", "vanishedAt")
@@ -75,7 +83,8 @@ export async function semerLesEcransPleins(client: Client): Promise<void> {
       ('ext-lou-sca', 'scalingo', 'sc-1', 'EMAIL', 'lou@exemple.fr', 'per-lou', NULL, 'EMAIL_EXACT', now() - interval '100 days', now(), NULL),
       ('ext-orphelin-1', 'github', 'gh-9', 'OPAQUE', 'ancien-stagiaire', NULL, NULL, 'NONE', now() - interval '150 days', now(), NULL),
       ('ext-orphelin-2', 'notion', 'nt-9', 'EMAIL', 'p.martin@exemple.fr', NULL, NULL, 'HEURISTIC', now() - interval '90 days', now(), NULL),
-      ('ext-disparu', 'scalingo', 'sc-9', 'EMAIL', 'remi@exemple.fr', 'per-remi', NULL, 'EMAIL_EXACT', now() - interval '400 days', now() - interval '40 days', now() - interval '30 days')
+      ('ext-disparu', 'scalingo', 'sc-9', 'EMAIL', 'remi@exemple.fr', 'per-remi', NULL, 'EMAIL_EXACT', now() - interval '400 days', now() - interval '40 days', now() - interval '30 days'),
+      ('ext-sacha-gh', 'github', 'gh-4', 'OPAQUE', 'sacha-dev', 'per-sacha', NULL, 'HEURISTIC', now() - interval '120 days', now(), NULL)
   `);
 
   await client.query(`
@@ -84,6 +93,23 @@ export async function semerLesEcransPleins(client: Client): Promise<void> {
       ('gra-1', 'ext-noor-gh', 'res-gh-org', 'admin', now() - interval '2 days', now() - interval '300 days', now(), NULL),
       ('gra-2', 'ext-tao-notion', 'res-notion', 'member', now() - interval '200 days', now() - interval '250 days', now(), NULL),
       ('gra-3', 'ext-orphelin-1', 'res-gh-org', 'member', NULL, now() - interval '150 days', now(), NULL)
+  `);
+
+  /*
+   * Des objets possédés pour chacune des trois sections, dont deux sur la fiche que le relevé
+   * ouvre en premier. Le dernier est daté : l'écran ne montre que les vivants.
+   */
+  await client.query(`
+    INSERT INTO "Reference" (id, provider, "resourceId", "externalIdentityId", "onOffboard", "firstSeenAt", "lastSeenAt", "vanishedAt")
+    VALUES
+      ('ref-noor-carte', 'github', 'res-gh-carte', 'ext-noor-gh', 'TRANSFER', now() - interval '200 days', now(), NULL),
+      ('ref-noor-api', 'github', 'res-gh-api', 'ext-noor-gh', 'KEEP', now() - interval '180 days', now(), NULL),
+      ('ref-tao-feuille', 'notion', 'res-nt-feuille', 'ext-tao-notion', 'ARCHIVE', now() - interval '90 days', now(), NULL),
+      ('ref-sacha-prototype', 'github', 'res-gh-prototype', 'ext-sacha-gh', 'TRANSFER', now() - interval '60 days', now(), NULL),
+      ('ref-sans-compte', 'github', 'res-gh-site', NULL, 'TRANSFER', now() - interval '400 days', now(), NULL),
+      ('ref-stagiaire-scripts', 'github', 'res-gh-scripts', 'ext-orphelin-1', 'ARCHIVE', now() - interval '150 days', now(), NULL),
+      ('ref-martin-comptes-rendus', 'notion', 'res-nt-comptes-rendus', 'ext-orphelin-2', 'KEEP', now() - interval '90 days', now(), NULL),
+      ('ref-stagiaire-carte', 'github', 'res-gh-carte', 'ext-orphelin-1', 'TRANSFER', now() - interval '300 days', now() - interval '210 days', now() - interval '200 days')
   `);
 
   await client.query(`

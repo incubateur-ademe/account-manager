@@ -1,7 +1,7 @@
 import type { Statut } from "@/core/statut";
-import type { MatchMethod, RiskLevel } from "@/generated/prisma/enums";
+import type { MatchMethod, OnOffboard, RiskLevel } from "@/generated/prisma/enums";
 
-// Quatre tables exhaustives, dont la clé est le type lui-même et jamais sa copie :
+// Cinq tables exhaustives, dont la clé est le type lui-même et jamais sa copie :
 // sous @tsconfig/strictest, une union de littéraux n'est pas une signature d'index,
 // si bien qu'ajouter une valeur au type casse le typecheck au lieu de tomber dans un
 // repli qui afficherait la valeur brute. Recopier l'union à la main annulerait ce
@@ -38,4 +38,13 @@ export const RATTACHEMENT_IDENTITE: Record<MatchMethod, { libelle: string; sur: 
   EMAIL_EXACT: { libelle: "Adresse exacte", sur: true },
   HEURISTIC: { libelle: "Ressemblance de nom", sur: false },
   NONE: { libelle: "Sans preuve", sur: false },
+};
+
+export const DESTIN_AU_DEPART: Record<
+  OnOffboard,
+  { libelle: string; severite: "warning" | "info" }
+> = {
+  TRANSFER: { libelle: "À transférer", severite: "warning" },
+  ARCHIVE: { libelle: "À archiver", severite: "warning" },
+  KEEP: { libelle: "Reste en place", severite: "info" },
 };

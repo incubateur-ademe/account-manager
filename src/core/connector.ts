@@ -175,6 +175,24 @@ export function resolveCapability(
   };
 }
 
+/**
+ * La capacité de recenser, telle que le connecteur la déclare et que ses credentials la
+ * rendent praticable. Non déclarée, rien n'est sondé.
+ */
+export async function recensementPraticable(connector: Connector): Promise<boolean> {
+  const declarees = connector.contract.capabilities.reference;
+  if (!declarees) {
+    return false;
+  }
+  const resolue = resolveCapability(
+    "reference",
+    declarees,
+    await connector.probe(),
+    connector.contract.runbook,
+  );
+  return resolue.tier !== "none";
+}
+
 export interface ResolvedFeature {
   feature: ConnectorFeature;
   available: boolean;

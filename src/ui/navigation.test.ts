@@ -31,7 +31,9 @@ describe("ce que le menu range en premier", () => {
     // test existe pour voir : elle se produit en ajoutant une entrée à la fin, sans y penser.
     const dernierTravail = Math.max(...FILES_DE_TRAVAIL.map((href) => chemins.indexOf(href)));
     const premierReferentiel = Math.min(
-      ...["/personnes", "/startups", "/modeles"].map((href) => chemins.indexOf(href)),
+      ...["/personnes", "/startups", "/modeles", "/objets-possedes"].map((href) =>
+        chemins.indexOf(href),
+      ),
     );
     expect(dernierTravail).toBeLessThan(premierReferentiel);
   });

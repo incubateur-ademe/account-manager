@@ -11,7 +11,7 @@ import { BasculeModeAide } from "@/ui/ModeAide";
  * première file de travail arrivait au sixième rang. Un opérateur ouvre cet outil pour savoir s'il a
  * quelque chose à faire.
  *
- * Douze entrées plates plutôt que trois groupes nommés : grouper ajouterait un clic sur la
+ * Treize entrées plates plutôt que trois groupes nommés : grouper ajouterait un clic sur la
  * machinerie, et le gain de l'ordre s'obtient sans ce coût.
  */
 export const LIENS_OPERATEUR = [
@@ -23,6 +23,7 @@ export const LIENS_OPERATEUR = [
   { text: "Personnes", href: "/personnes" },
   { text: "Startups", href: "/startups" },
   { text: "Modèles", href: "/modeles" },
+  { text: "Objets possédés", href: "/objets-possedes" },
   { text: "Systèmes", href: "/systemes" },
   { text: "Collectes", href: "/collectes" },
   { text: "Journal", href: "/journal" },
@@ -30,7 +31,7 @@ export const LIENS_OPERATEUR = [
 ] as const;
 
 /**
- * Ce qu'un non-opérateur voit du menu, et c'est tout ce qu'il en voit. Les onze liens
+ * Ce qu'un non-opérateur voit du menu, et c'est tout ce qu'il en voit. Les douze liens
  * de l'équipe transverse le rejetteraient un par un tout en lui apprenant de quoi
  * l'outil est fait.
  */
@@ -50,7 +51,7 @@ export function Navigation({
   const surConnexion = pathname === "/login";
   const menu = surConnexion ? [] : operateur ? LIENS_OPERATEUR : LIENS_PARTICIPANT;
   // Le bloc-marque suit la même règle que le menu, `surConnexion` compris : le laisser
-  // sur la racine reproduirait une fois le rejet que la réduction du menu évite onze
+  // sur la racine reproduirait une fois le rejet que la réduction du menu évite douze
   // fois, et hors session `operateur` dit « inconnu » plutôt que « participant ».
   const accueil = surConnexion ? "/login" : operateur ? "/" : "/moi";
 
