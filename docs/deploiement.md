@@ -515,7 +515,7 @@ ressource Coolify :
 | `ACTIONS_ENABLED` | `false` tant que la mise en service n'est pas validée |
 | `OPERATORS` | usernames beta.gouv, séparés par des virgules |
 | `BREAK_GLASS_USERNAMES` | usernames de secours |
-| `GITHUB_TOKEN` | jeton fine-grained, organisation `incubateur-ademe`, lecture seule : Members sur l'organisation, Metadata sur tous ses dépôts |
+| `GITHUB_TOKEN` | jeton fine-grained, organisation `incubateur-ademe`, lecture seule : Members sur l'organisation, Metadata sur tous ses dépôts, créé depuis un compte propriétaire |
 | `GITHUB_ADMIN_TOKEN` | jeton fine-grained, mêmes organisations, écriture sur les membres, créé depuis un compte propriétaire |
 | `NOTION_SCIM_TOKEN` | jeton SCIM du workspace Notion, sans portée restreinte, créé depuis le compte de service propriétaire de l'organisation |
 | `SCALINGO_API_TOKEN` | jeton d'API du compte propriétaire des applications, à portée compte entier |

@@ -83,7 +83,7 @@ const RUNBOOK_ARCHIVAGE =
 /* Un jeton fine-grained perd une organisation dès qu'elle retire son approbation, sans cesser
    de répondre pour autant : la seconde vérification ne double pas la première. */
 const RUNBOOK_LECTURE =
-  "Vérifier que le jeton de lecture n'a pas expiré, qu'il porte toujours les organisations déclarées sous connectors.github.organisations, et qu'il couvre tous leurs dépôts avec la permission Metadata en lecture. La collecte se relance par « pnpm sync ».";
+  "Vérifier que le jeton de lecture n'a pas expiré, qu'il couvre les organisations déclarées et tous leurs dépôts avec Metadata en lecture, et que son compte en est toujours propriétaire. La collecte se relance par « pnpm sync ».";
 
 const RUNBOOK_OCTROI =
   "Inviter la personne dans Settings > People de l'organisation, avec le rôle demandé. Vérifier ensuite qu'elle figure parmi les membres avec ce rôle, ou parmi les invitations en attente, qui valent accès accordé.";
@@ -536,8 +536,18 @@ export function assemblerOrganisation(
   // créateur ne compte pas, et l'écriture, la maintenance ou la lecture restent des accès.
   // Gardé s'il est archivé ou qu'une équipe l'administre, transféré sinon, jamais archivé,
   // geste public sur le dépôt.
+  // Un propriétaire de l'organisation est admin de chaque dépôt, et `role_name` rend le rôle
+  // le plus haut toutes sources confondues : son rôle direct ne se lit pas, et il ne
+  // possède rien en propre.
+  const proprietaires = new Set(
+    lecture.membres.filter(({ role }) => role === "admin").map(({ membre }) => String(membre.id)),
+  );
   const references: ObservedReference[] = [];
-  for (const { depot, administrateurs } of lecture.depots) {
+  for (const { depot, administrateurs: tous } of lecture.depots) {
+    const administrateurs = tous.filter(({ id }) => !proprietaires.has(String(id)));
+    if (administrateurs.length === 0) {
+      continue;
+    }
     // Sur l'identifiant, pour qu'un renommage ne change pas l'identité de la ressource.
     const cle = `${org}/${depot.id}`;
     ressources.push({
@@ -1096,7 +1106,7 @@ export function planifierRetraitGithub(
 }
 
 /**
- * Les dépôts que la personne qui part administre seule en collaborateur direct : une étape
+ * Les dépôts que la personne qui part administre en collaborateur direct : une étape
  * manuelle par dépôt, transférer ou archiver, jamais supprimer.
  */
 export function planifierObjetsGithub(

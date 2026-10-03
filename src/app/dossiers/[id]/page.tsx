@@ -321,7 +321,7 @@ export default async function DossierPage({
         // Le même instant que l'exécution, sans quoi l'écran annoncerait une dérive que
         // le lancement ne verrait pas, sur chaque plan confirmé dès la première
         // tolérance posée.
-        plan?.confirmedAt ?? maintenant,
+        plan?.confirmedAt ?? undefined,
         lecturesConfirmees(plan?.confirmedReads),
       );
 

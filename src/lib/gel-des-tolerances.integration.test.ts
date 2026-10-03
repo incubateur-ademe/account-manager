@@ -363,8 +363,21 @@ describe("un plan confirmé rejoue les objets possédés lus à sa confirmation"
       { identites: lus?.identites ?? [], acces: lus?.acces ?? [] },
     );
 
-    // Then son calcul rejoué n'en lit aucun
-    expect(ancien.etapes.filter(({ etape }) => etape.capability === "reference")).toEqual([]);
+    // When un plan a été confirmé avant que ses lectures ne se gardent, colonne nulle
+    const plusAncien = await calculerPlan(
+      "OFFBOARDING",
+      personId,
+      USERNAME,
+      APRES,
+      undefined,
+      CONFIRMATION,
+      undefined,
+    );
+
+    // Then aucun des deux calculs rejoués n'en lit
+    for (const rejoue of [ancien, plusAncien]) {
+      expect(rejoue.etapes.filter(({ etape }) => etape.capability === "reference")).toEqual([]);
+    }
   });
 });
 

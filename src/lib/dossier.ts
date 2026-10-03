@@ -136,8 +136,11 @@ const AUCUN_OBJET = { lignes: [], ids: [] } as const;
 async function objetsDeLaPersonne(
   personId: string,
   lus: LecturesDuPlan | undefined,
+  gele: boolean,
 ): Promise<{ lignes: readonly ReferenceLue[]; ids: readonly string[] }> {
-  if (lus !== undefined && lus.references === undefined) {
+  // Un plan confirmé avant que les objets possédés ne se lisent n'en relit aucun, y compris
+  // celui dont la colonne des lectures est nulle, plus ancienne encore.
+  if (gele && lus?.references === undefined) {
     return AUCUN_OBJET;
   }
   const lues = await prisma.reference.findMany({
@@ -381,7 +384,10 @@ export async function calculerPlan(
   }
   const engages = new Set(parSysteme.keys());
 
-  const objets = sens === "OFFBOARDING" ? await objetsDeLaPersonne(personId, lus) : AUCUN_OBJET;
+  const objets =
+    sens === "OFFBOARDING"
+      ? await objetsDeLaPersonne(personId, lus, tolerancesAu !== undefined || lus !== undefined)
+      : AUCUN_OBJET;
   const agissants = referencesAgissantes(objets.lignes);
   const possede = new Set(agissants.keys());
 

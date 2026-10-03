@@ -317,14 +317,6 @@ export interface ObservedAccess {
  * Le socle ne sait pas ce que `key` désigne : il la transporte, la stocke et la compare à
  * elle-même. Rédiger ce qui la solde appartient au connecteur qui l'a écrite.
  */
-/** Un objet possédé dont le destin appelle un geste au départ de son propriétaire. */
-export interface OwnedReference {
-  resourceExternalId: string;
-  resourceLabel: string;
-  url?: string;
-  fate: "archive" | "transfer";
-}
-
 export interface OpenEngagement {
   key: string;
   /** Le libellé de l'étape qui l'a ouvert, figé ce jour-là. */
@@ -334,6 +326,14 @@ export interface OpenEngagement {
   /** Le terme décidé, quand il y en a un. */
   expiresAt?: Date;
   openedAt: Date;
+}
+
+/** Un objet possédé dont le destin appelle un geste au départ de son propriétaire. */
+export interface OwnedReference {
+  resourceExternalId: string;
+  resourceLabel: string;
+  url?: string;
+  fate: "archive" | "transfer";
 }
 
 export type SubjectRef =

@@ -343,8 +343,14 @@ const admin = (compte: { id: number; login: string }) => ({
   role_name: "admin",
 });
 
-/** Sept dépôts, dont quatre seulement ont un administrateur humain en collaborateur direct. */
+const PROPRIETAIRE = { id: 3, login: "proprietaire-exemple" };
+
+/**
+ * Huit dépôts, dont quatre seulement ont un administrateur humain en collaborateur direct
+ * qui ne soit pas propriétaire de l'organisation.
+ */
 const DEPOTS: Reponses = {
+  membresAdmin: [PROPRIETAIRE],
   membres: [CAMILLE, ALEX],
   equipes: [{ id: 10, name: "produit-alpha", slug: "produit-alpha" }],
   membresDEquipe: { "produit-alpha": [CAMILLE] },
@@ -362,6 +368,7 @@ const DEPOTS: Reponses = {
     depot("partage", 105),
     depot("ecriture", 106),
     depot("robot", 107),
+    depot("gere", 108),
   ],
   collaborateurs: {
     archive: [admin(CAMILLE)],
@@ -371,14 +378,15 @@ const DEPOTS: Reponses = {
     partage: [admin(CAMILLE), admin(ALEX)],
     ecriture: [{ ...ALEX, type: "User", role_name: "maintain" }],
     robot: [{ id: 50, login: "dependabot", type: "Bot", role_name: "admin" }],
+    gere: [admin(PROPRIETAIRE)],
   },
 };
 
 describe("les dépôts qu'un compte administre dans une organisation", () => {
   it("rend un objet possédé par administrateur direct, gardé ou transféré, jamais archivé", async () => {
-    // Given sept dépôts, dont un archivé, un administré par une équipe, un partagé entre deux
-    // administrateurs, un tenu par un prestataire hors de l'organisation, et trois sans
-    // administrateur humain
+    // Given huit dépôts, dont un archivé, un administré par une équipe, un partagé entre deux
+    // administrateurs, un tenu par un prestataire hors de l'organisation, un où seul un
+    // propriétaire de l'organisation figure, et trois sans administrateur humain
     const { lire } = lecteur(DEPOTS);
 
     // When l'organisation se lit et s'assemble
@@ -474,7 +482,7 @@ describe("les dépôts qu'un compte administre dans une organisation", () => {
     for (const passage of [sansListe, sansEquipe, sansEquipes]) {
       expect(passage.status).toBe("partial");
       expect(passage).not.toHaveProperty("references");
-      expect(passage.status !== "failed" && passage.identities).toHaveLength(2);
+      expect(passage.status !== "failed" && passage.identities).toHaveLength(3);
     }
 
     // When une seconde organisation déclarée ne rend pas ses dépôts
