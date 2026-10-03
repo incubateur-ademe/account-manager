@@ -1110,7 +1110,7 @@ du parc. Au retrait, restent à la main un administrateur de l'organisation, com
 propriété d'une application chez Scalingo, plusieurs comptes de la personne dans une même
 organisation, une invitation en attente et une appartenance à une équipe seule. Il relève
 aussi, comme objets possédés, les dépôts où un compte de type `User` est admin en
-collaborateur direct. Un tel dépôt se transfère à la main au départ, sauf s'il est archivé ou
+collaborateur direct, hors propriétaires de l'organisation, dont le rôle direct ne se lit pas. Un tel dépôt se transfère à la main au départ, sauf s'il est archivé ou
 qu'une équipe l'administre.
 
 `scalingo` n'a pas d'organisation à viser : l'API v1 n'en expose aucune, et la gestion
