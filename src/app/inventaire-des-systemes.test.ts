@@ -78,7 +78,7 @@ const base = vi.hoisted(() => ({
   nonRevocables: { sansDetenteur: 0, ressemblance: 0 },
   comptesDeService: [] as CompteDeServiceEnBase[],
   startups: [] as { ghid: string; currentPhase: string | null }[],
-  references: [] as { externalIdentity: CompteDeLObjet | null }[],
+  references: [] as { resourceId: string; externalIdentity: CompteDeLObjet | null }[],
   operationsTracees: 0,
   dossiersOuverts: 0,
 }));
@@ -677,19 +677,25 @@ describe("ce que l'inventaire dit d'un système, et ce qu'il refuse d'en dire", 
         expiresAt: dansJours(-1),
       },
     );
-    // Dix orphelins de quatre sortes, un auteur à confirmer et un auteur présent. Le
-    // compteur ne voit l'orphelin que par le classement de l'écran : ni les seuls objets
-    // sans compte, ni tout ce qui n'a pas d'auteur sûr.
-    const auteur = { matchMethod: "DECLARED", vanishedAt: null, person: { vanishedAt: null } };
+    // Sept orphelins de trois sortes, un auteur à confirmer, et quatre auteurs présents dont
+    // un objet partagé avec un auteur sorti. Le compteur ne voit l'orphelin que par le
+    // classement de l'écran : ni les seuls objets sans compte, ni tout ce qui n'a pas
+    // d'auteur sûr. Il compte des objets, et non des références.
+    const auteur = { matchMethod: "DECLARED", person: { vanishedAt: null } };
+    const sortie = { ...auteur, person: { vanishedAt: dansJours(-1) } };
+    let rang = 0;
+    const objet = (externalIdentity: CompteDeLObjet | null, resourceId = `objet-${++rang}`) => ({
+      resourceId,
+      externalIdentity,
+    });
     base.references.push(
-      ...Array.from({ length: 4 }, () => ({ externalIdentity: null })),
-      ...Array.from({ length: 3 }, () => ({
-        externalIdentity: { ...auteur, vanishedAt: dansJours(-2) },
-      })),
-      ...Array.from({ length: 2 }, () => ({ externalIdentity: { ...auteur, person: null } })),
-      { externalIdentity: { ...auteur, person: { vanishedAt: dansJours(-1) } } },
-      { externalIdentity: { ...auteur, matchMethod: "HEURISTIC" } },
-      { externalIdentity: auteur },
+      ...Array.from({ length: 4 }, () => objet(null)),
+      ...Array.from({ length: 2 }, () => objet({ ...auteur, person: null })),
+      objet(sortie),
+      objet({ ...auteur, matchMethod: "HEURISTIC" }),
+      ...Array.from({ length: 3 }, () => objet(auteur)),
+      objet(auteur, "partage"),
+      objet(sortie, "partage"),
     );
 
     // When l'accueil se rend
@@ -749,7 +755,7 @@ describe("ce que l'inventaire dit d'un système, et ce qu'il refuse d'en dire", 
       },
       {
         titre: "12 objets possédés",
-        description: "Dont 10 orphelins.",
+        description: "Dont 7 orphelins.",
         cible: "/objets-possedes",
       },
       {

@@ -52,7 +52,7 @@ import { motifsDAction } from "./motifs";
 import { SectionComptesExternes } from "./SectionComptesExternes";
 import { SectionGeste } from "./SectionGeste";
 import { GestesSoldes, SectionGesteEnCours } from "./SectionGestesConfirmes";
-import { SectionObjetsPossedes } from "./SectionObjetsPossedes";
+import { objetsDeLaFiche, SectionObjetsPossedes } from "./SectionObjetsPossedes";
 import { SectionStartups } from "./SectionStartups";
 
 export const dynamic = "force-dynamic";
@@ -312,16 +312,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
     ...identite,
     tolere: tolerance(couverts, identite),
   }));
-  const objets = personne.identities.flatMap((identite) =>
-    identite.references.map((reference) => ({
-      id: reference.id,
-      provider: identite.provider,
-      handle: identite.handle,
-      libelle: reference.resource.label,
-      url: reference.resource.url,
-      onOffboard: reference.onOffboard,
-    })),
-  );
+  const objets = objetsDeLaFiche(personne.identities);
 
   // Un titre d'appartenance qui ne passe par aucune startup : la même exception que
   // celle du calcul des constats, sans quoi l'écran lèverait ici ce que la file

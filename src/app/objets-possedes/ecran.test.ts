@@ -82,6 +82,7 @@ function reference(
 ): LigneEnBase {
   return {
     id,
+    resourceId: id,
     provider: "github",
     resource: { label: `Dépôt incubateur-exemple/${id}`, url: `https://exemple.fr/${id}` },
     vanishedAt: null,
@@ -129,6 +130,9 @@ function texteVisible(noeud: unknown): string {
   const { type, props } = noeud as { type?: unknown; props?: Record<string, unknown> };
   if (type === "br") {
     return " ";
+  }
+  if (type === "div") {
+    return ` ${texteVisible(props?.["children"])} `;
   }
   if (type === Absent) {
     return String(props?.["mention"] ?? "");
@@ -206,6 +210,16 @@ describe("l'écran des objets possédés", () => {
           person: personne("lou.exemple", "Lou Exemple"),
         },
       }),
+      reference("scripts-stagiaire", {
+        onOffboard: "ARCHIVE",
+        compte: {
+          handle: "ancien-stagiaire",
+          matchMethod: "NONE",
+          vanishedAt: null,
+          serviceAccountId: null,
+          person: null,
+        },
+      }),
       reference("prototype", {
         onOffboard: "TRANSFER",
         compte: {
@@ -224,6 +238,18 @@ describe("l'écran des objets possédés", () => {
           vanishedAt: null,
           serviceAccountId: null,
           person: personne("noor.exemple", "Noor Exemple"),
+        },
+      }),
+      reference("carte-bis", {
+        resourceId: "carte",
+        resource: { label: "Dépôt incubateur-exemple/carte", url: "https://exemple.fr/carte" },
+        onOffboard: "TRANSFER",
+        compte: {
+          handle: "camille-gh",
+          matchMethod: "GITHUB_LOGIN",
+          vanishedAt: null,
+          serviceAccountId: null,
+          person: personne("camille.exemple", "Camille Exemple", SORTIE),
         },
       }),
       reference("ancien-depot", {
@@ -275,10 +301,10 @@ describe("l'écran des objets possédés", () => {
         DESTIN_AU_DEPART.KEEP.libelle,
       ],
       [
-        "Feuille de route",
-        "notion",
-        `lou@exemple.fr Lou Exemple Disparu le ${dateFr.format(SORTIE)}`,
-        DESTIN_AU_DEPART.KEEP.libelle,
+        "Dépôt incubateur-exemple/scripts-stagiaire",
+        "github",
+        "ancien-stagiaire rattaché à aucune personne",
+        DESTIN_AU_DEPART.ARCHIVE.libelle,
       ],
     ]);
     expect(sections[1]?.lignes).toEqual([
@@ -290,12 +316,20 @@ describe("l'écran des objets possédés", () => {
       ],
     ]);
 
-    // Then une référence datée ne revient pas : l'auteur présent n'a que son objet vivant
+    // Then un compte disparu d'une personne présente garde son objet chez l'auteur présent,
+    // comme le plan de départ le tient. Un dépôt partagé avec un auteur sorti n'y fait qu'une
+    // ligne, qui nomme ses deux comptes. Une référence datée ne revient pas.
     expect(sections[2]?.lignes).toEqual([
+      [
+        "Feuille de route",
+        "notion",
+        `lou@exemple.fr Lou Exemple Disparu le ${dateFr.format(SORTIE)}`,
+        DESTIN_AU_DEPART.KEEP.libelle,
+      ],
       [
         "Dépôt incubateur-exemple/carte",
         "github",
-        "noor-gh Noor Exemple",
+        "noor-gh Noor Exemple camille-gh Camille Exemple sortie",
         DESTIN_AU_DEPART.TRANSFER.libelle,
       ],
     ]);
@@ -313,11 +347,11 @@ describe("l'écran des objets possédés", () => {
 
     // Then le total ne compte que les vivants, et rien ne dit qu'aucun système ne recense
     const texte = lu(page);
-    expect(texte).toContain("6 objets possédés.");
+    expect(texte).toContain("7 objets possédés.");
     expect(texte).not.toContain("ne recense");
 
     // When il ne reste que des objets dont l'auteur est présent
-    base.references.splice(0, base.references.length - 2);
+    base.references.splice(0, base.references.length - 3);
     const seule = sectionsRendues(await ObjetsPossedesPage());
 
     // Then les deux sections vides disparaissent, sans titre ni tableau vide

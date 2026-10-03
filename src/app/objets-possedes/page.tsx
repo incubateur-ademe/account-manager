@@ -19,8 +19,7 @@ export const dynamic = "force-dynamic";
 const SECTIONS: Record<SectionDObjets, { titre: string; precision: ReactNode }> = {
   orphelins: {
     titre: "Orphelins",
-    precision:
-      "Leur compte est inconnu, disparu, rattaché à aucune personne, ou à une personne sortie du référentiel.",
+    precision: "Aucun de leurs comptes n'est rattaché à une personne présente du référentiel.",
   },
   "a-confirmer": {
     titre: "Auteur à confirmer",
@@ -33,7 +32,7 @@ const SECTIONS: Record<SectionDObjets, { titre: string; precision: ReactNode }> 
   },
   "auteur-present": {
     titre: "Auteur présent",
-    precision: "Leur compte est rattaché sur preuve à une personne suivie.",
+    precision: "Au moins un de leurs comptes est rattaché sur preuve à une personne suivie.",
   },
 };
 
@@ -53,13 +52,17 @@ function objetDe(objet: ObjetPossede): ReactNode {
   );
 }
 
-function compteDe(compte: ObjetPossede["compte"]): ReactNode {
+function compteDe({ id, compte }: ObjetPossede): ReactNode {
   if (compte === null) {
-    return <Absent key="c" mention="aucun compte connu" />;
+    return (
+      <div key={id}>
+        <Absent mention="aucun compte connu" />
+      </div>
+    );
   }
 
   return (
-    <span key="c">
+    <div key={id}>
       {compte.handle}
       {compte.person ? (
         <>
@@ -76,12 +79,14 @@ function compteDe(compte: ObjetPossede["compte"]): ReactNode {
             </>
           ) : null}
         </>
-      ) : compte.serviceAccountId ? (
+      ) : (
         <>
           <br />
-          <span className={fr.cx("fr-text--sm")}>compte de service</span>
+          <span className={fr.cx("fr-text--sm")}>
+            {compte.serviceAccountId ? "compte de service" : "rattaché à aucune personne"}
+          </span>
         </>
-      ) : null}
+      )}
       {compte.vanishedAt ? (
         <>
           <br />
@@ -90,7 +95,7 @@ function compteDe(compte: ObjetPossede["compte"]): ReactNode {
           </Badge>
         </>
       ) : null}
-    </span>
+    </div>
   );
 }
 
@@ -130,10 +135,10 @@ export default async function ObjetsPossedesPage() {
 
           <Table
             headers={["Objet", "Système", "Compte", "Au départ"]}
-            data={sections[cle].map((objet) => [
+            data={sections[cle].map(([objet, ...autres]) => [
               objetDe(objet),
               objet.provider,
-              compteDe(objet.compte),
+              <div key="c">{[objet, ...autres].map(compteDe)}</div>,
               <Badge key="d" severity={DESTIN_AU_DEPART[objet.onOffboard].severite} small noIcon>
                 {DESTIN_AU_DEPART[objet.onOffboard].libelle}
               </Badge>,

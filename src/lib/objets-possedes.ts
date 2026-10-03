@@ -14,6 +14,7 @@ const VIVANTES = { vanishedAt: null } as const satisfies Prisma.ReferenceWhereIn
 
 export interface ObjetPossede {
   id: string;
+  resourceId: string;
   provider: string;
   onOffboard: OnOffboard;
   resource: { label: string; url: string | null };
@@ -27,7 +28,9 @@ export interface ObjetPossede {
 }
 
 export interface ObjetsPossedes {
-  sections: Record<SectionDObjets, ObjetPossede[]>;
+  /** Par objet, ses références : une par compte qui le possède. */
+  sections: Record<SectionDObjets, [ObjetPossede, ...ObjetPossede[]][]>;
+  /** Le nombre d'objets, et non de références. */
   total: number;
   /** Les systèmes dont la capacité de recenser est praticable, dans l'ordre du registre. */
   recensent: string[];
@@ -40,6 +43,7 @@ export async function lireLesObjetsPossedes(): Promise<ObjetsPossedes> {
       orderBy: [{ provider: "asc" }, { resource: { label: "asc" } }],
       select: {
         id: true,
+        resourceId: true,
         provider: true,
         onOffboard: true,
         resource: { select: { label: true, url: true } },
@@ -62,22 +66,28 @@ export async function lireLesObjetsPossedes(): Promise<ObjetsPossedes> {
     compte: externalIdentity,
   }));
 
-  return { sections: classerObjetsPossedes(objets), total: objets.length, recensent };
+  const sections = classerObjetsPossedes(objets);
+  return { sections, total: compter(sections), recensent };
 }
 
 export async function compterObjetsPossedes(): Promise<{ total: number; orphelins: number }> {
   const lignes = await prisma.reference.findMany({
     where: VIVANTES,
     select: {
+      resourceId: true,
       externalIdentity: {
-        select: { matchMethod: true, vanishedAt: true, person: { select: { vanishedAt: true } } },
+        select: { matchMethod: true, person: { select: { vanishedAt: true } } },
       },
     },
   });
   const sections = classerObjetsPossedes(
-    lignes.map(({ externalIdentity }) => ({ compte: externalIdentity })),
+    lignes.map(({ resourceId, externalIdentity }) => ({ resourceId, compte: externalIdentity })),
   );
-  return { total: lignes.length, orphelins: sections.orphelins.length };
+  return { total: compter(sections), orphelins: sections.orphelins.length };
+}
+
+function compter(sections: Record<SectionDObjets, readonly unknown[]>): number {
+  return Object.values(sections).reduce((total, objets) => total + objets.length, 0);
 }
 
 async function systemesQuiRecensent(): Promise<string[]> {
