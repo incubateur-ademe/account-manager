@@ -110,10 +110,19 @@ describe("le chemin d'envoi du lien de connexion", () => {
     vi.stubGlobal("fetch", () =>
       Promise.resolve(
         Response.json({
-          username: "camille.durand",
-          communication_email: "primary",
-          primary_email: ADRESSE_DE_LA_FICHE,
-          secondary_email: null,
+          data: {
+            uuid: "uuid-de-camille",
+            username: "camille.durand",
+            fullname: "Camille Durand",
+            primary_email: ADRESSE_DE_LA_FICHE,
+            secondary_email: null,
+            communication_email: "primary",
+            missions: [],
+            teams: [],
+            startups: [],
+            avatar: null,
+            isActive: true,
+          },
         }),
       ),
     );

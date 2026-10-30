@@ -17,6 +17,14 @@ allowBuilds:
   # repli en JavaScript pur, et aucune commande de ce depot n'en a besoin.
   '@parcel/watcher': false
 
+# Le delai minimal avant d'installer une version neuve laisse le temps de voir un
+# paquet compromis. Celui-ci est publie par l'incubateur au moment ou ce depot en a
+# besoin, et le delai retarderait chaque correctif de la connexion. Reste le risque
+# d'un compte npm de l'incubateur compromis, borne a une montee de version relue en
+# PR, seul moment ou l'empreinte du lock change.
+minimumReleaseAgeExclude:
+  - '@incubateur-ademe/next-auth-espace-membre-provider'
+
 # `@prisma/config` epingle deepmerge-ts en version exacte plutot qu'en plage : tant
 # qu'il en designe une anterieure a la 8, rien de ce qu'on installe ne corrige
 # CVE-2026-40345, l'epuisement de pile sur les graphes recursifs, et l'override reste

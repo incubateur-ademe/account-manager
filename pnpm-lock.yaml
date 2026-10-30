@@ -25,8 +25,8 @@ importers:
         specifier: ^11.14.1
         version: 11.14.1(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)
       '@incubateur-ademe/next-auth-espace-membre-provider':
-        specifier: ^0.3.4
-        version: 0.3.4(next-auth@5.0.0-beta.32(next@16.3.5(@playwright/test@1.63.0)(@types/node@24.13.3)(babel-plugin-macros@3.1.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(sass@1.102.0))(nodemailer@9.1.1)(react@19.2.8))
+        specifier: ^1.0.0
+        version: 1.0.0(next-auth@5.0.0-beta.32(next@16.3.5(@playwright/test@1.63.0)(@types/node@24.13.3)(babel-plugin-macros@3.1.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(sass@1.102.0))(nodemailer@9.1.1)(react@19.2.8))
       '@mui/material':
         specifier: ^9.3.1
         version: 9.3.1(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -697,8 +697,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@incubateur-ademe/next-auth-espace-membre-provider@0.3.4':
-    resolution: {integrity: sha512-Whskxy7SAdN24UwuW/X2oAEN9QZYh+HDFDwKubNLyUId1JEsEDKCPybzrQgzDdI8taXxcjoQ/f+hDaN3DMpDRQ==}
+  '@incubateur-ademe/next-auth-espace-membre-provider@1.0.0':
+    resolution: {integrity: sha512-lobLDF4ORndxVpCTpoTCcMtiXUX7o0mjjwVcf45wDwePVSWbvut98I6e4DUvpUUuXWoQ9BMRRQRj+U7Fzm6a5w==}
     peerDependencies:
       next-auth: '>=5.0.0-0'
 
@@ -2978,7 +2978,7 @@ snapshots:
   '@img/sharp-win32-x64@0.35.4':
     optional: true
 
-  '@incubateur-ademe/next-auth-espace-membre-provider@0.3.4(next-auth@5.0.0-beta.32(next@16.3.5(@playwright/test@1.63.0)(@types/node@24.13.3)(babel-plugin-macros@3.1.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(sass@1.102.0))(nodemailer@9.1.1)(react@19.2.8))':
+  '@incubateur-ademe/next-auth-espace-membre-provider@1.0.0(next-auth@5.0.0-beta.32(next@16.3.5(@playwright/test@1.63.0)(@types/node@24.13.3)(babel-plugin-macros@3.1.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(sass@1.102.0))(nodemailer@9.1.1)(react@19.2.8))':
     dependencies:
       next-auth: 5.0.0-beta.32(next@16.3.5(@playwright/test@1.63.0)(@types/node@24.13.3)(babel-plugin-macros@3.1.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(sass@1.102.0))(nodemailer@9.1.1)(react@19.2.8)
 

@@ -49,20 +49,10 @@ collectif que par son ampleur.
 
 ## Ce qui reste à surveiller
 
-**La disparition des anciennes routes, pour le login.** Le login résout
-`username -> email` via `@incubateur-ademe/next-auth-espace-membre-provider`, qui
-a `/api/protected` et `/member/{username}` en dur dans son client. Cette URL ne
-se configure pas depuis `src/lib/auth.ts`. Les anciennes routes sont aujourd'hui
-servies à l'identique sous un route group `(deprecated)/`, avec un en-tête
-`Deprecation: true`. Le jour où l'espace-membre les retirera, plus personne ne
-pourra se connecter. Il faut donc suivre les versions de ce paquet et passer à
-une version qui vise `/api/v1/members/{username}` **avant** ce retrait. La
-collecte, elle, n'appelle plus aucune route dépréciée.
-
-**La clé est partagée entre la collecte et le login.** Le paquet lit
-`ESPACE_MEMBRE_API_KEY` et l'envoie en `X-API-Key` à `/api/protected`, là où la
-collecte l'envoie en `Bearer` à `/api/v1`. Rien n'établit qu'une clé v1 soit
-acceptée par les anciennes routes.
+**Le login a quitté les anciennes routes.** Depuis sa 1.0.0,
+`@incubateur-ademe/next-auth-espace-membre-provider` résout `username -> email` par
+`/api/v1/members/{username}`, en `Bearer`, avec la même `ESPACE_MEMBRE_API_KEY` que la
+collecte. Plus rien dans ce dépôt n'appelle `/api/protected`.
 
 **Les startups d'une mission hors périmètre.** Les missions rendues par la route
 scopée peuvent porter des produits d'un autre incubateur (mission à plusieurs
