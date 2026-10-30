@@ -1417,8 +1417,9 @@ plus aucune échéance ne remonte.
 **La connexion lit la même API, avec la même clé.** Le provider NextAuth du login
 (`@incubateur-ademe/next-auth-espace-membre-provider`, depuis sa 1.0.0) résout un
 username par `/api/v1/members/{username}`, en `Bearer` avec `ESPACE_MEMBRE_API_KEY`. Il
-envoie le lien à l'adresse que le membre a choisie (`communication_email`), à défaut à
-sa principale, ou à sa secondaire s'il est inactif.
+envoie le lien à la principale ou à la secondaire, selon la préférence
+`communication_email`. Sans préférence, il prend la principale d'un membre actif et la
+secondaire d'un membre inactif, chacune retombant sur l'autre quand elle manque.
 
 ---
 
