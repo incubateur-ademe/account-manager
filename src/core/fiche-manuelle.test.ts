@@ -264,6 +264,7 @@ describe("corriger le login rebranche le rapprochement, sans rien promouvoir", (
       githubLogin: "camile-exemple",
       primaryEmail: null,
       communicationEmail: null,
+      source: "LOCAL",
     };
 
     expect(rapprocher(compte, [avant], [])).toEqual({

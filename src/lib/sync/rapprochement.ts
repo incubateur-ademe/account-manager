@@ -1,6 +1,8 @@
 import {
+  adressesDIdentite,
   type CompteDeServiceConnu,
   type MethodeRapprochement,
+  normaliserEmail,
   rapprocher,
 } from "@/core/rapprochement";
 import type { MatchMethod } from "@/generated/prisma/enums";
@@ -14,12 +16,60 @@ export interface ResultatRapprochement {
 }
 
 /**
+ * Rend à la file des isolés une preuve par adresse que plus aucune adresse d'identité ne
+ * soutient.
+ *
+ * Seule la collecte pose `EMAIL_EXACT`, un opérateur posant `DECLARED` : aucun arbitrage
+ * humain n'est défait ici. Le cas visé est un compte rattaché par la secondaire qu'un
+ * membre avait déclarée, du temps où elle valait preuve. Laissé en place, il resterait
+ * révocable, et le départ de ce membre couperait l'accès d'un autre.
+ */
+async function detacherLesPreuvesPerimees(correlationId: string): Promise<void> {
+  const prouvees = await prisma.externalIdentity.findMany({
+    where: { matchMethod: "EMAIL_EXACT", personId: { not: null } },
+    select: {
+      id: true,
+      handle: true,
+      personId: true,
+      person: { select: { primaryEmail: true, communicationEmail: true, source: true } },
+    },
+  });
+
+  for (const identite of prouvees) {
+    const adresse = normaliserEmail(identite.handle);
+    if (identite.person === null || adresse === null) {
+      continue;
+    }
+    if (adressesDIdentite(identite.person).includes(adresse)) {
+      continue;
+    }
+    audit({
+      actorKind: "SYSTEM",
+      action: "identite.preuve-perimee",
+      targetType: "identite",
+      targetId: identite.id,
+      correlationId,
+      before: { personId: identite.personId, matchMethod: "EMAIL_EXACT" },
+      after: { personId: null, matchMethod: "NONE" },
+      result: "SUCCESS",
+    });
+    await prisma.externalIdentity.update({
+      where: { id: identite.id },
+      data: { personId: null, matchMethod: "NONE" },
+    });
+  }
+}
+
+/**
  * Le rapprochement ne repasse jamais sur ce qui est déjà rattaché. Une identité liée
  * l'a été soit par une collecte antérieure, soit par un opérateur qui a tranché :
  * dans les deux cas, la recalculer chaque nuit finirait par défaire un arbitrage
- * humain sans que personne ne s'en aperçoive.
+ * humain sans que personne ne s'en aperçoive. La seule exception est une preuve par
+ * adresse que la règle d'identité ne reconnaît plus, rejugée dans ce même passage.
  */
 export async function rapprocherIdentites(correlationId: string): Promise<ResultatRapprochement> {
+  await detacherLesPreuvesPerimees(correlationId);
+
   const isolees = await prisma.externalIdentity.findMany({
     where: { personId: null, serviceAccountId: null, matchMethod: "NONE", vanishedAt: null },
     select: { id: true, provider: true, externalId: true, handle: true },
@@ -46,6 +96,7 @@ export async function rapprocherIdentites(correlationId: string): Promise<Result
         githubLogin: true,
         primaryEmail: true,
         communicationEmail: true,
+        source: true,
       },
     }),
     // Les identités déjà rattachées à un compte de service, et elles seules. Un compte

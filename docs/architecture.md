@@ -1364,6 +1364,18 @@ compte isolé lisent des fiches hors de l'incubateur, d'où une clé de périmè
 première version de la v1, elle y revient depuis `betagouv/espace-membre-next#1615`. Le
 schéma la tient pour facultative, et le test de contrat exige qu'elle soit rendue.
 
+**Une adresse de contact collectée joint, elle n'identifie pas.** Quand le membre a
+choisi sa secondaire, c'est lui qui l'a déclarée, et rien ne prouve qu'il en détient la
+boîte. Le rapprochement par adresse exacte ne lit donc que la principale, plus l'adresse
+de contact d'une fiche locale, qu'un opérateur a saisie. La connexion par adresse lit la
+principale d'une fiche collectée et l'adresse de contact d'une fiche locale. Une arrivée
+invite, et un départ retire, sur cette même adresse prouvée (`adresseProuvee`).
+
+Le prix est assumé : un compte qu'un membre a ouvert avec sa propre secondaire ne se
+rattache plus seul, il passe par la file des isolés. Les rattachements posés avant cette
+règle par une secondaire sont rendus à cette file au passage suivant, avec une trace
+`identite.preuve-perimee` dans le journal.
+
 Quatre pièges vérifiés sur l'API protégée qui a précédé la v1, à connaître avant de
 toucher au mapper. Le test de contrat ne revérifie que le dernier.
 

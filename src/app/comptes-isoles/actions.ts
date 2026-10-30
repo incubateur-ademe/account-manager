@@ -1,6 +1,7 @@
 "use server";
 
-import { emailDeContact, type MembreDetaille, rattachementDeclare } from "@/core/membre";
+import { type MembreDetaille, rattachementDeclare } from "@/core/membre";
+import { normaliserEmail } from "@/core/rapprochement";
 import { actionTracee } from "@/lib/actions";
 import { audit } from "@/lib/audit";
 import { messageDeCollision } from "@/lib/collision";
@@ -165,8 +166,10 @@ export async function rattacherIdentite(
               fullname: horsPerimetre.fullname ?? horsPerimetre.username,
               betaUuid: horsPerimetre.uuid ?? null,
               githubLogin: horsPerimetre.github ?? null,
-              primaryEmail: horsPerimetre.primary_email ?? null,
-              communicationEmail: emailDeContact(horsPerimetre),
+              // La principale aux deux places : une fiche locale tient son adresse de
+              // contact pour preuve, et la secondaire vient du seul membre.
+              primaryEmail: normaliserEmail(horsPerimetre.primary_email),
+              communicationEmail: normaliserEmail(horsPerimetre.primary_email),
               missionEnd: toDate(rattachement.missionEnd),
               attachment: "NONE",
               source: "LOCAL",

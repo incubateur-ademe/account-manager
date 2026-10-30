@@ -25,6 +25,7 @@ import {
 } from "@/core/membre";
 import { canalDuDroit, participationVivante } from "@/core/participation";
 import { declaresManquants } from "@/core/perimetre";
+import { normaliserEmail } from "@/core/rapprochement";
 import { jourMetier } from "@/core/statut";
 import type { PersonSource } from "@/generated/prisma/enums";
 import { audit } from "@/lib/audit";
@@ -131,7 +132,8 @@ export interface PersonneResolue {
   fullname: string;
   githubLogin: string | null;
   primaryEmail: string | null;
-  communicationEmail: string | null;
+  /** `undefined` quand la source ne dit pas quelle adresse la personne a choisie. */
+  communicationEmail: string | null | undefined;
   missionEnd: string | null | undefined;
   attachment: Attachment;
   startups: string[];
@@ -162,8 +164,15 @@ export function champsCollectes(personne: PersonneResolue, now: Date, retour: bo
     betaUuid: personne.betaUuid,
     fullname: personne.fullname,
     githubLogin: personne.githubLogin,
-    primaryEmail: personne.primaryEmail,
-    communicationEmail: personne.communicationEmail,
+    // Réduites comme la connexion et le rapprochement les cherchent, sans quoi une adresse
+    // écrite avec une majuscule ne serait retrouvée par aucun des deux.
+    primaryEmail: normaliserEmail(personne.primaryEmail),
+    // Une préférence que la source ne rend pas laisse en place l'adresse déjà connue. La
+    // déduire de la principale effacerait la secondaire de qui l'avait choisie.
+    communicationEmail:
+      personne.communicationEmail === undefined
+        ? undefined
+        : normaliserEmail(personne.communicationEmail),
     // `undefined` ne touche à rien, comme pour le retour plus bas : une échéance que ce
     // passage n'a pas su lire garde celle du dernier passage qui l'a lue. L'effacer
     // ferait passer une lecture manquée pour une absence de fin de mission, et une
@@ -235,6 +244,7 @@ async function upsert(
       id: true,
       vanishedAt: true,
       source: true,
+      communicationEmail: true,
       participations: {
         select: {
           accessCaseId: true,
@@ -257,7 +267,14 @@ async function upsert(
     const bascule = existing.source === "LOCAL" && personne.source !== "LOCAL";
     // Jugés sur la fiche telle que l'écriture qui suit va la laisser, et par le verdict
     // de l'écran : ce qui se signale est un canal qui meurt, pas une fiche qui bascule.
-    const ficheAdoptee = { ...champs, username: personne.username };
+    const ficheAdoptee = {
+      ...champs,
+      communicationEmail:
+        champs.communicationEmail === undefined
+          ? existing.communicationEmail
+          : champs.communicationEmail,
+      username: personne.username,
+    };
     const declaresLocaux = policy().scope.local.map((entree) => entree.username);
     const orphelins = bascule
       ? existing.participations.filter(
@@ -385,7 +402,7 @@ export async function syncPerimetre(
         fullname: membre.fullname ?? membre.username,
         githubLogin: membre.github ?? null,
         primaryEmail: membre.primary_email ?? null,
-        communicationEmail: emailDeContact(membre),
+        communicationEmail: membre.communication_email ? emailDeContact(membre) : undefined,
         missionEnd: rattachement.missionEnd,
         attachment: rattachement.attachment,
         startups: rattachement.startups,
@@ -410,7 +427,7 @@ export async function syncPerimetre(
         fullname: detail.fullname ?? username,
         githubLogin: detail.github ?? null,
         primaryEmail: detail.primary_email ?? null,
-        communicationEmail: emailDeContact(detail),
+        communicationEmail: detail.communication_email ? emailDeContact(detail) : undefined,
         missionEnd: rattachement.missionEnd,
         attachment: rattachement.attachment,
         startups: rattachement.startups,

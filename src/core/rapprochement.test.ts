@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  adresseProuvee,
   type CompteDeServiceConnu,
   normaliserLogin,
   type PersonneConnue,
@@ -14,6 +15,7 @@ const PERSONNES: PersonneConnue[] = [
     githubLogin: "Jean-Dupont",
     primaryEmail: "jean.dupont@beta.gouv.fr",
     communicationEmail: "jd@example.org",
+    source: "BETA",
   },
   {
     id: "p-marie",
@@ -21,6 +23,7 @@ const PERSONNES: PersonneConnue[] = [
     githubLogin: "https://github.com/MarieMartin/",
     primaryEmail: "marie.martin@beta.gouv.fr",
     communicationEmail: null,
+    source: "BETA",
   },
 ];
 
@@ -63,18 +66,63 @@ describe("rapprochement d'un compte observé", () => {
     ).toEqual({ personId: "p-marie", serviceAccountId: null, methode: "GITHUB_LOGIN" });
   });
 
-  it("retrouve une personne par une adresse exacte, principale ou de communication", () => {
-    const parCommunication = rapprocher(
-      { provider: "notion", externalId: "n1", handle: "Jean", emails: ["JD@example.org"] },
-      PERSONNES,
-      COMPTES,
-    );
+  it("ne tient pour preuve que l'adresse principale, et l'adresse de contact d'une fiche locale", () => {
+    // Given une fiche collectée dont l'adresse de contact est la secondaire que le membre
+    // a déclarée lui-même, et une fiche locale dont un opérateur a saisi l'adresse
+    const locale: PersonneConnue = {
+      id: "p-ines",
+      username: "ines.exemple",
+      githubLogin: null,
+      primaryEmail: null,
+      communicationEmail: "ines@prestataire.example",
+      source: "LOCAL",
+    };
 
-    expect(parCommunication).toEqual({
-      personId: "p-jean",
-      serviceAccountId: null,
-      methode: "EMAIL_EXACT",
-    });
+    // Then l'adresse principale prouve, quelle qu'en soit la casse
+    expect(
+      rapprocher(
+        {
+          provider: "notion",
+          externalId: "n0",
+          handle: "Jean",
+          emails: ["Jean.Dupont@beta.gouv.fr"],
+        },
+        PERSONNES,
+        COMPTES,
+      ),
+    ).toEqual({ personId: "p-jean", serviceAccountId: null, methode: "EMAIL_EXACT" });
+
+    // Then la secondaire déclarée ne prouve rien : un membre qui y mettrait l'adresse d'un
+    // compte qu'aucune fiche ne revendique se le verrait rattacher, et son départ le couperait
+    expect(
+      rapprocher(
+        { provider: "notion", externalId: "n1", handle: "Jean", emails: ["JD@example.org"] },
+        PERSONNES,
+        COMPTES,
+      ),
+    ).toEqual({ personId: null, serviceAccountId: null, methode: "NONE" });
+
+    // Then l'adresse saisie sur une fiche locale prouve, elle
+    expect(
+      rapprocher(
+        {
+          provider: "notion",
+          externalId: "n3",
+          handle: "Ines",
+          emails: ["Ines@Prestataire.example"],
+        },
+        [...PERSONNES, locale],
+        COMPTES,
+      ),
+    ).toEqual({ personId: "p-ines", serviceAccountId: null, methode: "EMAIL_EXACT" });
+
+    // Then un système qui agit par adresse vise la principale d'une fiche collectée, jamais
+    // sa secondaire, et l'adresse saisie d'une fiche locale qui n'en a pas d'autre
+    expect(PERSONNES[0] && adresseProuvee(PERSONNES[0])).toBe("jean.dupont@beta.gouv.fr");
+    expect(adresseProuvee(locale)).toBe("ines@prestataire.example");
+    expect(
+      adresseProuvee({ primaryEmail: null, communicationEmail: "jd@example.org", source: "BETA" }),
+    ).toBeNull();
   });
 
   it("ne conclut qu'à une ressemblance quand le compte porte un username", () => {
@@ -112,6 +160,7 @@ describe("rapprochement d'un compte observé", () => {
         githubLogin: null,
         primaryEmail: "camille.rouvier@beta.gouv.fr",
         communicationEmail: "Camille.Rouvier@beta.gouv.fr",
+        source: "BETA",
       },
       {
         id: "p-nadia",
@@ -119,6 +168,7 @@ describe("rapprochement d'un compte observé", () => {
         githubLogin: null,
         primaryEmail: "contact@equipe-tacite.fr",
         communicationEmail: "nadia.belkacem@beta.gouv.fr",
+        source: "LOCAL",
       },
       {
         id: "p-oumar",
@@ -126,6 +176,7 @@ describe("rapprochement d'un compte observé", () => {
         githubLogin: null,
         primaryEmail: "contact@equipe-tacite.fr",
         communicationEmail: null,
+        source: "BETA",
       },
     ];
 
@@ -184,6 +235,7 @@ describe("rapprochement d'un compte observé", () => {
         githubLogin: "Jean-Dupont",
         primaryEmail: null,
         communicationEmail: null,
+        source: "BETA",
       },
       {
         id: "p-b",
@@ -191,6 +243,7 @@ describe("rapprochement d'un compte observé", () => {
         githubLogin: "jean-dupont",
         primaryEmail: null,
         communicationEmail: null,
+        source: "BETA",
       },
     ];
 

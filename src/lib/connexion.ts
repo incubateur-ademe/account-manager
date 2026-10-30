@@ -99,12 +99,21 @@ function declaresLocaux(): string[] {
  * Les canaux sont filtrés sur le droit vivant ici et pas plus loin : `adresseRecevable`
  * juge une adresse, elle ne sait pas ce qu'est un droit mort.
  */
-async function candidatsPourAdresse(adresse: string): Promise<CandidatAdresse[]> {
+export async function candidatsPourAdresse(adresse: string): Promise<CandidatAdresse[]> {
   const maintenant = new Date();
 
   const [fiches, canaux] = await Promise.all([
+    // Une fiche collectée par sa principale, que l'espace-membre attribue : son adresse de
+    // contact est déclarée par le membre, et désigner sa fiche bloquerait par pluralité
+    // quiconque se connecte légitimement avec elle. Une fiche locale par son adresse de
+    // contact, la seule que l'écran du dossier lui connaisse.
     prisma.person.findMany({
-      where: { communicationEmail: adresse },
+      where: {
+        OR: [
+          { source: { not: "LOCAL" }, primaryEmail: adresse },
+          { source: "LOCAL", communicationEmail: adresse },
+        ],
+      },
       select: { id: true, username: true, source: true, usernameFabricated: true },
     }),
     prisma.caseParticipation.findMany({
