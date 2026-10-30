@@ -22,13 +22,16 @@ export class EspaceMembreError extends Error {
  */
 const DELAI_MS = 30_000;
 
+const ORIGINE_CANONIQUE = "https://espace-membre.beta.gouv.fr";
+
 /** Le maximum que l'API accepte. */
 const TAILLE_DE_PAGE = 100;
 
 /**
  * La clé part dans un en-tête que `fetch` recopie d'une redirection à l'autre. Une seule
- * est suivie, et seulement vers HTTPS : l'ancienne adresse de l'espace-membre redirige
- * encore vers la nouvelle, et une redirection vers HTTP emporterait la clé en clair.
+ * est suivie, en HTTPS, et seulement vers l'origine configurée ou l'origine canonique.
+ * L'ancienne adresse de l'espace-membre redirige encore vers la nouvelle. Une redirection
+ * vers HTTP emporterait la clé en clair, une redirection vers un tiers la lui remettrait.
  */
 async function appeler(adresse: string, path: string, redirection: boolean): Promise<Response> {
   let response: Response;
@@ -51,7 +54,9 @@ async function appeler(adresse: string, path: string, redirection: boolean): Pro
 
   const suite = response.headers.get("location");
   const cible = suite === null ? null : new URL(suite, adresse);
-  if (cible === null || cible.protocol !== "https:" || redirection) {
+  // Calculées à l'appel : `src/cli/sync.ts` charge l'environnement après ses imports.
+  const origines = new Set([new URL(env.ESPACE_MEMBRE_URL).origin, ORIGINE_CANONIQUE]);
+  if (cible === null || cible.protocol !== "https:" || !origines.has(cible.origin) || redirection) {
     throw new EspaceMembreError(
       path,
       response.status,

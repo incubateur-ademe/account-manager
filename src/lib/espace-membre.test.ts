@@ -75,13 +75,13 @@ afterEach(() => {
 });
 
 describe("la clé de l'espace-membre face à une redirection", () => {
-  it("suit une redirection vers HTTPS, une seule, et refuse celle qui descend en HTTP", async () => {
-    // Given l'ancienne adresse, qui redirige vers la nouvelle en HTTPS
+  it("suit une redirection vers l'origine canonique, une seule, et refuse HTTP comme un tiers", async () => {
+    // Given l'ancienne adresse, qui redirige vers l'origine canonique en HTTPS
     const suivie = transport({
       [`${ADRESSE}${STARTUPS}${page(0)}`]: vers(
-        `https://nouvelle.exemple.invalid${STARTUPS}${page(0)}`,
+        `https://espace-membre.beta.gouv.fr${STARTUPS}${page(0)}`,
       ),
-      [`https://nouvelle.exemple.invalid${STARTUPS}${page(0)}`]: collection([], { total: 0 }),
+      [`https://espace-membre.beta.gouv.fr${STARTUPS}${page(0)}`]: collection([], { total: 0 }),
     });
 
     // When la collecte lit les startups
@@ -95,7 +95,7 @@ describe("la clé de l'espace-membre face à une redirection", () => {
         redirect: "manual",
       },
       {
-        adresse: `https://nouvelle.exemple.invalid${STARTUPS}${page(0)}`,
+        adresse: `https://espace-membre.beta.gouv.fr${STARTUPS}${page(0)}`,
         autorisation: "Bearer em1_cle",
         redirect: "manual",
       },
@@ -111,10 +111,19 @@ describe("la clé de l'espace-membre face à une redirection", () => {
     expect(refus).toBeInstanceOf(EspaceMembreError);
     expect(descendue.map(({ adresse }) => adresse)).toEqual([`${ADRESSE}${STARTUPS}${page(0)}`]);
 
-    // Given deux redirections en chaîne, toutes deux en HTTPS
+    // Given une redirection HTTPS vers un tiers
+    const tiers = transport({
+      [`${ADRESSE}${STARTUPS}${page(0)}`]: vers(`https://ailleurs.exemple.invalid${STARTUPS}`),
+    });
+
+    // Then la lecture échoue, et la clé ne lui est jamais remise
+    await expect(fetchIncubatorStartups("ademe")).rejects.toBeInstanceOf(EspaceMembreError);
+    expect(tiers.map(({ adresse }) => adresse)).toEqual([`${ADRESSE}${STARTUPS}${page(0)}`]);
+
+    // Given deux redirections en chaîne, toutes deux vers l'origine canonique
     const chainee = transport({
-      [`${ADRESSE}${STARTUPS}${page(0)}`]: vers(`https://relais.exemple.invalid${STARTUPS}`),
-      [`https://relais.exemple.invalid${STARTUPS}`]: vers(`https://fin.exemple.invalid${STARTUPS}`),
+      [`${ADRESSE}${STARTUPS}${page(0)}`]: vers(`https://espace-membre.beta.gouv.fr/relais`),
+      ["https://espace-membre.beta.gouv.fr/relais"]: vers(`https://espace-membre.beta.gouv.fr/fin`),
     });
 
     // Then la seconde est refusée, et la clé n'atteint jamais la troisième adresse
