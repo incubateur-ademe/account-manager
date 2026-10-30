@@ -43,6 +43,7 @@ export interface PersonneConnue {
   githubLogin: string | null;
   primaryEmail: string | null;
   communicationEmail: string | null;
+  source: "BETA" | "LOCAL" | "SERVICE";
 }
 
 export interface CompteDeServiceConnu {
@@ -80,9 +81,38 @@ export function normaliserLogin(valeur: string | null | undefined): string | nul
   return reduit.length > 0 ? reduit : null;
 }
 
-function normaliserEmail(valeur: string | null | undefined): string | null {
+export function normaliserEmail(valeur: string | null | undefined): string | null {
   const reduit = valeur?.trim().toLowerCase();
   return reduit?.includes("@") ? reduit : null;
+}
+
+/**
+ * Les adresses qui prouvent qu'un compte appartient à une personne.
+ *
+ * La principale toujours : l'espace-membre l'attribue, ou un opérateur la saisit. L'adresse
+ * de contact seulement sur une fiche locale, où seul un opérateur l'écrit, la création
+ * depuis un compte isolé y recopiant la principale. Sur une fiche collectée, elle vient de
+ * la secondaire que le membre déclare lui-même, sans qu'aucune source n'en prouve la
+ * détention. Y lire une identité laisserait un membre
+ * revendiquer le compte de quelqu'un d'autre, et son départ couper cet accès.
+ */
+export function adressesDIdentite(
+  personne: Pick<PersonneConnue, "primaryEmail" | "communicationEmail" | "source">,
+): string[] {
+  return [personne.primaryEmail, personne.source === "LOCAL" ? personne.communicationEmail : null]
+    .map((email) => normaliserEmail(email))
+    .filter((email): email is string => email !== null);
+}
+
+/**
+ * L'adresse à viser quand un système agit sur un compte par son adresse : inviter à une
+ * arrivée, retirer à un départ. Une adresse déclarée par le membre ferait inviter, ou
+ * retirer, la boîte de quelqu'un d'autre.
+ */
+export function adresseProuvee(
+  personne: Pick<PersonneConnue, "primaryEmail" | "communicationEmail" | "source">,
+): string | null {
+  return adressesDIdentite(personne)[0] ?? null;
 }
 
 /**
@@ -92,8 +122,8 @@ function normaliserEmail(valeur: string | null | undefined): string | null {
  *
  * L'ambiguïté se juge sur la personne, jamais sur le nombre de fois où la clé passe :
  * une même fiche a le droit d'apporter deux fois la même valeur, et c'est le cas
- * courant, `primaryEmail` et `communicationEmail` portant la même adresse dès que la
- * personne n'a pas déclaré d'adresse secondaire. Compter les passages écartait alors
+ * courant sur une fiche locale, `primaryEmail` et `communicationEmail` y portant souvent
+ * la même adresse. Compter les passages écartait alors
  * la clé de sa propre titulaire, et rendait `EMAIL_EXACT` inatteignable pour elle.
  */
 function indexSansAmbiguite(
@@ -157,10 +187,7 @@ export function rapprocher(
 
   const parEmail = indexSansAmbiguite(
     personnes.flatMap((personne) =>
-      [personne.primaryEmail, personne.communicationEmail]
-        .map((email) => normaliserEmail(email))
-        .filter((email): email is string => email !== null)
-        .map((email) => [email, personne] as const),
+      adressesDIdentite(personne).map((email) => [email, personne] as const),
     ),
   );
 

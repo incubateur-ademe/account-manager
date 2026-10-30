@@ -49,7 +49,7 @@ thresholds:
 
   # Part du perimetre qu'une collecte peut perdre d'un coup avant de refuser d'en
   # tirer la moindre disparition et de se declarer partielle. Le perimetre arrive en
-  # un seul appel : une reponse tronquee mais valide ferait sortir tout le monde a la
+  # une seule lecture : une reponse tronquee mais valide ferait sortir tout le monde a la
   # fois sans qu'aucune erreur ne soit levee, et l'offboarding suivrait.
   maxScopeDrop: 0.2
 

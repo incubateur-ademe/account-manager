@@ -1342,15 +1342,42 @@ renommant.
 
 ## 7. L'API espace-membre : ce qu'elle donne, et ses pièges
 
-Les routes en lecture accessibles à un service sont protégées par un en-tête
-`X-Api-Key` ; tout le reste est derrière une session utilisateur. Trois sont
-utilisées ici, toutes scopées par le `ghid` de l'incubateur, jamais par un `uuid` :
-`/api/protected/incubators/{ghid}/startups` pour les produits et leurs phases,
-`/incubators/{ghid}/members` pour le périmètre, et `/members/{username}` pour une
-fiche complète. Les routes au singulier qui les précédaient existent toujours, mais
-sont dépréciées.
+La collecte lit l'API v1, documentée sur `/api/docs`. Une clé `em1…` part en
+`Authorization: Bearer`, et chaque route exige ses portées : `members:read` et
+`startups:read` ici. Trois routes sont utilisées, jamais avec un `uuid` : `/api/v1/incubators/{ghid}/startups` pour les
+produits et leurs phases, `/incubators/{ghid}/members` pour le périmètre, et
+`/members/{username}` pour une fiche complète. Une collection arrive dans
+`{ data, meta }`, par pages de cent au plus, une fiche dans `{ data }`.
 
-Quatre pièges vérifiés sur l'API réelle, à connaître avant de toucher au mapper.
+**Le périmètre de la clé s'ajoute à celui du chemin.** Une clé limitée à une startup
+rend, sous un succès, les seuls membres de cette startup. `meta.perimeter` le dit, et
+la collecte refuse tout autre périmètre que `global` ou celui de l'incubateur. Elle
+refuse aussi une lecture dont une page manque, commence ailleurs que demandé ou voit
+son total changer, ou qui rend deux fois le même `uuid`. Un absent s'y lirait comme
+un départ. Un départ et une arrivée croisés entre deux pages restent invisibles.
+
+**Une fiche hors du périmètre de la clé répond 403, pas 404.** Seul le 404 range une
+personne parmi les introuvables. Les transverses déclarés et le rattachement d'un
+compte isolé lisent des fiches hors de l'incubateur, d'où une clé de périmètre global.
+
+**`communication_email` dit à quelle adresse joindre quelqu'un.** Absente de la
+première version de la v1, elle y revient depuis `betagouv/espace-membre-next#1615`. Le
+schéma la tient pour facultative, et le test de contrat exige qu'elle soit rendue.
+
+**Une adresse de contact collectée joint, elle n'identifie pas.** Quand le membre a
+choisi sa secondaire, c'est lui qui l'a déclarée, et rien ne prouve qu'il en détient la
+boîte. Le rapprochement par adresse exacte ne lit donc que la principale, plus l'adresse
+de contact d'une fiche locale, qu'un opérateur a saisie. La connexion par adresse lit la
+principale d'une fiche collectée et l'adresse de contact d'une fiche locale. Une arrivée
+invite, et un départ retire, sur cette même adresse prouvée (`adresseProuvee`).
+
+Le prix est assumé : un compte qu'un membre a ouvert avec sa propre secondaire ne se
+rattache plus seul, il passe par la file des isolés. Les rattachements posés avant cette
+règle par une secondaire sont rendus à cette file au passage suivant, avec une trace
+`identite.preuve-perimee` dans le journal.
+
+Quatre pièges vérifiés sur l'API protégée qui a précédé la v1, à connaître avant de
+toucher au mapper. Le test de contrat ne revérifie que le dernier.
 
 **Les missions d'un membre scopé sont restreintes à l'incubateur.** C'est ce qui rend
 la liste directement exploitable, mais une personne rattachée par sa seule équipe n'a

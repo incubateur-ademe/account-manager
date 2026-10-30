@@ -88,7 +88,7 @@ describe("un geste hors dossier naît, se confirme, s'exécute, et se refuse", (
         username: USERNAME,
         fullname: "Nour Exemple",
         source: "BETA",
-        communicationEmail: ADRESSE,
+        primaryEmail: ADRESSE,
       },
     });
     personId = personne.id;
@@ -195,7 +195,7 @@ describe("un geste hors dossier naît, se confirme, s'exécute, et se refuse", (
       data: { state: "CANCELLED" },
     });
 
-    // When l'adresse de communication change entre la confirmation et l'exécution, ce que
+    // When l'adresse principale change entre la confirmation et l'exécution, ce que
     // `planifierOctroiScalingo` met dans `params.beneficiaire`
     const avant = await prisma.planStep.findFirstOrThrow({
       where: { planId },
@@ -203,7 +203,7 @@ describe("un geste hors dossier naît, se confirme, s'exécute, et se refuse", (
     });
     await prisma.person.update({
       where: { id: personId },
-      data: { communicationEmail: AUTRE_ADRESSE },
+      data: { primaryEmail: AUTRE_ADRESSE },
     });
 
     // Then l'exécution refuse par l'écart, et aucune étape n'a changé d'état : la garde
@@ -302,7 +302,7 @@ describe("ce qu'un départ retrouve d'un engagement que nulle collecte ne rend",
         username: USERNAME,
         fullname: "Nour Exemple",
         source: "BETA",
-        communicationEmail: ADRESSE,
+        primaryEmail: ADRESSE,
       },
     });
     personId = personne.id;
@@ -499,7 +499,7 @@ describe("l'ouverture d'un geste, depuis le formulaire", () => {
         username: USERNAME,
         fullname: "Nour Exemple",
         source: "BETA",
-        communicationEmail: ADRESSE,
+        primaryEmail: ADRESSE,
       },
     });
     personId = personne.id;

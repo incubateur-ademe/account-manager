@@ -1,11 +1,12 @@
 "use server";
 
-import { emailDeContact, type MembreDetaille, rattachementDeclare } from "@/core/membre";
+import { type MembreDetaille, rattachementDeclare } from "@/core/membre";
+import { normaliserEmail } from "@/core/rapprochement";
 import { actionTracee } from "@/lib/actions";
 import { audit } from "@/lib/audit";
 import { messageDeCollision } from "@/lib/collision";
 import { prisma } from "@/lib/db";
-import { fetchMemberDetail } from "@/lib/espace-membre";
+import { EspaceMembreError, fetchMemberDetail } from "@/lib/espace-membre";
 import { requireOperateur } from "@/lib/session";
 
 /**
@@ -103,6 +104,11 @@ export async function rattacherIdentite(
     try {
       horsPerimetre = await fetchMemberDetail(cible);
     } catch (error: unknown) {
+      if (error instanceof EspaceMembreError && error.status === 403) {
+        return {
+          erreur: `La clé de l'espace-membre ne lit pas la fiche « ${cible} ». Remplacez-la par une clé de périmètre global.`,
+        };
+      }
       return {
         erreur: `L'espace-membre n'a pas répondu : ${error instanceof Error ? error.message : String(error)}`,
       };
@@ -160,8 +166,10 @@ export async function rattacherIdentite(
               fullname: horsPerimetre.fullname ?? horsPerimetre.username,
               betaUuid: horsPerimetre.uuid ?? null,
               githubLogin: horsPerimetre.github ?? null,
-              primaryEmail: horsPerimetre.primary_email ?? null,
-              communicationEmail: emailDeContact(horsPerimetre),
+              // La principale aux deux places : une fiche locale tient son adresse de
+              // contact pour preuve, et la secondaire vient du seul membre.
+              primaryEmail: normaliserEmail(horsPerimetre.primary_email),
+              communicationEmail: normaliserEmail(horsPerimetre.primary_email),
               missionEnd: toDate(rattachement.missionEnd),
               attachment: "NONE",
               source: "LOCAL",

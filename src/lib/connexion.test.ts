@@ -9,6 +9,7 @@ interface FicheEnBase {
   username: string;
   source: "BETA" | "LOCAL" | "SERVICE";
   usernameFabricated: boolean;
+  primaryEmail: string | null;
   communicationEmail: string | null;
 }
 
@@ -68,10 +69,18 @@ function ficheDe(personId: string): FicheEnBase {
 vi.mock("@/lib/db", () => ({
   prisma: {
     person: {
-      findMany: ({ where }: { where: { communicationEmail: string } }) =>
-        Promise.resolve(
-          base.fiches.filter((fiche) => fiche.communicationEmail === where.communicationEmail),
-        ),
+      findMany: ({ where }: { where: { OR: [unknown, { communicationEmail: string }] } }) => {
+        // La règle est figée ici plutôt que relue dans la requête : le double ne doit pas
+        // suivre ce que la production lui envoie.
+        const adresse = where.OR[1].communicationEmail;
+        return Promise.resolve(
+          base.fiches.filter((fiche) =>
+            fiche.source === "LOCAL"
+              ? fiche.communicationEmail === adresse
+              : fiche.primaryEmail === adresse,
+          ),
+        );
+      },
       findFirst: ({ where }: { where: { username: { in: string[] } } }) =>
         Promise.resolve(
           base.fiches.find((fiche) => where.username.in.includes(fiche.username)) ?? null,
@@ -113,6 +122,7 @@ function fiche(champs: Partial<FicheEnBase> & { id: string; username: string }):
   return {
     source: "LOCAL",
     usernameFabricated: true,
+    primaryEmail: null,
     communicationEmail: null,
     ...champs,
   };
@@ -296,6 +306,7 @@ describe("l'identification, ses deux portes et ce qu'elles ne se prêtent jamais
         username: "lead.exemple",
         source: "BETA",
         usernameFabricated: false,
+        primaryEmail: "lead@beta.gouv.fr",
         communicationEmail: "lead@beta.gouv.fr",
       }),
     ];
@@ -399,6 +410,25 @@ describe("l'identification, ses deux portes et ce qu'elles ne se prêtent jamais
       decider(PROVIDER_ADRESSE, parAdresse("camille@exemple.org")),
     ).resolves.toMatchObject({ accepte: true });
 
+    // Given un membre collecté qui a déclaré la même adresse comme sa secondaire
+    base.fiches.push(
+      fiche({
+        id: "per_lead",
+        username: "lead.exemple",
+        source: "BETA",
+        usernameFabricated: false,
+        primaryEmail: "lead@beta.gouv.fr",
+        communicationEmail: "camille@exemple.org",
+      }),
+    );
+
+    // Then le délégué entre toujours : une adresse que le membre déclare lui-même ne
+    // désigne pas sa fiche, et ne rend pas celle du délégué plurielle
+    await expect(
+      decider(PROVIDER_ADRESSE, parAdresse("camille@exemple.org")),
+    ).resolves.toMatchObject({ accepte: true, personId: "per_camille" });
+    base.fiches.pop();
+
     // When le droit est révoqué pendant que le courriel voyage, et que le lien est suivi.
     base.droits = [droit({ personId: "per_camille", revokedAt: new Date() })];
 
@@ -437,6 +467,7 @@ describe("l'identification, ses deux portes et ce qu'elles ne se prêtent jamais
         username: "lead.exemple",
         source: "BETA",
         usernameFabricated: false,
+        primaryEmail: "lead@beta.gouv.fr",
         communicationEmail: "lead@beta.gouv.fr",
       }),
     ];

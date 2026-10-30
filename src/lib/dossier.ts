@@ -35,7 +35,7 @@ import {
   exigerDesCombinaisonsValides,
 } from "@/core/plan";
 import type { Profil } from "@/core/policy";
-import { autoriseUneRevocation } from "@/core/rapprochement";
+import { adresseProuvee, autoriseUneRevocation } from "@/core/rapprochement";
 import { type ReferenceLue, referencesAgissantes } from "@/core/reference";
 import { Prisma } from "@/generated/prisma/client";
 import { octroisDUnProfil } from "@/lib/arrivee";
@@ -205,11 +205,9 @@ async function systemesDeLaPersonne(
         },
       },
     }),
-    // Celle de communication d'abord : c'est celle que la personne lit, donc celle sur
-    // laquelle un système qui invite par adresse a le plus de chances de la trouver.
     prisma.person.findUnique({
       where: { id: personId },
-      select: { primaryEmail: true, communicationEmail: true },
+      select: { primaryEmail: true, communicationEmail: true, source: true },
     }),
   ]);
 
@@ -233,7 +231,7 @@ async function systemesDeLaPersonne(
     accesParSysteme.set(identite.provider, vus);
   }
 
-  const adresse = fiche?.communicationEmail ?? fiche?.primaryEmail ?? undefined;
+  const adresse = (fiche ? adresseProuvee(fiche) : null) ?? undefined;
 
   return {
     accesParSysteme,

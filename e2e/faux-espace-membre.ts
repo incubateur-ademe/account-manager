@@ -45,7 +45,7 @@ const MEMBRES = [
     fullname: "Noor Exemple",
     github: "noor-gh",
     primary_email: "noor@exemple.invalid",
-    communication_email: "noor@exemple.invalid",
+    communication_email: "primary",
     attachment: "startups",
     missions: [{ end: "2027-12-31", startups: [{ ghid: "suivi-de-friche" }] }],
   },
@@ -55,7 +55,7 @@ const MEMBRES = [
     fullname: "Tao Exemple",
     github: null,
     primary_email: "tao@exemple.invalid",
-    communication_email: "tao@exemple.invalid",
+    communication_email: "primary",
     attachment: "startups",
     missions: [{ end: "2026-07-31", startups: [{ ghid: "suivi-de-friche" }] }],
   },
@@ -65,7 +65,7 @@ const MEMBRES = [
     fullname: "Iris Exemple",
     github: "iris-gh",
     primary_email: "iris@exemple.invalid",
-    communication_email: "iris@exemple.invalid",
+    communication_email: "primary",
     attachment: "startups",
     missions: [{ end: "2027-06-30", startups: [{ ghid: "cartographie-sols" }] }],
   },
@@ -76,6 +76,12 @@ const rendre = (reponse: import("node:http").ServerResponse, corps: unknown): vo
   reponse.end(JSON.stringify(corps));
 };
 
+/** Une seule page suffit ici, mais l'enveloppe est celle que la collecte vérifie. */
+const collection = (elements: readonly unknown[]) => ({
+  data: elements,
+  meta: { total: elements.length, limit: 100, offset: 0, perimeter: `incubator/${INCUBATEUR}` },
+});
+
 createServer((requete, reponse) => {
   const chemin = new URL(requete.url ?? "/", `http://127.0.0.1:${PORT}`).pathname;
 
@@ -83,12 +89,12 @@ createServer((requete, reponse) => {
     rendre(reponse, { ok: true });
     return;
   }
-  if (chemin === `/api/protected/incubators/${INCUBATEUR}/startups`) {
-    rendre(reponse, STARTUPS);
+  if (chemin === `/api/v1/incubators/${INCUBATEUR}/startups`) {
+    rendre(reponse, collection(STARTUPS));
     return;
   }
-  if (chemin === `/api/protected/incubators/${INCUBATEUR}/members`) {
-    rendre(reponse, MEMBRES);
+  if (chemin === `/api/v1/incubators/${INCUBATEUR}/members`) {
+    rendre(reponse, collection(MEMBRES));
     return;
   }
 

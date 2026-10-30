@@ -75,6 +75,25 @@ describe("ce que la collecte réécrit sur une fiche", () => {
 
     expect(champs.missionEnd).toEqual(new Date("2026-09-30T00:00:00Z"));
     expect(champs.lastSeenAt).toBe(MAINTENANT);
+
+    // Les adresses entrent réduites, sous la forme où la connexion et le rapprochement
+    // les cherchent
+    const enCapitales = champsCollectes(
+      resolue({
+        primaryEmail: " Camille.Exemple@Beta.Gouv.fr",
+        communicationEmail: "C@Perso.Example",
+      }),
+      MAINTENANT,
+      false,
+    );
+    expect(enCapitales.primaryEmail).toBe("camille.exemple@beta.gouv.fr");
+    expect(enCapitales.communicationEmail).toBe("c@perso.example");
+
+    // Une préférence que la source n'a pas rendue ne touche pas à l'adresse déjà connue
+    expect(
+      champsCollectes(resolue({ communicationEmail: undefined }), MAINTENANT, false)
+        .communicationEmail,
+    ).toBeUndefined();
     expect(champs.vanishedAt).toBeNull();
     // La collecte adopte la fiche : l'identifiant cesse d'être une construction
     // locale et redevient un pivot que rien ne renomme.

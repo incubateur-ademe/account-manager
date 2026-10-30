@@ -10,6 +10,7 @@ import {
   verifierProfils,
 } from "@/core/octroi";
 import type { Profil } from "@/core/policy";
+import { adresseProuvee } from "@/core/rapprochement";
 import { prisma } from "@/lib/db";
 import { policy } from "@/lib/policy";
 import type { ChoixDeProfils, ProfilOffert } from "@/ui/profils";
@@ -177,11 +178,11 @@ export async function octroisDUnProfil(
     // le cas d'une arrivée.
     prisma.person.findUnique({
       where: { id: personId },
-      select: { primaryEmail: true, communicationEmail: true },
+      select: { primaryEmail: true, communicationEmail: true, source: true },
     }),
   ]);
 
-  const adresse = fiche?.communicationEmail ?? fiche?.primaryEmail ?? undefined;
+  const adresse = (fiche ? adresseProuvee(fiche) : null) ?? undefined;
 
   const sujet: SubjectRef = {
     kind: "person",

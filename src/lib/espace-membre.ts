@@ -17,21 +17,30 @@ export class EspaceMembreError extends Error {
 
 /**
  * `fetch` n'a aucun délai par défaut, et sans borne une réponse qui ne vient jamais
- * gèlerait la collecte avant même qu'elle n'atteigne le moindre connecteur. Plus large
- * qu'ailleurs parce que le périmètre arrive en un seul appel, qui ramène tout.
+ * gèlerait la collecte avant même qu'elle n'atteigne le moindre connecteur. Le délai
+ * vaut pour une page.
  */
 const DELAI_MS = 30_000;
 
+const ORIGINE_CANONIQUE = "https://espace-membre.beta.gouv.fr";
+
+/** Le maximum que l'API accepte. */
+const TAILLE_DE_PAGE = 100;
+
 /**
  * La clé part dans un en-tête que `fetch` recopie d'une redirection à l'autre. Une seule
- * est suivie, et seulement vers HTTPS : l'ancienne adresse de l'espace-membre redirige
- * encore vers la nouvelle, et une redirection vers HTTP emporterait la clé en clair.
+ * est suivie, en HTTPS, et seulement vers l'origine configurée ou l'origine canonique.
+ * L'ancienne adresse de l'espace-membre redirige encore vers la nouvelle. Une redirection
+ * vers HTTP emporterait la clé en clair, une redirection vers un tiers la lui remettrait.
  */
 async function appeler(adresse: string, path: string, redirection: boolean): Promise<Response> {
   let response: Response;
   try {
     response = await fetch(adresse, {
-      headers: { "X-Api-Key": env.ESPACE_MEMBRE_API_KEY, accept: "application/json" },
+      headers: {
+        authorization: `Bearer ${env.ESPACE_MEMBRE_API_KEY}`,
+        accept: "application/json",
+      },
       redirect: "manual",
       signal: AbortSignal.timeout(DELAI_MS),
     });
@@ -45,7 +54,9 @@ async function appeler(adresse: string, path: string, redirection: boolean): Pro
 
   const suite = response.headers.get("location");
   const cible = suite === null ? null : new URL(suite, adresse);
-  if (cible === null || cible.protocol !== "https:" || redirection) {
+  // Calculées à l'appel : `src/cli/sync.ts` charge l'environnement après ses imports.
+  const origines = new Set([new URL(env.ESPACE_MEMBRE_URL).origin, ORIGINE_CANONIQUE]);
+  if (cible === null || cible.protocol !== "https:" || !origines.has(cible.origin) || redirection) {
     throw new EspaceMembreError(
       path,
       response.status,
@@ -55,14 +66,133 @@ async function appeler(adresse: string, path: string, redirection: boolean): Pro
   return appeler(cible.href, path, true);
 }
 
+const problemeSchema = z.object({ title: z.string().optional(), detail: z.string().optional() });
+
+/** Les refus suivent la RFC 9457, et leur `detail` distingue une clé morte d'une portée manquante. */
+async function refus(path: string, response: Response): Promise<EspaceMembreError> {
+  const corps = problemeSchema.safeParse(await response.json().catch(() => null));
+  const precision = corps.success ? (corps.data.detail ?? corps.data.title) : undefined;
+  return new EspaceMembreError(
+    path,
+    response.status,
+    `${response.status} ${response.statusText}${precision ? ` (${precision})` : ""}`,
+  );
+}
+
 async function get(path: string): Promise<unknown> {
   const response = await appeler(`${env.ESPACE_MEMBRE_URL}${path}`, path, false);
 
   if (!response.ok) {
-    throw new EspaceMembreError(path, response.status, `${response.status} ${response.statusText}`);
+    throw await refus(path, response);
   }
 
   return await response.json();
+}
+
+const unitaireSchema = z.object({ data: z.unknown() });
+
+const collectionSchema = z.object({
+  data: z.array(z.unknown()),
+  meta: z.object({
+    total: z.number().int().min(0),
+    offset: z.number().int().min(0),
+    perimeter: z.string(),
+  }),
+});
+
+function illisible(path: string, quoi: string, erreur: z.ZodError): EspaceMembreError {
+  const champs = erreur.issues.map((issue) => issue.path.join(".") || "(racine)").join(", ");
+  return new EspaceMembreError(path, null, `${quoi} illisible (${champs})`);
+}
+
+/**
+ * Une collection entière, page après page, ou une erreur.
+ *
+ * Une personne absente d'une page se lirait comme un départ. D'où quatre refus : un
+ * total qui bouge entre deux pages, une page qui ne commence pas où on l'a demandée,
+ * une page vide avant le total annoncé, un même `uuid` lu deux fois. Le dernier voit
+ * un ordre qui change entre deux pages. Un départ et une arrivée croisés entre deux
+ * pages restent invisibles ici.
+ *
+ * Le périmètre de la clé s'applique en plus du chemin. Une clé limitée à une startup
+ * rendrait, sous un succès, les seuls membres de cette startup, et le reste de
+ * l'incubateur passerait pour parti. Seuls le périmètre global et celui de
+ * l'incubateur demandé sont donc admis.
+ */
+async function lireCollection(path: string, incubateur: string): Promise<unknown[]> {
+  const admis = new Set(["global", `incubator/${incubateur}`]);
+  const elements: unknown[] = [];
+  let total: number | null = null;
+
+  while (total === null || elements.length < total) {
+    const lu = collectionSchema.safeParse(
+      await get(`${path}?limit=${TAILLE_DE_PAGE}&offset=${elements.length}`),
+    );
+    if (!lu.success) {
+      throw illisible(path, "enveloppe de collection", lu.error);
+    }
+    const { data, meta } = lu.data;
+
+    if (!admis.has(meta.perimeter)) {
+      throw new EspaceMembreError(
+        path,
+        null,
+        `la clé porte le périmètre ${meta.perimeter}, seuls ${[...admis].join(" et ")} lisent l'incubateur entier`,
+      );
+    }
+    if (total !== null && meta.total !== total) {
+      throw new EspaceMembreError(
+        path,
+        null,
+        `le total a changé en cours de lecture (${total} puis ${meta.total})`,
+      );
+    }
+    if (meta.offset !== elements.length) {
+      throw new EspaceMembreError(
+        path,
+        null,
+        `page rendue au décalage ${meta.offset} au lieu de ${elements.length}`,
+      );
+    }
+    if (data.length === 0 && elements.length < meta.total) {
+      throw new EspaceMembreError(
+        path,
+        null,
+        `page vide après ${elements.length} éléments sur ${meta.total}`,
+      );
+    }
+
+    total = meta.total;
+    elements.push(...data);
+  }
+
+  const vus = new Set<unknown>();
+  for (const element of elements) {
+    const uuid =
+      typeof element === "object" && element !== null && "uuid" in element
+        ? element.uuid
+        : undefined;
+    if (uuid === undefined) {
+      continue;
+    }
+    if (vus.has(uuid)) {
+      throw new EspaceMembreError(
+        path,
+        null,
+        `${String(uuid)} rendu deux fois en cours de lecture`,
+      );
+    }
+    vus.add(uuid);
+  }
+
+  if (elements.length !== total) {
+    throw new EspaceMembreError(
+      path,
+      null,
+      `${elements.length} éléments rendus pour un total de ${total}`,
+    );
+  }
+  return elements;
 }
 
 /**
@@ -85,7 +215,8 @@ export const membreSchema = z.object({
   github: z.string().nullish(),
   primary_email: z.string().nullish(),
   secondary_email: z.string().nullish(),
-  communication_email: z.string(),
+  // Facultatif tant que tous les environnements de l'espace-membre ne le rendent pas.
+  communication_email: z.enum(["primary", "secondary"]).nullish(),
   missions: z.array(missionSchema),
 });
 
@@ -116,7 +247,10 @@ export interface IncubatorStartup {
  * toute date qui sert à décider d'une échéance.
  */
 export async function fetchIncubatorStartups(ghid: string): Promise<Lecture<IncubatorStartup>> {
-  const brut = await get(`/api/protected/incubators/${encodeURIComponent(ghid)}/startups`);
+  const brut = await lireCollection(
+    `/api/v1/incubators/${encodeURIComponent(ghid)}/startups`,
+    ghid,
+  );
   const { items, erreurs } = lireChaque(brut, startupSchema, "startups de l'incubateur");
 
   return {
@@ -134,13 +268,13 @@ export async function fetchIncubatorStartups(ghid: string): Promise<Lecture<Incu
 }
 
 /**
- * Le périmètre entier en un appel : l'espace-membre sait désormais dire qui relève
- * d'un incubateur, y compris par la voie des équipes. On ne passe pas `status`, dont
- * le défaut retourne aussi les missions terminées : masquer les partants reviendrait
- * à ne jamais leur couper leurs accès.
+ * Le périmètre entier : l'espace-membre sait dire qui relève d'un incubateur, y compris
+ * par la voie des équipes. On ne passe pas `status`, dont le défaut retourne aussi les
+ * missions terminées. Masquer les partants reviendrait à ne jamais leur couper leurs
+ * accès.
  */
 export async function fetchIncubatorMembers(ghid: string): Promise<Lecture<MembreIncubateur>> {
-  const brut = await get(`/api/protected/incubators/${encodeURIComponent(ghid)}/members`);
+  const brut = await lireCollection(`/api/v1/incubators/${encodeURIComponent(ghid)}/members`, ghid);
   return lireChaque(brut, membreIncubateurSchema, "membres de l'incubateur");
 }
 
@@ -149,25 +283,37 @@ export async function fetchIncubatorMembers(ghid: string): Promise<Lecture<Membr
  * n'est demandée que pour les personnes rattachées par une équipe : la liste scopée
  * ne leur associe aucune mission, et leur échéance beta.gouv est justement ce qui
  * fait foi pour elles.
+ *
+ * Seul le 404 dit qu'une fiche n'existe pas. L'API répond 403 à une clé sans la portée
+ * ou dont le périmètre ne couvre pas la fiche, et lire ce refus comme une absence
+ * rangerait parmi les introuvables quelqu'un qui est simplement hors de vue.
  */
 export async function fetchMemberDetail(username: string): Promise<MembreDetaille | null> {
+  const path = `/api/v1/members/${encodeURIComponent(username)}`;
   let brut: unknown;
   try {
-    brut = await get(`/api/protected/members/${encodeURIComponent(username)}`);
+    brut = await get(path);
   } catch (error: unknown) {
     if (error instanceof EspaceMembreError && error.status === 404) {
       return null;
     }
+    if (error instanceof EspaceMembreError && error.status === 403) {
+      throw new EspaceMembreError(
+        path,
+        403,
+        `fiche refusée, hors du périmètre de la clé ou sans la portée members:read, ${error.message}`,
+      );
+    }
     throw error;
   }
 
-  const lu = membreSchema.safeParse(brut);
+  const enveloppe = unitaireSchema.safeParse(brut);
+  if (!enveloppe.success) {
+    throw illisible(path, "enveloppe de fiche", enveloppe.error);
+  }
+  const lu = membreSchema.safeParse(enveloppe.data.data);
   if (!lu.success) {
-    throw new EspaceMembreError(
-      `/api/protected/members/${username}`,
-      null,
-      `fiche illisible (${lu.error.issues.map((issue) => issue.path.join(".")).join(", ")})`,
-    );
+    throw illisible(path, "fiche", lu.error);
   }
   return lu.data;
 }

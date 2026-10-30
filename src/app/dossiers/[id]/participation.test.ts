@@ -10,6 +10,7 @@ interface FicheEnBase {
   username: string;
   source: "BETA" | "LOCAL" | "SERVICE";
   usernameFabricated: boolean;
+  primaryEmail?: string | null;
   communicationEmail: string | null;
 }
 
@@ -131,10 +132,18 @@ vi.mock("@/lib/db", () => ({
     person: {
       findUnique: ({ where }: { where: { username: string } }) =>
         Promise.resolve(base.fiches.find((fiche) => fiche.username === where.username) ?? null),
-      findMany: ({ where }: { where: { communicationEmail: string } }) =>
-        Promise.resolve(
-          base.fiches.filter((fiche) => fiche.communicationEmail === where.communicationEmail),
-        ),
+      findMany: ({ where }: { where: { OR: [unknown, { communicationEmail: string }] } }) => {
+        // La règle est figée ici plutôt que relue dans la requête : le double ne doit pas
+        // suivre ce que la production lui envoie.
+        const adresse = where.OR[1].communicationEmail;
+        return Promise.resolve(
+          base.fiches.filter((fiche) =>
+            fiche.source === "LOCAL"
+              ? fiche.communicationEmail === adresse
+              : fiche.primaryEmail === adresse,
+          ),
+        );
+      },
     },
     user: {
       findUnique: ({ where }: { where: { email: string } }) => {
