@@ -215,6 +215,8 @@ export const membreSchema = z.object({
   github: z.string().nullish(),
   primary_email: z.string().nullish(),
   secondary_email: z.string().nullish(),
+  // Facultatif tant que tous les environnements de l'espace-membre ne le rendent pas.
+  communication_email: z.enum(["primary", "secondary"]).nullish(),
   missions: z.array(missionSchema),
 });
 

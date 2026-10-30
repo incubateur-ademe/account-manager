@@ -1360,8 +1360,9 @@ un départ. Un départ et une arrivée croisés entre deux pages restent invisib
 personne parmi les introuvables. Les transverses déclarés et le rattachement d'un
 compte isolé lisent des fiches hors de l'incubateur, d'où une clé de périmètre global.
 
-**`communication_email` n'existe plus.** L'adresse de contact est l'adresse
-principale.
+**`communication_email` dit à quelle adresse joindre quelqu'un.** Absente de la
+première version de la v1, elle y revient depuis `betagouv/espace-membre-next#1615`. Le
+schéma la tient pour facultative, et le test de contrat exige qu'elle soit rendue.
 
 Quatre pièges vérifiés sur l'API protégée qui a précédé la v1, à connaître avant de
 toucher au mapper. Le test de contrat ne revérifie que le dernier.

@@ -181,6 +181,10 @@ describe.skipIf(!CLE)("la forme de ce que rend l'espace-membre n'a pas changé",
     // L'adresse principale est ce qui rattache un compte par son adresse exacte. Renommée,
     // tous les comptes Notion partiraient dans la file des isolés.
     expect(membres.items.some((membre) => membre.primary_email)).toBe(true);
+
+    // La préférence d'adresse dit où joindre quelqu'un. Absente, tout le monde serait
+    // contacté sur sa principale, une boîte que le départ supprime.
+    expect(membres.items.every((membre) => membre.communication_email)).toBe(true);
   });
 
   it("rend la fiche complète d'une personne du périmètre, et un 404 pour une inconnue", async () => {

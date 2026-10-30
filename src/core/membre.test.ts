@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { jourParis, type MembreIncubateur, rattachementDe, rattachementDeclare } from "./membre";
+import {
+  emailDeContact,
+  jourParis,
+  type MembreIncubateur,
+  rattachementDe,
+  rattachementDeclare,
+} from "./membre";
 
 /** Le périmètre du jour, tel que le rend la liste des startups de l'incubateur. */
 const ADEME = new Set(["produit-alpha", "produit-beta"]);
@@ -148,5 +154,28 @@ describe("rattachement d'un membre rendu par l'espace-membre", () => {
         missions: [{ end: "2026-07-31T00:00:00.000Z" }],
       }),
     ).toEqual({ attachment: "DECLARED", startups: [], missionEnd: "2026-07-31" });
+  });
+});
+
+describe("choix de l'adresse de contact", () => {
+  it("suit la préférence déclarée par le membre", () => {
+    expect(
+      emailDeContact({
+        username: "x",
+        communication_email: "secondary",
+        primary_email: "x@beta.gouv.fr",
+        secondary_email: "perso@example.org",
+      }),
+    ).toBe("perso@example.org");
+  });
+
+  it("retombe sur l'adresse principale quand la secondaire manque", () => {
+    expect(
+      emailDeContact({
+        username: "x",
+        communication_email: "secondary",
+        primary_email: "x@beta.gouv.fr",
+      }),
+    ).toBe("x@beta.gouv.fr");
   });
 });
