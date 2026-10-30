@@ -38,18 +38,38 @@ const INCONNU = "aucune-fiche.test-de-contrat";
 
 async function lire(chemin: string, cle = CLE ?? ""): Promise<Response> {
   return fetch(`${ADRESSE}${chemin}`, {
-    headers: { "X-Api-Key": cle, accept: "application/json" },
+    headers: { authorization: `Bearer ${cle}`, accept: "application/json" },
     redirect: "error",
   });
 }
 
-async function lireJson(chemin: string): Promise<unknown> {
+async function lireJson(
+  chemin: string,
+): Promise<{ data: unknown; meta?: Record<string, unknown> }> {
   const reponse = await lire(chemin);
 
   // Nomme la cause : sans elle, une route disparue ferait tomber les assertions suivantes
   // sur une liste vide sans dire pourquoi.
   expect(reponse.ok, `${chemin} a répondu ${reponse.status}`).toBe(true);
   return reponse.json();
+}
+
+const perimetres: string[] = [];
+
+/** Toutes les pages, en relevant le périmètre que chacune déclare. */
+async function lireTout(chemin: string): Promise<unknown[]> {
+  const elements: unknown[] = [];
+  for (;;) {
+    const { data, meta } = await lireJson(`${chemin}?limit=100&offset=${elements.length}`);
+    expect(Array.isArray(data), `${chemin} : data n'est pas une liste`).toBe(true);
+    expect(typeof meta?.["total"], `${chemin} : meta.total manque`).toBe("number");
+    perimetres.push(String(meta?.["perimeter"]));
+    const page = data as unknown[];
+    elements.push(...page);
+    if (page.length === 0 || elements.length >= Number(meta?.["total"])) {
+      return elements;
+    }
+  }
 }
 
 /** Au format ISO, parce qu'un jour et un mois inversés se lisent encore comme une date. */
@@ -66,20 +86,28 @@ describe.skipIf(!CLE)("la forme de ce que rend l'espace-membre n'a pas changé",
   let startups: Lecture<z.infer<typeof startupSchema>> = { items: [], erreurs: [] };
   let membres: Lecture<z.infer<typeof membreIncubateurSchema>> = { items: [], erreurs: [] };
 
-  // Le périmètre arrive en un seul appel qui ramène tout, d'où une borne plus large que
-  // celle d'un crochet ordinaire.
+  // Le périmètre arrive en plusieurs pages, d'où une borne plus large que celle d'un
+  // crochet ordinaire.
   beforeAll(async () => {
     startups = lireChaque(
-      await lireJson(`/api/protected/incubators/${INCUBATEUR}/startups`),
+      await lireTout(`/api/v1/incubators/${INCUBATEUR}/startups`),
       startupSchema,
       "startups de l'incubateur",
     );
     membres = lireChaque(
-      await lireJson(`/api/protected/incubators/${INCUBATEUR}/members`),
+      await lireTout(`/api/v1/incubators/${INCUBATEUR}/members`),
       membreIncubateurSchema,
       "membres de l'incubateur",
     );
   }, 60_000);
+
+  it("lit l'incubateur entier avec cette clé", () => {
+    // La collecte refuse tout autre périmètre, qui lui rendrait un incubateur réduit.
+    expect(perimetres.length).toBeGreaterThan(0);
+    for (const perimetre of perimetres) {
+      expect(["global", `incubator/${INCUBATEUR}`]).toContain(perimetre);
+    }
+  });
 
   it("rend les startups de l'incubateur, avec des phases qui se lisent", () => {
     expect(startups.erreurs).toEqual([]);
@@ -166,7 +194,7 @@ describe.skipIf(!CLE)("la forme de ce que rend l'espace-membre n'a pas changé",
     }
 
     const fiche = membreSchema.safeParse(
-      await lireJson(`/api/protected/members/${encodeURIComponent(cible.username)}`),
+      (await lireJson(`/api/v1/members/${encodeURIComponent(cible.username)}`)).data,
     );
     expect(fiche.error?.issues ?? []).toEqual([]);
     for (const mission of fiche.data?.missions ?? []) {
@@ -175,7 +203,7 @@ describe.skipIf(!CLE)("la forme de ce que rend l'espace-membre n'a pas changé",
 
     // Un 404 range la personne parmi les introuvables, toute autre réponse parmi les
     // lectures manquées, et les deux n'ont pas la même borne.
-    const inconnue = await lire(`/api/protected/members/${INCONNU}`);
+    const inconnue = await lire(`/api/v1/members/${INCONNU}`);
     expect(inconnue.status).toBe(404);
   });
 
@@ -183,7 +211,7 @@ describe.skipIf(!CLE)("la forme de ce que rend l'espace-membre n'a pas changé",
     // Une redirection vers une page de connexion lève, ce que la collecte lit aussi comme
     // une panne de la source.
     const reponse = await lire(
-      `/api/protected/incubators/${INCUBATEUR}/members`,
+      `/api/v1/incubators/${INCUBATEUR}/members`,
       "cle-volontairement-fausse",
     ).catch(() => null);
 

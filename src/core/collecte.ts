@@ -245,8 +245,8 @@ export function nonRendueAuDernierPassage(
 export const PLANCHER_ARRIVEES = 5;
 
 /**
- * La symétrie avec `chuteExcessive` n'est pas décorative : le périmètre arrive en un
- * seul appel, et une réponse anormale peut aussi bien enfler que fondre. Une source
+ * La symétrie avec `chuteExcessive` n'est pas décorative : le périmètre arrive en une
+ * seule lecture, et une réponse anormale peut aussi bien enfler que fondre. Une source
  * qui rend d'un coup un périmètre plus large qu'il ne l'était n'est pas distinguable
  * d'une arrivée collective, et dans le doute on refuse d'en tirer des arrivées, car
  * constater une arrivée finit par ouvrir un dossier au nom de quelqu'un.

@@ -265,7 +265,7 @@ const declareSchema = z
           .default(0.2)
           .meta({
             description:
-              "Part du périmètre qu'une collecte peut gagner d'un coup avant de refuser d'en tirer la moindre arrivée. La symétrie avec maxScopeDrop n'est pas décorative : le périmètre arrive en un seul appel, et une réponse anormale peut aussi bien enfler que fondre.",
+              "Part du périmètre qu'une collecte peut gagner d'un coup avant de refuser d'en tirer la moindre arrivée. La symétrie avec maxScopeDrop n'est pas décorative : le périmètre arrive en une seule lecture, et une réponse anormale peut aussi bien enfler que fondre.",
             examples: [0.2],
           }),
         maxPlanSteps: z

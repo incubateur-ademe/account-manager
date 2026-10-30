@@ -25,14 +25,15 @@ les co-incubations futures.
 
 ## Ce qui a été fait
 
-La collecte du périmètre demande désormais :
+La collecte du périmètre demande désormais, sur l'API v1 décrite au §7 de
+`docs/architecture.md` :
 
-- `GET /api/protected/incubators/{ghid}/startups` pour les produits et leurs
+- `GET /api/v1/incubators/{ghid}/startups` pour les produits et leurs
   phases, qui venaient du miroir public ;
-- `GET /api/protected/incubators/{ghid}/members` pour le périmètre entier, en un
-  appel, avec la voie de rattachement (`startups`, `teams`, `both`) déjà tranchée
+- `GET /api/v1/incubators/{ghid}/members` pour le périmètre entier, page après
+  page, avec la voie de rattachement (`startups`, `teams`, `both`) déjà tranchée
   par l'espace-membre ;
-- `GET /api/protected/members/{username}` pour les seules personnes rattachées
+- `GET /api/v1/members/{username}` pour les seules personnes rattachées
   par une équipe : la liste scopée ne leur associe aucune mission, et leur
   échéance beta.gouv est justement ce qui fait foi pour elles.
 
@@ -41,7 +42,7 @@ missions. Une personne déclarée transverse dans la politique que l'espace-memb
 ne rattache pas reste dans le périmètre : la déclaration locale fait autorité sur
 l'appartenance, sa fiche sur la date.
 
-Le périmètre arrivant en un seul appel, `syncPerimetre` refuse de dater des
+Le périmètre arrivant en une seule lecture, `syncPerimetre` refuse de dater des
 disparitions dès qu'il perd plus d'un cinquième de son effectif d'un coup, et se
 déclare partiel : une réponse tronquée mais valide ne se distingue d'un départ
 collectif que par son ampleur.
@@ -55,8 +56,13 @@ se configure pas depuis `src/lib/auth.ts`. Les anciennes routes sont aujourd'hui
 servies à l'identique sous un route group `(deprecated)/`, avec un en-tête
 `Deprecation: true`. Le jour où l'espace-membre les retirera, plus personne ne
 pourra se connecter. Il faut donc suivre les versions de ce paquet et passer à
-une version qui vise `/members/{username}` **avant** ce retrait. La collecte,
-elle, n'appelle plus aucune route dépréciée.
+une version qui vise `/api/v1/members/{username}` **avant** ce retrait. La
+collecte, elle, n'appelle plus aucune route dépréciée.
+
+**La clé est partagée entre la collecte et le login.** Le paquet lit
+`ESPACE_MEMBRE_API_KEY` et l'envoie en `X-API-Key` à `/api/protected`, là où la
+collecte l'envoie en `Bearer` à `/api/v1`. Rien n'établit qu'une clé v1 soit
+acceptée par les anciennes routes.
 
 **Les startups d'une mission hors périmètre.** Les missions rendues par la route
 scopée peuvent porter des produits d'un autre incubateur (mission à plusieurs

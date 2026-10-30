@@ -511,7 +511,7 @@ ressource Coolify :
 | `AUTH_TRUST_HOST` | `true`, obligatoire derrière Traefik |
 | `SMTP_URL` | `smtp://utilisateur:motdepasse@serveur:port`, identifiants compris |
 | `SMTP_EMAIL_FROM` | adresse expéditrice, sur un domaine que le relais accepte |
-| `ESPACE_MEMBRE_API_KEY` | clé de l'API protégée |
+| `ESPACE_MEMBRE_API_KEY` | clé de l'API v1 (`em1…`), portées `members:read` et `startups:read`, périmètre global |
 | `ACTIONS_ENABLED` | `false` tant que la mise en service n'est pas validée |
 | `OPERATORS` | usernames beta.gouv, séparés par des virgules |
 | `BREAK_GLASS_USERNAMES` | usernames de secours |

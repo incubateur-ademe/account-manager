@@ -20,7 +20,6 @@ interface MembreCommun {
   github?: string | null;
   primary_email?: string | null;
   secondary_email?: string | null;
-  communication_email?: string | null;
   missions?: readonly MissionApi[] | null;
 }
 
@@ -158,8 +157,7 @@ export function rattachementDeclare(detail: MembreDetaille): Rattachement {
   return { attachment: "DECLARED", startups: [], missionEnd: finDeMission(detail.missions) };
 }
 
+/** L'API ne rend plus la préférence que portait `communication_email`. */
 export function emailDeContact(membre: MembreCommun): string | null {
-  return membre.communication_email === "secondary"
-    ? (membre.secondary_email ?? membre.primary_email ?? null)
-    : (membre.primary_email ?? null);
+  return membre.primary_email ?? null;
 }

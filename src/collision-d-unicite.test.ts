@@ -52,7 +52,6 @@ vi.mock("@/lib/espace-membre", () => ({
       username: "passante.exemple",
       fullname: "Passante Exemple",
       primary_email: "lead@exemple.org",
-      communication_email: "primary",
       missions: [],
     }),
 }));
