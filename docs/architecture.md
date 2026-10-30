@@ -1414,11 +1414,12 @@ mission en cours : si ce champ était renommé sans rien changer d'autre, le sil
 serait indétectable ici. C'est au test de contrat, quand on le lance, de s'étonner que
 plus aucune échéance ne remonte.
 
-**La connexion, elle, dépend encore d'une route dépréciée.** Le provider NextAuth
-utilisé pour le login a `/api/protected/member/{username}` en dur dans son client, et
-cette adresse ne se configure pas depuis ce dépôt. Le jour où l'espace-membre retirera
-ses routes au singulier, plus personne ne pourra se connecter : la version de ce
-paquet est donc à suivre, et à relever avant ce retrait.
+**La connexion lit la même API, avec la même clé.** Le provider NextAuth du login
+(`@incubateur-ademe/next-auth-espace-membre-provider`, depuis sa 1.0.0) résout un
+username par `/api/v1/members/{username}`, en `Bearer` avec `ESPACE_MEMBRE_API_KEY`. Il
+envoie le lien à la principale ou à la secondaire, selon la préférence
+`communication_email`. Sans préférence, il prend la principale d'un membre actif et la
+secondaire d'un membre inactif, chacune retombant sur l'autre quand elle manque.
 
 ---
 

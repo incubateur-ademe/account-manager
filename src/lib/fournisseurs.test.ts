@@ -107,16 +107,30 @@ describe("le chemin d'envoi du lien de connexion", () => {
     // `fournisseurs.ts` passe au client à son chargement. Il est donc posé avant l'import, et le
     // reste du client demeure le vrai : la forme de fiche qu'il sait lire ici est celle
     // qu'il lira en production.
-    vi.stubGlobal("fetch", () =>
-      Promise.resolve(
+    const appels: { chemin: string; autorisation: string | null }[] = [];
+    vi.stubGlobal("fetch", (adresse: URL | string, init?: RequestInit) => {
+      appels.push({
+        chemin: new URL(adresse).pathname,
+        autorisation: new Headers(init?.headers).get("authorization"),
+      });
+      return Promise.resolve(
         Response.json({
-          username: "camille.durand",
-          communication_email: "primary",
-          primary_email: ADRESSE_DE_LA_FICHE,
-          secondary_email: null,
+          data: {
+            uuid: "uuid-de-camille",
+            username: "camille.durand",
+            fullname: "Camille Durand",
+            primary_email: ADRESSE_DE_LA_FICHE,
+            secondary_email: null,
+            communication_email: "primary",
+            missions: [],
+            teams: [],
+            startups: [],
+            avatar: null,
+            isActive: true,
+          },
         }),
-      ),
-    );
+      );
+    });
     const { fournisseursDuLien } = await import("@/lib/fournisseurs");
 
     const config: Record<string, unknown> = {
@@ -163,6 +177,16 @@ describe("le chemin d'envoi du lien de connexion", () => {
     // l'annuaire déclare sur la fiche : c'est tout l'objet du wrapper, et un identifiant
     // qui arriverait tel quel dans le champ `to` serait un lien envoyé nulle part.
     expect(remises[1]?.to).toEqual([ADRESSE_DE_LA_FICHE]);
+
+    // Then l'annuaire a été lu par la route v1, avec la clé en Bearer : une autre route ou
+    // un autre en-tête serait refusé en production, quoi que rende ce double
+    expect(appels.length).toBeGreaterThan(0);
+    for (const appel of appels) {
+      expect(appel).toEqual({
+        chemin: "/api/v1/members/camille.durand",
+        autorisation: `Bearer ${process.env["ESPACE_MEMBRE_API_KEY"]}`,
+      });
+    }
 
     // Then le lien vaut une demi-heure et non la journée que le paquet donne par défaut,
     // et cela pour les deux portes. Épinglé ici parce que rien d'autre ne le tient :

@@ -34,7 +34,7 @@
     "@codegouvfr/react-dsfr": "^1.32.4",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
-    "@incubateur-ademe/next-auth-espace-membre-provider": "^0.3.4",
+    "@incubateur-ademe/next-auth-espace-membre-provider": "^1.0.0",
     "@mui/material": "^9.3.1",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
