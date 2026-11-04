@@ -245,6 +245,7 @@ const CONSTAT_ARRIVEE: LigneConstat = {
   severity: "HIGH",
   ouvertLe: "01/09/2025",
   personne: { username: "tristan.valois", fullname: "Tristan Valois" },
+  arriveeVivante: null,
   compte: null,
 };
 
@@ -258,6 +259,7 @@ const CONSTAT_COMPTE_PARTI: LigneConstat = {
   severity: "MEDIUM",
   ouvertLe: "20/08/2025",
   personne: null,
+  arriveeVivante: null,
   compte: { provider: "github", handle: "m-marceau" },
 };
 
@@ -639,6 +641,30 @@ describe("La file des constats", () => {
   });
 });
 
+describe("l'arrivée déjà ouverte dans la file des constats", () => {
+  it("renvoie vers son dossier au lieu d'offrir d'en préparer une seconde", () => {
+    // Given une arrivée non préparée dont le dossier a été ouvert depuis
+    render(
+      <FileDesConstats
+        lignes={[{ ...CONSTAT_ARRIVEE, arriveeVivante: "dossier-arr" }]}
+        profils={{ etat: "illisible" }}
+        dernierJourTolere="2026-03-10"
+      />,
+    );
+    const ligne = screen.getByText(ARRIVEE.titre).closest("tr") as HTMLElement;
+
+    // Then la ligne mène au dossier ouvert, et ne propose plus d'en ouvrir un
+    expect(
+      within(ligne)
+        .getByRole("link", { name: LIBELLE_DOSSIER.ONBOARDING.enCours })
+        .getAttribute("href"),
+    ).toBe("/dossiers/dossier-arr");
+    expect(
+      within(ligne).queryByRole("button", { name: LIBELLE_DOSSIER.ONBOARDING.ouvrir }),
+    ).toBeNull();
+  });
+});
+
 describe("le geste de tolérance dans la file des constats", () => {
   it("ne s'offre qu'aux constats qui se tolèrent, et poste la clé du constat choisi", async () => {
     // Given une file où figure un constat qui ne se tolère pas : il porte sur ce qu'un
@@ -655,6 +681,7 @@ describe("le geste de tolérance dans la file des constats", () => {
       severity: "HIGH",
       ouvertLe: "20/08/2025",
       personne: { username: "m.marceau", fullname: "M. Marceau" },
+      arriveeVivante: null,
       compte: null,
     };
     render(

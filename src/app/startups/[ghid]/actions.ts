@@ -17,7 +17,7 @@ import { calculerPlan, enregistrerPlanDOuverture, ouvrirDossier } from "@/lib/do
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
 
-export type EtatLot = { erreur: string } | { resume: ResumeDeLot } | null;
+export type EtatLot = { erreur: string } | { resume: ResumeDeLot; lot: string } | null;
 
 /**
  * Trois gestes, trois actions, et jamais un discriminant : le ticket dit que déclarer
@@ -184,7 +184,7 @@ export async function declarerHorsIncubateurEnLot(
     },
   );
 
-  return { resume };
+  return { resume, lot };
 }
 
 /**
@@ -293,7 +293,7 @@ export async function ouvrirDepartsEnLot(_etat: EtatLot, formData: FormData): Pr
     },
   );
 
-  return { resume };
+  return { resume, lot };
 }
 
 /**
@@ -384,5 +384,5 @@ export async function cloreConstatsEnLot(_etat: EtatLot, formData: FormData): Pr
     },
   );
 
-  return { resume };
+  return { resume, lot };
 }

@@ -35,12 +35,29 @@ export function BoutonDossier(
   proprietes: {
     username: string;
     priorite?: "primary" | "secondary";
+    /** Le dossier de ce sens déjà ouvert, vers lequel le geste renvoie au lieu d'en ouvrir un. */
+    vivant?: string | null;
   } & ({ sens: "OFFBOARDING" } | { sens: "ONBOARDING"; profils: ChoixDeProfils }),
 ) {
-  const { username, sens, priorite = "primary" } = proprietes;
+  const { username, sens, priorite = "primary", vivant = null } = proprietes;
   const mots = LIBELLE_DOSSIER[sens];
   const modale = MODALES_DE_DOSSIER[sens];
   const ouverture = useCleDOuverture(modale);
+
+  if (vivant !== null) {
+    return (
+      <span className={style["geste"]}>
+        <Button
+          className={fr.cx("fr-mr-1v")}
+          priority={priorite}
+          size="small"
+          linkProps={{ href: `/dossiers/${vivant}` }}
+        >
+          {mots.enCours}
+        </Button>
+      </span>
+    );
+  }
 
   return (
     <>

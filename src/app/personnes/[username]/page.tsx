@@ -319,6 +319,11 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
   // refuse de lever.
   const parEquipe = personne.attachment === "DECLARED" || personne.attachment === "BOTH";
 
+  const departVivant =
+    dossiersVivants.find((dossier) => dossier.kind === "OFFBOARDING")?.id ?? null;
+  const arriveeVivante =
+    dossiersVivants.find((dossier) => dossier.kind === "ONBOARDING")?.id ?? null;
+
   const motifs = motifsDAction({
     statut,
     seuils: thresholds,
@@ -332,8 +337,8 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
     fermes,
     toutesStartupsTerminees: toutesTerminees,
     parEquipe,
-    departVivant: dossiersVivants.find((dossier) => dossier.kind === "OFFBOARDING")?.id ?? null,
-    arriveeVivante: dossiersVivants.find((dossier) => dossier.kind === "ONBOARDING")?.id ?? null,
+    departVivant,
+    arriveeVivante,
   });
 
   return (
@@ -371,6 +376,8 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
             username={personne.username}
             editable={editabilite.editable}
             profils={profils}
+            departVivant={departVivant}
+            arriveeVivante={arriveeVivante}
             {...(editabilite.editable
               ? {}
               : { raisonNonEditable: RAISON_NON_EDITABLE[editabilite.raison] })}

@@ -33,6 +33,8 @@ export interface LigneConstat {
   severity: RiskLevel;
   ouvertLe: string;
   personne: { username: string; fullname: string } | null;
+  /** Le dossier d'arrivée déjà ouvert pour cette personne, vers lequel renvoyer. */
+  arriveeVivante: string | null;
   compte: { provider: string; handle: string } | null;
   /** Ce que le constat désigne quand ce n'est pas un compte, en une phrase. */
   precision?: string | null;
@@ -148,7 +150,16 @@ export function FileDesConstats({
               // l'a été ailleurs. Les autres constats n'ont que la seconde.
               children: (
                 <>
-                  {ligne.kind === "SCOPE_ENTRY" && ligne.personne ? (
+                  {ligne.kind === "SCOPE_ENTRY" && ligne.arriveeVivante !== null ? (
+                    <Button
+                      className={fr.cx("fr-mr-1v")}
+                      priority="secondary"
+                      size="small"
+                      linkProps={{ href: `/dossiers/${ligne.arriveeVivante}` }}
+                    >
+                      {LIBELLE_DOSSIER.ONBOARDING.enCours}
+                    </Button>
+                  ) : ligne.kind === "SCOPE_ENTRY" && ligne.personne ? (
                     <Button
                       className={fr.cx("fr-mr-1v")}
                       priority="secondary"

@@ -1,13 +1,17 @@
 import { fr } from "@codegouvfr/react-dsfr";
+import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import type { Metadata } from "next";
 
+import { FOURNISSEUR_PERIMETRE, fraicheurDe } from "@/core/collecte";
 import type { ConstatKind } from "@/core/constat";
 import { TOLERANCE_MAX_JOURS } from "@/core/derogation";
+import { ETATS_VIVANTS } from "@/core/dossier";
 import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
 import { precisionsDesAccesEchus } from "@/lib/acces-echus";
 import { profilsOfferts } from "@/lib/arrivee";
 import { prisma } from "@/lib/db";
 import { derogationsApplicables } from "@/lib/derogation";
+import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
 import { dateFr } from "@/ui/dates";
 
@@ -38,6 +42,14 @@ export default async function ConstatsPage({
   await requireOperateur();
   const { constat: designe } = await searchParams;
 
+  const dernierRun = await prisma.syncRun.findFirst({
+    where: { provider: FOURNISSEUR_PERIMETRE },
+    orderBy: { startedAt: "desc" },
+    select: { startedAt: true },
+  });
+  const { collectStaleHours } = policy().thresholds;
+  const fraicheur = fraicheurDe(dernierRun?.startedAt ?? null, new Date(), collectStaleHours);
+
   const constats = await prisma.finding.findMany({
     where: { closedAt: null },
     orderBy: [{ severity: "asc" }, { openedAt: "asc" }],
@@ -47,7 +59,17 @@ export default async function ConstatsPage({
       severity: true,
       openedAt: true,
       dedupKey: true,
-      person: { select: { username: true, fullname: true } },
+      person: {
+        select: {
+          username: true,
+          fullname: true,
+          accessCases: {
+            where: { kind: "ONBOARDING", state: { in: [...ETATS_VIVANTS] } },
+            select: { id: true },
+            take: 1,
+          },
+        },
+      },
       externalIdentity: { select: { provider: true, handle: true } },
     },
   });
@@ -120,6 +142,7 @@ export default async function ConstatsPage({
     personne: constat.person
       ? { username: constat.person.username, fullname: constat.person.fullname }
       : null,
+    arriveeVivante: constat.person?.accessCases[0]?.id ?? null,
     compte: constat.externalIdentity,
     precision: precisions.get(constat.dedupKey) ?? null,
   }));
@@ -128,9 +151,25 @@ export default async function ConstatsPage({
     <main className={fr.cx("fr-container", "fr-my-6w")}>
       <h1>Constats</h1>
 
+      {fraicheur.perimee ? (
+        <Alert
+          as="h2"
+          severity="warning"
+          className={fr.cx("fr-mb-3w")}
+          title="Ce que montre cet écran n'est plus à jour"
+          description={
+            fraicheur.heures === null
+              ? "Aucune collecte n'a jamais eu lieu. Cette file ne dit rien des accès réels."
+              : `La dernière collecte lancée remonte à ${fraicheur.heures} heures, au-delà des ${collectStaleHours} heures admises. Les constats affichés datent de ce moment-là.`
+          }
+        />
+      ) : null}
+
       {lignes.length === 0 ? (
         <p className={fr.cx("fr-text--lead")}>
-          Aucun constat ouvert. Rien ne demande d'action à ce jour.
+          {fraicheur.perimee
+            ? "Aucun constat ouvert à la dernière collecte."
+            : "Aucun constat ouvert. Rien ne demande d'action à ce jour."}
         </p>
       ) : (
         <>

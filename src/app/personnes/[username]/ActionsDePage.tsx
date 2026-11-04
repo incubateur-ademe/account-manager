@@ -30,8 +30,12 @@ export function ActionsDePage({
   raisonNonEditable,
   surcharge,
   profils,
+  departVivant,
+  arriveeVivante,
 }: {
   username: string;
+  departVivant: string | null;
+  arriveeVivante: string | null;
   editable: boolean;
   /** Pourquoi la fiche ne s'édite pas, à dire plutôt qu'à taire. */
   raisonNonEditable?: string;
@@ -44,12 +48,18 @@ export function ActionsDePage({
   return (
     <>
       <div className={fr.cx("fr-grid-row", "fr-grid-row--right", "fr-grid-row--middle")}>
-        <BoutonDossier username={username} sens="OFFBOARDING" priorite="secondary" />
+        <BoutonDossier
+          username={username}
+          sens="OFFBOARDING"
+          priorite="secondary"
+          vivant={departVivant}
+        />
         <BoutonDossier
           username={username}
           sens="ONBOARDING"
           priorite="secondary"
           profils={profils}
+          vivant={arriveeVivante}
         />
 
         <span className={style["geste"]}>

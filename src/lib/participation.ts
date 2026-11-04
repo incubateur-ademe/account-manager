@@ -1,4 +1,5 @@
-import type { EtatDossier, SensDossier } from "@/core/dossier";
+import type { EtatDossier, EtatPlan, SensDossier } from "@/core/dossier";
+import { attendSaConfirmation } from "@/core/libelle-dossier";
 import { participationVivante } from "@/core/participation";
 import { prisma } from "@/lib/db";
 
@@ -54,6 +55,7 @@ export interface DossierParticipe {
   etat: EtatDossier;
   porteur: string;
   expiresAt: Date;
+  planAConfirmer: boolean;
 }
 
 /** Les dossiers qu'un droit vivant couvre, pour l'écran de qui n'est pas opérateur. */
@@ -71,7 +73,17 @@ export async function dossiersOuvertsPour(personId: string | null): Promise<Doss
       expiresAt: true,
       revokedAt: true,
       accessCase: {
-        select: { id: true, kind: true, state: true, person: { select: { fullname: true } } },
+        select: {
+          id: true,
+          kind: true,
+          state: true,
+          person: { select: { fullname: true } },
+          plans: {
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            take: 1,
+            select: { state: true, _count: { select: { steps: true } } },
+          },
+        },
       },
     },
   });
@@ -84,5 +96,15 @@ export async function dossiersOuvertsPour(personId: string | null): Promise<Doss
       etat: droit.accessCase.state,
       porteur: droit.accessCase.person.fullname,
       expiresAt: droit.expiresAt,
+      planAConfirmer: attendSaConfirmation(
+        droit.accessCase.state,
+        planLu(droit.accessCase.plans[0]),
+      ),
     }));
+}
+
+function planLu(
+  plan: { state: EtatPlan; _count: { steps: number } } | undefined,
+): { etat: EtatPlan; etapes: number } | null {
+  return plan ? { etat: plan.state, etapes: plan._count.steps } : null;
 }

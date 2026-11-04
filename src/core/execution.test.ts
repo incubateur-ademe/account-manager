@@ -130,6 +130,9 @@ describe("les gardes d'une exécution", () => {
     // constat laisserait le dossier sans sortie
     expect(ecart).toContain(ISSUE_DOSSIER);
     expect(ISSUE_DOSSIER).toContain("clôturez ce dossier");
+    // La clôture refuse un plan dont une étape reste à faire : sans l'écart, suivre la
+    // consigne mot pour mot mènerait à ce refus
+    expect(ISSUE_DOSSIER).toContain("écarté");
 
     // Then un geste hors dossier reçoit la sienne, aucun dossier ne répondant de lui
     expect(refusDEcart("abcd1234", "0000ffff", ISSUE_GESTE)).toContain("reposez ce geste");

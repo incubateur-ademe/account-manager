@@ -5,6 +5,7 @@ import DossierDuParticipantPage, { EtapeDuParticipant } from "@/app/moi/dossiers
 import PageNonTrouveeDuParticipant from "@/app/moi/not-found";
 import MonEspacePage from "@/app/moi/page";
 import type { Acteur, Verdict } from "@/core/dossier";
+import { PLAN_A_CONFIRMER } from "@/core/libelle-dossier";
 import { dossiersOuvertsPour } from "@/lib/participation";
 import type { Utilisateur } from "@/lib/session";
 import { participant } from "@/test/doubles/session";
@@ -123,6 +124,7 @@ vi.mock("@/lib/db", () => ({
                   kind: dossier.kind,
                   state: dossier.state,
                   person: { fullname: dossier.nomComplet },
+                  plans: [{ state: dossier.etatDuPlan, _count: { steps: dossier.etapes.length } }],
                 },
               };
             }),
@@ -335,6 +337,20 @@ describe("ce qu'un droit vivant ouvre, et ce qu'il n'ouvre plus", () => {
     // repère de qui arrive là, l'identifiant ne lui disant rien.
     expect(texteRendu(rempli)).toContain("Camille Exemple");
     expect(texteRendu(rempli)).not.toContain("Aucun dossier");
+    expect(texteRendu(rempli)).not.toContain(PLAN_A_CONFIRMER);
+
+    // When le plan de ce dossier n'est encore qu'un brouillon
+    const dossier = base.dossiers.find((candidat) => candidat.id === "dossier-1");
+    if (dossier) {
+      dossier.etatDuPlan = "DRAFT";
+    }
+
+    // Then l'état le dit à côté de « confirmé » : une arrivée naît confirmée, et le badge
+    // seul affirmait une décision que personne n'avait encore prise sur la liste
+    expect(texteRendu(await MonEspacePage())).toContain(`confirmé, ${PLAN_A_CONFIRMER}`);
+    if (dossier) {
+      dossier.etatDuPlan = "EXECUTING";
+    }
 
     // Then et elle mène à la route du participant, pas à celle de l'opérateur, qui le
     // renverrait ici : ce ne sont pas deux vues du même écran.
@@ -384,6 +400,7 @@ describe("ce qu'un droit vivant ouvre, et ce qu'il n'ouvre plus", () => {
         etat: "CONFIRMED",
         porteur: "Porteur de dossier-vivant",
         expiresAt: expect.any(Date),
+        planAConfirmer: false,
       },
     ]);
 

@@ -281,46 +281,63 @@ export async function confirmerPlan(
     action: "dossier.confirmation",
     targetType: "plan",
     targetId: plan.id,
-    after: { sens, etapes: plan.steps.length, empreinte: plan.planDigest },
+    after: {
+      sens,
+      etapes: plan.steps.length,
+      empreinte: plan.planDigest,
+      ...(ancrage.sorte === "dossier" ? { dossier: "CONFIRMED" } : {}),
+    },
     revalider: [
       ancrage.sorte === "dossier"
         ? `/dossiers/${plan.accessCaseId}`
         : `/personnes/${ancrage.sujet.username}`,
     ],
     ecrire: async (operateur) => {
-      // Conditionnée sur ce qui a été lu, plan et ancrage : la garde seule laisse
-      // passer une annulation arrivée entre la lecture et l'écriture, et un plan
-      // confirmé sous un dossier annulé n'a plus personne pour le contredire. Le filtre
-      // sur la relation `accessCase` ne s'évalue jamais à vrai quand elle est nulle, si
-      // bien qu'un geste rendait `count === 0` et levait sans qu'aucun état n'ait changé.
-      const { count } = await prisma.plan.updateMany({
-        where: {
-          id: plan.id,
-          state: "DRAFT",
-          ...conditionDAncrage(plan.accessCaseId),
-        },
-        data: {
-          state: "EXECUTING",
-          confirmedDigest: plan.planDigest,
-          confirmedBy: operateur.username,
-          confirmedAt: maintenant,
-          // Ce que le calcul confirmé a lu : le lancement le relira, pour qu'un accès retiré
-          // depuis reste au plan et que le précheck le solde.
-          ...(actuel.lus
-            ? {
-                confirmedReads: {
-                  identites: [...actuel.lus.identites],
-                  acces: [...actuel.lus.acces],
-                  references: [...(actuel.lus.references ?? [])],
-                },
-              }
-            : {}),
-        },
-      });
+      await prisma.$transaction(async (transaction) => {
+        // Conditionnée sur ce qui a été lu, plan et ancrage : la garde seule laisse
+        // passer une annulation arrivée entre la lecture et l'écriture, et un plan
+        // confirmé sous un dossier annulé n'a plus personne pour le contredire. Le filtre
+        // sur la relation `accessCase` ne s'évalue jamais à vrai quand elle est nulle, si
+        // bien qu'un geste rendait `count === 0` et levait sans qu'aucun état n'ait changé.
+        const { count } = await transaction.plan.updateMany({
+          where: {
+            id: plan.id,
+            state: "DRAFT",
+            ...conditionDAncrage(plan.accessCaseId),
+          },
+          data: {
+            state: "EXECUTING",
+            confirmedDigest: plan.planDigest,
+            confirmedBy: operateur.username,
+            confirmedAt: maintenant,
+            // Ce que le calcul confirmé a lu : le lancement le relira, pour qu'un accès retiré
+            // depuis reste au plan et que le précheck le solde.
+            ...(actuel.lus
+              ? {
+                  confirmedReads: {
+                    identites: [...actuel.lus.identites],
+                    acces: [...actuel.lus.acces],
+                    references: [...(actuel.lus.references ?? [])],
+                  },
+                }
+              : {}),
+          },
+        });
 
-      if (count === 0) {
-        throw new Error("Ce plan ou son ancrage a changé d'état pendant la confirmation.");
-      }
+        if (count === 0) {
+          throw new Error("Ce plan ou son ancrage a changé d'état pendant la confirmation.");
+        }
+
+        // Répondre de la liste, c'est décider le départ : un dossier qui resterait « à
+        // instruire » sous un plan confirmé annoncerait un soupçon que plus rien n'instruit.
+        // Une arrivée naît confirmée, le filtre la laisse intacte.
+        if (plan.accessCaseId !== null) {
+          await transaction.accessCase.updateMany({
+            where: { id: plan.accessCaseId, state: { in: ["WATCH", "CANDIDATE"] } },
+            data: { state: "CONFIRMED" },
+          });
+        }
+      });
     },
   });
 
@@ -789,7 +806,7 @@ export async function cloreDossier(
       plans: {
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: 1,
-        select: { state: true, _count: { select: { steps: true } } },
+        select: { id: true, state: true, _count: { select: { steps: true } } },
       },
     },
   });
@@ -799,6 +816,11 @@ export async function cloreDossier(
   }
 
   const dernier = dossier.plans[0] ?? null;
+  // Un brouillon vide ne peut pas se confirmer, donc jamais s'exécuter : le laisser en
+  // brouillon sous un dossier clos garderait levé le constat d'arrivée non préparée, que
+  // seule une exécution éteint.
+  const planSoldeALaCloture =
+    dernier !== null && dernier.state === "DRAFT" && dernier._count.steps === 0 ? dernier : null;
   const verdict = peutClore(
     dossier.kind,
     dossier.state,
@@ -815,12 +837,30 @@ export async function cloreDossier(
     action: "dossier.cloture",
     targetType: "personne",
     targetId: dossier.person.username,
-    after: { sens: dossier.kind, etat: "DONE", closedAt: maintenant },
+    after: {
+      sens: dossier.kind,
+      etat: "DONE",
+      closedAt: maintenant,
+      ...(planSoldeALaCloture ? { plan: "EXECUTED" } : {}),
+    },
     revalider: [`/dossiers/${dossier.id}`, `/personnes/${dossier.person.username}`],
-    ecrire: async () => {
-      await prisma.accessCase.update({
-        where: { id: dossier.id },
-        data: { state: "DONE", closedAt: maintenant },
+    ecrire: async (operateur) => {
+      await prisma.$transaction(async (transaction) => {
+        await transaction.accessCase.update({
+          where: { id: dossier.id },
+          data: { state: "DONE", closedAt: maintenant },
+        });
+
+        if (planSoldeALaCloture) {
+          const { count } = await transaction.plan.updateMany({
+            where: { id: planSoldeALaCloture.id, state: "DRAFT" },
+            data: { state: "EXECUTED", confirmedBy: operateur.username, confirmedAt: maintenant },
+          });
+
+          if (count === 0) {
+            throw new Error("Ce plan a changé d'état pendant la clôture de son dossier.");
+          }
+        }
       });
     },
   });

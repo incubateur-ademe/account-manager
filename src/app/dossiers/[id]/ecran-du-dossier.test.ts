@@ -694,7 +694,8 @@ describe("ce que l'écran dit d'un plan confirmé que le calcul du jour dément"
     base.empreinteRecalculee = "une-autre-empreinte";
 
     // When l'écran du dossier se rend
-    const texte = texteRendu(await rendre());
+    const page = await rendre();
+    const texte = texteRendu(page);
 
     // Then il dit que le plan ne partira pas, et non que ce qui a changé se traite
     // ailleurs : le lancement refuse sur cette empreinte, et l'annoncer autrement ferait
@@ -707,6 +708,9 @@ describe("ce que l'écran dit d'un plan confirmé que le calcul du jour dément"
     // sans geste
     expect(texte).toContain(ISSUE_DOSSIER);
     expect(texte.split(ISSUE_DOSSIER).length - 1).toBe(1);
+
+    // Then aucun lancement ne se propose sous cette phrase : le serveur le refuserait
+    expect(noeudsRendus(page, parNom("Lancement"))).toHaveLength(0);
 
     // When ce même plan a aussi dépassé sa date de validité
     base.validiteEnJours = -1;
