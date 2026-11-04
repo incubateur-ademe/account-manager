@@ -2,7 +2,7 @@ import { fr } from "@codegouvfr/react-dsfr";
 import { Alert } from "@codegouvfr/react-dsfr/Alert";
 import type { Metadata } from "next";
 
-import { FOURNISSEUR_PERIMETRE, fraicheurDe } from "@/core/collecte";
+import { fraicheurDe } from "@/core/collecte";
 import type { ConstatKind } from "@/core/constat";
 import { TOLERANCE_MAX_JOURS } from "@/core/derogation";
 import { ETATS_VIVANTS } from "@/core/dossier";
@@ -13,6 +13,7 @@ import { prisma } from "@/lib/db";
 import { derogationsApplicables } from "@/lib/derogation";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
+import { dernierCalculDesConstats } from "@/lib/sync/constats";
 import { dateFr } from "@/ui/dates";
 
 import { EcartsToleres, type LigneTolerance } from "./EcartsToleres";
@@ -42,13 +43,8 @@ export default async function ConstatsPage({
   await requireOperateur();
   const { constat: designe } = await searchParams;
 
-  const dernierRun = await prisma.syncRun.findFirst({
-    where: { provider: FOURNISSEUR_PERIMETRE },
-    orderBy: { startedAt: "desc" },
-    select: { startedAt: true },
-  });
   const { collectStaleHours } = policy().thresholds;
-  const fraicheur = fraicheurDe(dernierRun?.startedAt ?? null, new Date(), collectStaleHours);
+  const fraicheur = fraicheurDe(await dernierCalculDesConstats(), new Date(), collectStaleHours);
 
   const constats = await prisma.finding.findMany({
     where: { closedAt: null },
@@ -160,8 +156,8 @@ export default async function ConstatsPage({
           title="Ce que montre cet écran n'est plus à jour"
           description={
             fraicheur.heures === null
-              ? "Aucune collecte n'a jamais eu lieu. Cette file ne dit rien des accès réels."
-              : `La dernière collecte lancée remonte à ${fraicheur.heures} heures, au-delà des ${collectStaleHours} heures admises. Les constats affichés datent de ce moment-là.`
+              ? "Aucune collecte n'a encore abouti. Cette file ne dit rien des accès réels."
+              : `Cette file a été calculée il y a ${fraicheur.heures} heures, au-delà des ${collectStaleHours} heures admises. Une collecte en échec ne la recalcule pas.`
           }
         />
       ) : null}

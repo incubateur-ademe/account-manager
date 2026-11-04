@@ -13,6 +13,7 @@ import { prisma } from "@/lib/db";
 import { chargerInventaire, FENETRE_JOURNAL_JOURS } from "@/lib/inventaire";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
+import { dernierCalculDesConstats } from "@/lib/sync/constats";
 import { TuilesDeConnecteurs } from "@/ui/connecteurs/Tuiles";
 import { dateFr } from "@/ui/dates";
 
@@ -52,34 +53,42 @@ export default async function AccueilPage() {
   const { thresholds, startups } = policy();
   const today = new Date();
 
-  const [personnes, dernierRun, constatsOuverts, sorties, arrivees, relevesSystemes] =
-    await Promise.all([
-      prisma.person.findMany({
-        select: {
-          missionEnd: true,
-          vanishedAt: true,
-          startups: true,
-          startupAssignments: {
-            where: { endedAt: null },
-            select: { startupGhid: true, until: true, endedAt: true },
-          },
+  const [
+    personnes,
+    dernierRun,
+    dernierCalcul,
+    constatsOuverts,
+    sorties,
+    arrivees,
+    relevesSystemes,
+  ] = await Promise.all([
+    prisma.person.findMany({
+      select: {
+        missionEnd: true,
+        vanishedAt: true,
+        startups: true,
+        startupAssignments: {
+          where: { endedAt: null },
+          select: { startupGhid: true, until: true, endedAt: true },
         },
-      }),
-      prisma.syncRun.findFirst({
-        where: { provider: FOURNISSEUR_PERIMETRE },
-        orderBy: { startedAt: "desc" },
-        select: { startedAt: true, status: true, itemsSeen: true, error: true },
-      }),
-      prisma.finding.count({ where: { closedAt: null } }),
-      prisma.finding.count({ where: { closedAt: null, kind: "SCOPE_EXIT" } }),
-      prisma.finding.count({ where: { closedAt: null, kind: "SCOPE_ENTRY" } }),
-      prisma.syncRun.findMany({
-        where: { capability: "list", provider: { not: FOURNISSEUR_PERIMETRE } },
-        distinct: ["provider"],
-        orderBy: { startedAt: "desc" },
-        select: { provider: true, startedAt: true, status: true },
-      }),
-    ]);
+      },
+    }),
+    prisma.syncRun.findFirst({
+      where: { provider: FOURNISSEUR_PERIMETRE },
+      orderBy: { startedAt: "desc" },
+      select: { startedAt: true, status: true, itemsSeen: true, error: true },
+    }),
+    dernierCalculDesConstats(),
+    prisma.finding.count({ where: { closedAt: null } }),
+    prisma.finding.count({ where: { closedAt: null, kind: "SCOPE_EXIT" } }),
+    prisma.finding.count({ where: { closedAt: null, kind: "SCOPE_ENTRY" } }),
+    prisma.syncRun.findMany({
+      where: { capability: "list", provider: { not: FOURNISSEUR_PERIMETRE } },
+      distinct: ["provider"],
+      orderBy: { startedAt: "desc" },
+      select: { provider: true, startedAt: true, status: true },
+    }),
+  ]);
 
   // Les mêmes lignes que l'écran des startups, pliées de la même façon : une startup
   // terminale qui ne porte plus personne n'appelle aucun geste, et les deux écrans
@@ -109,7 +118,7 @@ export default async function AccueilPage() {
   const suivies = echeances.filter((personne) => personne.vanishedAt === null);
   const sansEcheance = suivies.filter((personne) => personne.missionEnd === null).length;
 
-  const fraicheur = fraicheurDe(dernierRun?.startedAt ?? null, today, thresholds.collectStaleHours);
+  const fraicheur = fraicheurDe(dernierCalcul, today, thresholds.collectStaleHours);
 
   // Le nombre d'arrivées à acter est celui de la dernière conclusion, pas celui du
   // jour : un passage tronqué ou qui a refusé une vague n'en lève ni n'en ferme
@@ -152,8 +161,8 @@ export default async function AccueilPage() {
           title="Ce que montre cet outil n'est plus à jour"
           description={
             fraicheur.heures === null
-              ? "Aucune collecte n'a jamais eu lieu. Ces écrans ne disent rien des accès réels."
-              : `La dernière collecte lancée remonte à ${fraicheur.heures} heures, au-delà des ${thresholds.collectStaleHours} heures admises. Les échéances et les constats affichés datent de ce moment-là.`
+              ? "Aucune collecte n'a encore abouti. Ces écrans ne disent rien des accès réels."
+              : `Les échéances et les constats affichés ont été calculés il y a ${fraicheur.heures} heures, au-delà des ${thresholds.collectStaleHours} heures admises. Une collecte en échec ne les recalcule pas.`
           }
         />
       ) : null}
