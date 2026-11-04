@@ -393,27 +393,6 @@ export async function dateDAmorcage(): Promise<Date | null> {
 }
 
 /**
- * Quand la file des constats a été recalculée pour la dernière fois.
- *
- * Un passage du périmètre en échec ne la recalcule pas (`executer.ts` saute alors
- * `syncConstats`) : le prendre pour date ferait passer pour fraîche une file d'avant-hier.
- * Un passage partiel la recalcule, prudemment, et compte donc.
- */
-export async function dernierCalculDesConstats(): Promise<Date | null> {
-  const dernier = await prisma.syncRun.findFirst({
-    where: {
-      provider: FOURNISSEUR_PERIMETRE,
-      capability: "list",
-      status: { in: ["OK", "PARTIAL"] },
-    },
-    orderBy: { startedAt: "desc" },
-    select: { startedAt: true },
-  });
-
-  return dernier?.startedAt ?? null;
-}
-
-/**
  * Quand le dernier mouvement de ce sens a été exécuté pour chacun, pour ceux dont il
  * l'a été.
  *

@@ -13,7 +13,7 @@ import { prisma } from "@/lib/db";
 import { chargerInventaire, FENETRE_JOURNAL_JOURS } from "@/lib/inventaire";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
-import { dernierCalculDesConstats } from "@/lib/sync/constats";
+import { dernierPassageAbouti } from "@/lib/sync/perimetre";
 import { TuilesDeConnecteurs } from "@/ui/connecteurs/Tuiles";
 import { dateFr } from "@/ui/dates";
 
@@ -56,7 +56,7 @@ export default async function AccueilPage() {
   const [
     personnes,
     dernierRun,
-    dernierCalcul,
+    derniereLecture,
     constatsOuverts,
     sorties,
     arrivees,
@@ -78,7 +78,7 @@ export default async function AccueilPage() {
       orderBy: { startedAt: "desc" },
       select: { startedAt: true, status: true, itemsSeen: true, error: true },
     }),
-    dernierCalculDesConstats(),
+    dernierPassageAbouti(),
     prisma.finding.count({ where: { closedAt: null } }),
     prisma.finding.count({ where: { closedAt: null, kind: "SCOPE_EXIT" } }),
     prisma.finding.count({ where: { closedAt: null, kind: "SCOPE_ENTRY" } }),
@@ -118,7 +118,7 @@ export default async function AccueilPage() {
   const suivies = echeances.filter((personne) => personne.vanishedAt === null);
   const sansEcheance = suivies.filter((personne) => personne.missionEnd === null).length;
 
-  const fraicheur = fraicheurDe(dernierCalcul, today, thresholds.collectStaleHours);
+  const fraicheur = fraicheurDe(derniereLecture, today, thresholds.collectStaleHours);
 
   // Le nombre d'arrivées à acter est celui de la dernière conclusion, pas celui du
   // jour : un passage tronqué ou qui a refusé une vague n'en lève ni n'en ferme
@@ -162,7 +162,7 @@ export default async function AccueilPage() {
           description={
             fraicheur.heures === null
               ? "Aucune collecte n'a encore abouti. Ces écrans ne disent rien des accès réels."
-              : `Les échéances et les constats affichés ont été calculés il y a ${fraicheur.heures} heures, au-delà des ${thresholds.collectStaleHours} heures admises. Une collecte en échec ne les recalcule pas.`
+              : `La dernière collecte aboutie remonte à ${fraicheur.heures} heures, au-delà des ${thresholds.collectStaleHours} heures admises. Les échéances et les constats affichés datent de ce moment-là.`
           }
         />
       ) : null}

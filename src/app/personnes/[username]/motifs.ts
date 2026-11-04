@@ -213,8 +213,8 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
       titre: "Ce que montre cette fiche n'est plus frais",
       description:
         etat.fraicheur.heures === null
-          ? "Aucune collecte n'a jamais eu lieu. Cette fiche ne reflète aucune observation."
-          : `Dernière collecte lancée il y a ${etat.fraicheur.heures} heures. Sa situation a pu changer depuis.`,
+          ? "Aucune collecte n'a encore abouti. Cette fiche ne reflète aucune observation."
+          : `Dernière collecte aboutie il y a ${etat.fraicheur.heures} heures. Sa situation a pu changer depuis.`,
     });
   }
 

@@ -13,7 +13,7 @@ import { prisma } from "@/lib/db";
 import { derogationsApplicables } from "@/lib/derogation";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
-import { dernierCalculDesConstats } from "@/lib/sync/constats";
+import { dernierPassageAbouti } from "@/lib/sync/perimetre";
 import { dateFr } from "@/ui/dates";
 
 import { EcartsToleres, type LigneTolerance } from "./EcartsToleres";
@@ -44,7 +44,7 @@ export default async function ConstatsPage({
   const { constat: designe } = await searchParams;
 
   const { collectStaleHours } = policy().thresholds;
-  const fraicheur = fraicheurDe(await dernierCalculDesConstats(), new Date(), collectStaleHours);
+  const fraicheur = fraicheurDe(await dernierPassageAbouti(), new Date(), collectStaleHours);
 
   const constats = await prisma.finding.findMany({
     where: { closedAt: null },
@@ -157,7 +157,7 @@ export default async function ConstatsPage({
           description={
             fraicheur.heures === null
               ? "Aucune collecte n'a encore abouti. Cette file ne dit rien des accès réels."
-              : `Cette file a été calculée il y a ${fraicheur.heures} heures, au-delà des ${collectStaleHours} heures admises. Une collecte en échec ne la recalcule pas.`
+              : `La dernière collecte aboutie remonte à ${fraicheur.heures} heures, au-delà des ${collectStaleHours} heures admises. Les constats affichés datent de ce moment-là.`
           }
         />
       ) : null}

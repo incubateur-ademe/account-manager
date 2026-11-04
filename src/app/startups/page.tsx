@@ -4,7 +4,7 @@ import { Tile } from "@codegouvfr/react-dsfr/Tile";
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { FOURNISSEUR_PERIMETRE, fraicheurDe } from "@/core/collecte";
+import { fraicheurDe } from "@/core/collecte";
 import { LIBELLE_PHASE } from "@/core/libelle-startup";
 import {
   assemblerIndex,
@@ -16,6 +16,7 @@ import {
 import { prisma } from "@/lib/db";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
+import { dernierPassageAbouti } from "@/lib/sync/perimetre";
 import { Absent } from "@/ui/Absent";
 import { dateFr } from "@/ui/dates";
 import { TableCustom } from "@/ui/TableCustom";
@@ -73,11 +74,7 @@ export default async function StartupsPage(props: {
         },
       },
     }),
-    prisma.syncRun.findFirst({
-      where: { provider: FOURNISSEUR_PERIMETRE },
-      orderBy: { startedAt: "desc" },
-      select: { startedAt: true },
-    }),
+    dernierPassageAbouti(),
   ]);
 
   const rattachables = personnes.map(({ startupAssignments, ...personne }) => ({
@@ -96,7 +93,7 @@ export default async function StartupsPage(props: {
   const masquees = lignes.length - visibles.length;
   const peupleesVisibles = visibles.filter((ligne) => ligne.membres > 0).length;
 
-  const fraicheur = fraicheurDe(dernierRun?.startedAt ?? null, today, thresholds.collectStaleHours);
+  const fraicheur = fraicheurDe(dernierRun, today, thresholds.collectStaleHours);
 
   const inconnus =
     ghidsInconnus.length === 0 ? null : (
@@ -140,8 +137,8 @@ export default async function StartupsPage(props: {
           title="Ce que montre cet écran n'est plus à jour"
           description={
             fraicheur.heures === null
-              ? "Aucune collecte n'a jamais eu lieu. Le référentiel des startups ne dit rien des startups en cours."
-              : `La dernière collecte remonte à ${fraicheur.heures} heures, au-delà des ${thresholds.collectStaleHours} heures admises. Une phase a pu changer, une startup sortir de l'incubateur, sans que rien ici ne le signale.`
+              ? "Aucune collecte n'a encore abouti. Le référentiel des startups ne dit rien des startups en cours."
+              : `La dernière collecte aboutie remonte à ${fraicheur.heures} heures, au-delà des ${thresholds.collectStaleHours} heures admises. Une phase a pu changer, une startup sortir de l'incubateur, sans que rien ici ne le signale.`
           }
         />
       ) : null}
@@ -185,8 +182,8 @@ export default async function StartupsPage(props: {
       {lignes.length === 0 ? (
         <p className={fr.cx("fr-text--lead")}>
           {dernierRun === null
-            ? "Aucune collecte n'a jamais eu lieu. Cette liste ne dit rien des startups en cours."
-            : `La dernière collecte remonte au ${dateFr.format(dernierRun.startedAt)} et n'a rendu aucune startup pour cet incubateur. Regardez le référentiel des startups, pas le déclenchement de la collecte.`}
+            ? "Aucune collecte n'a encore abouti. Cette liste ne dit rien des startups en cours."
+            : `La dernière collecte aboutie remonte au ${dateFr.format(dernierRun)} et n'a rendu aucune startup pour cet incubateur. Regardez le référentiel des startups, pas le déclenchement de la collecte.`}
         </p>
       ) : (
         <>

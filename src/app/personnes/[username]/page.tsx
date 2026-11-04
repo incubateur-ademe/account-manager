@@ -36,7 +36,7 @@ import { toleranceDesComptes } from "@/lib/derogation";
 import { env } from "@/lib/env";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
-import { dernierPassageComplet } from "@/lib/sync/perimetre";
+import { dernierPassageAbouti, dernierPassageComplet } from "@/lib/sync/perimetre";
 import { Absent } from "@/ui/Absent";
 import { dateFr } from "@/ui/dates";
 import { SEVERITE_STATUT } from "@/ui/severites";
@@ -85,101 +85,103 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
   const profils = profilsOfferts();
   const today = new Date();
 
-  const [personne, collectes, dernierePasse, dernierComplet, dossiersVivants] = await Promise.all([
-    prisma.person.findUnique({
-      where: { username },
-      select: {
-        id: true,
-        username: true,
-        fullname: true,
-        primaryEmail: true,
-        communicationEmail: true,
-        githubLogin: true,
-        missionEnd: true,
-        source: true,
-        usernameFabricated: true,
-        attachment: true,
-        startups: true,
-        scopeOverride: {
-          select: { decision: true, reason: true, createdBy: true, createdAt: true },
-        },
-        startupAssignments: {
-          orderBy: [{ endedAt: "asc" }, { until: "desc" }],
-          select: {
-            id: true,
-            startupGhid: true,
-            until: true,
-            reason: true,
-            createdBy: true,
-            createdAt: true,
-            endedAt: true,
-            endedBy: true,
+  const [personne, collectes, dernierePasse, derniereLecture, dernierComplet, dossiersVivants] =
+    await Promise.all([
+      prisma.person.findUnique({
+        where: { username },
+        select: {
+          id: true,
+          username: true,
+          fullname: true,
+          primaryEmail: true,
+          communicationEmail: true,
+          githubLogin: true,
+          missionEnd: true,
+          source: true,
+          usernameFabricated: true,
+          attachment: true,
+          startups: true,
+          scopeOverride: {
+            select: { decision: true, reason: true, createdBy: true, createdAt: true },
           },
-        },
-        firstSeenAt: true,
-        lastSeenAt: true,
-        vanishedAt: true,
-        identities: {
-          orderBy: [{ provider: "asc" }, { handle: "asc" }],
-          select: {
-            id: true,
-            provider: true,
-            handle: true,
-            externalId: true,
-            matchMethod: true,
-            lastSeenAt: true,
-            vanishedAt: true,
-            references: {
-              where: { vanishedAt: null },
-              orderBy: { resource: { label: "asc" } },
-              select: {
-                id: true,
-                onOffboard: true,
-                resource: { select: { label: true, url: true } },
+          startupAssignments: {
+            orderBy: [{ endedAt: "asc" }, { until: "desc" }],
+            select: {
+              id: true,
+              startupGhid: true,
+              until: true,
+              reason: true,
+              createdBy: true,
+              createdAt: true,
+              endedAt: true,
+              endedBy: true,
+            },
+          },
+          firstSeenAt: true,
+          lastSeenAt: true,
+          vanishedAt: true,
+          identities: {
+            orderBy: [{ provider: "asc" }, { handle: "asc" }],
+            select: {
+              id: true,
+              provider: true,
+              handle: true,
+              externalId: true,
+              matchMethod: true,
+              lastSeenAt: true,
+              vanishedAt: true,
+              references: {
+                where: { vanishedAt: null },
+                orderBy: { resource: { label: "asc" } },
+                select: {
+                  id: true,
+                  onOffboard: true,
+                  resource: { select: { label: true, url: true } },
+                },
               },
             },
           },
-        },
-        findings: {
-          orderBy: { openedAt: "desc" },
-          select: {
-            id: true,
-            kind: true,
-            dedupKey: true,
-            severity: true,
-            openedAt: true,
-            closedAt: true,
-            closeReason: true,
-            closedBy: true,
-            externalIdentity: { select: { provider: true, handle: true } },
+          findings: {
+            orderBy: { openedAt: "desc" },
+            select: {
+              id: true,
+              kind: true,
+              dedupKey: true,
+              severity: true,
+              openedAt: true,
+              closedAt: true,
+              closeReason: true,
+              closedBy: true,
+              externalIdentity: { select: { provider: true, handle: true } },
+            },
           },
         },
-      },
-    }),
-    prisma.syncRun.findMany({
-      where: { capability: "list", status: { in: ["OK", "PARTIAL"] } },
-      distinct: ["provider"],
-      select: { provider: true },
-    }),
-    prisma.syncRun.findFirst({
-      where: { provider: FOURNISSEUR_PERIMETRE },
-      orderBy: { startedAt: "desc" },
-      select: { startedAt: true, error: true },
-    }),
-    // Le relevé contre lequel la collecte décide, et non le dernier passage tout
-    // court : deux lectures de « la dernière fois qu'on a su » finiraient par ne plus
-    // parler du même passage, et l'écran dirait alors autre chose que la règle qu'il
-    // annonce.
-    dernierPassageComplet(),
-    // Filtrée par la relation plutôt que par l'identifiant de la personne, que cette
-    // requête ne connaît pas encore : elle part en même temps que celle qui le lit.
-    // Les deux sens, chacun annoncé par son propre motif : l'index unique partiel en
-    // garantit au plus un par sens, jamais un seul pour les deux.
-    prisma.accessCase.findMany({
-      where: { person: { username }, state: { in: [...ETATS_VIVANTS] } },
-      select: { id: true, kind: true, _count: { select: { plans: true } } },
-    }),
-  ]);
+      }),
+      prisma.syncRun.findMany({
+        where: { capability: "list", status: { in: ["OK", "PARTIAL"] } },
+        distinct: ["provider"],
+        select: { provider: true },
+      }),
+      prisma.syncRun.findFirst({
+        where: { provider: FOURNISSEUR_PERIMETRE },
+        orderBy: { startedAt: "desc" },
+        select: { error: true },
+      }),
+      dernierPassageAbouti(),
+      // Le relevé contre lequel la collecte décide, et non le dernier passage tout
+      // court : deux lectures de « la dernière fois qu'on a su » finiraient par ne plus
+      // parler du même passage, et l'écran dirait alors autre chose que la règle qu'il
+      // annonce.
+      dernierPassageComplet(),
+      // Filtrée par la relation plutôt que par l'identifiant de la personne, que cette
+      // requête ne connaît pas encore : elle part en même temps que celle qui le lit.
+      // Les deux sens, chacun annoncé par son propre motif : l'index unique partiel en
+      // garantit au plus un par sens, jamais un seul pour les deux.
+      prisma.accessCase.findMany({
+        where: { person: { username }, state: { in: [...ETATS_VIVANTS] } },
+        select: { id: true, kind: true, _count: { select: { plans: true } } },
+      }),
+    ]);
 
   if (!personne) {
     notFound();
@@ -258,11 +260,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
     thresholds,
   );
 
-  const fraicheur = fraicheurDe(
-    dernierePasse?.startedAt ?? null,
-    today,
-    thresholds.collectStaleHours,
-  );
+  const fraicheur = fraicheurDe(derniereLecture, today, thresholds.collectStaleHours);
   const nonRendue = nonRendueAuDernierPassage(personne, dernierComplet?.startedAt ?? null);
   // Adossé au même verdict et non lu seul : la trace nomme les fiches que ce passage a
   // retenues, et un passage dégradé peut avoir relu la sienne depuis sans devenir la
@@ -319,16 +317,14 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
   // refuse de lever.
   const parEquipe = personne.attachment === "DECLARED" || personne.attachment === "BOTH";
 
-  const departVivant =
-    dossiersVivants.find((dossier) => dossier.kind === "OFFBOARDING")?.id ?? null;
-  const arriveeVivante =
-    dossiersVivants.find((dossier) => dossier.kind === "ONBOARDING")?.id ?? null;
   // Un dossier vivant sans plan est le reste d'une ouverture interrompue, que seul le
   // bouton d'ouverture reprend : un lien mènerait à un dossier dont l'annulation est la
-  // seule issue.
+  // seule issue. Les motifs et les boutons lisent donc le même filtre.
   const vivantAPlan = (sens: "ONBOARDING" | "OFFBOARDING") =>
     dossiersVivants.find((dossier) => dossier.kind === sens && dossier._count.plans > 0)?.id ??
     null;
+  const departVivant = vivantAPlan("OFFBOARDING");
+  const arriveeVivante = vivantAPlan("ONBOARDING");
 
   const motifs = motifsDAction({
     statut,
@@ -382,8 +378,8 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
             username={personne.username}
             editable={editabilite.editable}
             profils={profils}
-            departVivant={vivantAPlan("OFFBOARDING")}
-            arriveeVivante={vivantAPlan("ONBOARDING")}
+            departVivant={departVivant}
+            arriveeVivante={arriveeVivante}
             {...(editabilite.editable
               ? {}
               : { raisonNonEditable: RAISON_NON_EDITABLE[editabilite.raison] })}

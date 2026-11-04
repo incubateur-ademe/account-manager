@@ -19,6 +19,7 @@ import { phasesDesStartups } from "@/lib/appartenance";
 import { prisma } from "@/lib/db";
 import { policy } from "@/lib/policy";
 import { requireOperateur } from "@/lib/session";
+import { dernierPassageAbouti } from "@/lib/sync/perimetre";
 import { Absent } from "@/ui/Absent";
 import { dateFr } from "@/ui/dates";
 import { RATTACHEMENT_IDENTITE } from "@/ui/severites";
@@ -106,11 +107,7 @@ export default async function FicheStartupPage({ params }: Props) {
         vanishedAt: true,
       },
     }),
-    prisma.syncRun.findFirst({
-      where: { provider: FOURNISSEUR_PERIMETRE },
-      orderBy: { startedAt: "desc" },
-      select: { startedAt: true },
-    }),
+    dernierPassageAbouti(),
     // La colonne des comptes affirme un nombre par système : sans savoir lesquels ont
     // été lus, un système jamais collecté s'y lit exactement comme un système sans
     // compte, et l'écran d'où l'on part couper des accès conclurait qu'il n'y a rien à
@@ -256,11 +253,7 @@ export default async function FicheStartupPage({ params }: Props) {
   const phase = startup.currentPhase;
   const libellePhase = phase === null ? null : (LIBELLE_PHASE[phase] ?? phase);
   const terminale = estPhaseTerminale(phase, new Set(reglesStartups.terminalPhases));
-  const fraicheur = fraicheurDe(
-    dernierePasse?.startedAt ?? null,
-    today,
-    thresholds.collectStaleHours,
-  );
+  const fraicheur = fraicheurDe(dernierePasse, today, thresholds.collectStaleHours);
 
   return (
     <main className={fr.cx("fr-container", "fr-my-6w")}>
@@ -295,8 +288,8 @@ export default async function FicheStartupPage({ params }: Props) {
           title="Ce que montre cet écran n'est plus à jour"
           description={
             fraicheur.heures === null
-              ? "Aucune collecte n'a jamais eu lieu. Rien de ce qu'affiche cette page ne vient d'une observation."
-              : `La dernière collecte remonte à ${fraicheur.heures} heures, au-delà des ${thresholds.collectStaleHours} heures admises. La phase, les membres et leurs échéances sont gelés depuis.`
+              ? "Aucune collecte n'a encore abouti. Rien de ce qu'affiche cette page ne vient d'une observation."
+              : `La dernière collecte aboutie remonte à ${fraicheur.heures} heures, au-delà des ${thresholds.collectStaleHours} heures admises. La phase, les membres et leurs échéances sont gelés depuis.`
           }
         />
       ) : null}

@@ -4,6 +4,7 @@ import type { MatchMethod } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/db";
 import { policy } from "@/lib/policy";
 import type { Utilisateur } from "@/lib/session";
+import { dernierPassageAbouti } from "@/lib/sync/perimetre";
 
 export interface CompteConnu {
   id: string;
@@ -89,11 +90,7 @@ export async function chargerMesComptes(
             },
           },
         }),
-    prisma.syncRun.findFirst({
-      where: { provider: FOURNISSEUR_PERIMETRE },
-      orderBy: { startedAt: "desc" },
-      select: { startedAt: true },
-    }),
+    dernierPassageAbouti(),
     prisma.syncRun.findMany({
       where: { capability: "list", provider: { not: FOURNISSEUR_PERIMETRE } },
       distinct: ["provider"],
@@ -106,11 +103,7 @@ export async function chargerMesComptes(
   const nomme = (cle: string) => nomDuSysteme.get(cle) ?? cle;
 
   const observation: Observation = {
-    perimetre: fraicheurDe(
-      dernierePasse?.startedAt ?? null,
-      maintenant,
-      thresholds.collectStaleHours,
-    ),
+    perimetre: fraicheurDe(dernierePasse, maintenant, thresholds.collectStaleHours),
     observes: attendus
       .filter((cle) => !muets.some((muet) => muet.provider === cle))
       .map(nomme)
