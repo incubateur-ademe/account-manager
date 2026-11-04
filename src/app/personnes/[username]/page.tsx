@@ -177,7 +177,7 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
     // garantit au plus un par sens, jamais un seul pour les deux.
     prisma.accessCase.findMany({
       where: { person: { username }, state: { in: [...ETATS_VIVANTS] } },
-      select: { id: true, kind: true },
+      select: { id: true, kind: true, _count: { select: { plans: true } } },
     }),
   ]);
 
@@ -323,6 +323,12 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
     dossiersVivants.find((dossier) => dossier.kind === "OFFBOARDING")?.id ?? null;
   const arriveeVivante =
     dossiersVivants.find((dossier) => dossier.kind === "ONBOARDING")?.id ?? null;
+  // Un dossier vivant sans plan est le reste d'une ouverture interrompue, que seul le
+  // bouton d'ouverture reprend : un lien mènerait à un dossier dont l'annulation est la
+  // seule issue.
+  const vivantAPlan = (sens: "ONBOARDING" | "OFFBOARDING") =>
+    dossiersVivants.find((dossier) => dossier.kind === sens && dossier._count.plans > 0)?.id ??
+    null;
 
   const motifs = motifsDAction({
     statut,
@@ -376,8 +382,8 @@ export default async function FichePersonnePage({ params, searchParams }: Props)
             username={personne.username}
             editable={editabilite.editable}
             profils={profils}
-            departVivant={departVivant}
-            arriveeVivante={arriveeVivante}
+            departVivant={vivantAPlan("OFFBOARDING")}
+            arriveeVivante={vivantAPlan("ONBOARDING")}
             {...(editabilite.editable
               ? {}
               : { raisonNonEditable: RAISON_NON_EDITABLE[editabilite.raison] })}

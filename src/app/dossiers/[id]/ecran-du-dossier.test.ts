@@ -723,5 +723,11 @@ describe("ce que l'écran dit d'un plan confirmé que le calcul du jour dément"
     expect(deuxCauses).toContain("Ce plan a dépassé sa date de validité");
     expect(deuxCauses.split(ISSUE_DOSSIER).length - 1).toBe(1);
     expect(deuxCauses).toContain("L'issue est dite plus bas, avec la date qui la motive.");
+
+    // When seule la date de validité reste en cause
+    base.empreinteRecalculee = EMPREINTE;
+
+    // Then le lancement reste démonté : le serveur refuse aussi un plan périmé
+    expect(noeudsRendus(await rendre(), parNom("Lancement"))).toHaveLength(0);
   });
 });

@@ -844,7 +844,7 @@ export async function cloreDossier(
       ...(planSoldeALaCloture ? { plan: "EXECUTED" } : {}),
     },
     revalider: [`/dossiers/${dossier.id}`, `/personnes/${dossier.person.username}`],
-    ecrire: async (operateur) => {
+    ecrire: async () => {
       await prisma.$transaction(async (transaction) => {
         await transaction.accessCase.update({
           where: { id: dossier.id },
@@ -854,7 +854,10 @@ export async function cloreDossier(
         if (planSoldeALaCloture) {
           const { count } = await transaction.plan.updateMany({
             where: { id: planSoldeALaCloture.id, state: "DRAFT" },
-            data: { state: "EXECUTED", confirmedBy: operateur.username, confirmedAt: maintenant },
+            // Sans `confirmedBy` : personne n'a répondu d'une liste que la confirmation
+            // refusait, et l'écran du dossier lirait la signature comme une confirmation.
+            // La date reste, la collecte en a besoin pour dater l'exécution d'un plan vide.
+            data: { state: "EXECUTED", confirmedAt: maintenant },
           });
 
           if (count === 0) {

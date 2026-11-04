@@ -64,7 +64,8 @@ export default async function ConstatsPage({
           username: true,
           fullname: true,
           accessCases: {
-            where: { kind: "ONBOARDING", state: { in: [...ETATS_VIVANTS] } },
+            // Avec un plan : sans lui, seule la modale d'ouverture reprend le dossier.
+            where: { kind: "ONBOARDING", state: { in: [...ETATS_VIVANTS] }, plans: { some: {} } },
             select: { id: true },
             take: 1,
           },

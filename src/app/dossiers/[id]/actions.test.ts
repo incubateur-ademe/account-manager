@@ -78,6 +78,7 @@ interface PlanEnBase {
   planDigest: string;
   confirmedDigest: string | null;
   confirmedBy: string | null;
+  confirmedAt?: Date | null;
   confirmedReads?: unknown;
   expiresAt: Date;
 }
@@ -232,7 +233,8 @@ vi.mock("@/lib/policy", () => ({ policy: () => ({ permanentDerogations: [] }) })
 
 vi.mock("@/lib/db", () => ({
   prisma: {
-    // Sans isolation : ces scénarios ne mettent jamais deux écritures en concurrence.
+    // Ni isolation ni retour arrière : une écriture levée en cours de transaction laisse
+    // ici en place celles qui la précèdent, aucun scénario ne s'appuie donc sur l'annulation.
     $transaction<T>(travail: (transaction: unknown) => Promise<T>): Promise<T> {
       return travail(this);
     },
@@ -366,6 +368,7 @@ vi.mock("@/lib/db", () => ({
         plan.confirmedDigest = data.confirmedDigest ?? plan.confirmedDigest;
         plan.confirmedReads = data.confirmedReads ?? plan.confirmedReads;
         plan.confirmedBy = data.confirmedBy ?? plan.confirmedBy;
+        plan.confirmedAt = data.confirmedAt ?? plan.confirmedAt ?? null;
         return Promise.resolve({ count: 1 });
       },
     },
@@ -1941,13 +1944,18 @@ describe("la clôture d'une arrivée qui n'avait rien à donner", () => {
     // When l'opératrice clôt le dossier
     const close = await cloreDossier(null, formulaire({ dossierId: dossier.id }));
 
-    // Then le dossier est clos et le plan exécuté dans la même écriture, signé et daté par
-    // qui a clos : la collecte ne lève le constat d'arrivée non préparée que sur un plan
-    // exécuté, et c'est cette date qu'elle compare à l'entrée dans le périmètre
+    // Then le dossier est clos et le plan exécuté dans la même écriture, et daté : la
+    // collecte ne lève le constat d'arrivée non préparée que sur un plan exécuté, et pour un
+    // plan sans étape c'est cette date qu'elle compare à l'entrée dans le périmètre
     expect(close.erreur).toBeUndefined();
     expect(dossier.state).toBe("DONE");
     expect(plan.state).toBe("EXECUTED");
-    expect(plan.confirmedBy).toBe("operatrice.exemple");
+    expect(plan.confirmedAt).toBeInstanceOf(Date);
+
+    // Then sans signature de confirmation : la confirmation a été refusée, et l'écran du
+    // dossier lirait ce nom comme celui de qui a répondu de la liste. Le journal garde qui a clos
+    expect(plan.confirmedBy).toBeNull();
+    expect(base.journal.at(-1)?.actorUsername).toBe("operatrice.exemple");
     expect(base.gestes.slice(-3)).toEqual([
       "journal:dossier.cloture:SUCCESS",
       "dossier:DONE",

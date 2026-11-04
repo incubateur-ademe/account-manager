@@ -830,7 +830,7 @@ export default async function DossierPage({
           Plan calculé le {dateLocale.format(plan.createdAt)} par {plan.createdBy}
           {plan.confirmedBy
             ? `, confirmé le ${dateLocale.format(plan.confirmedAt ?? maintenant)} par ${plan.confirmedBy}`
-            : annule || remplace || etat?.perime
+            : annule || remplace || etat?.perime || plan.state !== "DRAFT"
               ? ""
               : `, valable jusqu'au ${dateLocale.format(plan.expiresAt)}`}
           .
