@@ -29,7 +29,7 @@ import {
   systemesDuDepart,
   validationApresPointage,
 } from "./dossier";
-import { LIBELLE_ETAT_DOSSIER } from "./libelle-dossier";
+import { attendSaConfirmation, LIBELLE_ETAT_DOSSIER } from "./libelle-dossier";
 
 const FRAIS = { perime: false, obsolete: false };
 
@@ -1084,5 +1084,24 @@ describe("l'état qu'aucun code ne pose", () => {
     // une migration, que ce dépôt écrit à la main dès qu'une valeur disparaît ; le laisser sans
     // rien dire promettrait au mainteneur un état métier qu'il chercherait un jour à atteindre.
     expect(LIBELLE_ETAT_DOSSIER.WATCH).toBe("en veille");
+  });
+});
+
+describe("ce que l'état d'un dossier tait de son plan", () => {
+  it("annonce le brouillon qu'on peut confirmer, et lui seul", () => {
+    // Given une arrivée, née confirmée, dont le plan attend qu'on en réponde
+    // Then les listes doivent le dire à côté de « confirmé »
+    expect(attendSaConfirmation("CONFIRMED", { etat: "DRAFT", etapes: 2 })).toBe(true);
+    expect(attendSaConfirmation("CANDIDATE", { etat: "DRAFT", etapes: 2 })).toBe(true);
+
+    // Then un brouillon vide ne s'annonce pas : la confirmation le refuse, et la clôture le
+    // solde. Annoncer un geste impossible enverrait chercher un bouton absent
+    expect(attendSaConfirmation("CONFIRMED", { etat: "DRAFT", etapes: 0 })).toBe(false);
+
+    // Then ni un plan confirmé, ni un dossier sans plan, ni un dossier qui n'est plus vivant
+    expect(attendSaConfirmation("CONFIRMED", { etat: "EXECUTING", etapes: 2 })).toBe(false);
+    expect(attendSaConfirmation("CONFIRMED", null)).toBe(false);
+    expect(attendSaConfirmation("CANCELLED", { etat: "DRAFT", etapes: 2 })).toBe(false);
+    expect(attendSaConfirmation("DONE", { etat: "DRAFT", etapes: 2 })).toBe(false);
   });
 });

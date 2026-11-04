@@ -373,7 +373,14 @@ export default async function DossierPage({
 
   const tiers = plan ? tiersDuJour(plan.id, actuel) : new Map<string, string>();
 
-  const executable = plan !== undefined && !annule && peutExecuter(plan.state).possible;
+  // L'encart de dérive ou de péremption dit déjà « il ne partira pas » : laisser le
+  // lancement monté sous cette phrase offrirait un bouton que le serveur refuse.
+  const executable =
+    plan !== undefined &&
+    !annule &&
+    peutExecuter(plan.state).possible &&
+    !etat?.obsolete &&
+    !etat?.perime;
   const simulation = !env.ACTIONS_ENABLED;
 
   // Mesurée sur le plan recalculé, comme la boucle le fait, et sur toutes ses étapes et
@@ -823,7 +830,7 @@ export default async function DossierPage({
           Plan calculé le {dateLocale.format(plan.createdAt)} par {plan.createdBy}
           {plan.confirmedBy
             ? `, confirmé le ${dateLocale.format(plan.confirmedAt ?? maintenant)} par ${plan.confirmedBy}`
-            : annule || remplace || etat?.perime
+            : annule || remplace || etat?.perime || plan.state !== "DRAFT"
               ? ""
               : `, valable jusqu'au ${dateLocale.format(plan.expiresAt)}`}
           .

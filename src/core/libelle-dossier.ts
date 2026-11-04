@@ -1,4 +1,10 @@
-import type { Acteur, EtatDossier, SensDossier } from "@/core/dossier";
+import {
+  type Acteur,
+  dossierVivant,
+  type EtatDossier,
+  type EtatPlan,
+  type SensDossier,
+} from "@/core/dossier";
 
 /**
  * Ce qu'un dossier dit de lui-même selon son sens.
@@ -18,6 +24,8 @@ export interface LibelleDossier {
   ouvertureExplication: string;
   /** Quand on retombe sur un dossier déjà ouvert plutôt que d'en créer un second. */
   dejaOuvert: string;
+  /** Le lien qui remplace `ouvrir` quand un dossier de ce sens est déjà ouvert. */
+  enCours: string;
   /** L'encart qui rappelle qu'un pointage ne déclenche rien. */
   cocher: string;
   /**
@@ -65,6 +73,7 @@ export const LIBELLE_DOSSIER: Record<SensDossier, LibelleDossier> = {
       "Un dossier est ouvert et la liste de ce qu'il faut donner est calculée. Rien n'est exécuté et aucun accès n'est ouvert. Le plan reste à confirmer avant que le moindre appel ne soit possible.",
     dejaOuvert:
       "Ce dossier était déjà ouvert, aucun second dossier n'a été créé. Une arrivée ne s'ouvre qu'une fois par personne tant qu'elle n'est pas close.",
+    enCours: "Ouvrir le dossier d'arrivée en cours",
     cocher:
       "Cocher une étape n'exécute rien. L'outil consigne ce que vous déclarez avoir fait. La collecte suivante dira si le compte est réellement apparu.",
     droitPossibleSur: "une arrivée décidée et pas encore close",
@@ -104,6 +113,7 @@ export const LIBELLE_DOSSIER: Record<SensDossier, LibelleDossier> = {
       "Un dossier est ouvert et la liste de ce qu'il faut retirer est calculée à partir des comptes observés. Rien n'est exécuté et aucun accès n'est coupé. Le plan reste à confirmer, puis à cocher à la main.",
     dejaOuvert:
       "Ce dossier était déjà ouvert, aucun second dossier n'a été créé. Un départ ne s'ouvre qu'une fois par personne tant qu'il n'est pas clos.",
+    enCours: "Ouvrir le dossier de départ en cours",
     cocher:
       "Cocher une étape n'exécute rien. L'outil consigne ce que vous déclarez avoir fait. La collecte suivante dira si le compte a réellement disparu.",
     droitPossibleSur: "un départ décidé et pas encore clos",
@@ -150,6 +160,20 @@ export const LIBELLE_ETAT_DOSSIER: Record<EtatDossier, string> = {
   CANCELLED: "annulé",
   DONE: "clos",
 };
+
+export const PLAN_A_CONFIRMER = "plan à confirmer";
+
+/**
+ * Ce que l'état seul tait : une arrivée naît confirmée, si bien que son badge l'affirmait
+ * avant que quiconque ait répondu de sa liste. Un brouillon vide ne se confirme pas, il
+ * ne s'annonce donc pas.
+ */
+export function attendSaConfirmation(
+  etat: EtatDossier,
+  plan: { etat: EtatPlan; etapes: number } | null,
+): boolean {
+  return dossierVivant(etat) && plan !== null && plan.etat === "DRAFT" && plan.etapes > 0;
+}
 
 /**
  * Qui agit sur une étape, dit en français et au nominatif. Le vocabulaire vit ici et

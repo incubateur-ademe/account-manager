@@ -4,7 +4,7 @@ import { Table } from "@codegouvfr/react-dsfr/Table";
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { LIBELLE_DOSSIER, LIBELLE_ETAT_DOSSIER } from "@/core/libelle-dossier";
+import { LIBELLE_DOSSIER, LIBELLE_ETAT_DOSSIER, PLAN_A_CONFIRMER } from "@/core/libelle-dossier";
 import { chargerMesComptes } from "@/lib/espace-perso";
 import { dossiersOuvertsPour } from "@/lib/participation";
 import { policy } from "@/lib/policy";
@@ -63,7 +63,9 @@ export default async function MonEspacePage() {
               {dossier.porteur}
             </Link>,
             LIBELLE_DOSSIER[dossier.sens].nom,
-            LIBELLE_ETAT_DOSSIER[dossier.etat],
+            dossier.planAConfirmer
+              ? `${LIBELLE_ETAT_DOSSIER[dossier.etat]}, ${PLAN_A_CONFIRMER}`
+              : LIBELLE_ETAT_DOSSIER[dossier.etat],
             dateFr.format(dossier.expiresAt),
           ])}
         />

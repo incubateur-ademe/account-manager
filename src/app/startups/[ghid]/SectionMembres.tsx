@@ -65,7 +65,7 @@ export function SectionMembres({
             className={fr.cx("fr-mt-2w")}
             severity="info"
             small
-            description="Aucune collecte du référentiel des personnes n'a jamais eu lieu. Cette liste ne dit rien des personnes rattachées à cette startup."
+            description="Aucune collecte du référentiel des personnes n'a encore abouti. Cette liste ne dit rien des personnes rattachées à cette startup."
           />
         ) : sortieLe ? (
           // Le vide d'une startup sortie ne prouve rien, et c'est arithmétique : la

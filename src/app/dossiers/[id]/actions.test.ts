@@ -78,6 +78,7 @@ interface PlanEnBase {
   planDigest: string;
   confirmedDigest: string | null;
   confirmedBy: string | null;
+  confirmedAt?: Date | null;
   confirmedReads?: unknown;
   expiresAt: Date;
 }
@@ -232,6 +233,11 @@ vi.mock("@/lib/policy", () => ({ policy: () => ({ permanentDerogations: [] }) })
 
 vi.mock("@/lib/db", () => ({
   prisma: {
+    // Ni isolation ni retour arrière : une écriture levée en cours de transaction laisse
+    // ici en place celles qui la précèdent, aucun scénario ne s'appuie donc sur l'annulation.
+    $transaction<T>(travail: (transaction: unknown) => Promise<T>): Promise<T> {
+      return travail(this);
+    },
     derogation: {
       findMany: () => Promise.resolve([]),
     },
@@ -341,6 +347,7 @@ vi.mock("@/lib/db", () => ({
           state: EtatPlan;
           confirmedDigest?: string;
           confirmedBy?: string;
+          confirmedAt?: Date;
           confirmedReads?: unknown;
         };
       }) => {
@@ -361,6 +368,7 @@ vi.mock("@/lib/db", () => ({
         plan.confirmedDigest = data.confirmedDigest ?? plan.confirmedDigest;
         plan.confirmedReads = data.confirmedReads ?? plan.confirmedReads;
         plan.confirmedBy = data.confirmedBy ?? plan.confirmedBy;
+        plan.confirmedAt = data.confirmedAt ?? plan.confirmedAt ?? null;
         return Promise.resolve({ count: 1 });
       },
     },
@@ -442,6 +450,23 @@ vi.mock("@/lib/db", () => ({
           dossier.state = data.state;
         }
         return Promise.resolve(dossier);
+      },
+      updateMany: ({
+        where,
+        data,
+      }: {
+        where: { id: string; state: { in: readonly EtatDossier[] } };
+        data: { state: EtatDossier };
+      }) => {
+        const dossier = base.dossiers.find(
+          (candidat) => candidat.id === where.id && where.state.in.includes(candidat.state),
+        );
+        if (!dossier) {
+          return Promise.resolve({ count: 0 });
+        }
+        base.gestes.push(`dossier:${data.state}`);
+        dossier.state = data.state;
+        return Promise.resolve({ count: 1 });
       },
     },
     planTemplate: {
@@ -716,7 +741,7 @@ describe("le geste qui engage : confirmer un plan", () => {
       matchMethod: "DECLARED",
       vanishedAt: null,
     });
-    const { plan } = await dossierAvecPlan("OFFBOARDING");
+    const { dossier, plan } = await dossierAvecPlan("OFFBOARDING");
     const empreinteApprouvee = plan.planDigest;
     expect(base.etapes).toHaveLength(1);
 
@@ -735,6 +760,7 @@ describe("le geste qui engage : confirmer un plan", () => {
     expect(dementi.erreur).not.toContain("date de validité");
     expect(plan.state).toBe("DRAFT");
     expect(plan.confirmedDigest).toBeNull();
+    expect(dossier.state).toBe("CANDIDATE");
 
     // Then rien n'a été écrit, donc rien n'a été journalisé : le journal raconte des
     // gestes, pas des tentatives refusées avant d'atteindre la base.
@@ -759,8 +785,20 @@ describe("le geste qui engage : confirmer un plan", () => {
     // Then la trace précède l'écriture, et elle est nominative : une action dont la
     // trace serait posée après coup serait, en cas de panne, une action que personne
     // ne pourrait plus expliquer ni attribuer.
-    expect(base.gestes).toEqual(["journal:dossier.confirmation:SUCCESS", "plan:EXECUTING"]);
-    expect(base.journal[0]?.after).toMatchObject({ sens: "OFFBOARDING", etapes: 1 });
+    expect(base.gestes).toEqual([
+      "journal:dossier.confirmation:SUCCESS",
+      "plan:EXECUTING",
+      "dossier:CONFIRMED",
+    ]);
+    expect(base.journal[0]?.after).toMatchObject({
+      sens: "OFFBOARDING",
+      etapes: 1,
+      dossier: "CONFIRMED",
+    });
+
+    // Then répondre de la liste décide le départ : le dossier quitte « à instruire » dans la
+    // même écriture, sans quoi les listes annonceraient un soupçon que plus rien n'instruit
+    expect(dossier.state).toBe("CONFIRMED");
   });
 
   it("refuse un plan trop vieux, et un plan dont le dossier a été abandonné entre-temps", async () => {
@@ -1890,6 +1928,43 @@ describe("la clôture d'un dossier, quand tout est coché mais que quelqu'un att
   });
 });
 
+describe("la clôture d'une arrivée qui n'avait rien à donner", () => {
+  it("solde le brouillon vide avec le dossier, pour que le constat d'arrivée s'éteigne", async () => {
+    // Given une arrivée dont le plan ne porte aucune étape : aucun système ne sait rien
+    // donner, aucun modèle ne la concerne
+    base.connecteurs.length = 0;
+    const { dossier, plan } = await dossierAvecPlan("ONBOARDING");
+    expect(base.etapes).toHaveLength(0);
+    expect(plan.state).toBe("DRAFT");
+
+    // Then ce brouillon ne se confirme pas, donc ne s'exécutera jamais de lui-même
+    const confirme = await confirmerPlan(null, formulaire({ planId: plan.id }));
+    expect(confirme.erreur).toBe("Ce plan ne demande aucune action.");
+
+    // When l'opératrice clôt le dossier
+    const close = await cloreDossier(null, formulaire({ dossierId: dossier.id }));
+
+    // Then le dossier est clos et le plan exécuté dans la même écriture, et daté : la
+    // collecte ne lève le constat d'arrivée non préparée que sur un plan exécuté, et pour un
+    // plan sans étape c'est cette date qu'elle compare à l'entrée dans le périmètre
+    expect(close.erreur).toBeUndefined();
+    expect(dossier.state).toBe("DONE");
+    expect(plan.state).toBe("EXECUTED");
+    expect(plan.confirmedAt).toBeInstanceOf(Date);
+
+    // Then sans signature de confirmation : la confirmation a été refusée, et l'écran du
+    // dossier lirait ce nom comme celui de qui a répondu de la liste. Le journal garde qui a clos
+    expect(plan.confirmedBy).toBeNull();
+    expect(base.journal.at(-1)?.actorUsername).toBe("operatrice.exemple");
+    expect(base.gestes.slice(-3)).toEqual([
+      "journal:dossier.cloture:SUCCESS",
+      "dossier:DONE",
+      "plan:EXECUTED",
+    ]);
+    expect(base.journal.at(-1)?.after).toMatchObject({ etat: "DONE", plan: "EXECUTED" });
+  });
+});
+
 /**
  * Deux gestes humains distincts, donc deux traces distinctes : le journal doit pouvoir
  * redire dans deux ans qui a déclaré et qui a contrôlé. Les confondre ferait
@@ -2048,7 +2123,7 @@ describe("une étape de modèle qui nomme son contrôleur, jusqu'au dossier", ()
     // n'a vérifiée.
     expect(close.erreur).toBeDefined();
     expect(plan.state).toBe("EXECUTING");
-    expect(dossier.state).toBe("CANDIDATE");
+    expect(dossier.state).toBe("CONFIRMED");
   });
 
   it("laisse le même modèle se solder d'un geste sur le dossier de quelqu'un d'autre", async () => {

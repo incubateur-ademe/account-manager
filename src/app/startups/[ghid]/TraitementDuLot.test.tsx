@@ -183,5 +183,46 @@ describe("TraitementDuLot", () => {
     expect(porte.getAll("username")).toEqual([CAMILLE.username, NADIA.username]);
     expect(porte.get("startup")).toBe(GHID);
     expect(porte.get("raison")).toBe("convention finie");
+
+    // When on ouvre les départs, dont un existait déjà
+    vi.mocked(ouvrirDepartsEnLot).mockResolvedValueOnce({
+      lot: "lot-1",
+      resume: {
+        traitees: [
+          {
+            username: CAMILLE.username,
+            fullname: CAMILLE.fullname,
+            issue: "TRAITEE",
+            detail: "d-1",
+          },
+        ],
+        deja: [
+          { username: NADIA.username, fullname: NADIA.fullname, issue: "DEJA", detail: "d-2" },
+        ],
+        echecs: [],
+        total: 2,
+      },
+    });
+    await userEvent.type(
+      screen.getByLabelText(LOT.raison.label, { exact: false }),
+      "convention finie",
+    );
+    await userEvent.click(boutonDepart());
+    expect(ouvrirDepartsEnLot).toHaveBeenCalledTimes(1);
+
+    // Then chaque nom du compte rendu mène à son dossier, et le journal s'ouvre sur ce
+    // lot seul, comme la phrase qui l'accompagne le promet
+    const recap = (
+      await screen.findByRole("heading", { name: new RegExp(`^${LOT.depart.recapitulatif} :`) })
+    ).closest(".fr-alert") as HTMLElement;
+    expect(within(recap).getByRole("link", { name: CAMILLE.fullname }).getAttribute("href")).toBe(
+      "/dossiers/d-1",
+    );
+    expect(within(recap).getByRole("link", { name: NADIA.fullname }).getAttribute("href")).toBe(
+      "/dossiers/d-2",
+    );
+    expect(within(recap).getByRole("link", { name: "Voir le journal" }).getAttribute("href")).toBe(
+      "/journal?execution=lot-1",
+    );
   });
 });

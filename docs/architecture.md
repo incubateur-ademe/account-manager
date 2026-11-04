@@ -531,9 +531,12 @@ Un second aurait imposé deux écrans, deux machines à états et deux façons d
 qu'une affaire est réglée, pour un mainteneur à temps partiel.
 
 **Les états admis dépendent du sens.** Un départ se soupçonne avant de se décider : il
-passe par `WATCH`, qu'une collecte lèvera un jour toute seule, puis `CANDIDATE`. Une
-arrivée est une décision et rien d'autre, elle naît confirmée et n'admet ni l'un ni
-l'autre. La base ne sait pas poser d'état par défaut : un défaut de colonne que la règle
+passe par `WATCH`, qu'une collecte lèvera un jour toute seule, puis `CANDIDATE`, et devient
+`CONFIRMED` quand son plan est confirmé, dans la même écriture. Une arrivée est une décision
+et rien d'autre, elle naît confirmée et n'admet ni l'un ni l'autre. Son état ne dit donc rien
+de son plan, et les listes ajoutent « plan à confirmer » tant qu'un brouillon confirmable
+attend. Un brouillon vide ne se confirme pas : la clôture du dossier le passe à `EXECUTED`
+dans la même écriture, sans quoi le constat d'arrivée non préparée ne s'éteindrait jamais. La base ne sait pas poser d'état par défaut : un défaut de colonne que la règle
 métier interdit n'attend que le premier `create` écrit un peu vite.
 
 Un seul dossier vivant par personne **et par sens**. La lecture avant création ne suffit

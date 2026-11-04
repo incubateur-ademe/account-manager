@@ -3,6 +3,7 @@ import { surchargeSuperflue } from "@/core/appartenance";
 import { type Fraicheur, releveFige } from "@/core/collecte";
 import type { ConstatKind } from "@/core/constat";
 import { LIBELLE_CONSTAT } from "@/core/libelle-constat";
+import { LIBELLE_DOSSIER } from "@/core/libelle-dossier";
 import { LIBELLE_STATUT, type Statut } from "@/core/statut";
 import type { RiskLevel } from "@/generated/prisma/enums";
 import { SEVERITE_CONSTAT } from "@/ui/severites";
@@ -89,7 +90,7 @@ export function motifsDesConstats(
     // reprend là où elle a été pointée.
     const versLeDossier =
       constat.kind === "OVERDUE_MANUAL_ACTION" && departVivant !== null
-        ? { href: `/dossiers/${departVivant}`, libelle: "Ouvrir le dossier de départ en cours" }
+        ? { href: `/dossiers/${departVivant}`, libelle: LIBELLE_DOSSIER.OFFBOARDING.enCours }
         : null;
 
     return {
@@ -212,8 +213,8 @@ export function motifsDAction(etat: EtatDeLaFiche): MotifDAction[] {
       titre: "Ce que montre cette fiche n'est plus frais",
       description:
         etat.fraicheur.heures === null
-          ? "Aucune collecte n'a jamais eu lieu. Cette fiche ne reflète aucune observation."
-          : `Dernière collecte lancée il y a ${etat.fraicheur.heures} heures. Sa situation a pu changer depuis.`,
+          ? "Aucune collecte n'a encore abouti. Cette fiche ne reflète aucune observation."
+          : `Dernière collecte aboutie il y a ${etat.fraicheur.heures} heures. Sa situation a pu changer depuis.`,
     });
   }
 

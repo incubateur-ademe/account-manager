@@ -24,11 +24,33 @@ import { LOT } from "./redaction-lot";
 
 type Geste = "sortie" | "depart" | "cloture";
 
-function Recapitulatif({ titre, resume }: { titre: string; resume: ResumeDeLot }) {
+function Recapitulatif({
+  titre,
+  resume,
+  lot,
+  versLesDossiers = false,
+}: {
+  titre: string;
+  resume: ResumeDeLot;
+  lot: string;
+  /** Le départ porte l'identifiant du dossier dans `detail`, et chaque nom y mène. */
+  versLesDossiers?: boolean;
+}) {
   // Trois blocs et jamais une alerte unique : « une personne en échec » rendu comme une
   // erreur laisserait croire que les quatorze autres ont échoué aussi.
   const nommer = (liste: ResumeDeLot["traitees"]) =>
-    liste.map((resultat) => resultat.fullname).join(", ");
+    liste.map((resultat, rang) => (
+      <span key={resultat.username}>
+        {rang > 0 ? ", " : null}
+        {versLesDossiers && resultat.detail !== null ? (
+          <Link className={fr.cx("fr-link")} href={`/dossiers/${resultat.detail}`}>
+            {resultat.fullname}
+          </Link>
+        ) : (
+          resultat.fullname
+        )}
+      </span>
+    ));
 
   return (
     <Alert
@@ -40,7 +62,7 @@ function Recapitulatif({ titre, resume }: { titre: string; resume: ResumeDeLot }
         <>
           <p className={fr.cx("fr-mb-1w")}>
             {resume.traitees.length} traitée{resume.traitees.length > 1 ? "s" : ""}
-            {resume.traitees.length > 0 ? ` : ${nommer(resume.traitees)}` : ""}.
+            {resume.traitees.length > 0 ? <> : {nommer(resume.traitees)}</> : null}.
           </p>
           {resume.deja.length > 0 ? (
             <p className={fr.cx("fr-mb-1w")}>
@@ -59,7 +81,10 @@ function Recapitulatif({ titre, resume }: { titre: string; resume: ResumeDeLot }
           ) : null}
           <p className={fr.cx("fr-mb-0")}>
             {LOT.traces}{" "}
-            <Link className={fr.cx("fr-link")} href="/journal">
+            <Link
+              className={fr.cx("fr-link")}
+              href={`/journal?execution=${encodeURIComponent(lot)}`}
+            >
               Voir le journal
             </Link>
           </p>
@@ -297,13 +322,26 @@ export function TraitementDuLot({
       <p className={fr.cx("fr-text--sm")}>{LOT.ceQueLaSortieNeFaitPas}</p>
 
       {etatSortie !== null && "resume" in etatSortie ? (
-        <Recapitulatif titre={LOT.sortie.recapitulatif} resume={etatSortie.resume} />
+        <Recapitulatif
+          titre={LOT.sortie.recapitulatif}
+          resume={etatSortie.resume}
+          lot={etatSortie.lot}
+        />
       ) : null}
       {etatDepart !== null && "resume" in etatDepart ? (
-        <Recapitulatif titre={LOT.depart.recapitulatif} resume={etatDepart.resume} />
+        <Recapitulatif
+          titre={LOT.depart.recapitulatif}
+          resume={etatDepart.resume}
+          lot={etatDepart.lot}
+          versLesDossiers
+        />
       ) : null}
       {etatCloture !== null && "resume" in etatCloture ? (
-        <Recapitulatif titre={LOT.cloture.recapitulatif} resume={etatCloture.resume} />
+        <Recapitulatif
+          titre={LOT.cloture.recapitulatif}
+          resume={etatCloture.resume}
+          lot={etatCloture.lot}
+        />
       ) : null}
     </section>
   );

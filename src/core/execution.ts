@@ -39,7 +39,7 @@ export function peutExecuter(etat: EtatPlan): Verdict {
  * tient, un geste hors dossier n'ayant aucun dossier à clore.
  */
 export const ISSUE_DOSSIER =
-  "Cochez à la main ce qui a été fait, clôturez ce dossier, et rouvrez-en un pour repartir d'un plan à jour.";
+  "Cochez à la main ce qui a été fait, marquez le reste comme écarté avec sa raison, clôturez ce dossier, puis rouvrez-en un pour repartir d'un plan à jour.";
 
 const NE_SE_RECALCULE_PLUS = "Un plan confirmé ne se recalcule plus.";
 

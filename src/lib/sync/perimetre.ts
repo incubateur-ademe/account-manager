@@ -880,6 +880,31 @@ export async function dernierPassageComplet(): Promise<PassageComplet | null> {
   });
 }
 
+/**
+ * Quand le référentiel des personnes a été relu pour la dernière fois, ce qui date aussi
+ * les startups et les constats.
+ *
+ * Un passage en échec ne relit rien, et `executer.ts` saute alors les startups et les
+ * constats : le prendre pour date retirerait l'alerte de fraîcheur au moment même où plus
+ * rien ne se recalcule. Un passage partiel relit ce qu'il a vu, et compte.
+ *
+ * Réserve : le statut du passage s'écrit avant le calcul des constats. Une collecte qui
+ * tombe entre les deux laisse un passage abouti devant une file de la veille.
+ */
+export async function dernierPassageAbouti(): Promise<Date | null> {
+  const dernier = await prisma.syncRun.findFirst({
+    where: {
+      provider: FOURNISSEUR_PERIMETRE,
+      capability: "list",
+      status: { in: ["OK", "PARTIAL"] },
+    },
+    orderBy: { startedAt: "desc" },
+    select: { startedAt: true },
+  });
+
+  return dernier?.startedAt ?? null;
+}
+
 /** Le jour d'un instant, dans la forme que les messages du dépôt emploient déjà. */
 function jour(date: Date): string {
   return date.toISOString().slice(0, 10);

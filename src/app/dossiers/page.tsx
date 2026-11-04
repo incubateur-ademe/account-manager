@@ -8,10 +8,16 @@ import {
   dossierVivant,
   type EtatDossier,
   type EtatEtape,
+  type EtatPlan,
   type EtatValidation,
   estSoldee,
 } from "@/core/dossier";
-import { LIBELLE_DOSSIER, LIBELLE_ETAT_DOSSIER } from "@/core/libelle-dossier";
+import {
+  attendSaConfirmation,
+  LIBELLE_DOSSIER,
+  LIBELLE_ETAT_DOSSIER,
+  PLAN_A_CONFIRMER,
+} from "@/core/libelle-dossier";
 import { prisma } from "@/lib/db";
 import { requireOperateur } from "@/lib/session";
 import { dateLocale } from "@/ui/dates";
@@ -43,13 +49,14 @@ export default async function DossiersPage() {
       plans: {
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: 1,
-        select: { steps: { select: { state: true, validation: true } } },
+        select: { state: true, steps: { select: { state: true, validation: true } } },
       },
     },
   });
 
   const lignes = dossiers.map((dossier) => {
-    const etapes = dossier.plans[0]?.steps ?? [];
+    const dernier = dossier.plans[0];
+    const etapes = dernier?.steps ?? [];
     return {
       id: dossier.id,
       sens: dossier.kind,
@@ -65,6 +72,10 @@ export default async function DossiersPage() {
           }),
       ).length,
       vivant: dossierVivant(dossier.state),
+      aConfirmer: attendSaConfirmation(
+        dossier.state,
+        dernier ? { etat: dernier.state as EtatPlan, etapes: etapes.length } : null,
+      ),
     };
   });
 
@@ -81,9 +92,17 @@ export default async function DossiersPage() {
           <span className={fr.cx("fr-text--sm")}>{ligne.person.username}</span>
         </span>,
         LIBELLE_DOSSIER[ligne.sens].nom,
-        <Badge key="e" severity={SEVERITE[ligne.state]} small noIcon>
-          {LIBELLE_ETAT_DOSSIER[ligne.state]}
-        </Badge>,
+        <span key="e">
+          <Badge severity={SEVERITE[ligne.state]} small noIcon>
+            {LIBELLE_ETAT_DOSSIER[ligne.state]}
+          </Badge>
+          {ligne.aConfirmer ? (
+            <>
+              <br />
+              <span className={fr.cx("fr-text--sm")}>{PLAN_A_CONFIRMER}</span>
+            </>
+          ) : null}
+        </span>,
         dateLocale.format(ligne.firstSignalAt),
         ligne.etapes === 0
           ? "aucune"
